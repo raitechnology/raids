@@ -29,11 +29,13 @@ struct EvSocket;
 struct EvQueue {
   uint16_t   idx,   /* state, queue[ idx ] */
              state; /* state bit, 1 << idx */
+  uint32_t   cnt;
   EvSocket * hd,    /* list of socks in the queue */
            * tl;
   void init( EvState ev ) {
     this->idx   = ev;
     this->state = 1U << ev;
+    this->cnt   = 0;
     this->hd    = NULL;
     this->tl    = NULL;
   }
@@ -41,27 +43,35 @@ struct EvQueue {
   void pop( EvSocket *p );
 };
 
+struct EvPrefetchQueue;
+
 struct EvPoll {
   EvQueue              queue[ EV_MAX ]; /* EvState queues */
   EvSocket          ** sock;            /* sock array indexed by fd */
   struct epoll_event * ev;              /* event array used by epoll() */
   kv::HashTab        * map;             /* the data store */
+  EvPrefetchQueue    * prefetch_queue;  /* ordering keys */
   const uint32_t       ctx_id;          /* this thread context */
   int                  efd,             /* epoll fd */
                        nfds,            /* max epoll() fds, array sz this->ev */
                        maxfd,           /* current maximum fd number */
                        quit;            /* when > 0, wants to exit */
+  static const size_t  PREFETCH_SIZE = 16;
+  size_t               prefetch_cnt[ PREFETCH_SIZE + 1 ];
+  bool                 single_thread;
 
   EvPoll( kv::HashTab *m,  uint32_t id )
-    : sock( 0 ), ev( 0 ), map( m ), ctx_id( id ), efd( -1 ), nfds( -1 ),
-      maxfd( -1 ), quit( 0 ) {
+    : sock( 0 ), ev( 0 ), map( m ), prefetch_queue( 0 ), ctx_id( id ),
+      efd( -1 ), nfds( -1 ), maxfd( -1 ), quit( 0 ), single_thread( false ) {
     for ( int i = EV_DEAD; i < EV_MAX; i++ )
       this->queue[ i ].init( (EvState) i );
+    ::memset( this->prefetch_cnt, 0, sizeof( this->prefetch_cnt ) );
   }
 
-  int init( int numfds );        /* numfds used by epoll() */
+  int init( int numfds,  bool prefetch,  bool single );
   int wait( int ms );            /* call epoll() with ms timeout */
   void dispatch( void );         /* process any sock in the queues */
+  void drain_prefetch( EvPrefetchQueue &q ); /* process prefetches */
   void dispatch_service( void ); /* process service and listen socks */
   void process_close( void );    /* close socks or quit state */
 };
@@ -121,7 +131,7 @@ static inline void *aligned_malloc( size_t sz ) {
 #ifdef _ISOC11_SOURCE
   return ::aligned_alloc( sizeof( kv::BufAlign64 ), sz ); /* >= RH7 */
 #else
-  return ::malloc( sz ); /* RH5, RH6.. should do something better */
+  return ::memalign( sizeof( kv::BufAlign64 ), sz ); /* RH5, RH6.. */
 #endif
 }
 
@@ -168,6 +178,7 @@ struct EvConnection : public EvSocket, public StreamBuf {
 
 inline void EvQueue::push( EvSocket *p ) {
   const uint16_t i = this->idx;
+  this->cnt++;
   p->state |= this->state;
   p->next[ i ] = this->hd;
   p->back[ i ] = NULL;
@@ -180,6 +191,7 @@ inline void EvQueue::push( EvSocket *p ) {
 
 inline void EvQueue::pop( EvSocket *p ) {
   const uint16_t i = this->idx;
+  this->cnt--;
   p->state &= ~this->state;
   if ( p->back[ i ] == NULL )
     this->hd = p->next[ i ];

@@ -2,6 +2,9 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <netdb.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
 #include <raids/ev_service.h>
 
 using namespace rai;
@@ -9,11 +12,19 @@ using namespace ds;
 using namespace kv;
 
 void
-EvService::process( void )
+EvService::process( bool use_prefetch )
 {
-  StreamBuf &strm = *this;
+  StreamBuf       & strm = *this;
+  EvPrefetchQueue * q    = ( use_prefetch ? this->poll.prefetch_queue : NULL );
+  size_t            buflen,
+                    arg0len;
+  const char      * arg0;
+  char              upper_cmd[ 32 ];
+  RedisMsgStatus    status;
+  ExecStatus        err;
+
   for (;;) {
-    size_t buflen = this->len - this->off;
+    buflen = this->len - this->off;
     if ( buflen == 0 ) {
       this->pop( EV_PROCESS );
       break;
@@ -22,8 +33,7 @@ EvService::process( void )
       if ( ! this->try_write() || strm.idx + 8 >= strm.vlen )
         break;
     }
-    RedisMsgStatus status =
-      this->msg.unpack( &this->recv[ this->off ], buflen, strm.out );
+    status = this->msg.unpack( &this->recv[ this->off ], buflen, strm.tmp );
     if ( status != REDIS_MSG_OK ) {
       if ( status != REDIS_MSG_PARTIAL ) {
         fprintf( stderr, "protocol error(%d/%s), ignoring %lu bytes\n",
@@ -35,13 +45,13 @@ EvService::process( void )
         break;
       continue;
     }
-    size_t arg0len;
-    const char * arg0 = this->msg.command( arg0len, this->argc );
+    this->off += buflen;
+
+    arg0 = this->msg.command( arg0len, this->argc );
     /* max command len is 17 (GEORADIUSBYMEMBER) */
-    ExecStatus err = ( arg0len < 32 ) ? EXEC_OK : EXEC_BAD_CMD;
+    err = ( arg0len < 32 ) ? EXEC_OK : EXEC_BAD_CMD;
 
     if ( err == EXEC_OK ) {
-      char upper_cmd[ 32 ];
       str_to_upper( arg0, upper_cmd, arg0len );
       if ( (this->cmd = get_redis_cmd( upper_cmd, arg0len )) == NO_CMD )
         err = EXEC_BAD_CMD;
@@ -58,125 +68,86 @@ EvService::process( void )
     }
     if ( err == EXEC_OK ) {
       this->flags = get_cmd_flag_mask( this->cmd );
-      if ( (err = this->exec()) == EXEC_OK && strm.alloc_fail )
+      if ( (err = this->exec( this, q )) == EXEC_OK && strm.alloc_fail )
         err = EXEC_ALLOC_FAIL;
     }
-    switch ( err ) {
-      case EXEC_OK:         break;
-      case EXEC_SEND_OK:    this->send_ok(); break;
-      case EXEC_KV_STATUS:  this->send_err_kv( this->kstatus ); break;
-      case EXEC_MSG_STATUS: this->send_err_msg( this->mstatus ); break;
-      case EXEC_BAD_ARGS:   this->send_err_bad_args(); break;
-      case EXEC_BAD_CMD:    this->send_err_bad_cmd(); break;
-      case EXEC_QUIT:       this->send_ok(); this->poll.quit++; break;
-      case EXEC_ALLOC_FAIL: this->send_err_alloc_fail(); break;
+    if ( err == EXEC_SETUP_OK ) {
+      if ( q != NULL )
+        return;
+      if ( ! this->exec_key_continue( *this->key ) ) {
+        while ( ! this->exec_key_continue( *this->keys[ this->key_done ] ) )
+          ;
+      }
     }
-    this->off += buflen;
+    else if ( err == EXEC_QUIT ) {
+      this->poll.quit++;
+    }
+    else {
+      this->send_err( err );
+    }
   }
   if ( strm.wr_pending + strm.sz > 0 )
     this->push( EV_WRITE );
 }
 
 void
-EvService::send_ok( void )
+EvService::debug( void )
 {
-  static char ok[] = "+OK\r\n";
-  this->StreamBuf::append( ok, 5 );
+  const char *name[] = { 0, "wait", "read", "process", "write", "close" };
+  struct sockaddr_storage addr;
+  socklen_t addrlen;
+  char buf[ 128 ], svc[ 32 ];
+  EvSocket *s, *next;
+  int i;
+  for ( i = 0; i < (int) EvPoll::PREFETCH_SIZE; i++ ) {
+    if ( this->poll.prefetch_cnt[ i ] != 0 )
+      printf( "[%d]: %lu\n", i, this->poll.prefetch_cnt[ i ] );
+  }
+  for ( i = 1; i <= 5; i++ ) {
+    printf( "%s: ", name[ i ] );
+    for ( s = this->poll.queue[ i ].hd; s != NULL; s = next ) {
+      next = s->next[ i ];
+      if ( s->type == EV_SERVICE_SOCK ) {
+	addrlen = sizeof( addr );
+	getpeername( s->fd, (struct sockaddr*) &addr, &addrlen );
+	getnameinfo( (struct sockaddr*) &addr, addrlen, buf, sizeof( buf ),
+                     svc, sizeof( svc ), NI_NUMERICHOST | NI_NUMERICSERV );
+      }
+      else {
+        buf[ 0 ] = 'L'; buf[ 1 ] = '\0';
+        svc[ 0 ] = 0;
+      }
+      printf( "%d/%s:%s ", s->fd, buf, svc );
+    } 
+    printf( "\n" );
+  }
+  for ( i = 1; i <= 5; i++ ) {
+    for ( s = this->poll.queue[ i ].hd; s != NULL; s = next ) {
+      next = s->next[ i ];
+      if ( s->type == EV_SERVICE_SOCK ) {
+	if ( ((EvService *) s)->off != ((EvService *) s)->len ) {
+	  printf( "%p: (%d) has buf(%u)\n", s, s->fd,
+		  ((EvService *) s)->len - ((EvService *) s)->off );
+	}
+	if ( ((EvService *) s)->wr_pending + ((EvService *) s)->sz != 0 ) {
+	  printf( "%p: (%d) has pend(%lu)\n", s, s->fd,
+	         ((EvService *) s)->wr_pending + ((EvService *) s)->sz );
+	}
+      }
+    } 
+  }
+  if ( this->poll.prefetch_queue->is_empty() )
+    printf( "prefetch empty\n" );
+  else
+    printf( "prefetch count %lu\n",
+	    this->poll.prefetch_queue->count() );
 }
 
-void
-EvService::send_err_bad_args( void )
+ExecStatus
+RedisExec::exec_debug( EvService *own )
 {
-  size_t       arg0len;
-  const char * arg0 = this->msg.command( arg0len );
-  size_t       bsz  = 64 + 24;
-  StreamBuf  & strm = *this;
-  void       * buf  = strm.alloc( bsz );
-
-  if ( buf != NULL ) {
-    arg0len = ( arg0len < 24 ? arg0len : 24 );
-    bsz = ::snprintf( (char *) buf, bsz,
-              "-ERR wrong number of arguments for '%.*s' command\r\n",
-              (int) arg0len, arg0 );
-    strm.sz += bsz;
-  }
-}
-
-void
-EvService::send_err_kv( int kstatus )
-{
-  size_t       arg0len;
-  const char * arg0 = this->msg.command( arg0len );
-  size_t       bsz  = 256;
-  StreamBuf  & strm = *this;
-  void       * buf  = strm.alloc( bsz );
-
-  if ( buf != NULL ) {
-    arg0len = ( arg0len < 24 ? arg0len : 24 );
-    bsz = ::snprintf( (char *) buf, bsz, "-ERR '%.*s': KeyCtx %d/%s %s\r\n",
-                     (int) arg0len, arg0,
-                     kstatus, kv_key_status_string( (KeyStatus) kstatus ),
-                     kv_key_status_description( (KeyStatus) kstatus ) );
-    strm.sz += bsz;
-  }
-}
-
-void
-EvService::send_err_msg( int mstatus )
-{
-  size_t       arg0len;
-  const char * arg0 = this->msg.command( arg0len );
-  size_t       bsz  = 256;
-  StreamBuf  & strm = *this;
-  void       * buf  = strm.alloc( bsz );
-
-  if ( buf != NULL ) {
-    arg0len = ( arg0len < 24 ? arg0len : 24 );
-    bsz = ::snprintf( (char *) buf, bsz, "-ERR '%.*s': RedisMsg %d/%s %s\r\n",
-                   (int) arg0len, arg0,
-                   mstatus, redis_msg_status_string( (RedisMsgStatus) mstatus ),
-                   redis_msg_status_description( (RedisMsgStatus) mstatus ) );
-    strm.sz += bsz;
-  }
-}
-
-void
-EvService::send_err_bad_cmd( void )
-{
-  size_t       arg0len;
-  const char * arg0 = this->msg.command( arg0len );
-  size_t       bsz  = 64 + 24;
-  StreamBuf  & strm = *this;
-  void       * buf  = strm.alloc( bsz );
-
-  if ( buf != NULL ) {
-    arg0len = ( arg0len < 24 ? arg0len : 24 );
-    bsz = ::snprintf( (char *) buf, bsz, "-ERR unknown command: '%.*s'\r\n",
-                     (int) arg0len, arg0 );
-    strm.sz += bsz;
-  }
-  {
-    char tmpbuf[ 1024 ];
-    size_t tmpsz = sizeof( tmpbuf );
-    if ( this->msg.to_json( tmpbuf, tmpsz ) == REDIS_MSG_OK )
-      fprintf( stderr, "Bad command: %s\n", tmpbuf );
-  }
-}
-
-void
-EvService::send_err_alloc_fail( void )
-{
-  size_t       arg0len;
-  const char * arg0 = this->msg.command( arg0len );
-  size_t       bsz  = 64 + 24;
-  StreamBuf  & strm = *this;
-  void       * buf  = strm.alloc( bsz );
-
-  if ( buf != NULL ) {
-    arg0len = ( arg0len < 24 ? arg0len : 24 );
-    bsz = ::snprintf( (char *) buf, bsz, "-ERR '%.*s': allocation failure\r\n",
-                     (int) arg0len, arg0 );
-    strm.sz += bsz;
-  }
+  printf( "debug\n" );
+  own->debug();
+  return EXEC_SEND_OK;
 }
 

@@ -19,11 +19,17 @@ using namespace kv;
 
 /* for setsockopt() */
 static int on = 1, off = 0;
+static const size_t poll_alloc_incr = 64;
 
 int
-EvPoll::init( int numfds )
+EvPoll::init( int numfds,  bool prefetch,  bool single )
 {
   size_t sz = sizeof( this->ev[ 0 ] ) * numfds;
+
+  if ( prefetch )
+    this->prefetch_queue = EvPrefetchQueue::create();
+  this->single_thread = single;
+
   if ( (this->efd = ::epoll_create( numfds )) < 0 ) {
     perror( "epoll" );
     return -1;
@@ -61,19 +67,23 @@ void
 EvPoll::dispatch( void )
 {
   EvSocket *s, *next;
+  bool use_pref;
   int cnt;
   for (;;) {
     cnt = 0;
+    use_pref = ( this->queue[ EV_PROCESS ].cnt > 1 );
     for ( s = this->queue[ EV_PROCESS ].hd; s != NULL; s = next ) {
       next = s->next[ EV_PROCESS ];
       switch ( s->type ) {
 	case EV_LISTEN_SOCK:  break;
         case EV_CLIENT_SOCK:  ((EvClient *) s)->process(); break;
-        case EV_SERVICE_SOCK: ((EvService *) s)->process(); break;
+        case EV_SERVICE_SOCK: ((EvService *) s)->process( use_pref ); break;
         case EV_TERMINAL:     ((EvTerminal *) s)->process(); break;
       }
       cnt++;
     }
+    if ( this->prefetch_queue != NULL && ! this->prefetch_queue->is_empty() )
+      this->drain_prefetch( *this->prefetch_queue );
     for ( s = this->queue[ EV_WRITE ].hd; s != NULL; s = next ) {
       next = s->next[ EV_WRITE ];
       switch ( s->type ) {
@@ -102,17 +112,65 @@ EvPoll::dispatch( void )
 }
 
 void
+EvPoll::drain_prefetch( EvPrefetchQueue &q )
+{
+  RedisKeyCtx *ctx[ PREFETCH_SIZE ];
+  EvService   *svc;
+  size_t i, j, sz, cnt = 0;
+
+  sz = PREFETCH_SIZE;
+  if ( sz > q.count() )
+    sz = q.count();
+  this->prefetch_cnt[ sz ]++;
+  for ( i = 0; i < sz; i++ ) {
+    ctx[ i ] = q.pop();
+    ctx[ i ]->prefetch();
+  }
+  i &= ( PREFETCH_SIZE - 1 );
+  for ( j = 0; ; ) {
+    if ( ctx[ j ]->run( svc ) )
+      svc->process( true );
+    cnt++;
+    if ( --sz == 0 && q.is_empty() ) {
+      this->prefetch_cnt[ 0 ] += cnt;
+      return;
+    }
+    j = ( j + 1 ) & ( PREFETCH_SIZE - 1 );
+    if ( ! q.is_empty() ) {
+      do {
+        ctx[ i ] = q.pop();
+        ctx[ i ]->prefetch();
+        i = ( i + 1 ) & ( PREFETCH_SIZE - 1 );
+      } while ( ++sz < PREFETCH_SIZE && ! q.is_empty() );
+    }
+  }
+}
+
+void
 EvPoll::dispatch_service( void )
 {
   EvSocket *s, *next;
-  int cnt;
+  size_t cnt;
+
   for (;;) {
     cnt = 0;
-    for ( s = this->queue[ EV_PROCESS ].hd; s != NULL; s = next ) {
-      next = s->next[ EV_PROCESS ];
-      ((EvService *) s)->process();
-      cnt++;
+    if ( this->prefetch_queue != NULL && this->queue[ EV_PROCESS ].cnt > 1 ) {
+      for ( s = this->queue[ EV_PROCESS ].hd; s != NULL; s = next ) {
+        next = s->next[ EV_PROCESS ];
+        ((EvService *) s)->process( true );
+        cnt++;
+      }
+      if ( ! this->prefetch_queue->is_empty() )
+        this->drain_prefetch( *this->prefetch_queue );
     }
+    else {
+      for ( s = this->queue[ EV_PROCESS ].hd; s != NULL; s = next ) {
+        next = s->next[ EV_PROCESS ];
+        ((EvService *) s)->process( false );
+        cnt++;
+      }
+    }
+    this->prefetch_cnt[ 1 ] += cnt;
     for ( s = this->queue[ EV_WRITE ].hd; s != NULL; s = next ) {
       next = s->next[ EV_WRITE ];
       ((EvService *) s)->write();
@@ -169,7 +227,7 @@ int
 EvSocket::add_poll( void )
 {
   if ( this->fd > this->poll.maxfd ) {
-    int xfd = this->fd + 1;
+    int xfd = this->fd + poll_alloc_incr;
     EvSocket **tmp;
     if ( xfd < this->poll.nfds )
       xfd = this->poll.nfds;
@@ -348,6 +406,9 @@ EvClient::connect( const char *ip,  int port )
 	if ( ::setsockopt( sock, SOL_SOCKET, SO_REUSEPORT, &on,
                            sizeof( on ) ) != 0 )
           perror( "warning: SO_REUSEPORT" );
+	if ( ::setsockopt( sock, SOL_TCP, TCP_NODELAY, &on,
+                           sizeof( on ) ) != 0 )
+          perror( "warning: TCP_NODELAY" );
 	status = ::connect( sock, p->ai_addr, p->ai_addrlen );
 	if ( status == 0 )
 	  goto break_loop;
@@ -411,13 +472,17 @@ EvListen::accept( void )
   if ( (c = (EvService *) this->poll.queue[ EV_DEAD ].hd) != NULL )
     c->pop( EV_DEAD );
   else {
-    void * m = aligned_malloc( sizeof( EvService ) );
+    void * m = aligned_malloc( sizeof( EvService ) * poll_alloc_incr );
     if ( m == NULL ) {
       perror( "accept: no memory" );
       ::close( sock );
       return;
     }
     c = new ( m ) EvService( this->poll );
+    for ( int i = poll_alloc_incr - 1; i >= 1; i-- ) {
+      new ( (void *) &c[ i ] ) EvService( this->poll );
+      c[ i ].push( EV_DEAD );
+    }
   }
   struct linger lin;
   lin.l_onoff  = 1;
@@ -428,6 +493,8 @@ EvListen::accept( void )
     perror( "warning: SO_KEEPALIVE" );
   if ( ::setsockopt( sock, SOL_SOCKET, SO_LINGER, &lin, sizeof( lin ) ) != 0 )
     perror( "warning: SO_LINGER" );
+  if ( ::setsockopt( sock, SOL_TCP, TCP_NODELAY, &on, sizeof( on ) ) != 0 )
+    perror( "warning: TCP_NODELAY" );
   ::fcntl( sock, F_SETFL, O_NONBLOCK | ::fcntl( sock, F_GETFL ) );
   c->fd = sock;
   if ( c->add_poll() < 0 ) {
@@ -501,7 +568,7 @@ EvConnection::write( void )
     strm.wr_pending -= nbytes;
     if ( strm.wr_pending == 0 ) {
       strm.idx = strm.woff = 0;
-      strm.out.reset();
+      strm.tmp.reset();
       this->pop( EV_WRITE );
     }
     else {

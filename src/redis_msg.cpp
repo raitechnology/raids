@@ -13,11 +13,13 @@ using namespace kv;
 const char *
 rai::ds::redis_msg_status_string( RedisMsgStatus status ) {
   switch ( status ) {
-    case REDIS_MSG_OK:         return "OK";
-    case REDIS_MSG_BAD_TYPE:   return "BAD_TYPE";
-    case REDIS_MSG_PARTIAL:    return "PARTIAL";
-    case REDIS_MSG_ALLOC_FAIL: return "ALLOC_FAIL";
-    case REDIS_MSG_BAD_JSON:   return "BAD_JSON";
+    case REDIS_MSG_OK:           return "OK";
+    case REDIS_MSG_BAD_TYPE:     return "BAD_TYPE";
+    case REDIS_MSG_PARTIAL:      return "PARTIAL";
+    case REDIS_MSG_ALLOC_FAIL:   return "ALLOC_FAIL";
+    case REDIS_MSG_BAD_JSON:     return "BAD_JSON";
+    case REDIS_MSG_BAD_INT:      return "BAD_INT";
+    case REDIS_MSG_INT_OVERFLOW: return "INT_OVERFLOW";
   }
   return "UNKNOWN";
 }
@@ -25,11 +27,13 @@ rai::ds::redis_msg_status_string( RedisMsgStatus status ) {
 const char *
 rai::ds::redis_msg_status_description( RedisMsgStatus status ) {
   switch ( status ) {
-    case REDIS_MSG_OK:         return "OK";
-    case REDIS_MSG_BAD_TYPE:   return "Message decoding error, bad type char";
-    case REDIS_MSG_PARTIAL:    return "Partial message";
-    case REDIS_MSG_ALLOC_FAIL: return "Alloc failed";
-    case REDIS_MSG_BAD_JSON:   return "Unable to parse JSON message";
+    case REDIS_MSG_OK:           return "OK";
+    case REDIS_MSG_BAD_TYPE:     return "Message decoding error, bad type char";
+    case REDIS_MSG_PARTIAL:      return "Partial value";
+    case REDIS_MSG_ALLOC_FAIL:   return "Alloc failed";
+    case REDIS_MSG_BAD_JSON:     return "Unable to parse JSON message";
+    case REDIS_MSG_BAD_INT:      return "Unable to parse integer";
+    case REDIS_MSG_INT_OVERFLOW: return "Integer overflow";
   }
   return "Unknown msg status";
 }
@@ -189,6 +193,7 @@ RedisMsg::unpack( void *buf,  size_t &buflen,  ScratchMem &wrk )
   char  * ptr = (char *) buf, /* buflen must be at least 1 */
         * eol = (char *) ::memchr( &ptr[ 1 ], '\n', buflen - 1 );
   size_t  i, j;
+  RedisMsgStatus status;
 
   if ( eol == NULL )
     return REDIS_MSG_PARTIAL;
@@ -207,7 +212,6 @@ RedisMsg::unpack( void *buf,  size_t &buflen,  ScratchMem &wrk )
     buflen = j;
     return this->split( wrk );
   }
-
   this->type = (DataType) ptr[ 0 ];
 
   if ( is_simple_type( type_bit ) ) {
@@ -216,10 +220,12 @@ RedisMsg::unpack( void *buf,  size_t &buflen,  ScratchMem &wrk )
   }
   else if ( is_int_type( type_bit ) ) {
     this->len  = 0;
-    this->ival = kv::string_to_int64( &ptr[ 1 ], i );
+    if ( (status = str_to_int( &ptr[ 1 ], i, this->ival )) != REDIS_MSG_OK )
+      return status;
   }
   else {
-    this->len = kv::string_to_int64( &ptr[ 1 ], i );
+    if ( (status = str_to_int( &ptr[ 1 ], i, this->len )) != REDIS_MSG_OK )
+      return status;
     if ( is_bulk_string( type_bit ) ) {
       if ( this->len > 0 ) {
         this->strval = &ptr[ j ];
@@ -279,9 +285,9 @@ RedisMsg::match_arg( int n,  const char *str,  size_t sz,  ... )
   for ( k = 1; ; k++ ) {
     for ( i = start; i < end; i++ ) {
       if ( this->array[ i ].is_string() ) {
-	if ( (size_t) this->array[ i ].len == sz &&
-	     ::strncasecmp( str, this->array[ i ].strval, sz ) == 0 )
-	  goto break_loop;
+        if ( (size_t) this->array[ i ].len == sz &&
+          ::strncasecmp( str, this->array[ i ].strval, sz ) == 0 )
+        goto break_loop;
       }
     }
     str = va_arg( args, const char * );
@@ -294,6 +300,78 @@ RedisMsg::match_arg( int n,  const char *str,  size_t sz,  ... )
 break_loop:;
   va_end( args );
   return k;
+}
+
+RedisMsgStatus
+RedisMsg::str_to_int( const char *str,  size_t sz,  int64_t &ival )
+{
+  /* max is 1844674407,3709551615, this table doesnn't overflow 32bits */
+  static const uint32_t pow10[] = {     10000U * 10000U * 10,
+    10000U * 10000, 10000U * 1000, 10000U * 100, 10000U * 10,
+             10000,          1000,          100,          10,
+                 1
+  };
+  static const size_t max_pow10 = sizeof( pow10 ) / sizeof( pow10[ 0 ] );
+  size_t i, j;
+  uint64_t n = 0;
+  bool neg;
+
+  if ( sz == 0 )
+    return REDIS_MSG_BAD_INT;
+  if ( str[ 0 ] == '-' ) {
+    if ( --sz == 0 )
+      return REDIS_MSG_BAD_INT;
+    str++;
+    neg = true;
+  }
+  else {
+    neg = false;
+  }
+  i = j = 0;
+  if ( sz < max_pow10 )
+    i = max_pow10 - sz;
+  else
+    j = sz - max_pow10;
+  sz = j;
+  for (;;) {
+    if ( str[ j ] < '0' || str[ j ] > '9' )
+      return REDIS_MSG_BAD_INT;
+    n += (uint64_t) pow10[ i++ ] * ( str[ j++ ] - '0' );
+    if ( i == max_pow10 )
+      break;
+  }
+  if ( sz != 0 ) {
+    i = j = 0;
+    if ( sz <= max_pow10 )
+      i = max_pow10 - sz;
+    else
+      return REDIS_MSG_INT_OVERFLOW;
+    uint64_t nn = 0;
+    for (;;) {
+      if ( str[ j ] < '0' || str[ j ] > '9' )
+        return REDIS_MSG_BAD_INT;
+      nn += (uint64_t) pow10[ i++ ] * ( str[ j++ ] - '0' );
+      if ( i == max_pow10 )
+        break;
+    }
+    /* 9223372036854775807 == 0x7fffffffffffffff */
+    if ( nn > (uint64_t) 922337203 ||
+         ( nn == (uint64_t) 922337203 &&
+           n > (uint64_t) 6854775807 ) ) {
+      /* test for neg && 6854775808 */
+      if ( neg && nn == 922337203 && n == 6854775808 ) {
+        ival = 0x8000000000000000LL;
+        return REDIS_MSG_OK;
+      }
+      return REDIS_MSG_INT_OVERFLOW;
+    }
+    n += (uint64_t) 10 * (uint64_t) pow10[ 0 ] * nn;
+  }
+  if ( neg )
+    ival = -(int64_t) n;
+  else
+    ival = (int64_t) n;
+  return REDIS_MSG_OK;
 }
 
 /* doesn't escape strings, uses different quote styles for various strings:

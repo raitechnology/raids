@@ -72,7 +72,7 @@ ver_build   := $(version)-$(build_num)
 everything: all
 
 libraids_files := ev_net ev_service ev_client redis_msg redis_cmd_db \
-                  redis_exec
+                  redis_exec redis_exec_string
 libraids_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(libraids_files)))
 libraids_dbjs  := $(addprefix $(objd)/, $(addsuffix .fpic.o, $(libraids_files)))
 libraids_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(libraids_files))) \

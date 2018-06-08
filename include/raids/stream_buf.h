@@ -17,13 +17,13 @@ struct StreamBuf {
 
   static const size_t vlen = 4096;
   struct iovec   iov[ vlen ]; /* vec of send buffers */
-  kv::WorkAllocT< 4096 > out;
+  kv::WorkAllocT< 4096 > tmp;
 
   StreamBuf() { this->reset(); }
 
   void release( void ) {
     this->reset();
-    this->out.release_all();
+    this->tmp.release_all();
   }
 
   void reset( void ) {
@@ -33,7 +33,7 @@ struct StreamBuf {
     this->idx        = 0;
     this->woff       = 0;
     this->alloc_fail = false;
-    this->out.reset();
+    this->tmp.reset();
   }
   void flush( void ) {
     this->iov[ this->idx ].iov_base  = this->out_buf;
@@ -54,7 +54,7 @@ struct StreamBuf {
     if ( this->out_buf != NULL && this->sz + amt > 1024 )
       this->flush();
     if ( this->out_buf == NULL ) {
-      this->out_buf = (char *) this->out.alloc( amt < 1024 ? 1024 : amt );
+      this->out_buf = (char *) this->tmp.alloc( amt < 1024 ? 1024 : amt );
       if ( this->out_buf == NULL ) {
         this->alloc_fail = true;
         return NULL;

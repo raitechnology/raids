@@ -29,7 +29,7 @@ EvClient::process( void )
       case RedisMsg::BULK_STRING:   /* $ */
       case RedisMsg::BULK_ARRAY:    /* * */
 	status = this->msg.unpack( &this->recv[ this->off ], buflen,
-                                   this->out );
+                                   this->tmp );
         break;
       case ' ':
       case '\t':
@@ -43,7 +43,7 @@ EvClient::process( void )
       case '0': case '1': case '2': case '3': case '4':
       case '5': case '6': case '7': case '8': case '9':
         status = this->msg.unpack_json( &this->recv[ this->off ], buflen,
-                                        this->out );
+                                        this->tmp );
         break;
     }
     if ( status != REDIS_MSG_OK ) {

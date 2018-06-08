@@ -11,11 +11,13 @@ struct BulkStr;
 struct BulkArr;
 
 enum RedisMsgStatus {
-  REDIS_MSG_OK         = 0,
-  REDIS_MSG_BAD_TYPE   = 1,
-  REDIS_MSG_PARTIAL    = 2,
-  REDIS_MSG_ALLOC_FAIL = 3,
-  REDIS_MSG_BAD_JSON   = 4
+  REDIS_MSG_OK           = 0,
+  REDIS_MSG_BAD_TYPE     = 1,
+  REDIS_MSG_PARTIAL      = 2,
+  REDIS_MSG_ALLOC_FAIL   = 3,
+  REDIS_MSG_BAD_JSON     = 4,
+  REDIS_MSG_BAD_INT      = 5,
+  REDIS_MSG_INT_OVERFLOW = 6
 };
 
 const char *redis_msg_status_string( RedisMsgStatus status );
@@ -85,8 +87,24 @@ struct RedisMsg {
     }
     return false;
   }
+  bool get_arg( int n,  int64_t &i ) const {
+    if ( n < this->len ) {
+      if ( this->array[ n ].is_string() ) {
+        const char * str = this->array[ n ].strval;
+        size_t       sz  = this->array[ n ].len;
+        return str_to_int( str, sz, i ) == REDIS_MSG_OK;
+      }
+      else if ( this->array[ n ].type == INTEGER_VALUE ) {
+        i = this->array[ n ].ival;
+        return true;
+      }
+    }
+    return false;
+  }
   int match_arg( int n,  const char *str,  size_t sz,  ... );
 
+  static RedisMsgStatus str_to_int( const char *str,  size_t sz,
+                                    int64_t &ival );
   void set_nil( void ) {
     this->type   = BULK_STRING;
     this->len    = -1;

@@ -49,7 +49,7 @@ StdinCallback::onMsg( RedisMsg &msg )
   printf( "> " ); fflush( stdout );
 
   sz = 1024;
-  void *tmp = this->client.out.alloc( sz );
+  void *tmp = this->client.tmp.alloc( sz );
   if ( msg.pack( tmp, sz ) == REDIS_MSG_OK ) {
     this->client.append_iov( tmp, sz );
     this->client.push( EV_WRITE );
@@ -105,13 +105,14 @@ ClientCallback::onClose( void )
 }
 
 static const char *
-get_arg( int argc, char *argv[], int n, const char *f, const char *def )
+get_arg( int argc, char *argv[], int n, int b, const char *f, const char *def )
 { 
-  if ( argc > n && argv[ 1 ][ 0 ] != '-' ) /* [2]=port, no flags */
+  /* [1]=host, [2]=port, no flags */
+  if ( n > 0 && argc > n && argv[ 1 ][ 0 ] != '-' )
     return argv[ n ];
-  for ( int i = 1; i < argc - 1; i++ ) 
+  for ( int i = 1; i < argc - b; i++ ) 
     if ( ::strcmp( f, argv[ i ] ) == 0 ) /* -p port */
-      return argv[ i + 1 ];
+      return argv[ i + b ];
   return def; /* default value */
 }
 
@@ -122,10 +123,17 @@ main( int argc, char *argv[] )
   int        status = 0;
   EvPoll     poll( NULL, 0 );
   MyClient   my( poll );
-  poll.init( 5 );
-  const char *pt = get_arg( argc, argv, 1, "-p", "8888" );
 
-  if ( my.client.connect( NULL, atoi( pt ) ) != 0 )
+  const char * ho = get_arg( argc, argv, 1, 1, "-x", NULL ),
+             * pt = get_arg( argc, argv, 2, 1, "-p", "8888" ),
+             * he = get_arg( argc, argv, 0, 0, "-h", 0 );
+  if ( he != NULL ) {
+    printf( "%s [-x host] [-p port]\n", argv[ 0 ] );
+    return 0;
+  }
+
+  poll.init( 5, false, false );
+  if ( my.client.connect( ho, atoi( pt ) ) != 0 )
     status = 1; /* bad port or network error */
   else {
     printf( "connected: %s\n", pt );

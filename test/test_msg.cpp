@@ -38,6 +38,22 @@ static struct {
   { ex_mix_array,   sizeof( ex_mix_array )   - 1 }
 };
 
+static struct {
+  const char * str;
+  size_t       len;
+  int64_t      ival;
+} num_str[] = {
+  { "0", 1, 0 },
+  { "-1", 2, -1 },
+  { "1234", 4, 1234 },
+  { "9223372036854775807", 19, 9223372036854775807 },
+  { "-9223372036854775808", 20, (int64_t) 0x8000000000000000LL },
+  { "1000000000000000000000", 22, 0 },
+  { "92e7", 4, (int64_t) 92e7 },
+  { "92233720368547758078", 20, 0 },
+  { "-9223372036854775809", 20, 0 }
+};
+
 int
 main( int argc, char *argv[] )
 {
@@ -47,9 +63,11 @@ main( int argc, char *argv[] )
   WorkAllocT<8192> wrk;
   double start, end;
   RedisMsgStatus x;
+  int64_t ival;
+  size_t j;
 
   start = kv_current_monotonic_time_s();
-  for ( int j = 0; j < 1000 ; j++ ) {
+  for ( j = 0; j < 1000 ; j++ ) {
     for ( int repeat = 0; repeat < 1000; repeat++ ) {
       for ( size_t i = 0; i < sizeof( examples ) /
                               sizeof( examples[ 0 ] ); i++ ) {
@@ -70,6 +88,17 @@ main( int argc, char *argv[] )
   end = kv_current_monotonic_time_s();
   printf( "speed: %.3f M/s %.03fns\n", 1.0 / ( end - start ) * 10.0,
           ( end - start ) * 100.0 );
+  for ( j = 0; j < sizeof( num_str ) / sizeof( num_str[ 0 ] ); j++ ) {
+    if ( (x = RedisMsg::str_to_int( num_str[ j ].str, num_str[ j ].len,
+                                    ival )) == REDIS_MSG_OK ) {
+      if ( ival != num_str[ j ].ival )
+        printf( "failed: %s (%ld)\n", num_str[ j ].str, ival );
+    }
+    else {
+      printf( "did not parse: %s (%d/%s)\n", num_str[ j ].str,
+              x, redis_msg_status_description( x ) );
+    }
+  }
   return 0;
 }
 
