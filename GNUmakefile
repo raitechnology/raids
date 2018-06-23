@@ -52,7 +52,7 @@ cpp_lnk     :=
 sock_lib    :=
 math_lib    := -lm
 thread_lib  := -pthread -lrt
-kv_lib      := -lraikv
+dep_lib     := -lraikv -lpcre2-8
 malloc_lib  :=
 
 # targets filled in below
@@ -67,17 +67,21 @@ patch_num   := 0
 build_num   := 1
 version     := $(major_num).$(minor_num).$(patch_num)
 ver_build   := $(version)-$(build_num)
+defines     := -DDS_VER=$(ver_build)
 
 .PHONY: everything
 everything: all
 
 libraids_files := ev_net ev_service ev_client redis_msg redis_cmd_db \
-                  redis_exec redis_exec_string
+                  redis_exec redis_geo redis_hash redis_hyperloglog \
+		  redis_key redis_list redis_pubsub redis_script \
+		  redis_set redis_sortedset redis_stream redis_string \
+		  redis_transaction
 libraids_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(libraids_files)))
 libraids_dbjs  := $(addprefix $(objd)/, $(addsuffix .fpic.o, $(libraids_files)))
 libraids_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(libraids_files))) \
                   $(addprefix $(dependd)/, $(addsuffix .fpic.d, $(libraids_files)))
-libraids_lnk   := $(kv_lib)
+libraids_dlnk  := $(dep_lib)
 libraids_spec  := $(version)-$(build_num)
 libraids_ver   := $(major_num).$(minor_num)
 
@@ -91,7 +95,7 @@ server_files := emain
 server_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(server_files)))
 server_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(server_files)))
 server_libs  := $(libd)/libraids.a
-server_lnk   := $(server_libs) $(kv_lib)
+server_lnk   := $(server_libs) $(dep_lib)
 
 $(bind)/server: $(server_objs) $(server_libs)
 
@@ -99,7 +103,7 @@ client_files := cli
 client_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(client_files)))
 client_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(client_files)))
 client_libs  := $(libd)/libraids.a
-client_lnk   := $(client_libs) $(kv_lib)
+client_lnk   := $(client_libs) $(dep_lib)
 
 $(bind)/client: $(client_objs) $(client_libs)
 
@@ -107,7 +111,7 @@ test_msg_files := test_msg
 test_msg_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(test_msg_files)))
 test_msg_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(test_msg_files)))
 test_msg_libs  := $(libd)/libraids.a
-test_msg_lnk   := $(test_msg_libs) $(kv_lib)
+test_msg_lnk   := $(test_msg_libs) $(dep_lib)
 
 $(bind)/test_msg: $(test_msg_objs) $(test_msg_libs)
 
@@ -115,14 +119,14 @@ test_cmd_files := test_cmd
 test_cmd_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(test_cmd_files)))
 test_cmd_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(test_cmd_files)))
 test_cmd_libs  := $(libd)/libraids.a
-test_cmd_lnk   := $(test_cmd_libs) $(kv_lib)
+test_cmd_lnk   := $(test_cmd_libs) $(dep_lib)
 
 $(bind)/test_cmd: $(test_cmd_objs) $(test_cmd_libs)
 
 redis_cmd_files := redis_cmd redis_msg
 redis_cmd_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(redis_cmd_files)))
 redis_cmd_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(redis_cmd_files)))
-redis_cmd_lnk   := $(kv_lib)
+redis_cmd_lnk   := $(dep_lib)
 
 $(bind)/redis_cmd: $(redis_cmd_objs) $(redis_cmd_libs)
 

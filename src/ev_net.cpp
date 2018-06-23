@@ -128,8 +128,17 @@ EvPoll::drain_prefetch( EvPrefetchQueue &q )
   }
   i &= ( PREFETCH_SIZE - 1 );
   for ( j = 0; ; ) {
-    if ( ctx[ j ]->run( svc ) )
-      svc->process( true );
+    switch ( ctx[ j ]->run( svc ) ) {
+      default:
+      case EXEC_SUCCESS:  /* transaction complete, all keys done */
+        svc->process( true );
+        break;
+      case EXEC_DEPENDS:   /* incomplete, depends on another key */
+        q.push( ctx[ j ] );
+        break;
+      case EXEC_CONTINUE:  /* key complete, more keys to go */
+        break;
+    }
     cnt++;
     if ( --sz == 0 && q.is_empty() ) {
       this->prefetch_cnt[ 0 ] += cnt;

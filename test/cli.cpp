@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <unistd.h>
 #include <raids/ev_client.h>
 #include <raikv/util.h>
 
@@ -49,13 +50,13 @@ StdinCallback::onMsg( RedisMsg &msg )
   printf( "> " ); fflush( stdout );
 
   sz = 1024;
-  void *tmp = this->client.tmp.alloc( sz );
-  if ( msg.pack( tmp, sz ) == REDIS_MSG_OK ) {
-    this->client.append_iov( tmp, sz );
+  void *tmp = this->client.tmp.alloc( msg.pack_size() );
+  if ( tmp != NULL ) {
+    this->client.append_iov( tmp, msg.pack( tmp ) );
     this->client.push( EV_WRITE );
   }
   else
-    printf( "pack failed\n" );
+    printf( "pack allocation failed\n" );
 }
 
 static void
@@ -81,13 +82,39 @@ StdinCallback::onClose( void )
 void
 ClientCallback::onMsg( RedisMsg &msg )
 {
-  char buf[ 64 * 1024 ];
-  size_t sz = sizeof( buf );
-  if ( msg.to_json( buf, sz ) == REDIS_MSG_OK )
-    printf( "%s\n", buf );
-  else
-    printf( "msg too large\n" );
-  printf( "? " ); fflush( stdout );
+  char buf[ 64 * 1024 ], *b = buf;
+  size_t sz = sizeof( buf ), n;
+  int nb;
+  RedisMsgStatus status;
+  for (;;) {
+    if ( (status = msg.to_json( b, sz )) == REDIS_MSG_OK ) {
+      fflush( stdout );
+      for ( n = 0; n < sz; ) {
+        nb = write( 1, &b[ n ], sz - n );
+        if ( nb > 0 )
+          n += nb;
+      }
+      break;
+    }
+    else {
+      if ( status != REDIS_MSG_PARTIAL ) {
+        printf( "msg error: %d\n", status );
+        break;
+      }
+      if ( b == buf )
+        b = NULL;
+      char *tmp = (char *) ::realloc( b, sz * 2 );
+      if ( tmp == NULL ) {
+        printf( "msg too large" );
+        break;
+      }
+      b = tmp;
+      sz *= 2;
+    }
+  }
+  if ( b != buf && b != NULL )
+    ::free( b );
+  printf( "\n? " ); fflush( stdout );
 }
 
 void

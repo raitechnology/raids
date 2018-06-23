@@ -56,7 +56,7 @@ struct EvPoll {
                        nfds,            /* max epoll() fds, array sz this->ev */
                        maxfd,           /* current maximum fd number */
                        quit;            /* when > 0, wants to exit */
-  static const size_t  PREFETCH_SIZE = 16;
+  static const size_t  PREFETCH_SIZE = 8;
   size_t               prefetch_cnt[ PREFETCH_SIZE + 1 ];
   bool                 single_thread;
 

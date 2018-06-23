@@ -103,6 +103,45 @@ struct RedisMsg {
   }
   int match_arg( int n,  const char *str,  size_t sz,  ... );
 
+  static uint64_t neg( int64_t v ) {
+    if ( (uint64_t) v == ( (uint64_t) 1 << 63 ) )
+      return ( (uint64_t) 1 << 63 );
+    return (uint64_t) -v;
+  }
+  static size_t uint_digits( uint64_t v ) {
+    for ( size_t n = 1; ; n += 4 ) {
+      if ( v < 10 )    return n;
+      if ( v < 100 )   return n + 1;
+      if ( v < 1000 )  return n + 2;
+      if ( v < 10000 ) return n + 3;
+      v /= 10000;
+    }
+  }
+  static size_t int_digits( int64_t v ) {
+    if ( v < 0 ) return 1 + uint_digits( neg( v ) );
+    return uint_digits( v );
+  }
+  /* does not null terminate (most strings have lengths, not nulls) */
+  static size_t uint_to_str( uint64_t v,  char *buf,  size_t len ) {
+    for ( size_t pos = len; v >= 10; ) {
+      const uint64_t q = v / 10, r = v % 10;
+      buf[ --pos ] = '0' + r;
+      v = q;
+    }
+    buf[ 0 ] = '0' + v;
+    return len;
+  }
+  static size_t uint_to_str( uint64_t v,  char *buf ) {
+    return uint_to_str( v, buf, uint_digits( v ) );
+  }
+  static size_t int_to_str( int64_t v,  char *buf ) {
+    if ( v < 0 ) {
+      buf[ 0 ] = '-';
+      return 1 + uint_to_str( neg( v ), &buf[ 1 ] );
+    }
+    return uint_to_str( v, buf );
+  }
+
   static RedisMsgStatus str_to_int( const char *str,  size_t sz,
                                     int64_t &ival );
   void set_nil( void ) {
@@ -115,8 +154,18 @@ struct RedisMsg {
     this->len   = -1;
     this->array = NULL;
   }
+  void set_mt_array( void ) {
+    this->type  = BULK_ARRAY;
+    this->len   = 0;
+    this->array = NULL;
+  }
   void set_simple_string( char *s,  size_t sz = 0 ) {
     this->type   = SIMPLE_STRING;
+    this->len    = ( sz == 0 ? ::strlen( s ) : sz );
+    this->strval = s;
+  }
+  void set_bulk_string( char *s,  size_t sz = 0 ) {
+    this->type   = BULK_STRING;
     this->len    = ( sz == 0 ? ::strlen( s ) : sz );
     this->strval = s;
   }
@@ -126,8 +175,11 @@ struct RedisMsg {
     this->ival = i;
   }
   bool alloc_array( kv::ScratchMem &wrk,  int64_t sz );
+  bool string_array( kv::ScratchMem &wrk,  int64_t sz,  ... );
 
-  RedisMsgStatus pack( void *buf,  size_t &len );
+  size_t pack_size( void ) const;
+  size_t pack( void *buf ) const;
+  RedisMsgStatus pack2( void *buf,  size_t &len ) const;
   RedisMsgStatus split( kv::ScratchMem &wrk );
   RedisMsgStatus unpack( void *buf,  size_t &len,  kv::ScratchMem &wrk );
   RedisMsgStatus to_json( char *buf,  size_t &len ) const;

@@ -16,12 +16,9 @@ EvService::process( bool use_prefetch )
 {
   StreamBuf       & strm = *this;
   EvPrefetchQueue * q    = ( use_prefetch ? this->poll.prefetch_queue : NULL );
-  size_t            buflen,
-                    arg0len;
-  const char      * arg0;
-  char              upper_cmd[ 32 ];
-  RedisMsgStatus    status;
-  ExecStatus        err;
+  size_t            buflen;
+  RedisMsgStatus    mstatus;
+  ExecStatus        status;
 
   for (;;) {
     buflen = this->len - this->off;
@@ -33,11 +30,11 @@ EvService::process( bool use_prefetch )
       if ( ! this->try_write() || strm.idx + 8 >= strm.vlen )
         break;
     }
-    status = this->msg.unpack( &this->recv[ this->off ], buflen, strm.tmp );
-    if ( status != REDIS_MSG_OK ) {
-      if ( status != REDIS_MSG_PARTIAL ) {
+    mstatus = this->msg.unpack( &this->recv[ this->off ], buflen, strm.tmp );
+    if ( mstatus != REDIS_MSG_OK ) {
+      if ( mstatus != REDIS_MSG_PARTIAL ) {
         fprintf( stderr, "protocol error(%d/%s), ignoring %lu bytes\n",
-                 status, redis_msg_status_string( status ), buflen );
+                 mstatus, redis_msg_status_string( mstatus ), buflen );
         this->off = this->len;
         break;
       }
@@ -47,43 +44,42 @@ EvService::process( bool use_prefetch )
     }
     this->off += buflen;
 
-    arg0 = this->msg.command( arg0len, this->argc );
-    /* max command len is 17 (GEORADIUSBYMEMBER) */
-    err = ( arg0len < 32 ) ? EXEC_OK : EXEC_BAD_CMD;
-
-    if ( err == EXEC_OK ) {
-      str_to_upper( arg0, upper_cmd, arg0len );
-      if ( (this->cmd = get_redis_cmd( upper_cmd, arg0len )) == NO_CMD )
-        err = EXEC_BAD_CMD;
-      else {
-        get_cmd_arity( this->cmd, this->arity, this->first, this->last,
-                       this->step );
-        if ( this->arity > 0 ) {
-          if ( (size_t) this->arity != this->argc )
-            err = EXEC_BAD_ARGS;
-        }
-        else if ( (size_t) -this->arity > this->argc )
-          err = EXEC_BAD_ARGS;
-      }
-    }
-    if ( err == EXEC_OK ) {
-      this->flags = get_cmd_flag_mask( this->cmd );
-      if ( (err = this->exec( this, q )) == EXEC_OK && strm.alloc_fail )
-        err = EXEC_ALLOC_FAIL;
-    }
-    if ( err == EXEC_SETUP_OK ) {
+    if ( (status = this->exec( this, q )) == EXEC_OK )
+      if ( strm.alloc_fail )
+        status = EXEC_ALLOC_FAIL;
+    if ( status == EXEC_SETUP_OK ) {
       if ( q != NULL )
         return;
-      if ( ! this->exec_key_continue( *this->key ) ) {
-        while ( ! this->exec_key_continue( *this->keys[ this->key_done ] ) )
-          ;
+      if ( this->key_cnt == 1 ) { /* only one key */
+        while ( this->key->status == EXEC_CONTINUE ||
+                this->key->status == EXEC_DEPENDS )
+          this->exec_key_continue( *this->key );
+      }
+      else {
+        /* cycle through keys */
+        uint32_t j = 0;
+        for ( uint32_t i = 0; ; ) {
+          if ( this->keys[ i ]->status == EXEC_CONTINUE ||
+               this->keys[ i ]->status == EXEC_DEPENDS ) {
+            if ( this->exec_key_continue( *this->keys[ i ] ) == EXEC_SUCCESS )
+              break;
+            j = 0;
+          }
+          else if ( ++j == this->key_cnt )
+            break;
+          if ( ++i == this->key_cnt )
+            i = 0;
+        }
       }
     }
-    else if ( err == EXEC_QUIT ) {
+    else if ( status == EXEC_QUIT ) {
       this->poll.quit++;
     }
+    else if ( status == EXEC_DEBUG ) {
+      this->debug();
+    }
     else {
-      this->send_err( err );
+      this->send_err( status );
     }
   }
   if ( strm.wr_pending + strm.sz > 0 )
@@ -141,13 +137,5 @@ EvService::debug( void )
   else
     printf( "prefetch count %lu\n",
 	    this->poll.prefetch_queue->count() );
-}
-
-ExecStatus
-RedisExec::exec_debug( EvService *own )
-{
-  printf( "debug\n" );
-  own->debug();
-  return EXEC_SEND_OK;
 }
 

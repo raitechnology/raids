@@ -30,10 +30,11 @@ cmd_category[] =
   { STRING_CNT,      "STRING" },
   { TRANSACTION_CNT, "TRANSACTION" },
   { STREAM_CNT,      "STREAM" },
+  { 0,               NULL },
 };
 
 static const size_t cmd_category_cnt = sizeof( cmd_category ) /
-                                       sizeof( cmd_category[ 0 ] );
+                                       sizeof( cmd_category[ 0 ] ) - 1;
 
 /* generate redis_cmd.h unless included in another c++ file with this
  * defined: */
@@ -71,7 +72,7 @@ get_cmd_upper( int i )
 static void
 gen_enums( void )
 {
-  size_t i = 0, j = 0, maxlen = 18, len, catsum;
+  size_t i = 0, j = 0, k, maxlen = 18, len, catsum;
   uint32_t cnt = 0;
   const char *cat, *cmd, *comma;
 
@@ -88,6 +89,8 @@ gen_enums( void )
   printf( "};\n\n" );
   printf( "enum RedisCmd {\n  NO_CMD%*s =   0,\n", (int) ( maxlen - 2 ), "" );
   comma = ",";
+  printf( "  /* %s */\n", cmd_category[ 0 ].sub_type );
+  j = cmd_category[ k=0 ].cnt;
   for ( i = 1, cnt = 1; i < cmd_db_cnt; cnt++ ) {
     cmd = cmd_db[ i ].name;
     len = ::strlen( cmd );
@@ -95,6 +98,12 @@ gen_enums( void )
       comma = "";
     printf( "  %.*s_CMD%*s = %3u%s\n",
             (int) len, cmd, (int) ( maxlen - len ), "", cnt, comma );
+    if ( cnt >= j ) {
+      if ( ++k < cmd_category_cnt ) {
+        printf( "  /* %s */\n", cmd_category[ k ].sub_type );
+        j += cmd_category[ k ].cnt;
+      }
+    }
   }
   printf( "};\n\n"
           "static const size_t REDIS_CATG_COUNT = %d,\n"

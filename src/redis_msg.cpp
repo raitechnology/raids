@@ -70,7 +70,7 @@ static inline bool is_bulk_string( uint32_t tb ) {
 }
 
 RedisMsgStatus
-RedisMsg::pack( void *buf,  size_t &buflen )
+RedisMsg::pack2( void *buf,  size_t &buflen ) const
 {
   char  * ptr = (char *) buf;
   size_t  i;
@@ -90,10 +90,10 @@ RedisMsg::pack( void *buf,  size_t &buflen )
     ::memcpy( &ptr[ 1 ], this->strval, this->len );
   }
   else if ( is_int_type( type_bit ) ) {
-    i = 1 + kv::int64_to_string( this->ival, &ptr[ 1 ] );
+    i = 1 + RedisMsg::int_to_str( this->ival, &ptr[ 1 ] );
   }
   else {
-    i = 1 + kv::int64_to_string( this->len, &ptr[ 1 ] );
+    i = 1 + RedisMsg::int_to_str( this->len, &ptr[ 1 ] );
     if ( is_bulk_string( type_bit ) ) {
       if ( this->len >= 0 ) {
         ptr[ i ] = '\r';
@@ -112,7 +112,7 @@ RedisMsg::pack( void *buf,  size_t &buflen )
         i += 2;
         for ( size_t k = 0; k < (size_t) this->len; k++ ) {
           size_t tmp = buflen - i;
-          RedisMsgStatus stat = this->array[ k ].pack( &ptr[ i ], tmp );
+          RedisMsgStatus stat = this->array[ k ].pack2( &ptr[ i ], tmp );
           if ( stat != REDIS_MSG_OK )
             return stat;
           i += tmp;
@@ -129,6 +129,81 @@ skip_trailing_crnl:;
   return REDIS_MSG_OK;
 }
 
+size_t
+RedisMsg::pack( void *buf ) const
+{
+  char * ptr = (char *) buf;
+  size_t i;
+  const uint32_t type_bit = data_type_mask<DataType>( this->type );
+
+  ptr[ 0 ] = (char) this->type;
+  if ( is_simple_type( type_bit ) ) {
+    i = 1 + this->len;
+    ::memcpy( &ptr[ 1 ], this->strval, this->len );
+  }
+  else if ( is_int_type( type_bit ) ) {
+    i = 1 + RedisMsg::int_to_str( this->ival, &ptr[ 1 ] );
+  }
+  else {
+    i = 1 + RedisMsg::int_to_str( this->len, &ptr[ 1 ] );
+    if ( is_bulk_string( type_bit ) ) {
+      if ( this->len >= 0 ) {
+        ptr[ i ] = '\r';
+        ptr[ i + 1 ] = '\n';
+        i += 2;
+        ::memcpy( &ptr[ i ], this->strval, this->len );
+        i += this->len;
+      }
+    }
+    else {
+      if ( this->len >= 0 ) {
+        ptr[ i ] = '\r';
+        ptr[ i + 1 ] = '\n';
+        i += 2;
+        for ( size_t k = 0; k < (size_t) this->len; k++ )
+          i += this->array[ k ].pack( &ptr[ i ] );
+        goto skip_trailing_crnl;
+      }
+    }
+  }
+  ptr[ i ] = '\r';
+  ptr[ i + 1 ] = '\n';
+  i += 2;
+skip_trailing_crnl:;
+  return i;
+}
+
+size_t
+RedisMsg::pack_size( void ) const
+{
+  size_t i;
+  const uint32_t type_bit = data_type_mask<DataType>( this->type );
+  if ( is_simple_type( type_bit ) ) {
+    i = 1 + this->len;
+  }
+  else if ( is_int_type( type_bit ) ) {
+    i = 1 + RedisMsg::int_digits( this->ival );
+  }
+  else {
+    i = 1 + RedisMsg::int_digits( this->len );
+    if ( is_bulk_string( type_bit ) ) {
+      if ( this->len >= 0 )
+        i += 2 + this->len;
+    }
+    else {
+      if ( this->len >= 0 ) {
+        i += 2;
+        for ( size_t k = 0; k < (size_t) this->len; k++ )
+          i += this->array[ k ].pack_size();
+        goto skip_trailing_crnl;
+      }
+    }
+  }
+  i += 2;
+skip_trailing_crnl:;
+  return i;
+}
+
 bool
 RedisMsg::alloc_array( ScratchMem &wrk,  int64_t sz )
 {
@@ -140,6 +215,25 @@ RedisMsg::alloc_array( ScratchMem &wrk,  int64_t sz )
     this->array = (RedisMsg *) wrk.alloc( sizeof( RedisMsg ) * sz );
     if ( this->array == NULL )
       return false;
+  }
+  return true;
+}
+
+bool
+RedisMsg::string_array( ScratchMem &wrk,  int64_t sz,  ... )
+{
+  if ( ! this->alloc_array( wrk, sz ) )
+    return false;
+  if ( sz > 0 ) {
+    va_list args;
+    int64_t k = 0;
+    va_start( args, sz );
+    do {
+      this->array[ k ].type   = BULK_STRING;
+      this->array[ k ].len    = va_arg( args, size_t );
+      this->array[ k ].strval = va_arg( args, char * );
+    } while ( ++k < sz );
+    va_end( args );
   }
   return true;
 }
@@ -374,7 +468,65 @@ RedisMsg::str_to_int( const char *str,  size_t sz,  int64_t &ival )
   return REDIS_MSG_OK;
 }
 
-/* doesn't escape strings, uses different quote styles for various strings:
+static size_t
+json_escape_strlen( const char *str,  size_t len )
+{
+  size_t sz = 0;
+  for ( size_t i = 0; i < len; i++ ) {
+    if ( (uint8_t) str[ i ] >= ' ' && (uint8_t) str[ i ] <= 126 ) {
+      switch ( str[ i ] ) {
+        case '\'':
+        case '"': sz++;
+        default:  sz++; break;
+      }
+    }
+    else {
+      switch ( str[ i ] ) {
+        case '\b':
+        case '\f': 
+        case '\n': 
+        case '\r': 
+        case '\t': sz += 2; break;
+        default:   sz += 6; break;
+      }
+    }
+  }
+  return sz;
+}
+
+static size_t
+json_escape_string( const char *str,  size_t len,  char *out )
+{
+  size_t sz = 0;
+  for ( size_t i = 0; i < len; i++ ) {
+    if ( (uint8_t) str[ i ] >= ' ' && (uint8_t) str[ i ] <= 126 ) {
+      switch ( str[ i ] ) {
+        case '\'':
+        case '"': out[ sz++ ] = '\\';
+        default:  out[ sz++ ] = str[ i ]; break;
+      }
+    }
+    else {
+      out[ sz ] = '\\';
+      switch ( str[ i ] ) {
+        case '\b': out[ sz + 1 ] = 'b'; sz += 2; break;
+        case '\f': out[ sz + 1 ] = 'f'; sz += 2; break;
+        case '\n': out[ sz + 1 ] = 'n'; sz += 2; break;
+        case '\r': out[ sz + 1 ] = 'r'; sz += 2; break;
+        case '\t': out[ sz + 1 ] = 't'; sz += 2; break;
+        default:   out[ sz + 1 ] = 'u';
+                   out[ sz + 2 ] = '0';
+                   out[ sz + 3 ] = '0' + ( ( (uint8_t) str[ i ] / 100 ) % 10 );
+                   out[ sz + 4 ] = '0' + ( ( (uint8_t) str[ i ] / 10 ) % 10 );
+                   out[ sz + 5 ] = '0' + ( (uint8_t) str[ i ] % 10 );
+                   sz += 6; break;
+      }
+    }
+  }
+  return sz;
+}
+
+/* uses different quote styles for various strings:
  *   " for simple, ` for error, ' for bulk strings
  * null = -1 sized array
  * nil  = -1 sized string
@@ -382,7 +534,8 @@ RedisMsg::str_to_int( const char *str,  size_t sz,  int64_t &ival )
 RedisMsgStatus
 RedisMsg::to_json( char *buf,  size_t &buflen ) const
 {
-  size_t         sz = buflen;
+  size_t         sz = buflen,
+                 elen;
   RedisMsgStatus x;
   char           q;
 
@@ -394,13 +547,13 @@ RedisMsg::to_json( char *buf,  size_t &buflen ) const
     case BULK_STRING:   q = '\'';
       } }
       if ( this->len >= 0 ) {
-        if ( (size_t) this->len + 3 > sz )
+        if ( json_escape_strlen( this->strval, this->len ) + 3 > sz )
           return REDIS_MSG_PARTIAL;
-        ::memcpy( &buf[ 1 ], this->strval, this->len );
         buf[ 0 ] = q;
-        buf[ 1 + this->len ] = q;
-        buf[ 2 + this->len ] = '\0';
-        buflen = this->len + 2;
+        elen = json_escape_string( this->strval, this->len, &buf[ 1 ] );
+        buf[ 1 + elen ] = q;
+        buf[ 2 + elen ] = '\0';
+        buflen = elen + 2;
       }
       else {
         if ( 4 > sz )
@@ -413,7 +566,7 @@ RedisMsg::to_json( char *buf,  size_t &buflen ) const
     case INTEGER_VALUE:
       if ( 23 > sz )
         return REDIS_MSG_PARTIAL;
-      buflen = kv::int64_to_string( this->ival, buf );
+      buflen = RedisMsg::int_to_str( this->ival, buf );
       return REDIS_MSG_OK;
 
     case BULK_ARRAY:
@@ -749,6 +902,16 @@ RedisMsg::parse_string( JsonInput &input )
       default:  *str++ = (char) b; break;
       case JSON_EOF: 
         return REDIS_MSG_PARTIAL;
+
+      case 'x': { /* format \xXX where X = hex nibble */
+        uint32_t uc_b1, uc_b2;
+
+        if ( (uc_b1 = hex_value( input.next() )) == 0xff ||
+             (uc_b2 = hex_value( input.next() )) == 0xff )
+          return REDIS_MSG_BAD_JSON;
+        *str++ = (char) ( ( uc_b1 << 8 ) | uc_b2 );
+        break;
+      }
 
       case 'u': { /* format \uXXXX where X = hex nibble */
         uint32_t uc_b1, uc_b2, uc_b3, uc_b4;

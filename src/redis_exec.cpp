@@ -2,14 +2,129 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <unistd.h>
 #include <ctype.h>
+#include <sys/time.h>
 #include <raikv/util.h>
 #include <raids/redis_exec.h>
 #include <raids/redis_cmd_db.h>
+#include <raids/md_type.h>
 
 using namespace rai;
 using namespace ds;
 using namespace kv;
+
+static char ok[]      = "+OK\r\n";
+static char nil[]     = "$-1\r\n";
+static char zero[]    = ":0\r\n";
+static char one[]     = ":1\r\n";
+static char neg_one[] = ":-1\r\n";
+static char mt[]      = "$0\r\n\r\n"; /* zero length string */
+static const size_t ok_sz      = sizeof( ok ) - 1,
+                    nil_sz     = sizeof( nil ) - 1,
+                    zero_sz    = sizeof( zero ) - 1,
+                    one_sz     = sizeof( one ) - 1,
+                    neg_one_sz = sizeof( neg_one ) - 1,
+                    mt_sz      = sizeof( mt ) - 1;
+void RedisExec::send_ok( void ) { this->strm.append( ok, ok_sz ); }
+void RedisExec::send_nil( void ) { this->strm.append( nil, nil_sz ); }
+void RedisExec::send_zero( void ) { this->strm.append( zero, zero_sz ); }
+void RedisExec::send_one( void ) { this->strm.append( one, one_sz ); }
+void RedisExec::send_neg_one( void ) { this->strm.append( neg_one, neg_one_sz);}
+void RedisExec::send_zero_string( void ) { this->strm.append( mt, mt_sz ); }
+
+size_t
+RedisExec::send_string( void *data,  size_t size )
+{
+  size_t sz  = 32 + size;
+  char * str = this->strm.alloc( sz );
+  if ( str == NULL )
+    return 0;
+  str[ 0 ] = '$';
+  sz = 1 + RedisMsg::uint_to_str( size, &str[ 1 ] );
+  str[ sz ] = '\r'; str[ sz + 1 ] = '\n';
+  ::memcpy( &str[ sz + 2 ], data, size );
+  sz += 2 + size;
+  str[ sz ] = '\r'; str[ sz + 1 ] = '\n';
+  return sz + 2;
+}
+
+bool
+RedisExec::save_string_result( RedisKeyCtx &ctx,  void *data,  size_t size )
+{
+  size_t msz = sizeof( RedisKeyRes ) + size + 24;
+  if ( ctx.part == NULL || msz > ctx.part->mem_size ) {
+    RedisKeyRes *part = (RedisKeyRes *) this->strm.alloc_temp( msz );
+    if ( part != NULL ) {
+      part->mem_size = msz;
+      ctx.part = part;
+    }
+    else {
+      return false;
+    }
+  }
+  char *str = ctx.part->data;
+  size_t sz;
+  str[ 0 ] = '$';
+  sz = 1 + RedisMsg::uint_to_str( size, &str[ 1 ] );
+  str[ sz ] = '\r'; str[ sz + 1 ] = '\n';
+  ::memcpy( &str[ sz + 2 ], data, size );
+  sz += 2 + size;
+  str[ sz ] = '\r'; str[ sz + 1 ] = '\n';
+  ctx.part->size = sz + 2;
+  return true;
+}
+
+bool
+RedisExec::save_data( RedisKeyCtx &ctx,  void *data,  size_t size )
+{
+  size_t msz = sizeof( RedisKeyRes ) + size;
+  if ( ctx.part == NULL || msz > ctx.part->mem_size ) {
+    RedisKeyRes *part = (RedisKeyRes *) this->strm.alloc_temp( msz );
+    if ( part != NULL ) {
+      part->mem_size = msz;
+      ctx.part = part;
+    }
+    else {
+      return false;
+    }
+  }
+  ::memcpy( ctx.part->data, data, size );
+  ctx.part->size = size;
+  return true;
+}
+
+void
+RedisExec::array_string_result( void )
+{
+  char        * str = this->strm.alloc( 32 );
+  RedisKeyRes * part;
+  size_t        sz;
+  if ( str == NULL )
+    return;
+  str[ 0 ] = '*';
+  sz = 1 + RedisMsg::uint_to_str( this->key_cnt, &str[ 1 ] );
+  str[ sz ] = '\r'; str[ sz + 1 ] = '\n';
+  this->strm.sz += sz + 2;
+
+  if ( this->key_cnt == 1 ) /* only one part, no keys[] array */
+    part = this->key->part;
+  else
+    part = this->keys[ 0 ]->part;
+  for ( uint32_t i = 0; ; ) {
+    if ( part != NULL ) {
+      if ( part->size < 256 )
+        this->strm.append( part->data, part->size );
+      else
+        this->strm.append_iov( part->data, part->size );
+    }
+    else
+      this->strm.append( nil, nil_sz );
+    if ( ++i == this->key_cnt )
+      break;
+    part = this->keys[ i ]->part;
+  }
+}
 
 ExecStatus
 RedisExec::exec_key_setup( EvService *own,  EvPrefetchQueue *q,
@@ -19,19 +134,44 @@ RedisExec::exec_key_setup( EvService *own,  EvPrefetchQueue *q,
   size_t       keylen;
   if ( ! this->msg.get_arg( n, key, keylen ) )
     return EXEC_BAD_ARGS;
-  void *p = this->strm.tmp.alloc( RedisKeyCtx::size( keylen ) );
+  void *p = this->strm.alloc_temp( RedisKeyCtx::size( keylen ) );
   if ( p == NULL )
     return EXEC_ALLOC_FAIL;
-  ctx = new ( p ) RedisKeyCtx( *this, own, key, keylen,
+  ctx = new ( p ) RedisKeyCtx( *this, own, key, keylen, n,
                                this->seed, this->seed2 );
   if ( q != NULL && ! q->push( ctx ) )
     return EXEC_ALLOC_FAIL;
+  ctx->status = EXEC_CONTINUE;
   return EXEC_SETUP_OK;
 }
 
 ExecStatus
-RedisExec::exec( EvService *own,  EvPrefetchQueue *q )
+RedisExec::exec( EvService *svc,  EvPrefetchQueue *q )
 {
+  const char * arg0;
+  size_t       arg0len;
+  char         upper_cmd[ 32 ];
+
+  arg0 = this->msg.command( arg0len, this->argc );
+  /* max command len is 17 (GEORADIUSBYMEMBER) */
+  if ( arg0len >= 32 )
+    return EXEC_BAD_CMD;
+
+  str_to_upper( arg0, upper_cmd, arg0len );
+  if ( (this->cmd = get_redis_cmd( upper_cmd, arg0len )) == NO_CMD )
+    return EXEC_BAD_CMD;
+
+  get_cmd_arity( this->cmd, this->arity, this->first, this->last,
+		 this->step );
+  if ( this->arity > 0 ) {
+    if ( (size_t) this->arity != this->argc )
+      return EXEC_BAD_ARGS;
+  }
+  else if ( (size_t) -this->arity > this->argc )
+    return EXEC_BAD_ARGS;
+  this->flags = get_cmd_flag_mask( this->cmd );
+
+  /* if there are keys, setup a keyctx for each one */
   if ( this->first > 0 ) {
     int i, end;
     ExecStatus status;
@@ -41,12 +181,15 @@ RedisExec::exec( EvService *own,  EvPrefetchQueue *q )
     if ( (end = this->last) < 0 )
       end = this->argc - 1;
 
-    i = this->first;
-    status = this->exec_key_setup( own, q, this->key, i );
+    this->key  = NULL;
+    this->keys = NULL;
+    i = this->first; /* setup first key */
+    status = this->exec_key_setup( svc, q, this->key, i );
     if ( status == EXEC_SETUP_OK ) {
+      /* setup rest of keys, if any */
       if ( i < end ) {
         this->keys = (RedisKeyCtx **)
-                     this->strm.tmp.alloc( sizeof( this->keys[ 0 ] ) * 
+                     this->strm.alloc_temp( sizeof( this->keys[ 0 ] ) * 
                                            ( ( end + 1 ) - this->first ) );
         if ( this->keys == NULL )
           status = EXEC_ALLOC_FAIL;
@@ -54,7 +197,7 @@ RedisExec::exec( EvService *own,  EvPrefetchQueue *q )
           i += this->step;
           this->keys[ 0 ] = this->key;
           do {
-            status = this->exec_key_setup( own, q,
+            status = this->exec_key_setup( svc, q,
                                            this->keys[ this->key_cnt++ ], i );
           } while ( status == EXEC_SETUP_OK && (i += this->step) <= end );
         }
@@ -62,135 +205,434 @@ RedisExec::exec( EvService *own,  EvPrefetchQueue *q )
     }
     return status;
   }
+  /* has no key when first == 0 */
   switch ( this->cmd ) {
-    case COMMAND_CMD:  return this->exec_command();
-    case ECHO_CMD:     
-    case PING_CMD:     return this->exec_ping();
-    case DEBUG_CMD:    return this->exec_debug( own );
-    case SHUTDOWN_CMD:
-    case QUIT_CMD:     return EXEC_QUIT;
-    default:           return EXEC_BAD_CMD;
+    /* CLUSTER */
+    case CLUSTER_CMD:      return this->exec_cluster();
+    case READONLY_CMD:     return this->exec_readonly();
+    case READWRITE_CMD:    return this->exec_readwrite();
+    /* CONNECTION */
+    case AUTH_CMD:         return this->exec_auth();
+    case ECHO_CMD:         /* same as ping */
+    case PING_CMD:         return this->exec_ping();
+    case QUIT_CMD:         return this->exec_quit(); //EXEC_QUIT;
+    case SELECT_CMD:       return this->exec_select();
+    case SWAPDB_CMD:       return this->exec_swapdb();
+    /* SERVER */
+    case BGREWRITEAOF_CMD: return this->exec_bgrewriteaof();
+    case BGSAVE_CMD:       return this->exec_bgsave();
+    case CLIENT_CMD:       return this->exec_client();
+    case COMMAND_CMD:      return this->exec_command();
+    case CONFIG_CMD:       return this->exec_config();
+    case DBSIZE_CMD:       return this->exec_dbsize();
+    case DEBUG_CMD:        return this->exec_debug();
+    case FLUSHALL_CMD:     return this->exec_flushall();
+    case FLUSHDB_CMD:      return this->exec_flushdb();
+    case INFO_CMD:         return this->exec_info();
+    case LASTSAVE_CMD:     return this->exec_lastsave();
+    case MEMORY_CMD:       return this->exec_memory();
+    case MONITOR_CMD:      return this->exec_monitor();
+    case ROLE_CMD:         return this->exec_role();
+    case SAVE_CMD:         return this->exec_save();
+    case SHUTDOWN_CMD:     return this->exec_shutdown();
+    case SLAVEOF_CMD:      return this->exec_slaveof();
+    case SLOWLOG_CMD:      return this->exec_slowlog();
+    case SYNC_CMD:         return this->exec_sync();
+    case TIME_CMD:         return this->exec_time();
+    /* KEYS */
+    case KEYS_CMD:         return this->exec_keys();
+    case RANDOMKEY_CMD:    return this->exec_randomkey();
+    case WAIT_CMD:         return this->exec_wait();
+    case SCAN_CMD:         return this->exec_scan();
+    default:               return EXEC_BAD_CMD;
   }
 }
 
-bool
-RedisExec::exec_key_continue( RedisKeyCtx &ctx )
+kv::KeyStatus
+RedisExec::exec_key_fetch( RedisKeyCtx &ctx,  bool force_read )
 {
-  if ( this->kctx.key != ctx.hash1 || this->kctx.key2 != ctx.hash2 )
-    this->exec_key_prefetch( ctx );
-  for (;;) {
-    if ( test_cmd_mask( this->flags, CMD_READONLY_FLAG ) )
-      ctx.kstatus = this->kctx.find( &this->wrk );
-    else if ( test_cmd_mask( this->flags, CMD_WRITE_FLAG ) )
-      ctx.kstatus = this->kctx.acquire( &this->wrk );
-    else {
-      ctx.status = EXEC_BAD_CMD;
-      break;
-    }
-    switch ( this->cmd ) {
-      /* string group */
-      case APPEND_CMD:      ctx.status = this->exec_append( ctx );      break;
-      case BITCOUNT_CMD:    ctx.status = this->exec_bitcount( ctx );    break;
-      case BITFIELD_CMD:    ctx.status = this->exec_bitfield( ctx );    break;
-      case BITOP_CMD:       ctx.status = this->exec_bitop( ctx );       break;
-      case BITPOS_CMD:      ctx.status = this->exec_bitpos( ctx );      break;
-      case DECR_CMD:        ctx.status = this->exec_decr( ctx );        break;
-      case DECRBY_CMD:      ctx.status = this->exec_decrby( ctx );      break;
-      case GET_CMD:         ctx.status = this->exec_get( ctx );         break;
-      case GETBIT_CMD:      ctx.status = this->exec_getbit( ctx );      break;
-      case GETRANGE_CMD:    ctx.status = this->exec_getrange( ctx );    break;
-      case GETSET_CMD:      ctx.status = this->exec_getset( ctx );      break;
-      case INCR_CMD:        ctx.status = this->exec_incr( ctx );        break;
-      case INCRBY_CMD:      ctx.status = this->exec_incrby( ctx );      break;
-      case INCRBYFLOAT_CMD: ctx.status = this->exec_incrbyfloat( ctx ); break;
-      case MGET_CMD:        ctx.status = this->exec_mget( ctx );        break;
-      case MSET_CMD:        ctx.status = this->exec_mset( ctx );        break;
-      case MSETNX_CMD:      ctx.status = this->exec_msetnx( ctx );      break;
-      case PSETEX_CMD:      ctx.status = this->exec_psetex( ctx );      break;
-      case SET_CMD:         ctx.status = this->exec_set( ctx );         break;
-      case SETBIT_CMD:      ctx.status = this->exec_setbit( ctx );      break;
-      case SETEX_CMD:       ctx.status = this->exec_setex( ctx );       break;
-      case SETNX_CMD:       ctx.status = this->exec_setnx( ctx );       break;
-      case SETRANGE_CMD:    ctx.status = this->exec_setrange( ctx );    break;
-      case STRLEN_CMD:      ctx.status = this->exec_strlen( ctx );      break;
-      default:              ctx.status = EXEC_BAD_CMD;                  break;
-    }
-    if ( test_cmd_mask( this->flags, CMD_WRITE_FLAG ) ) {
-      if ( (int) ctx.status <= EXEC_SUCCESS ) {
-        uint8_t type;
-        switch ( cmd_category( this->cmd ) ) {
-          default:               type = 0;  break;
-          case GEO_CATG:         type = 23; break;
-          case HASH_CATG:        type = 19; break;
-          case HYPERLOGLOG_CATG: type = 24; break;
-          case LIST_CATG:        type = 18; break;
-          case PUBSUB_CATG:      type = 25; break;
-          case SCRIPT_CATG:      type = 26; break;
-          case SERVER_CATG:      type = 27; break;
-          case SET_CATG:         type = 20; break;
-          case SORTED_SET_CATG:  type = 21; break;
-          case STRING_CATG:      type = 2;  break;
-          case TRANSACTION_CATG: type = 28; break;
-          case STREAM_CATG:      type = 22; break;
-        }
-        this->kctx.set_type( type );
-      }
-      this->kctx.release();
-    }
-    if ( ctx.status != EXEC_KV_STATUS || ctx.kstatus != KEY_MUTATED )
-      break;
+  if ( test_cmd_mask( this->flags, CMD_READONLY_FLAG ) || force_read ) {
+    ctx.kstatus = this->kctx.find( &this->wrk );
+    ctx.is_read = true;
   }
-  if ( ++this->key_done < this->key_cnt )
-    return false;
-  switch ( ctx.status ) {
-    case EXEC_OK:
-      break;
-    case EXEC_SEND_OK: {
-      static char ok[] = "+OK\r\n";
-      this->strm.append( ok, 5 );
-      break;
-    }
-    case EXEC_SEND_NIL: {
-      static char nil[] = "$-1\r\n";
-      this->strm.append( nil, 5 );
-      break;
-    }
-    case EXEC_SEND_INT: {
-      char   buf[ 32 ];
-      size_t len     = 1 + int64_to_string( ctx.ival, &buf[ 1 ] );
-      buf[ 0 ]       = ':';
-      buf[ len ]     = '\r';
-      buf[ len + 1 ] = '\n';
-      this->strm.append( buf, len + 2 );
-      break;
-    }
-    default:
-      this->send_err( ctx.status, ctx.kstatus );
-      break;
+  else if ( test_cmd_mask( this->flags, CMD_WRITE_FLAG ) ) {
+    ctx.kstatus = this->kctx.acquire( &this->wrk );
+    ctx.is_new = ( ctx.kstatus == KEY_IS_NEW );
+    ctx.is_read = false;
   }
-  return true;
+  else {
+    ctx.kstatus = KEY_NO_VALUE;
+    ctx.status  = EXEC_BAD_CMD;
+    ctx.is_read = true;
+  }
+  if ( ctx.kstatus == KEY_OK )
+    ctx.type = this->kctx.get_type();
+  return ctx.kstatus;
 }
 
 ExecStatus
-RedisExec::exec_set_value( RedisKeyCtx &ctx,  int n )
+RedisExec::exec_key_continue( RedisKeyCtx &ctx )
 {
-  switch ( ctx.kstatus ) {
-    case KEY_OK:
-    case KEY_IS_NEW: {
-      const char * value;
-      size_t       valuelen;
-      void       * data;
-      if ( ! this->msg.get_arg( n, value, valuelen ) )
-        return EXEC_BAD_ARGS;
-      ctx.kstatus = this->kctx.resize( &data, valuelen );
-      if ( ctx.kstatus == KEY_OK ) {
-        ::memcpy( data, value, valuelen );
-        return EXEC_SEND_OK;
-      }
+  if ( ctx.status != EXEC_CONTINUE && ctx.status != EXEC_DEPENDS ) {
+    if ( ++this->key_done < this->key_cnt )
+      return EXEC_CONTINUE;
+    return EXEC_SUCCESS;
+  }
+  if ( this->kctx.kbuf != &ctx.kbuf ||
+       this->kctx.key != ctx.hash1 || this->kctx.key2 != ctx.hash2 )
+    this->exec_key_prefetch( ctx );
+  for (;;) {
+    switch ( this->cmd ) {
+      /* CLUSTER */
+      case CLUSTER_CMD:  /* these exist so that compiler errors when a */
+      case READONLY_CMD: /* new command is not handled by switch() */
+      case READWRITE_CMD: ctx.status = EXEC_BAD_CMD; break;
+      /* CONNECTION */
+      case AUTH_CMD: case ECHO_CMD: case PING_CMD: case QUIT_CMD:
+      case SELECT_CMD: case SWAPDB_CMD:
+        ctx.status = EXEC_BAD_CMD; break; /* handled in exec() */
+      /* GEO */
+      case GEOADD_CMD: ctx.status = this->exec_geoadd( ctx ); break;
+      case GEOHASH_CMD: ctx.status = this->exec_geohash( ctx ); break;
+      case GEOPOS_CMD: ctx.status = this->exec_geopos( ctx ); break;
+      case GEODIST_CMD: ctx.status = this->exec_geodist( ctx ); break;
+      case GEORADIUS_CMD: ctx.status = this->exec_georadius( ctx ); break;
+      case GEORADIUSBYMEMBER_CMD: ctx.status = this->exec_georadiusbymember( ctx ); break;
+      /* HASH */
+      case HDEL_CMD: ctx.status = this->exec_hdel( ctx ); break;
+      case HEXISTS_CMD: ctx.status = this->exec_hexists( ctx ); break;
+      case HGET_CMD: ctx.status = this->exec_hget( ctx ); break;
+      case HGETALL_CMD: ctx.status = this->exec_hgetall( ctx ); break;
+      case HINCRBY_CMD: ctx.status = this->exec_hincrby( ctx ); break;
+      case HINCRBYFLOAT_CMD: ctx.status = this->exec_hincrbyfloat( ctx ); break;
+      case HKEYS_CMD: ctx.status = this->exec_hkeys( ctx ); break;
+      case HLEN_CMD: ctx.status = this->exec_hlen( ctx ); break;
+      case HMGET_CMD: ctx.status = this->exec_hmget( ctx ); break;
+      case HMSET_CMD: ctx.status = this->exec_hmset( ctx ); break;
+      case HSET_CMD: ctx.status = this->exec_hset( ctx ); break;
+      case HSETNX_CMD: ctx.status = this->exec_hsetnx( ctx ); break;
+      case HSTRLEN_CMD: ctx.status = this->exec_hstrlen( ctx ); break;
+      case HVALS_CMD: ctx.status = this->exec_hvals( ctx ); break;
+      case HSCAN_CMD: ctx.status = this->exec_hscan( ctx ); break;
+      /* HYPERLOGLOG */
+      case PFADD_CMD: ctx.status = this->exec_pfadd( ctx ); break;
+      case PFCOUNT_CMD: ctx.status = this->exec_pfcount( ctx ); break;
+      case PFMERGE_CMD: ctx.status = this->exec_pfmerge( ctx ); break;
+      /* KEY */
+      case DEL_CMD: ctx.status = this->exec_del( ctx ); break;
+      case DUMP_CMD: ctx.status = this->exec_dump( ctx ); break;
+      case EXISTS_CMD: ctx.status = this->exec_exists( ctx ); break;
+      case EXPIRE_CMD: ctx.status = this->exec_expire( ctx ); break;
+      case EXPIREAT_CMD: ctx.status = this->exec_expireat( ctx ); break;
+      case KEYS_CMD: ctx.status = EXEC_BAD_CMD; break; /* in exec() */
+      case MIGRATE_CMD: ctx.status = this->exec_migrate( ctx ); break;
+      case MOVE_CMD: ctx.status = this->exec_move( ctx ); break;
+      case OBJECT_CMD: ctx.status = this->exec_object( ctx ); break;
+      case PERSIST_CMD: ctx.status = this->exec_persist( ctx ); break;
+      case PEXPIRE_CMD: ctx.status = this->exec_pexpire( ctx ); break;
+      case PEXPIREAT_CMD: ctx.status = this->exec_pexpireat( ctx ); break;
+      case PTTL_CMD: ctx.status = this->exec_pttl( ctx ); break;
+      case RANDOMKEY_CMD: ctx.status = EXEC_BAD_CMD; break; /* in exec() */
+      case RENAME_CMD: ctx.status = this->exec_rename( ctx ); break;
+      case RENAMENX_CMD: ctx.status = this->exec_renamenx( ctx ); break;
+      case RESTORE_CMD: ctx.status = this->exec_restore( ctx ); break;
+      case SORT_CMD: ctx.status = this->exec_sort( ctx ); break;
+      case TOUCH_CMD: ctx.status = this->exec_touch( ctx ); break;
+      case TTL_CMD: ctx.status = this->exec_ttl( ctx ); break;
+      case TYPE_CMD: ctx.status = this->exec_type( ctx ); break;
+      case UNLINK_CMD: ctx.status = this->exec_unlink( ctx ); break;
+      case WAIT_CMD: 
+      case SCAN_CMD: ctx.status = EXEC_BAD_CMD; break; /* in exec() */
+      /* LIST */
+      case BLPOP_CMD: ctx.status = this->exec_blpop( ctx ); break;
+      case BRPOP_CMD: ctx.status = this->exec_brpop( ctx ); break;
+      case BRPOPLPUSH_CMD: ctx.status = this->exec_brpoplpush( ctx ); break;
+      case LINDEX_CMD: ctx.status = this->exec_lindex( ctx ); break;
+      case LINSERT_CMD: ctx.status = this->exec_linsert( ctx ); break;
+      case LLEN_CMD: ctx.status = this->exec_llen( ctx ); break;
+      case LPOP_CMD: ctx.status = this->exec_lpop( ctx ); break;
+      case LPUSH_CMD: ctx.status = this->exec_lpush( ctx ); break;
+      case LPUSHX_CMD: ctx.status = this->exec_lpushx( ctx ); break;
+      case LRANGE_CMD: ctx.status = this->exec_lrange( ctx ); break;
+      case LREM_CMD: ctx.status = this->exec_lrem( ctx ); break;
+      case LSET_CMD: ctx.status = this->exec_lset( ctx ); break;
+      case LTRIM_CMD: ctx.status = this->exec_ltrim( ctx ); break;
+      case RPOP_CMD: ctx.status = this->exec_rpop( ctx ); break;
+      case RPOPLPUSH_CMD: ctx.status = this->exec_rpoplpush( ctx ); break;
+      case RPUSH_CMD: ctx.status = this->exec_rpush( ctx ); break;
+      case RPUSHX_CMD: ctx.status = this->exec_rpushx( ctx ); break;
+      /* PUBSUB */
+      case PSUBSCRIBE_CMD: ctx.status = this->exec_psubscribe( ctx ); break;
+      case PUBSUB_CMD: ctx.status = this->exec_pubsub( ctx ); break;
+      case PUBLISH_CMD: ctx.status = this->exec_publish( ctx ); break;
+      case PUNSUBSCRIBE_CMD: ctx.status = this->exec_punsubscribe( ctx ); break;
+      case SUBSCRIBE_CMD: ctx.status = this->exec_subscribe( ctx ); break;
+      case UNSUBSCRIBE_CMD: ctx.status = this->exec_unsubscribe( ctx ); break;
+      /* SCRIPT */
+      case EVAL_CMD: ctx.status = this->exec_eval( ctx ); break;
+      case EVALSHA_CMD: ctx.status = this->exec_evalsha( ctx ); break;
+      case SCRIPT_CMD: ctx.status = this->exec_script( ctx ); break;
+      /* SERVER */
+      case BGREWRITEAOF_CMD: case BGSAVE_CMD: case CLIENT_CMD: case COMMAND_CMD:
+      case CONFIG_CMD: case DBSIZE_CMD: case DEBUG_CMD: case FLUSHALL_CMD:
+      case FLUSHDB_CMD: case INFO_CMD: case LASTSAVE_CMD: case MEMORY_CMD:
+      case MONITOR_CMD: case ROLE_CMD: case SAVE_CMD: case SHUTDOWN_CMD:
+      case SLAVEOF_CMD: case SLOWLOG_CMD: case SYNC_CMD:
+      case TIME_CMD: ctx.status = EXEC_BAD_CMD; break; /* handled in exec() */
+      /* SET */
+      case SADD_CMD: ctx.status = this->exec_sadd( ctx ); break;
+      case SCARD_CMD: ctx.status = this->exec_scard( ctx ); break;
+      case SDIFF_CMD: ctx.status = this->exec_sdiff( ctx ); break;
+      case SDIFFSTORE_CMD: ctx.status = this->exec_sdiffstore( ctx ); break;
+      case SINTER_CMD: ctx.status = this->exec_sinter( ctx ); break;
+      case SINTERSTORE_CMD: ctx.status = this->exec_sinterstore( ctx ); break;
+      case SISMEMBER_CMD: ctx.status = this->exec_sismember( ctx ); break;
+      case SMEMBERS_CMD: ctx.status = this->exec_smembers( ctx ); break;
+      case SMOVE_CMD: ctx.status = this->exec_smove( ctx ); break;
+      case SPOP_CMD: ctx.status = this->exec_spop( ctx ); break;
+      case SRANDMEMBER_CMD: ctx.status = this->exec_srandmember( ctx ); break;
+      case SREM_CMD: ctx.status = this->exec_srem( ctx ); break;
+      case SUNION_CMD: ctx.status = this->exec_sunion( ctx ); break;
+      case SUNIONSTORE_CMD: ctx.status = this->exec_sunionstore( ctx ); break;
+      case SSCAN_CMD: ctx.status = this->exec_sscan( ctx ); break;
+      /* SORTED_SET */
+      case ZADD_CMD: ctx.status = this->exec_zadd( ctx ); break;
+      case ZCARD_CMD: ctx.status = this->exec_zcard( ctx ); break;
+      case ZCOUNT_CMD: ctx.status = this->exec_zcount( ctx ); break;
+      case ZINCRBY_CMD: ctx.status = this->exec_zincrby( ctx ); break;
+      case ZINTERSTORE_CMD: ctx.status = this->exec_zinterstore( ctx ); break;
+      case ZLEXCOUNT_CMD: ctx.status = this->exec_zlexcount( ctx ); break;
+      case ZRANGE_CMD: ctx.status = this->exec_zrange( ctx ); break;
+      case ZRANGEBYLEX_CMD: ctx.status = this->exec_zrangebylex( ctx ); break;
+      case ZREVRANGEBYLEX_CMD: ctx.status = this->exec_zrevrangebylex( ctx ); break;
+      case ZRANGEBYSCORE_CMD: ctx.status = this->exec_zrangebyscore( ctx ); break;
+      case ZRANK_CMD: ctx.status = this->exec_zrank( ctx ); break;
+      case ZREM_CMD: ctx.status = this->exec_zrem( ctx ); break;
+      case ZREMRANGEBYLEX_CMD: ctx.status = this->exec_zremrangebylex( ctx ); break;
+      case ZREMRANGEBYRANK_CMD: ctx.status = this->exec_zremrangebyrank( ctx ); break;
+      case ZREMRANGEBYSCORE_CMD: ctx.status = this->exec_zremrangebyscore( ctx ); break;
+      case ZREVRANGE_CMD: ctx.status = this->exec_zrevrange( ctx ); break;
+      case ZREVRANGEBYSCORE_CMD: ctx.status = this->exec_zrevrangebyscore( ctx ); break;
+      case ZREVRANK_CMD: ctx.status = this->exec_zrevrank( ctx ); break;
+      case ZSCORE_CMD: ctx.status = this->exec_zscore( ctx ); break;
+      case ZUNIONSTORE_CMD: ctx.status = this->exec_zunionstore( ctx ); break;
+      case ZSCAN_CMD: ctx.status = this->exec_zscan( ctx ); break;
+      /* STRING */
+      case APPEND_CMD: ctx.status = this->exec_append( ctx ); break;
+      case BITCOUNT_CMD: ctx.status = this->exec_bitcount( ctx ); break;
+      case BITFIELD_CMD: ctx.status = this->exec_bitfield( ctx ); break;
+      case BITOP_CMD: ctx.status = this->exec_bitop( ctx ); break;
+      case BITPOS_CMD: ctx.status = this->exec_bitpos( ctx ); break;
+      case DECR_CMD: ctx.status = this->exec_decr( ctx ); break;
+      case DECRBY_CMD: ctx.status = this->exec_decrby( ctx ); break;
+      case GET_CMD: ctx.status = this->exec_get( ctx ); break;
+      case GETBIT_CMD: ctx.status = this->exec_getbit( ctx ); break;
+      case GETRANGE_CMD: ctx.status = this->exec_getrange( ctx ); break;
+      case GETSET_CMD: ctx.status = this->exec_getset( ctx ); break;
+      case INCR_CMD: ctx.status = this->exec_incr( ctx ); break;
+      case INCRBY_CMD: ctx.status = this->exec_incrby( ctx ); break;
+      case INCRBYFLOAT_CMD: ctx.status = this->exec_incrbyfloat( ctx ); break;
+      case MGET_CMD: ctx.status = this->exec_mget( ctx ); break;
+      case MSET_CMD: ctx.status = this->exec_mset( ctx ); break;
+      case MSETNX_CMD: ctx.status = this->exec_msetnx( ctx ); break;
+      case PSETEX_CMD: ctx.status = this->exec_psetex( ctx ); break;
+      case SET_CMD: ctx.status = this->exec_set( ctx ); break;
+      case SETBIT_CMD: ctx.status = this->exec_setbit( ctx ); break;
+      case SETEX_CMD: ctx.status = this->exec_setex( ctx ); break;
+      case SETNX_CMD: ctx.status = this->exec_setnx( ctx ); break;
+      case SETRANGE_CMD: ctx.status = this->exec_setrange( ctx ); break;
+      case STRLEN_CMD: ctx.status = this->exec_strlen( ctx ); break;
+      /* TRANSACTION */
+      case DISCARD_CMD: ctx.status = this->exec_discard( ctx ); break;
+      case EXEC_CMD: ctx.status = this->exec_exec( ctx ); break;
+      case MULTI_CMD: ctx.status = this->exec_multi( ctx ); break;
+      case UNWATCH_CMD: ctx.status = this->exec_unwatch( ctx ); break;
+      case WATCH_CMD: ctx.status = this->exec_watch( ctx ); break;
+      /* STREAM */
+      case XADD_CMD: ctx.status = this->exec_xadd( ctx ); break;
+      case XLEN_CMD: ctx.status = this->exec_xlen( ctx ); break;
+      case XRANGE_CMD: ctx.status = this->exec_xrange( ctx ); break;
+      case XREVRANGE_CMD: ctx.status = this->exec_xrevrange( ctx ); break;
+      case XREAD_CMD: ctx.status = this->exec_xread( ctx ); break;
+      case XREADGROUP_CMD: ctx.status = this->exec_xreadgroup( ctx ); break;
+      case XGROUP_CMD: ctx.status = this->exec_xgroup( ctx ); break;
+      case XACK_CMD: ctx.status = this->exec_xack( ctx ); break;
+      case XPENDING_CMD: ctx.status = this->exec_xpending( ctx ); break;
+      case XCLAIM_CMD: ctx.status = this->exec_xclaim( ctx ); break;
+      case XINFO_CMD: ctx.status = this->exec_xinfo( ctx ); break;
+      case XDEL_CMD: ctx.status = this->exec_xdel( ctx ); break;
+
+      case NO_CMD: ctx.status = EXEC_BAD_CMD; break;
     }
-    /* fall through */
-    default:
-      return EXEC_KV_STATUS;
+    /* set the type when key is new */
+    if ( ! ctx.is_read ) {
+      if ( ctx.is_new && exec_status_success( ctx.status ) ) {
+        uint8_t type;
+        switch ( get_cmd_category( this->cmd ) ) {
+          default:               type = MD_NODATA;      break;
+          case GEO_CATG:         type = MD_GEO;         break;
+          case HASH_CATG:        type = MD_HASH;        break;
+          case HYPERLOGLOG_CATG: type = MD_HYPERLOGLOG; break;
+          case LIST_CATG:        type = MD_LIST;        break;
+          case PUBSUB_CATG:      type = MD_PUBSUB;      break;
+          case SCRIPT_CATG:      type = MD_SCRIPT;      break;
+          case SET_CATG:         type = MD_SET;         break;
+          case SORTED_SET_CATG:  type = MD_SORTEDSET;   break;
+          case STRING_CATG:      type = MD_STRING;      break;
+          case TRANSACTION_CATG: type = MD_TRANSACTION; break;
+          case STREAM_CATG:      type = MD_STREAM;      break;
+        }
+        if ( type != MD_NODATA )
+          this->kctx.set_type( type );
+      }
+      this->kctx.release();
+    }
+    /* if key depends on other keys */
+    if ( ctx.status == EXEC_DEPENDS ) {
+      ctx.dep++;
+      return EXEC_DEPENDS;
+    }
+    /* continue if read key mutated while running */
+    if ( ctx.status != EXEC_KV_STATUS || ctx.kstatus != KEY_MUTATED )
+      break;
+  }
+  if ( ++this->key_done < this->key_cnt ) {
+    if ( exec_status_success( ctx.status ) )
+      return EXEC_CONTINUE;
+    for ( uint32_t i = 0; i < this->key_cnt; i++ )
+      this->keys[ i ]->status = ctx.status;
+  }
+  else if ( test_cmd_mask( this->flags, CMD_MULTI_KEY_ARRAY_FLAG ) ) {
+    if ( exec_status_success( ctx.status ) ) {
+      this->array_string_result();
+      return EXEC_SUCCESS;
+    }
+  }
+  switch ( ctx.status ) {
+    case EXEC_OK:           break;
+    case EXEC_SEND_OK:      this->strm.append( ok, ok_sz );            break;
+    case EXEC_SEND_NIL:     this->strm.append( nil, nil_sz );          break;
+    case EXEC_ABORT_SEND_ZERO:
+    case EXEC_SEND_ZERO:    this->strm.append( zero, zero_sz );        break;
+    case EXEC_SEND_ONE:     this->strm.append( one, one_sz );          break;
+    case EXEC_SEND_NEG_ONE: this->strm.append( neg_one, neg_one_sz );  break;
+    case EXEC_SEND_ZERO_STRING: this->strm.append( mt, mt_sz );        break;
+    case EXEC_SEND_INT:     this->send_int();                          break;
+    default:                this->send_err( ctx.status, ctx.kstatus ); break;
+  }
+  if ( this->key_done < this->key_cnt )
+    return EXEC_CONTINUE;
+  return EXEC_SUCCESS;
+}
+
+/* CLUSTER */
+ExecStatus
+RedisExec::exec_cluster( void )
+{
+  return EXEC_BAD_CMD;
+}
+
+ExecStatus
+RedisExec::exec_readonly( void )
+{
+  return EXEC_BAD_CMD;
+}
+
+ExecStatus
+RedisExec::exec_readwrite( void )
+{
+  return EXEC_BAD_CMD;
+}
+
+/* CONNECTION */
+ExecStatus
+RedisExec::exec_auth( void )
+{
+  return EXEC_BAD_CMD;
+}
+
+ExecStatus
+RedisExec::exec_echo( void )
+{
+  return this->exec_ping();
+}
+
+ExecStatus
+RedisExec::exec_ping( void )
+{
+  if ( this->argc > 1 ) {
+    this->send_msg( this->msg.array[ 1 ] );
+  }
+  else {
+    static char pong[] = "+PONG\r\n";
+    this->strm.append( pong, sizeof( pong ) - 1 );
+  }
+  return EXEC_OK;
+}
+
+ExecStatus
+RedisExec::exec_quit( void )
+{
+  return EXEC_QUIT;
+}
+
+ExecStatus
+RedisExec::exec_select( void )
+{
+  return EXEC_BAD_CMD;
+}
+
+ExecStatus
+RedisExec::exec_swapdb( void )
+{
+  return EXEC_BAD_CMD;
+}
+
+/* SERVER */
+ExecStatus
+RedisExec::exec_bgrewriteaof( void )
+{
+  /* start a AOF */
+  this->send_ok();
+  return EXEC_OK;
+}
+
+ExecStatus
+RedisExec::exec_bgsave( void )
+{
+  /* save in the bg */
+  this->send_ok();
+  return EXEC_OK;
+}
+
+ExecStatus RedisExec::exec_client( void )
+{
+  switch ( this->msg.match_arg( 1, "getname", 7,
+                                   "kill", 4,
+                                   "list", 4,
+                                   "pause", 5,
+                                   "reply", 5,
+                                   "setname", 7, NULL ) ) {
+    default: return EXEC_BAD_ARGS;
+    case 1: /* getname */
+      this->send_nil();  /* get my name */
+      return EXEC_OK;
+    case 2: /* kill (ip) (ID id) (TYPE norm|mast|slav|pubsub)
+                    (ADDR ip) (SKIPME y/n) */
+      this->send_zero(); /* number of clients killed */
+      return EXEC_OK;
+    case 3: /* list */
+      /* list: 'id=1082 addr=[::1]:43362 fd=8 name= age=1 idle=0 flags=N db=0
+       * sub=0 psub=0 multi=-1 qbuf=0 qbuf-free=32768 obl=0 oll=0 omem=0
+       * events=r cmd=client\n' id=unique id, addr=peer addr, fd=sock, age=time
+       * conn, idle=time idle, flags=mode, db=cur db, sub=channel subs,
+       * psub=pattern subs, multi=cmds qbuf=query buf size, qbuf-free=free
+       * qbuf, obl=output buf len, oll=outut list len, omem=output mem usage,
+       * events=sock rd/wr, cmd=last cmd issued */
+    case 4: /* pause (ms) pause clients for ms time*/
+    case 5: /* reply (on/off/skip) en/disable replies */
+    case 6: /* setname (name) set the name of this conn */
+      return EXEC_BAD_ARGS;
   }
 }
 
@@ -259,9 +701,7 @@ RedisExec::exec_command( void )
     void * buf = this->strm.alloc( sz );
     if ( buf == NULL )
       return EXEC_ALLOC_FAIL;
-    this->mstatus = m.pack( buf, sz );
-    if ( this->mstatus == REDIS_MSG_OK )
-      this->strm.append_iov( buf, sz );
+    this->strm.append_iov( buf, m.pack( buf ) );
   }
   if ( this->mstatus != REDIS_MSG_OK )
     return EXEC_MSG_STATUS;
@@ -269,48 +709,222 @@ RedisExec::exec_command( void )
 }
 
 ExecStatus
-RedisExec::exec_ping( void )
+RedisExec::exec_config( void )
 {
-  if ( this->argc > 1 ) {
-    RedisMsg &sub = this->msg.array[ 1 ];
-    size_t sz  = sub.len + 32;
-    void * buf = this->strm.alloc( sz );
-    if ( buf != NULL ) {
-      sub.pack( buf, sz );
-      this->strm.sz += sz;
-    }
+  switch ( this->msg.match_arg( 1, "get",       3,
+                                   "resetstat", 9,
+                                   "rewrite",   7,
+                                   "set",       3, NULL ) ) {
+    default: return EXEC_BAD_ARGS;
+    case 1: /* get */
+    case 2: /* resetstat */
+    case 3: /* rewrite */
+    case 4: /* set */
+      return EXEC_BAD_CMD;
   }
-  else {
-    static char pong[] = "+PONG\r\n";
-    this->strm.append( pong, 7 );
-  }
+}
+
+ExecStatus
+RedisExec::exec_dbsize( void )
+{
+  this->send_int( this->kctx.ht.hdr.last_entry_count );
   return EXEC_OK;
 }
 
-void
-RedisExec::send_ok( void )
+ExecStatus
+RedisExec::exec_debug( void )
 {
-  static char ok[] = "+OK\r\n";
-  this->strm.append( ok, 5 );
+  return EXEC_DEBUG;
+}
+
+ExecStatus
+RedisExec::exec_flushall( void )
+{
+  /* delete all keys */
+  this->send_ok();
+  return EXEC_OK;
+}
+
+ExecStatus
+RedisExec::exec_flushdb( void )
+{
+  /* delete current db */
+  this->send_ok();
+  return EXEC_OK;
+}
+
+#define ds_stringify(S) ds_str(S)
+#define ds_str(S) #S
+
+ExecStatus
+RedisExec::exec_info( void )
+{
+  size_t len = 256;
+  char * buf = (char *) this->strm.tmp.alloc( len );
+  if ( buf != NULL ) {
+    int n = ::snprintf( &buf[ 32 ], len-32,
+      "# Server\r\n"
+      "redis_version:4.0\r\n"
+      "raids_version:%s\r\n"
+      "gcc_version:%d.%d.%d\r\n"
+      "process_id:%d\r\n",
+      ds_stringify( DS_VER ),
+      __GNUC__, __GNUC_MINOR__, __GNUC_PATCHLEVEL__,
+      ::getpid() );
+
+    size_t dig = RedisMsg::uint_digits( n ),
+           off = 32 - ( dig + 3 );
+
+    buf[ off ] = '$';
+    RedisMsg::uint_to_str( n, &buf[ off + 1 ], dig );
+    buf[ off + 1 + dig ] = '\r';
+    buf[ off + 2 + dig ] = '\n';
+    buf[ 32 + n ] = '\r';
+    buf[ 32 + n + 1 ] = '\n';
+    this->strm.append_iov( &buf[ off ], n + dig + 3 + 2 );
+    return EXEC_OK;
+  }
+  return EXEC_ALLOC_FAIL;
+}
+
+ExecStatus
+RedisExec::exec_lastsave( void )
+{
+  this->send_int( this->kctx.ht.hdr.create_stamp / 1000000000 );
+  return EXEC_OK;
+}
+
+ExecStatus
+RedisExec::exec_memory( void )
+{
+  switch ( this->msg.match_arg( 1, "doctor",       6,
+                                   "help",         4,
+                                   "malloc-stats", 12,
+                                   "purge",        5,
+                                   "stats",        5,
+                                   "usage",        5, NULL ) ) {
+    default: return EXEC_BAD_ARGS;
+    case 1: /* doctor */
+    case 2: /* help */
+    case 3: /* malloc-stats */
+    case 4: /* purge */
+    case 5: /* stats */
+    case 6: /* usage */
+      return EXEC_BAD_CMD;
+  }
+}
+
+ExecStatus
+RedisExec::exec_monitor( void )
+{
+  /* monitor commands:
+   * 1339518083.107412 [0 127.0.0.1:60866] "keys" "*"
+   * 1339518087.877697 [0 127.0.0.1:60866] "dbsize" */
+  this->send_ok();
+  return EXEC_OK;
+}
+
+ExecStatus
+RedisExec::exec_role( void )
+{
+  /* master/slave
+   * replication offset
+   * slaves connected */
+  RedisMsg m;
+  if ( m.alloc_array( this->strm.tmp, 3 ) ) {
+    static char master[] = "master";
+    m.array[ 0 ].set_bulk_string( master, sizeof( master ) - 1 );
+    m.array[ 1 ].set_int( 0 );
+    m.array[ 2 ].set_mt_array();
+    this->send_msg( m );
+    return EXEC_OK;
+  }
+  return EXEC_ALLOC_FAIL;
+}
+
+ExecStatus
+RedisExec::exec_save( void )
+{
+  return EXEC_BAD_CMD;
+}
+
+ExecStatus
+RedisExec::exec_shutdown( void )
+{
+  return EXEC_QUIT;
+}
+
+ExecStatus
+RedisExec::exec_slaveof( void )
+{
+  this->send_ok();
+  return EXEC_OK;
+}
+
+ExecStatus
+RedisExec::exec_slowlog( void )
+{
+  return EXEC_BAD_CMD;
+}
+
+ExecStatus
+RedisExec::exec_sync( void )
+{
+  return EXEC_BAD_CMD;
+}
+
+ExecStatus
+RedisExec::exec_time( void )
+{
+  RedisMsg m;
+  char     sb[ 32 ], ub[ 32 ];
+  struct timeval tv;
+  ::gettimeofday( &tv, 0 );
+  if ( m.string_array( this->strm.tmp, 2,
+                  RedisMsg::uint_to_str( tv.tv_sec, sb ), sb,
+                  RedisMsg::uint_to_str( tv.tv_usec, ub ), ub ) ) {
+    this->send_msg( m );
+    return EXEC_OK;
+  }
+  return EXEC_ALLOC_FAIL;
 }
 
 void
-RedisExec::send_nil( void )
+RedisExec::send_msg( const RedisMsg &m )
 {
-  static char nil[] = "$-1\r\n";
-  this->strm.append( nil, 5 );
+  char * buf = this->strm.alloc( m.pack_size() );
+  if ( buf != NULL )
+    this->strm.sz += m.pack( buf );
 }
 
 void
 RedisExec::send_int( void )
 {
-  int64_t ival = ( ( this->key != NULL ) ? this->key->ival : -1 );
-  char    buf[ 32 ];
-  size_t  len    = 1 + int64_to_string( ival, &buf[ 1 ] );
-  buf[ 0 ]       = ':';
-  buf[ len ]     = '\r';
-  buf[ len + 1 ] = '\n';
-  this->strm.append( buf, len + 2 );
+  if ( this->key_cnt == 1 ) {
+    this->send_int( this->key->ival );
+  }
+  else if ( this->key_cnt > 1 ) {
+    int64_t ival = 0;
+    for ( uint32_t i = 0; i < this->key_cnt; i++ )
+      ival += this->keys[ i ]->ival;
+    this->send_int( ival );
+  }
+  else {
+    this->send_int( -1 );
+  }
+}
+
+void
+RedisExec::send_int( int64_t ival )
+{
+  size_t  len  = 32;
+  char  * buf  = this->strm.alloc( len );
+  if ( buf != NULL ) {
+    buf[ 0 ] = ':';
+    len  = 1 + RedisMsg::int_to_str( ival, &buf[ 1 ] );
+    buf[ len ] = '\r'; buf[ len + 1 ] = '\n';
+    this->strm.sz += len + 2;
+  }
 }
 
 void
@@ -322,11 +936,21 @@ RedisExec::send_err( ExecStatus status,  KeyStatus kstatus )
     case EXEC_SEND_OK:          this->send_ok(); break;
     case EXEC_SEND_NIL:         this->send_nil(); break;
     case EXEC_SEND_INT:         this->send_int(); break;
+    case EXEC_ABORT_SEND_ZERO:
+    case EXEC_SEND_ZERO:        this->send_zero(); break;
+    case EXEC_SEND_ONE:         this->send_one(); break;
+    case EXEC_SEND_NEG_ONE:     this->send_neg_one(); break;
+    case EXEC_SEND_ZERO_STRING: this->send_zero_string(); break;
+    case EXEC_SUCCESS:          break;
+    case EXEC_DEPENDS:          break;
+    case EXEC_CONTINUE:         break;
     case EXEC_KV_STATUS:        this->send_err_kv( kstatus ); break;
     case EXEC_MSG_STATUS:       this->send_err_msg( this->mstatus ); break;
     case EXEC_BAD_ARGS:         this->send_err_bad_args(); break;
     case EXEC_BAD_CMD:          this->send_err_bad_cmd(); break;
-    case EXEC_QUIT:             this->send_ok(); break;
+    case EXEC_BAD_TYPE:         this->send_err_bad_type(); break;
+    case EXEC_QUIT:
+    case EXEC_DEBUG:            this->send_ok(); break;
     case EXEC_ALLOC_FAIL:       this->send_err_alloc_fail(); break;
     case EXEC_KEY_EXISTS:       this->send_err_key_exists(); break;
     case EXEC_KEY_DOESNT_EXIST: this->send_err_key_doesnt_exist(); break;
@@ -409,6 +1033,23 @@ RedisExec::send_err_bad_cmd( void )
 }
 
 void
+RedisExec::send_err_bad_type( void )
+{
+  size_t       arg0len;
+  const char * arg0 = this->msg.command( arg0len );
+  size_t       bsz  = 64 + 24;
+  void       * buf  = this->strm.alloc( bsz );
+
+  if ( buf != NULL ) {
+    arg0len = ( arg0len < 24 ? arg0len : 24 );
+    bsz = ::snprintf( (char *) buf, bsz,
+                      "-ERR value type bad for command: '%.*s'\r\n",
+                     (int) arg0len, arg0 );
+    strm.sz += bsz;
+  }
+}
+
+void
 RedisExec::send_err_alloc_fail( void )
 {
   size_t       arg0len;
@@ -453,6 +1094,42 @@ RedisExec::send_err_key_doesnt_exist( void )
     bsz = ::snprintf( (char *) buf, bsz, "-ERR '%.*s': key does not exist\r\n",
                      (int) arg0len, arg0 );
     strm.sz += bsz;
+  }
+}
+
+const char *
+RedisKeyCtx::get_type_str( void ) const
+{
+  switch ( this->type ) {
+    default:
+    case MD_NODATA: return "nodata";
+    case MD_MESSAGE: return "message";
+    case MD_STRING: return "string";
+    case MD_OPAQUE: return "opaque";
+    case MD_BOOLEAN: return "boolean";
+    case MD_INT: return "int";
+    case MD_UINT: return "uint";
+    case MD_REAL: return "real";
+    case MD_ARRAY: return "array";
+    case MD_PARTIAL: return "partial";
+    case MD_IPDATA: return "ipdata";
+    case MD_SUBJECT: return "subject";
+    case MD_ENUM: return "enum";
+    case MD_TIME: return "time";
+    case MD_DATE: return "date";
+    case MD_DATETIME: return "datetime";
+    case MD_STAMP: return "stamp";
+    case MD_DECIMAL: return "decimal";
+    case MD_LIST: return "list";
+    case MD_HASH: return "hash";
+    case MD_SET: return "set";
+    case MD_SORTEDSET: return "sortedset";
+    case MD_STREAM: return "stream";
+    case MD_GEO: return "geo";
+    case MD_HYPERLOGLOG: return "hyperloglog";
+    case MD_PUBSUB: return "pubsub";
+    case MD_SCRIPT: return "script";
+    case MD_TRANSACTION: return "transaction";
   }
 }
 

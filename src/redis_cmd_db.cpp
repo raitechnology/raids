@@ -39,7 +39,7 @@ CommandDB cmd_db[] = {
 { "SELECT", "idx ; Change DB",
   "['select',2,[\"loading\",\"fast\"],0,0,0]" },
 { "SWAPDB", "idx idx2 ; Swap two DBs",
-  "['swapdb',3,[\"write\",\"fast\"],0,0,0] " },
+  "['swapdb',3,[\"write\",\"fast\"],0,0,0]" },
 
 #define GEO_CNT 6
   /* geo */
@@ -151,7 +151,7 @@ CommandDB cmd_db[] = {
            "[STORE dest] ; Return sorted list, set or sorted set at key",
   "['sort',-2,[\"write\",\"denyoom\",\"movablekeys\"],1,1,1]" },
 { "TOUCH", "key [key ...] ; Set last access time of key",
-  "['touch',-2,[\"readonly\",\"fast\"],1,1,1]" },
+  "['touch',-2,[\"write\",\"fast\"],1,1,1]" },
 { "TTL", "key ; Get time to live",
   "['ttl',2,[\"readonly\",\"fast\"],1,1,1]" },
 
@@ -393,7 +393,7 @@ CommandDB cmd_db[] = {
 { "INCRBYFLOAT", "key float ; incr float by amt",
   "['incrbyfloat',3,[\"write\",\"denyoom\",\"fast\"],1,1,1]" },
 { "MGET", "key [key ...] ; Get values of multiple keys",
-  "['mget',-2,[\"readonly\",\"fast\"],1,-1,1]" },
+  "['mget',-2,[\"readonly\",\"fast\",\"multi_key_array\"],1,-1,1]" },
 
 { "MSET", "key val [key val ...] ; Set values of multiple keys",
   "['mset',-3,[\"write\",\"denyoom\"],1,-1,2]" },
@@ -461,10 +461,10 @@ CommandDB cmd_db[] = {
 const size_t cmd_db_cnt = sizeof( cmd_db ) / sizeof( cmd_db[ 0 ] );
 
 const char *cmd_flag[] = {
-  "write",   "readonly",   "denyoom",      "admin",
-  "pubsub",  "noscript",   "random",       "sort_for_script",
-  "loading", "stale",      "skip_monitor", "asking",
-  "fast",    "movablekeys" };
+  "write",   "readonly",    "denyoom",      "admin",
+  "pubsub",  "noscript",    "random",       "sort_for_script",
+  "loading", "stale",       "skip_monitor", "asking",
+  "fast",    "movablekeys", "multi_key_array" };
 
 const size_t cmd_flag_cnt = sizeof( cmd_flag ) /
                             sizeof( cmd_flag[ 0 ] );

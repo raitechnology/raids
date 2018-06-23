@@ -78,7 +78,7 @@ main( int argc, char *argv[] )
         /*if ( m.to_json( buf ) )
           printf( "%s\n", buf );*/
         sz = sizeof( buf );
-        x = m.pack( buf, sz );
+        x = m.pack2( buf, sz );
         if ( x != REDIS_MSG_OK || sz != examples[ i ].len )
           printf( "pack   sz %lu != len %lu\n", sz, examples[ i ].len );
       }
@@ -86,13 +86,47 @@ main( int argc, char *argv[] )
     wrk.reset();
   }
   end = kv_current_monotonic_time_s();
-  printf( "speed: %.3f M/s %.03fns\n", 1.0 / ( end - start ) * 10.0,
+  printf( "unpack/pack2 speed: %.3f M/s %.03fns\n",
+          1.0 / ( end - start ) * 10.0,
           ( end - start ) * 100.0 );
+  start = kv_current_monotonic_time_s();
+  for ( j = 0; j < 1000 ; j++ ) {
+    for ( int repeat = 0; repeat < 1000; repeat++ ) {
+      for ( size_t i = 0; i < sizeof( examples ) /
+                              sizeof( examples[ 0 ] ); i++ ) {
+        sz = examples[ i ].len;
+        x = m.unpack( examples[ i ].ex, sz, wrk );
+        if ( x != REDIS_MSG_OK || sz != examples[ i ].len )
+          printf( "unpack sz %lu != len %lu\n", sz, examples[ i ].len );
+        /*if ( m.to_json( buf ) )
+          printf( "%s\n", buf );*/
+        sz = m.pack_size();
+        m.pack( buf );
+        if ( x != REDIS_MSG_OK || sz != examples[ i ].len )
+          printf( "pack   sz %lu != len %lu\n", sz, examples[ i ].len );
+      }
+    }
+    wrk.reset();
+  }
+  end = kv_current_monotonic_time_s();
+  printf( "unpack/pack_size/pack speed: %.3f M/s %.03fns\n",
+          1.0 / ( end - start ) * 10.0,
+          ( end - start ) * 100.0 );
+
   for ( j = 0; j < sizeof( num_str ) / sizeof( num_str[ 0 ] ); j++ ) {
     if ( (x = RedisMsg::str_to_int( num_str[ j ].str, num_str[ j ].len,
                                     ival )) == REDIS_MSG_OK ) {
       if ( ival != num_str[ j ].ival )
         printf( "failed: %s (%ld)\n", num_str[ j ].str, ival );
+      else {
+        printf( "str_to_int(%s) ok\n", num_str[ j ].str );
+        sz = RedisMsg::int_to_str( ival, buf );
+        buf[ sz ] = '\0';
+        if ( ::strcmp( num_str[ j ].str, buf ) != 0 )
+          printf( "failed: %s %s\n", num_str[ j ].str, buf );
+        else
+          printf( "int_to_str(%s) ok\n", buf );
+      }
     }
     else {
       printf( "did not parse: %s (%d/%s)\n", num_str[ j ].str,
