@@ -127,7 +127,7 @@ RedisExec::array_string_result( void )
 }
 
 ExecStatus
-RedisExec::exec_key_setup( EvService *own,  EvPrefetchQueue *q,
+RedisExec::exec_key_setup( EvSocket *own,  EvPrefetchQueue *q,
                            RedisKeyCtx *&ctx,  int n )
 {
   const char * key;
@@ -146,7 +146,7 @@ RedisExec::exec_key_setup( EvService *own,  EvPrefetchQueue *q,
 }
 
 ExecStatus
-RedisExec::exec( EvService *svc,  EvPrefetchQueue *q )
+RedisExec::exec( EvSocket *svc,  EvPrefetchQueue *q )
 {
   const char * arg0;
   size_t       arg0len;
@@ -284,185 +284,192 @@ RedisExec::exec_key_continue( RedisKeyCtx &ctx )
   for (;;) {
     switch ( this->cmd ) {
       /* CLUSTER */
-      case CLUSTER_CMD:  /* these exist so that compiler errors when a */
-      case READONLY_CMD: /* new command is not handled by switch() */
+      case CLUSTER_CMD:  /* these exist so that the compiler errors when a */
+      case READONLY_CMD: /* command is not handled by the switch() */
       case READWRITE_CMD: ctx.status = EXEC_BAD_CMD; break;
       /* CONNECTION */
       case AUTH_CMD: case ECHO_CMD: case PING_CMD: case QUIT_CMD:
       case SELECT_CMD: case SWAPDB_CMD:
-        ctx.status = EXEC_BAD_CMD; break; /* handled in exec() */
+                          ctx.status = EXEC_BAD_CMD; break; /* in exec() */
       /* GEO */
-      case GEOADD_CMD: ctx.status = this->exec_geoadd( ctx ); break;
-      case GEOHASH_CMD: ctx.status = this->exec_geohash( ctx ); break;
-      case GEOPOS_CMD: ctx.status = this->exec_geopos( ctx ); break;
-      case GEODIST_CMD: ctx.status = this->exec_geodist( ctx ); break;
+      case GEOADD_CMD:    ctx.status = this->exec_geoadd( ctx ); break;
+      case GEOHASH_CMD:   ctx.status = this->exec_geohash( ctx ); break;
+      case GEOPOS_CMD:    ctx.status = this->exec_geopos( ctx ); break;
+      case GEODIST_CMD:   ctx.status = this->exec_geodist( ctx ); break;
       case GEORADIUS_CMD: ctx.status = this->exec_georadius( ctx ); break;
-      case GEORADIUSBYMEMBER_CMD: ctx.status = this->exec_georadiusbymember( ctx ); break;
+      case GEORADIUSBYMEMBER_CMD:
+                        ctx.status = this->exec_georadiusbymember( ctx ); break;
       /* HASH */
-      case HDEL_CMD: ctx.status = this->exec_hdel( ctx ); break;
-      case HEXISTS_CMD: ctx.status = this->exec_hexists( ctx ); break;
-      case HGET_CMD: ctx.status = this->exec_hget( ctx ); break;
-      case HGETALL_CMD: ctx.status = this->exec_hgetall( ctx ); break;
-      case HINCRBY_CMD: ctx.status = this->exec_hincrby( ctx ); break;
+      case HDEL_CMD:      ctx.status = this->exec_hdel( ctx ); break;
+      case HEXISTS_CMD:   ctx.status = this->exec_hexists( ctx ); break;
+      case HGET_CMD:      ctx.status = this->exec_hget( ctx ); break;
+      case HGETALL_CMD:   ctx.status = this->exec_hgetall( ctx ); break;
+      case HINCRBY_CMD:   ctx.status = this->exec_hincrby( ctx ); break;
       case HINCRBYFLOAT_CMD: ctx.status = this->exec_hincrbyfloat( ctx ); break;
-      case HKEYS_CMD: ctx.status = this->exec_hkeys( ctx ); break;
-      case HLEN_CMD: ctx.status = this->exec_hlen( ctx ); break;
-      case HMGET_CMD: ctx.status = this->exec_hmget( ctx ); break;
-      case HMSET_CMD: ctx.status = this->exec_hmset( ctx ); break;
-      case HSET_CMD: ctx.status = this->exec_hset( ctx ); break;
-      case HSETNX_CMD: ctx.status = this->exec_hsetnx( ctx ); break;
-      case HSTRLEN_CMD: ctx.status = this->exec_hstrlen( ctx ); break;
-      case HVALS_CMD: ctx.status = this->exec_hvals( ctx ); break;
-      case HSCAN_CMD: ctx.status = this->exec_hscan( ctx ); break;
+      case HKEYS_CMD:     ctx.status = this->exec_hkeys( ctx ); break;
+      case HLEN_CMD:      ctx.status = this->exec_hlen( ctx ); break;
+      case HMGET_CMD:     ctx.status = this->exec_hmget( ctx ); break;
+      case HMSET_CMD:     ctx.status = this->exec_hmset( ctx ); break;
+      case HSET_CMD:      ctx.status = this->exec_hset( ctx ); break;
+      case HSETNX_CMD:    ctx.status = this->exec_hsetnx( ctx ); break;
+      case HSTRLEN_CMD:   ctx.status = this->exec_hstrlen( ctx ); break;
+      case HVALS_CMD:     ctx.status = this->exec_hvals( ctx ); break;
+      case HSCAN_CMD:     ctx.status = this->exec_hscan( ctx ); break;
       /* HYPERLOGLOG */
-      case PFADD_CMD: ctx.status = this->exec_pfadd( ctx ); break;
-      case PFCOUNT_CMD: ctx.status = this->exec_pfcount( ctx ); break;
-      case PFMERGE_CMD: ctx.status = this->exec_pfmerge( ctx ); break;
+      case PFADD_CMD:     ctx.status = this->exec_pfadd( ctx ); break;
+      case PFCOUNT_CMD:   ctx.status = this->exec_pfcount( ctx ); break;
+      case PFMERGE_CMD:   ctx.status = this->exec_pfmerge( ctx ); break;
       /* KEY */
-      case DEL_CMD: ctx.status = this->exec_del( ctx ); break;
-      case DUMP_CMD: ctx.status = this->exec_dump( ctx ); break;
-      case EXISTS_CMD: ctx.status = this->exec_exists( ctx ); break;
-      case EXPIRE_CMD: ctx.status = this->exec_expire( ctx ); break;
-      case EXPIREAT_CMD: ctx.status = this->exec_expireat( ctx ); break;
-      case KEYS_CMD: ctx.status = EXEC_BAD_CMD; break; /* in exec() */
-      case MIGRATE_CMD: ctx.status = this->exec_migrate( ctx ); break;
-      case MOVE_CMD: ctx.status = this->exec_move( ctx ); break;
-      case OBJECT_CMD: ctx.status = this->exec_object( ctx ); break;
-      case PERSIST_CMD: ctx.status = this->exec_persist( ctx ); break;
-      case PEXPIRE_CMD: ctx.status = this->exec_pexpire( ctx ); break;
+      case DEL_CMD:       ctx.status = this->exec_del( ctx ); break;
+      case DUMP_CMD:      ctx.status = this->exec_dump( ctx ); break;
+      case EXISTS_CMD:    ctx.status = this->exec_exists( ctx ); break;
+      case EXPIRE_CMD:    ctx.status = this->exec_expire( ctx ); break;
+      case EXPIREAT_CMD:  ctx.status = this->exec_expireat( ctx ); break;
+      case KEYS_CMD:      ctx.status = EXEC_BAD_CMD; break; /* in exec() */
+      case MIGRATE_CMD:   ctx.status = this->exec_migrate( ctx ); break;
+      case MOVE_CMD:      ctx.status = this->exec_move( ctx ); break;
+      case OBJECT_CMD:    ctx.status = this->exec_object( ctx ); break;
+      case PERSIST_CMD:   ctx.status = this->exec_persist( ctx ); break;
+      case PEXPIRE_CMD:   ctx.status = this->exec_pexpire( ctx ); break;
       case PEXPIREAT_CMD: ctx.status = this->exec_pexpireat( ctx ); break;
-      case PTTL_CMD: ctx.status = this->exec_pttl( ctx ); break;
+      case PTTL_CMD:      ctx.status = this->exec_pttl( ctx ); break;
       case RANDOMKEY_CMD: ctx.status = EXEC_BAD_CMD; break; /* in exec() */
-      case RENAME_CMD: ctx.status = this->exec_rename( ctx ); break;
-      case RENAMENX_CMD: ctx.status = this->exec_renamenx( ctx ); break;
-      case RESTORE_CMD: ctx.status = this->exec_restore( ctx ); break;
-      case SORT_CMD: ctx.status = this->exec_sort( ctx ); break;
-      case TOUCH_CMD: ctx.status = this->exec_touch( ctx ); break;
-      case TTL_CMD: ctx.status = this->exec_ttl( ctx ); break;
-      case TYPE_CMD: ctx.status = this->exec_type( ctx ); break;
-      case UNLINK_CMD: ctx.status = this->exec_unlink( ctx ); break;
+      case RENAME_CMD:    ctx.status = this->exec_rename( ctx ); break;
+      case RENAMENX_CMD:  ctx.status = this->exec_renamenx( ctx ); break;
+      case RESTORE_CMD:   ctx.status = this->exec_restore( ctx ); break;
+      case SORT_CMD:      ctx.status = this->exec_sort( ctx ); break;
+      case TOUCH_CMD:     ctx.status = this->exec_touch( ctx ); break;
+      case TTL_CMD:       ctx.status = this->exec_ttl( ctx ); break;
+      case TYPE_CMD:      ctx.status = this->exec_type( ctx ); break;
+      case UNLINK_CMD:    ctx.status = this->exec_unlink( ctx ); break;
       case WAIT_CMD: 
-      case SCAN_CMD: ctx.status = EXEC_BAD_CMD; break; /* in exec() */
+      case SCAN_CMD:      ctx.status = EXEC_BAD_CMD; break; /* in exec() */
       /* LIST */
-      case BLPOP_CMD: ctx.status = this->exec_blpop( ctx ); break;
-      case BRPOP_CMD: ctx.status = this->exec_brpop( ctx ); break;
+      case BLPOP_CMD:     ctx.status = this->exec_blpop( ctx ); break;
+      case BRPOP_CMD:     ctx.status = this->exec_brpop( ctx ); break;
       case BRPOPLPUSH_CMD: ctx.status = this->exec_brpoplpush( ctx ); break;
-      case LINDEX_CMD: ctx.status = this->exec_lindex( ctx ); break;
-      case LINSERT_CMD: ctx.status = this->exec_linsert( ctx ); break;
-      case LLEN_CMD: ctx.status = this->exec_llen( ctx ); break;
-      case LPOP_CMD: ctx.status = this->exec_lpop( ctx ); break;
-      case LPUSH_CMD: ctx.status = this->exec_lpush( ctx ); break;
-      case LPUSHX_CMD: ctx.status = this->exec_lpushx( ctx ); break;
-      case LRANGE_CMD: ctx.status = this->exec_lrange( ctx ); break;
-      case LREM_CMD: ctx.status = this->exec_lrem( ctx ); break;
-      case LSET_CMD: ctx.status = this->exec_lset( ctx ); break;
-      case LTRIM_CMD: ctx.status = this->exec_ltrim( ctx ); break;
-      case RPOP_CMD: ctx.status = this->exec_rpop( ctx ); break;
+      case LINDEX_CMD:    ctx.status = this->exec_lindex( ctx ); break;
+      case LINSERT_CMD:   ctx.status = this->exec_linsert( ctx ); break;
+      case LLEN_CMD:      ctx.status = this->exec_llen( ctx ); break;
+      case LPOP_CMD:      ctx.status = this->exec_lpop( ctx ); break;
+      case LPUSH_CMD:     ctx.status = this->exec_lpush( ctx ); break;
+      case LPUSHX_CMD:    ctx.status = this->exec_lpushx( ctx ); break;
+      case LRANGE_CMD:    ctx.status = this->exec_lrange( ctx ); break;
+      case LREM_CMD:      ctx.status = this->exec_lrem( ctx ); break;
+      case LSET_CMD:      ctx.status = this->exec_lset( ctx ); break;
+      case LTRIM_CMD:     ctx.status = this->exec_ltrim( ctx ); break;
+      case RPOP_CMD:      ctx.status = this->exec_rpop( ctx ); break;
       case RPOPLPUSH_CMD: ctx.status = this->exec_rpoplpush( ctx ); break;
-      case RPUSH_CMD: ctx.status = this->exec_rpush( ctx ); break;
-      case RPUSHX_CMD: ctx.status = this->exec_rpushx( ctx ); break;
+      case RPUSH_CMD:     ctx.status = this->exec_rpush( ctx ); break;
+      case RPUSHX_CMD:    ctx.status = this->exec_rpushx( ctx ); break;
       /* PUBSUB */
       case PSUBSCRIBE_CMD: ctx.status = this->exec_psubscribe( ctx ); break;
-      case PUBSUB_CMD: ctx.status = this->exec_pubsub( ctx ); break;
-      case PUBLISH_CMD: ctx.status = this->exec_publish( ctx ); break;
+      case PUBSUB_CMD:    ctx.status = this->exec_pubsub( ctx ); break;
+      case PUBLISH_CMD:   ctx.status = this->exec_publish( ctx ); break;
       case PUNSUBSCRIBE_CMD: ctx.status = this->exec_punsubscribe( ctx ); break;
       case SUBSCRIBE_CMD: ctx.status = this->exec_subscribe( ctx ); break;
       case UNSUBSCRIBE_CMD: ctx.status = this->exec_unsubscribe( ctx ); break;
       /* SCRIPT */
-      case EVAL_CMD: ctx.status = this->exec_eval( ctx ); break;
-      case EVALSHA_CMD: ctx.status = this->exec_evalsha( ctx ); break;
-      case SCRIPT_CMD: ctx.status = this->exec_script( ctx ); break;
+      case EVAL_CMD:      ctx.status = this->exec_eval( ctx ); break;
+      case EVALSHA_CMD:   ctx.status = this->exec_evalsha( ctx ); break;
+      case SCRIPT_CMD:    ctx.status = this->exec_script( ctx ); break;
       /* SERVER */
       case BGREWRITEAOF_CMD: case BGSAVE_CMD: case CLIENT_CMD: case COMMAND_CMD:
       case CONFIG_CMD: case DBSIZE_CMD: case DEBUG_CMD: case FLUSHALL_CMD:
       case FLUSHDB_CMD: case INFO_CMD: case LASTSAVE_CMD: case MEMORY_CMD:
       case MONITOR_CMD: case ROLE_CMD: case SAVE_CMD: case SHUTDOWN_CMD:
       case SLAVEOF_CMD: case SLOWLOG_CMD: case SYNC_CMD:
-      case TIME_CMD: ctx.status = EXEC_BAD_CMD; break; /* handled in exec() */
+      case TIME_CMD:      ctx.status = EXEC_BAD_CMD; break; /* in exec() */
       /* SET */
-      case SADD_CMD: ctx.status = this->exec_sadd( ctx ); break;
-      case SCARD_CMD: ctx.status = this->exec_scard( ctx ); break;
-      case SDIFF_CMD: ctx.status = this->exec_sdiff( ctx ); break;
+      case SADD_CMD:      ctx.status = this->exec_sadd( ctx ); break;
+      case SCARD_CMD:     ctx.status = this->exec_scard( ctx ); break;
+      case SDIFF_CMD:     ctx.status = this->exec_sdiff( ctx ); break;
       case SDIFFSTORE_CMD: ctx.status = this->exec_sdiffstore( ctx ); break;
-      case SINTER_CMD: ctx.status = this->exec_sinter( ctx ); break;
+      case SINTER_CMD:    ctx.status = this->exec_sinter( ctx ); break;
       case SINTERSTORE_CMD: ctx.status = this->exec_sinterstore( ctx ); break;
       case SISMEMBER_CMD: ctx.status = this->exec_sismember( ctx ); break;
-      case SMEMBERS_CMD: ctx.status = this->exec_smembers( ctx ); break;
-      case SMOVE_CMD: ctx.status = this->exec_smove( ctx ); break;
-      case SPOP_CMD: ctx.status = this->exec_spop( ctx ); break;
+      case SMEMBERS_CMD:  ctx.status = this->exec_smembers( ctx ); break;
+      case SMOVE_CMD:     ctx.status = this->exec_smove( ctx ); break;
+      case SPOP_CMD:      ctx.status = this->exec_spop( ctx ); break;
       case SRANDMEMBER_CMD: ctx.status = this->exec_srandmember( ctx ); break;
-      case SREM_CMD: ctx.status = this->exec_srem( ctx ); break;
-      case SUNION_CMD: ctx.status = this->exec_sunion( ctx ); break;
+      case SREM_CMD:      ctx.status = this->exec_srem( ctx ); break;
+      case SUNION_CMD:    ctx.status = this->exec_sunion( ctx ); break;
       case SUNIONSTORE_CMD: ctx.status = this->exec_sunionstore( ctx ); break;
-      case SSCAN_CMD: ctx.status = this->exec_sscan( ctx ); break;
+      case SSCAN_CMD:     ctx.status = this->exec_sscan( ctx ); break;
       /* SORTED_SET */
-      case ZADD_CMD: ctx.status = this->exec_zadd( ctx ); break;
-      case ZCARD_CMD: ctx.status = this->exec_zcard( ctx ); break;
-      case ZCOUNT_CMD: ctx.status = this->exec_zcount( ctx ); break;
-      case ZINCRBY_CMD: ctx.status = this->exec_zincrby( ctx ); break;
+      case ZADD_CMD:      ctx.status = this->exec_zadd( ctx ); break;
+      case ZCARD_CMD:     ctx.status = this->exec_zcard( ctx ); break;
+      case ZCOUNT_CMD:    ctx.status = this->exec_zcount( ctx ); break;
+      case ZINCRBY_CMD:   ctx.status = this->exec_zincrby( ctx ); break;
       case ZINTERSTORE_CMD: ctx.status = this->exec_zinterstore( ctx ); break;
       case ZLEXCOUNT_CMD: ctx.status = this->exec_zlexcount( ctx ); break;
-      case ZRANGE_CMD: ctx.status = this->exec_zrange( ctx ); break;
+      case ZRANGE_CMD:    ctx.status = this->exec_zrange( ctx ); break;
       case ZRANGEBYLEX_CMD: ctx.status = this->exec_zrangebylex( ctx ); break;
-      case ZREVRANGEBYLEX_CMD: ctx.status = this->exec_zrevrangebylex( ctx ); break;
-      case ZRANGEBYSCORE_CMD: ctx.status = this->exec_zrangebyscore( ctx ); break;
-      case ZRANK_CMD: ctx.status = this->exec_zrank( ctx ); break;
-      case ZREM_CMD: ctx.status = this->exec_zrem( ctx ); break;
-      case ZREMRANGEBYLEX_CMD: ctx.status = this->exec_zremrangebylex( ctx ); break;
-      case ZREMRANGEBYRANK_CMD: ctx.status = this->exec_zremrangebyrank( ctx ); break;
-      case ZREMRANGEBYSCORE_CMD: ctx.status = this->exec_zremrangebyscore( ctx ); break;
+      case ZREVRANGEBYLEX_CMD:
+                          ctx.status = this->exec_zrevrangebylex( ctx ); break;
+      case ZRANGEBYSCORE_CMD:
+                          ctx.status = this->exec_zrangebyscore( ctx ); break;
+      case ZRANK_CMD:     ctx.status = this->exec_zrank( ctx ); break;
+      case ZREM_CMD:      ctx.status = this->exec_zrem( ctx ); break;
+      case ZREMRANGEBYLEX_CMD:
+                          ctx.status = this->exec_zremrangebylex( ctx ); break;
+      case ZREMRANGEBYRANK_CMD:
+                          ctx.status = this->exec_zremrangebyrank( ctx ); break;
+      case ZREMRANGEBYSCORE_CMD:
+                         ctx.status = this->exec_zremrangebyscore( ctx ); break;
       case ZREVRANGE_CMD: ctx.status = this->exec_zrevrange( ctx ); break;
-      case ZREVRANGEBYSCORE_CMD: ctx.status = this->exec_zrevrangebyscore( ctx ); break;
-      case ZREVRANK_CMD: ctx.status = this->exec_zrevrank( ctx ); break;
-      case ZSCORE_CMD: ctx.status = this->exec_zscore( ctx ); break;
+      case ZREVRANGEBYSCORE_CMD:
+                         ctx.status = this->exec_zrevrangebyscore( ctx ); break;
+      case ZREVRANK_CMD:  ctx.status = this->exec_zrevrank( ctx ); break;
+      case ZSCORE_CMD:    ctx.status = this->exec_zscore( ctx ); break;
       case ZUNIONSTORE_CMD: ctx.status = this->exec_zunionstore( ctx ); break;
-      case ZSCAN_CMD: ctx.status = this->exec_zscan( ctx ); break;
+      case ZSCAN_CMD:     ctx.status = this->exec_zscan( ctx ); break;
       /* STRING */
-      case APPEND_CMD: ctx.status = this->exec_append( ctx ); break;
-      case BITCOUNT_CMD: ctx.status = this->exec_bitcount( ctx ); break;
-      case BITFIELD_CMD: ctx.status = this->exec_bitfield( ctx ); break;
-      case BITOP_CMD: ctx.status = this->exec_bitop( ctx ); break;
-      case BITPOS_CMD: ctx.status = this->exec_bitpos( ctx ); break;
-      case DECR_CMD: ctx.status = this->exec_decr( ctx ); break;
-      case DECRBY_CMD: ctx.status = this->exec_decrby( ctx ); break;
-      case GET_CMD: ctx.status = this->exec_get( ctx ); break;
-      case GETBIT_CMD: ctx.status = this->exec_getbit( ctx ); break;
-      case GETRANGE_CMD: ctx.status = this->exec_getrange( ctx ); break;
-      case GETSET_CMD: ctx.status = this->exec_getset( ctx ); break;
-      case INCR_CMD: ctx.status = this->exec_incr( ctx ); break;
-      case INCRBY_CMD: ctx.status = this->exec_incrby( ctx ); break;
+      case APPEND_CMD:    ctx.status = this->exec_append( ctx ); break;
+      case BITCOUNT_CMD:  ctx.status = this->exec_bitcount( ctx ); break;
+      case BITFIELD_CMD:  ctx.status = this->exec_bitfield( ctx ); break;
+      case BITOP_CMD:     ctx.status = this->exec_bitop( ctx ); break;
+      case BITPOS_CMD:    ctx.status = this->exec_bitpos( ctx ); break;
+      case DECR_CMD:      ctx.status = this->exec_decr( ctx ); break;
+      case DECRBY_CMD:    ctx.status = this->exec_decrby( ctx ); break;
+      case GET_CMD:       ctx.status = this->exec_get( ctx ); break;
+      case GETBIT_CMD:    ctx.status = this->exec_getbit( ctx ); break;
+      case GETRANGE_CMD:  ctx.status = this->exec_getrange( ctx ); break;
+      case GETSET_CMD:    ctx.status = this->exec_getset( ctx ); break;
+      case INCR_CMD:      ctx.status = this->exec_incr( ctx ); break;
+      case INCRBY_CMD:    ctx.status = this->exec_incrby( ctx ); break;
       case INCRBYFLOAT_CMD: ctx.status = this->exec_incrbyfloat( ctx ); break;
-      case MGET_CMD: ctx.status = this->exec_mget( ctx ); break;
-      case MSET_CMD: ctx.status = this->exec_mset( ctx ); break;
-      case MSETNX_CMD: ctx.status = this->exec_msetnx( ctx ); break;
-      case PSETEX_CMD: ctx.status = this->exec_psetex( ctx ); break;
-      case SET_CMD: ctx.status = this->exec_set( ctx ); break;
-      case SETBIT_CMD: ctx.status = this->exec_setbit( ctx ); break;
-      case SETEX_CMD: ctx.status = this->exec_setex( ctx ); break;
-      case SETNX_CMD: ctx.status = this->exec_setnx( ctx ); break;
-      case SETRANGE_CMD: ctx.status = this->exec_setrange( ctx ); break;
-      case STRLEN_CMD: ctx.status = this->exec_strlen( ctx ); break;
+      case MGET_CMD:      ctx.status = this->exec_mget( ctx ); break;
+      case MSET_CMD:      ctx.status = this->exec_mset( ctx ); break;
+      case MSETNX_CMD:    ctx.status = this->exec_msetnx( ctx ); break;
+      case PSETEX_CMD:    ctx.status = this->exec_psetex( ctx ); break;
+      case SET_CMD:       ctx.status = this->exec_set( ctx ); break;
+      case SETBIT_CMD:    ctx.status = this->exec_setbit( ctx ); break;
+      case SETEX_CMD:     ctx.status = this->exec_setex( ctx ); break;
+      case SETNX_CMD:     ctx.status = this->exec_setnx( ctx ); break;
+      case SETRANGE_CMD:  ctx.status = this->exec_setrange( ctx ); break;
+      case STRLEN_CMD:    ctx.status = this->exec_strlen( ctx ); break;
       /* TRANSACTION */
-      case DISCARD_CMD: ctx.status = this->exec_discard( ctx ); break;
-      case EXEC_CMD: ctx.status = this->exec_exec( ctx ); break;
-      case MULTI_CMD: ctx.status = this->exec_multi( ctx ); break;
-      case UNWATCH_CMD: ctx.status = this->exec_unwatch( ctx ); break;
-      case WATCH_CMD: ctx.status = this->exec_watch( ctx ); break;
+      case DISCARD_CMD:   ctx.status = this->exec_discard( ctx ); break;
+      case EXEC_CMD:      ctx.status = this->exec_exec( ctx ); break;
+      case MULTI_CMD:     ctx.status = this->exec_multi( ctx ); break;
+      case UNWATCH_CMD:   ctx.status = this->exec_unwatch( ctx ); break;
+      case WATCH_CMD:     ctx.status = this->exec_watch( ctx ); break;
       /* STREAM */
-      case XADD_CMD: ctx.status = this->exec_xadd( ctx ); break;
-      case XLEN_CMD: ctx.status = this->exec_xlen( ctx ); break;
-      case XRANGE_CMD: ctx.status = this->exec_xrange( ctx ); break;
+      case XADD_CMD:      ctx.status = this->exec_xadd( ctx ); break;
+      case XLEN_CMD:      ctx.status = this->exec_xlen( ctx ); break;
+      case XRANGE_CMD:    ctx.status = this->exec_xrange( ctx ); break;
       case XREVRANGE_CMD: ctx.status = this->exec_xrevrange( ctx ); break;
-      case XREAD_CMD: ctx.status = this->exec_xread( ctx ); break;
+      case XREAD_CMD:     ctx.status = this->exec_xread( ctx ); break;
       case XREADGROUP_CMD: ctx.status = this->exec_xreadgroup( ctx ); break;
-      case XGROUP_CMD: ctx.status = this->exec_xgroup( ctx ); break;
-      case XACK_CMD: ctx.status = this->exec_xack( ctx ); break;
-      case XPENDING_CMD: ctx.status = this->exec_xpending( ctx ); break;
-      case XCLAIM_CMD: ctx.status = this->exec_xclaim( ctx ); break;
-      case XINFO_CMD: ctx.status = this->exec_xinfo( ctx ); break;
-      case XDEL_CMD: ctx.status = this->exec_xdel( ctx ); break;
+      case XGROUP_CMD:    ctx.status = this->exec_xgroup( ctx ); break;
+      case XACK_CMD:      ctx.status = this->exec_xack( ctx ); break;
+      case XPENDING_CMD:  ctx.status = this->exec_xpending( ctx ); break;
+      case XCLAIM_CMD:    ctx.status = this->exec_xclaim( ctx ); break;
+      case XINFO_CMD:     ctx.status = this->exec_xinfo( ctx ); break;
+      case XDEL_CMD:      ctx.status = this->exec_xdel( ctx ); break;
 
-      case NO_CMD: ctx.status = EXEC_BAD_CMD; break;
+      case NO_CMD:        ctx.status = EXEC_BAD_CMD; break;
     }
     /* set the type when key is new */
     if ( ! ctx.is_read ) {
@@ -753,9 +760,6 @@ RedisExec::exec_flushdb( void )
   return EXEC_OK;
 }
 
-#define ds_stringify(S) ds_str(S)
-#define ds_str(S) #S
-
 ExecStatus
 RedisExec::exec_info( void )
 {
@@ -768,7 +772,7 @@ RedisExec::exec_info( void )
       "raids_version:%s\r\n"
       "gcc_version:%d.%d.%d\r\n"
       "process_id:%d\r\n",
-      ds_stringify( DS_VER ),
+      kv_stringify( DS_VER ),
       __GNUC__, __GNUC_MINOR__, __GNUC_PATCHLEVEL__,
       ::getpid() );
 

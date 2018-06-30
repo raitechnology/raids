@@ -8,20 +8,20 @@ namespace rai {
 namespace ds {
 
 enum EvSockType {
-  EV_LISTEN_SOCK  = 0,
-  EV_SERVICE_SOCK = 1,
-  EV_CLIENT_SOCK  = 2,
-  EV_TERMINAL     = 3
+  EV_SERVICE_SOCK = 0,
+  EV_HTTP_SOCK    = 1,
+  EV_LISTEN_SOCK  = 2,
+  EV_CLIENT_SOCK  = 3,
+  EV_TERMINAL     = 4
 };
 
 enum EvState {
-  EV_DEAD    = 0,  /* a socket may be in multiple of these states */
-  EV_WAIT    = 1,
-  EV_READ    = 2,
-  EV_PROCESS = 3,
-  EV_WRITE   = 4,
-  EV_CLOSE   = 5,
-  EV_MAX     = 6
+  EV_WAIT      = 0,  /* a socket may be in multiple of these states */
+  EV_READ      = 1,
+  EV_PROCESS   = 2,
+  EV_WRITE     = 3,
+  EV_CLOSE     = 4,
+  EV_MAX       = 5
 };
 
 struct EvSocket;
@@ -47,6 +47,8 @@ struct EvPrefetchQueue;
 
 struct EvPoll {
   EvQueue              queue[ EV_MAX ]; /* EvState queues */
+  EvSocket           * free_svc,        /* EvService free */
+                     * free_http;       /* EvHttpService free */
   EvSocket          ** sock;            /* sock array indexed by fd */
   struct epoll_event * ev;              /* event array used by epoll() */
   kv::HashTab        * map;             /* the data store */
@@ -56,14 +58,16 @@ struct EvPoll {
                        nfds,            /* max epoll() fds, array sz this->ev */
                        maxfd,           /* current maximum fd number */
                        quit;            /* when > 0, wants to exit */
+  static const size_t  ALLOC_INCR    = 64;
   static const size_t  PREFETCH_SIZE = 8;
   size_t               prefetch_cnt[ PREFETCH_SIZE + 1 ];
   bool                 single_thread;
 
   EvPoll( kv::HashTab *m,  uint32_t id )
-    : sock( 0 ), ev( 0 ), map( m ), prefetch_queue( 0 ), ctx_id( id ),
-      efd( -1 ), nfds( -1 ), maxfd( -1 ), quit( 0 ), single_thread( false ) {
-    for ( int i = EV_DEAD; i < EV_MAX; i++ )
+    : free_svc( 0 ), free_http( 0 ), sock( 0 ), ev( 0 ), map( m ),
+      prefetch_queue( 0 ), ctx_id( id ), efd( -1 ), nfds( -1 ), maxfd( -1 ),
+      quit( 0 ), single_thread( false ) {
+    for ( int i = EV_WAIT; i < EV_MAX; i++ )
       this->queue[ i ].init( (EvState) i );
     ::memset( this->prefetch_cnt, 0, sizeof( this->prefetch_cnt ) );
   }
@@ -72,7 +76,6 @@ struct EvPoll {
   int wait( int ms );            /* call epoll() with ms timeout */
   void dispatch( void );         /* process any sock in the queues */
   void drain_prefetch( EvPrefetchQueue &q ); /* process prefetches */
-  void dispatch_service( void ); /* process service and listen socks */
   void process_close( void );    /* close socks or quit state */
 };
 
@@ -123,8 +126,7 @@ struct EvListen : public EvSocket {
 
   EvListen( EvPoll &p ) : EvSocket( p, EV_LISTEN_SOCK ) {}
 
-  int listen( const char *ip,  int port );
-  void accept( void );
+  virtual void accept( void );
 };
 
 static inline void *aligned_malloc( size_t sz ) {
@@ -148,7 +150,7 @@ struct EvConnection : public EvSocket, public StreamBuf {
     this->off      = 0;
     this->len      = 0;
   }
-  void release( void ) {
+  virtual void release( void ) {
     this->clear_buffers();
     this->StreamBuf::release();
   }

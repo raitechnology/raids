@@ -87,6 +87,30 @@ EvService::process( bool use_prefetch )
 }
 
 void
+EvService::release( void )
+{
+  this->RedisExec::release();
+  this->EvConnection::release();
+  this->push_free_list();
+}
+
+void
+EvService::push_free_list( void )
+{
+  if ( this->state != 0 )
+    this->popall();
+  this->next[ 0 ] = this->poll.free_svc;
+  this->poll.free_svc = this;
+}
+
+void
+EvService::pop_free_list( void )
+{
+  this->poll.free_svc = this->next[ 0 ];
+  this->next[ 0 ] = NULL;
+}
+
+void
 EvService::debug( void )
 {
   const char *name[] = { 0, "wait", "read", "process", "write", "close" };
@@ -99,7 +123,7 @@ EvService::debug( void )
     if ( this->poll.prefetch_cnt[ i ] != 0 )
       printf( "[%d]: %lu\n", i, this->poll.prefetch_cnt[ i ] );
   }
-  for ( i = 1; i <= 5; i++ ) {
+  for ( i = EV_WAIT; i < EV_MAX; i++ ) {
     printf( "%s: ", name[ i ] );
     for ( s = this->poll.queue[ i ].hd; s != NULL; s = next ) {
       next = s->next[ i ];
@@ -117,7 +141,7 @@ EvService::debug( void )
     } 
     printf( "\n" );
   }
-  for ( i = 1; i <= 5; i++ ) {
+  for ( i = EV_WAIT; i < EV_MAX; i++ ) {
     for ( s = this->poll.queue[ i ].hd; s != NULL; s = next ) {
       next = s->next[ i ];
       if ( s->type == EV_SERVICE_SOCK ) {

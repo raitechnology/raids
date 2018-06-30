@@ -52,7 +52,7 @@ cpp_lnk     :=
 sock_lib    :=
 math_lib    := -lm
 thread_lib  := -pthread -lrt
-dep_lib     := -lraikv -lpcre2-8
+dep_lib     := -lraikv -lpcre2-8 -lcrypto
 malloc_lib  :=
 
 # targets filled in below
@@ -72,11 +72,11 @@ defines     := -DDS_VER=$(ver_build)
 .PHONY: everything
 everything: all
 
-libraids_files := ev_net ev_service ev_client redis_msg redis_cmd_db \
-                  redis_exec redis_geo redis_hash redis_hyperloglog \
-		  redis_key redis_list redis_pubsub redis_script \
-		  redis_set redis_sortedset redis_stream redis_string \
-		  redis_transaction
+libraids_files := ev_net ev_service ev_http ev_client ev_tcp ev_unix \
+                  redis_msg redis_cmd_db redis_exec redis_geo redis_hash \
+		  redis_hyperloglog redis_key redis_list redis_pubsub \
+		  redis_script redis_set redis_sortedset redis_stream \
+		  redis_string redis_transaction
 libraids_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(libraids_files)))
 libraids_dbjs  := $(addprefix $(objd)/, $(addsuffix .fpic.o, $(libraids_files)))
 libraids_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(libraids_files))) \

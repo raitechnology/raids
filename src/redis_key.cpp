@@ -193,14 +193,14 @@ ExecStatus
 RedisExec::do_pexpire( RedisKeyCtx &ctx,  uint64_t units )
 {
   int64_t  ival;
-  uint64_t ns;
+  uint64_t exp;
   if ( ! this->msg.get_arg( 2, ival ) ) /* SETEX key secs value */
     return EXEC_BAD_ARGS;
-  ns = (uint64_t) ival * units;
-  if ( ns < this->kctx.ht.hdr.current_stamp )
-    ns += this->kctx.ht.hdr.current_stamp;
+  exp = (uint64_t) ival * units;
+  if ( exp < this->kctx.ht.hdr.current_stamp )
+    exp += this->kctx.ht.hdr.current_stamp;
   if ( this->exec_key_fetch( ctx ) == KEY_OK ) {
-    this->kctx.update_stamps( ns, 0 );
+    this->kctx.update_stamps( exp, 0 );
     ctx.ival = 1;
   }
   else {
@@ -220,12 +220,12 @@ ExecStatus
 RedisExec::do_pexpireat( RedisKeyCtx &ctx,  uint64_t units )
 {
   int64_t  ival;
-  uint64_t ns;
+  uint64_t exp;
   if ( ! this->msg.get_arg( 2, ival ) ) /* SETEX key secs value */
     return EXEC_BAD_ARGS;
-  ns = (uint64_t) ival * units;
+  exp = (uint64_t) ival * units;
   if ( this->exec_key_fetch( ctx ) == KEY_OK ) {
-    this->kctx.update_stamps( ns, 0 );
+    this->kctx.update_stamps( exp, 0 );
     ctx.ival = 1;
   }
   else {
@@ -245,11 +245,11 @@ ExecStatus
 RedisExec::do_pttl( RedisKeyCtx &ctx,  int64_t units )
 {
   if ( this->exec_key_fetch( ctx ) == KEY_OK ) {
-    uint64_t ns = 0, upd;
-    this->kctx.get_stamps( ns, upd );
-    if ( ns > 0 )
-      ns -= this->kctx.ht.hdr.current_stamp;
-    ctx.ival = (int64_t) ns / units;
+    uint64_t exp = 0, upd;
+    this->kctx.get_stamps( exp, upd );
+    if ( exp > 0 )
+      exp -= this->kctx.ht.hdr.current_stamp;
+    ctx.ival = (int64_t) exp / units;
   }
   else {
     ctx.ival = -1;
@@ -260,12 +260,12 @@ RedisExec::do_pttl( RedisKeyCtx &ctx,  int64_t units )
 ExecStatus
 RedisExec::exec_randomkey( void )
 {
-  uint64_t pos     = this->kctx.ht.ctx[ this->kctx.ctx_id ].rng.next();
+  uint64_t pos     = this->kctx.thr_ctx.rng.next();
   uint64_t ht_size = this->kctx.ht_size;
 
   pos = this->kctx.ht.hdr.ht_mod( pos ); /* RANDOMKEY */
   for ( uint64_t cnt = 0; cnt < ht_size; cnt++ ) {
-    KeyStatus status = this->kctx.fetch( &this->wrk, pos );
+    KeyStatus status = this->kctx.fetch( &this->wrk, pos, 0, true );
     if ( status == KEY_OK ) {
       KeyFragment *kp;
       status = this->kctx.get_key( kp );
@@ -382,10 +382,10 @@ RedisExec::exec_sort( RedisKeyCtx &ctx )
 ExecStatus
 RedisExec::exec_touch( RedisKeyCtx &ctx )
 {
-  uint64_t ns = this->kctx.ht.hdr.current_stamp;
+  uint64_t upd = this->kctx.ht.hdr.current_stamp;
   /* TOUCH key [key2 ...] */
   switch ( this->exec_key_fetch( ctx ) ) {
-    case KEY_OK: this->kctx.update_stamps( 0, ns ); ctx.ival = 1; break;
+    case KEY_OK: this->kctx.update_stamps( 0, upd ); ctx.ival = 1; break;
     case KEY_IS_NEW: ctx.ival = 0; break;
     default: return EXEC_KV_STATUS;
   }
@@ -504,7 +504,7 @@ RedisExec::scan_keys( uint64_t pos,  int64_t maxcnt,  const char *pattern,
   }
   uint64_t ht_size = this->kctx.ht.hdr.ht_size;
   for ( ; pos < ht_size; pos++ ) {
-    KeyStatus status = this->kctx.fetch( &this->wrk, pos );
+    KeyStatus status = this->kctx.fetch( &this->wrk, pos, 0, true );
     if ( status == KEY_OK ) {
       KeyFragment *kp;
       status = this->kctx.get_key( kp );

@@ -46,7 +46,7 @@ inline static bool exec_status_fail( ExecStatus status ) {
   return (int) status > EXEC_SUCCESS;
 }
 
-struct EvService;
+struct EvSocket;
 struct RedisExec;
 
 struct RedisKeyRes {
@@ -64,7 +64,7 @@ struct RedisKeyCtx {
   uint64_t        hash1,  /* 128 bit hash of key */
                   hash2;
   RedisExec     & exec;   /* parent context */
-  EvService     * owner;  /* parent connection */
+  EvSocket      * owner;  /* parent connection */
   int64_t         ival;   /* if it returns int */
   RedisKeyRes   * part;   /* saved data for key */
   const int       argn;   /* which arg number of command */
@@ -76,7 +76,7 @@ struct RedisKeyCtx {
                   is_read;/* if the key is read only */
   kv::KeyFragment kbuf;   /* key material, extends past structure */
 
-  RedisKeyCtx( RedisExec &ex,  EvService *own,  const char *key,  size_t keylen,
+  RedisKeyCtx( RedisExec &ex,  EvSocket *own,  const char *key,  size_t keylen,
                const int n,  const uint64_t seed,  const uint64_t seed2 )
      : hash1( seed ), hash2( seed2 ), exec( ex ), owner( own ), ival( 0 ),
        part( 0 ), argn( n ), dep( 0 ), type( 0 ), status( EXEC_SETUP_OK ),
@@ -95,7 +95,7 @@ struct RedisKeyCtx {
     return sizeof( RedisKeyCtx ) + keylen; /* alloc size of *this */
   }
   void prefetch( void );             /* prefetch the key */
-  ExecStatus run( EvService *&svc ); /* execute key operation */
+  ExecStatus run( EvSocket *&svc ); /* execute key operation */
   const char *get_type_str( void ) const;
 };
 
@@ -110,7 +110,7 @@ struct EvPrefetchQueue : public kv::PrioQueue<RedisKeyCtx *> {
 };
 
 struct RedisExec {
-  const uint64_t seed, seed2; /* kv map hash seeds, set when map is created */
+  uint64_t seed, seed2;       /* kv map hash seeds, different for each db */
   kv::KeyCtx     kctx;        /* key context used for every key in command */
   kv::WorkAllocT< 1024 > wrk; /* kv work buffer, reset before each key lookup */
   StreamBuf    & strm;        /* output buffer, result of command execution */
@@ -129,10 +129,11 @@ struct RedisExec {
   size_t         argc;        /* count of args in cmd msg */
 
   RedisExec( kv::HashTab &map,  uint32_t ctx_id,  StreamBuf &s,  bool single ) :
-      seed( map.hdr.hash_key_seed ), seed2( map.hdr.hash_key_seed2 ),
       kctx( map, ctx_id, NULL ), strm( s ),
       key( 0 ), keys( 0 ), key_cnt( 0 ), key_done( 0 ) {
     if ( single ) this->kctx.set( kv::KEYCTX_IS_SINGLE_THREAD );
+    this->kctx.ht.hdr.get_hash_seed( this->kctx.db_num, this->seed,
+                                     this->seed2 );
     this->kctx.set( kv::KEYCTX_NO_COPY_ON_READ );
   }
 
@@ -141,9 +142,9 @@ struct RedisExec {
     this->wrk.release_all();
   }
   /* parse set up a command */
-  ExecStatus exec( EvService *svc,  EvPrefetchQueue *q );
+  ExecStatus exec( EvSocket *svc,  EvPrefetchQueue *q );
   /* set up a single key, there may be multiple in a command */
-  ExecStatus exec_key_setup( EvService *svc,  EvPrefetchQueue *q,
+  ExecStatus exec_key_setup( EvSocket *svc,  EvPrefetchQueue *q,
                              RedisKeyCtx *&ctx,  int n );
   /* execute a key operation */
   ExecStatus exec_key_continue( RedisKeyCtx &ctx );
@@ -396,7 +397,7 @@ RedisKeyCtx::prefetch( void )
 }
 
 inline ExecStatus
-RedisKeyCtx::run( EvService *&svc )
+RedisKeyCtx::run( EvSocket *&svc )
 {
   svc = this->owner;
   return this->exec.exec_key_continue( *this );

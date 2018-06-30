@@ -22,7 +22,6 @@ struct EvClient : public EvConnection {
 
   EvClient( EvPoll &p, EvCallback &callback,  EvSockType t = EV_CLIENT_SOCK )
     : EvConnection( p, t ), cb( callback ) {}
-  int connect( const char *ip,  int port );
   void process( void );
   void process_close( void );
 };

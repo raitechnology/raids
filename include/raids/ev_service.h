@@ -19,6 +19,9 @@ struct EvService : public EvConnection, public RedisExec {
     this->RedisExec::release();
   }
   void debug( void );
+  virtual void release( void );
+  void push_free_list( void );
+  void pop_free_list( void );
 };
 
 }

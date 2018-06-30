@@ -3,7 +3,8 @@
 #include <string.h>
 #include <stdint.h>
 #include <unistd.h>
-#include <raids/ev_client.h>
+#include <raids/ev_tcp.h>
+#include <raids/ev_unix.h>
 #include <raikv/util.h>
 
 using namespace rai;
@@ -13,8 +14,7 @@ using namespace kv;
 struct MyClient;
 struct StdinCallback : public EvCallback {
   MyClient &me;
-  EvClient &client;
-  StdinCallback( MyClient &m,  EvClient &cl ) : me( m ), client( cl ) {}
+  StdinCallback( MyClient &m ) : me( m ) {}
   virtual void onMsg( RedisMsg &msg );
   virtual void onErr( char *buf,  size_t buflen,  RedisMsgStatus status );
   virtual void onClose( void );
@@ -32,12 +32,27 @@ struct MyClient {
   EvPoll       & poll;
   ClientCallback clicb;
   StdinCallback  termcb;
-  EvClient       client;
+  EvTcpClient    tclient;
+  EvUnixClient   uclient;
+  EvClient     * client;
   EvTerminal     term;
 
   MyClient( EvPoll &p ) : poll( p ), clicb( *this ),
-     termcb( *this, this->client ), client( p, this->clicb ),
-     term( p, this->termcb ) {}
+     termcb( *this ), tclient( p, this->clicb ),
+     uclient( p, this->clicb ), client( 0 ), term( p, this->termcb ) {}
+
+  int connect( const char *h,  int p ) {
+    int status;
+    if ( (status = this->tclient.connect( h, p )) == 0 )
+      this->client = &this->tclient;
+    return status;
+  }
+  int connect( const char *path ) {
+    int status;
+    if ( (status = this->uclient.connect( path )) == 0 )
+      this->client = &this->uclient;
+    return status;
+  }
 };
 
 void
@@ -50,10 +65,10 @@ StdinCallback::onMsg( RedisMsg &msg )
   printf( "> " ); fflush( stdout );
 
   sz = 1024;
-  void *tmp = this->client.tmp.alloc( msg.pack_size() );
+  void *tmp = this->me.client->tmp.alloc( msg.pack_size() );
   if ( tmp != NULL ) {
-    this->client.append_iov( tmp, msg.pack( tmp ) );
-    this->client.push( EV_WRITE );
+    this->me.client->append_iov( tmp, msg.pack( tmp ) );
+    this->me.client->push( EV_WRITE );
   }
   else
     printf( "pack allocation failed\n" );
@@ -147,24 +162,42 @@ int
 main( int argc, char *argv[] )
 {
   SignalHandler sighndl;
-  int        status = 0;
-  EvPoll     poll( NULL, 0 );
-  MyClient   my( poll );
+  int          status = 0;
+  bool         is_connected = false;
+  EvPoll       poll( NULL, 0 );
+  MyClient     my( poll );
 
   const char * ho = get_arg( argc, argv, 1, 1, "-x", NULL ),
              * pt = get_arg( argc, argv, 2, 1, "-p", "8888" ),
+             * pa = get_arg( argc, argv, 2, 1, "-a", NULL ),
              * he = get_arg( argc, argv, 0, 0, "-h", 0 );
   if ( he != NULL ) {
-    printf( "%s [-x host] [-p port]\n", argv[ 0 ] );
+    printf( "%s [-x host] [-p port] [-a /tmp/sock]\n", argv[ 0 ] );
     return 0;
   }
 
   poll.init( 5, false, false );
-  if ( my.client.connect( ho, atoi( pt ) ) != 0 )
-    status = 1; /* bad port or network error */
-  else {
-    printf( "connected: %s\n", pt );
-
+  if ( pa != NULL ) {
+    if ( my.connect( pa ) != 0 ) {
+      fprintf( stderr, "unable to connect unix socket to %s\n", pa );
+      status = 1; /* bad path */
+    }
+    else {
+      printf( "connected: %s\n", pa );
+      is_connected = true;
+    }
+  }
+  if ( ! is_connected ) {
+    if ( my.connect( ho, atoi( pt ) ) != 0 ) {
+      fprintf( stderr, "unable to connect tcp socket to %s\n", pt );
+      status = 2; /* bad port or network error */
+    }
+    else {
+      printf( "connected: %s\n", pt );
+      is_connected = true;
+    }
+  }
+  if ( is_connected ) {
     printf( "? " ); fflush( stdout );
     my.term.start( 0 );
     sighndl.install();
