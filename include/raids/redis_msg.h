@@ -77,6 +77,7 @@ struct RedisMsg {
     size_t tmp;
     return this->command( length, tmp );
   }
+  /* get a string argument and length */
   bool get_arg( int n,  const char *&str,  size_t &sz ) const {
     if ( n < this->len && this->array[ n ].is_string() ) {
       if ( this->array[ n ].len >= 0 ) {
@@ -87,6 +88,7 @@ struct RedisMsg {
     }
     return false;
   }
+  /* get an integer argument */
   bool get_arg( int n,  int64_t &i ) const {
     if ( n < this->len ) {
       if ( this->array[ n ].is_string() ) {
@@ -101,8 +103,15 @@ struct RedisMsg {
     }
     return false;
   }
+  /* match argument by string, returns which arg matched, 0 if none
+   * the arg n indicates which arg to start, -2 means args [2 -> end]
+   *   int n = match( -2, "one", "two", NULL );
+   *   if ( n == 1 ) matched one
+   *   if ( n == 2 ) matched two
+   *   if ( n == 0 ) matched none */
   int match_arg( int n,  const char *str,  size_t sz,  ... );
 
+  /* integer to string routines */
   static uint64_t neg( int64_t v ) {
     if ( (uint64_t) v == ( (uint64_t) 1 << 63 ) )
       return ( (uint64_t) 1 << 63 );
@@ -141,9 +150,10 @@ struct RedisMsg {
     }
     return uint_to_str( v, buf );
   }
-
+  /* str length sz to int */
   static RedisMsgStatus str_to_int( const char *str,  size_t sz,
                                     int64_t &ival );
+  /* various simple encodings used by redis */
   void set_nil( void ) {
     this->type   = BULK_STRING;
     this->len    = -1;
@@ -177,12 +187,17 @@ struct RedisMsg {
   bool alloc_array( kv::ScratchMem &wrk,  int64_t sz );
   bool string_array( kv::ScratchMem &wrk,  int64_t sz,  ... );
 
-  size_t pack_size( void ) const;
+  size_t pack_size( void ) const; /* pack() buf length */
   size_t pack( void *buf ) const;
-  RedisMsgStatus pack2( void *buf,  size_t &len ) const;
-  RedisMsgStatus split( kv::ScratchMem &wrk );
+  RedisMsgStatus pack2( void *buf,  size_t &len ) const; /* len is size */
+  RedisMsgStatus split( kv::ScratchMem &wrk ); /* splits cmd line into array */
+  /* try to decode one message, length of data decoded is returned in len */
   RedisMsgStatus unpack( void *buf,  size_t &len,  kv::ScratchMem &wrk );
-  RedisMsgStatus to_json( char *buf,  size_t &len ) const;
+  /* similar to pack() and pack_size(), except in json format */
+  size_t to_almost_json_size( bool be_weird = true ) const;
+  size_t to_almost_json( char *buf,  bool be_weird = true ) const;
+
+  /* decode json into msg */
   RedisMsgStatus unpack_json( const char *json,  kv::ScratchMem &wrk ) {
     size_t len = ::strlen( json );
     return this->unpack_json( json, len, wrk );

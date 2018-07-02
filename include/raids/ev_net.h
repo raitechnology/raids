@@ -142,13 +142,17 @@ struct EvConnection : public EvSocket, public StreamBuf {
          * recv_end;    /* alloc size of current buffer */
   uint32_t off,         /* offset of recv_buf consumed */
            len;         /* length of data in recv_buf */
+  uint64_t nbytes_recv,
+           nbytes_sent;
   char     recv_buf[ 8192 ] __attribute__((__aligned__( 64 )));
 
   EvConnection( EvPoll &p, EvSockType t ) : EvSocket( p, t ) {
-    this->recv     = this->recv_buf;
-    this->recv_end = &this->recv_buf[ sizeof( this->recv_buf ) ];
-    this->off      = 0;
-    this->len      = 0;
+    this->recv        = this->recv_buf;
+    this->recv_end    = &this->recv_buf[ sizeof( this->recv_buf ) ];
+    this->off         = 0;
+    this->len         = 0;
+    this->nbytes_recv = 0;
+    this->nbytes_sent = 0;
   }
   virtual void release( void ) {
     this->clear_buffers();
@@ -157,6 +161,8 @@ struct EvConnection : public EvSocket, public StreamBuf {
   void clear_buffers( void ) {
     this->StreamBuf::reset();
     this->off = this->len = 0;
+    this->nbytes_recv = 0;
+    this->nbytes_sent = 0;
     if ( this->recv != this->recv_buf ) {
       ::free( this->recv );
       this->recv = this->recv_buf;

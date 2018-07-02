@@ -60,7 +60,7 @@ EvClient::process( void )
   skip_char:;
     this->off += buflen;
   }
-  if ( this->StreamBuf::wr_pending + this->StreamBuf::sz > 0 )
+  if ( this->pending() > 0 )
     this->push( EV_WRITE );
 }
 
@@ -74,9 +74,12 @@ void
 EvCallback::onMsg( RedisMsg &msg )
 {
   char buf[ 64 * 1024 ];
-  size_t sz = sizeof( buf );
-  if ( msg.to_json( buf, sz ) == REDIS_MSG_OK )
-    fprintf( stderr, "onMsg: %s", buf );
+  size_t sz;
+  if ( (sz = msg.to_almost_json_size()) < sizeof( buf ) ) {
+    if ( sz > 0 )
+      msg.to_almost_json( buf );
+    fprintf( stderr, "onMsg: %*s", (int) sz, buf );
+  }
 }
 
 void

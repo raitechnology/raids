@@ -15,16 +15,19 @@ struct EvHttpListen : public EvTcpListen {
 struct EvPrefetchQueue;
 
 struct EvHttpService : public EvConnection, public RedisExec {
-  bool websock_mode;
+  uint64_t websock_off;
   void * operator new( size_t sz, void *ptr ) { return ptr; }
 
   EvHttpService( EvPoll &p ) : EvConnection( p, EV_HTTP_SOCK ),
     RedisExec( *p.map, p.ctx_id, *this, p.single_thread ),
-    websock_mode( false ) {}
+    websock_off( 0 ) {}
   void process( bool use_prefetch );
   void process_close( void ) {
     this->RedisExec::release();
   }
+  bool write( void ); /* override write() in EvConnection */
+  bool try_write( void );
+  bool frame_websock( void );
   bool send_file( const char *get,  size_t hdrlen );
   bool send_ws_upgrade( const char *wsver, const char *wskey,
                         size_t wskeylen,  const char *wspro );

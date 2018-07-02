@@ -141,11 +141,12 @@ struct RedisExec {
     this->wrk.reset();
     this->wrk.release_all();
   }
-  /* parse set up a command */
-  ExecStatus exec( EvSocket *svc,  EvPrefetchQueue *q );
   /* set up a single key, there may be multiple in a command */
   ExecStatus exec_key_setup( EvSocket *svc,  EvPrefetchQueue *q,
                              RedisKeyCtx *&ctx,  int n );
+  void exec_run_to_completion( void );
+  /* parse set up a command */
+  ExecStatus exec( EvSocket *svc,  EvPrefetchQueue *q );
   /* execute a key operation */
   ExecStatus exec_key_continue( RedisKeyCtx &ctx );
   /* compute the hash and prefetch the ht[] location */

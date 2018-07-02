@@ -277,26 +277,17 @@ gen_hash_tab:;
   for ( i = 1; i < sz; i++ ) {
     printf( ",%u", ht[ i ] );
   }
-  cmd = cmd_db[ 1 ].name;
-  uint8_t l = ( ( ::strlen( cmd ) - 1 ) & 0xf ) << 4;
   printf( "};\n"
-          "  static const uint8_t cmdlen[] = {\n    0x%x", l );
-  l = 0;
-  for ( i = 2; i < cmd_db_cnt; i++ ) {
+          "  static const uint32_t hashes[] = {\n    0" );
+  for ( i = 1; i < cmd_db_cnt; i++ ) {
     cmd = cmd_db[ i ].name;
-    l |= ( ( ::strlen( cmd ) - 1 ) & 0xf ) << ( 4 * ( i & 1 ) );
-    if ( ( i & 1 ) == 1 ) {
-      printf( ",0x%x", l );
-      l = 0;
-    }
+    uint32_t h = kv_crc_c( cmd, ::strlen( cmd ), r );
+    printf( ",0x%x", h );
   }
-  if ( ( i & 1 ) == 0 )
-    printf( ",0x%x", l );
   printf( "};\n"
-         "  uint8_t c = ht[ kv_crc_c( cmd, len, 0x%x ) %% %u ];\n"
-         "  uint8_t l = cmdlen[ c / 2 ] >> ( 4 * ( c & 1 ) );\n"
-         "  return ( ( l & 0xfU ) == ( ( len - 1 ) & 0xfU ) ) ? "
-                  "(RedisCmd) c : NO_CMD;\n"
+         "  uint32_t k = kv_crc_c( cmd, len, 0x%x );\n"
+         "  uint8_t  c = ht[ k %% %u ];\n"
+         "  return hashes[ c ] == k ? (RedisCmd) c : NO_CMD;\n"
          "}\n\n", r, sz );
 }
 

@@ -274,6 +274,7 @@ EvConnection::read( void )
                              this->recv_end - &this->recv[ this->len ] );
     if ( nbytes > 0 ) {
       this->len += nbytes;
+      this->nbytes_recv += nbytes;
       this->push( EV_PROCESS );
       return true;
     }
@@ -328,6 +329,7 @@ EvConnection::write( void )
   ssize_t nbytes = ::sendmsg( this->fd, &h, 0 );
   if ( nbytes > 0 ) {
     strm.wr_pending -= nbytes;
+    this->nbytes_sent += nbytes;
     if ( strm.wr_pending == 0 ) {
       strm.idx = strm.woff = 0;
       strm.tmp.reset();

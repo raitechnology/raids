@@ -97,7 +97,7 @@ EvHttpService::process( bool use_prefetch )
     end   = &start[ buflen ];
 
     /* decode websock frame */
-    if ( this->websock_mode ) {
+    if ( this->websock_off > 0 ) {
       WebSocketFrame ws;
       used = ws.decode( start, buflen );
       if ( used <= 1 ) { /* 0 == not enough data for hdr, 1 == closed */
@@ -130,12 +130,47 @@ EvHttpService::process( bool use_prefetch )
       switch ( ws.opcode ) {
         case WebSocketFrame::WS_PING: this->send_ws_pong( p, ws.payload_len );
         case WebSocketFrame::WS_PONG: break;
-        default:
+        default: { /* WS_TEXT, WS_BINARY */
           printf( "ws%s%s[%.*s]\n",
                   ( ws.opcode & WebSocketFrame::WS_TEXT ) ? "text" : "",
                   ( ws.opcode & WebSocketFrame::WS_BINARY ) ? "bin" : "",
                   (int) ws.payload_len, p );
+          for ( size_t poff = 0; poff < ws.payload_len; ) {
+            sz = ws.payload_len - poff;
+            RedisMsgStatus mstatus = this->msg.unpack( p, sz, strm.tmp );
+            if ( mstatus != REDIS_MSG_OK ) {
+              fprintf( stderr, "protocol error(%d/%s), ignoring %lu bytes\n",
+                       mstatus, redis_msg_status_string( mstatus ),
+                       ws.payload_len - poff );
+              poff = ws.payload_len;
+              break;
+            }
+            poff += sz;
+            ExecStatus status;
+            if ( (status = this->exec( this, NULL )) == EXEC_OK )
+              if ( strm.alloc_fail )
+                status = EXEC_ALLOC_FAIL;
+            switch ( status ) {
+              case EXEC_SETUP_OK:
+                /*if ( q != NULL )
+                  return;*/
+                this->exec_run_to_completion();
+                if ( ! strm.alloc_fail )
+                  break;
+                status = EXEC_ALLOC_FAIL;
+                /* fall through */
+              default:
+                this->send_err( status );
+                break;
+              case EXEC_QUIT:
+                this->poll.quit++;
+                break;
+              case EXEC_DEBUG:
+                break;
+            }
+          }
           break;
+        }
       }
       //printf( "wspayload: %ld\n", ws.payload_len );
       this->off += used + ws.payload_len;
@@ -229,7 +264,7 @@ EvHttpService::process( bool use_prefetch )
       }
       if ( upgrade && websock && wsver[ 0 ] && wskey[ 0 ] && wspro[ 0 ] ) {
         if ( this->send_ws_upgrade( wsver, wskey, wskeylen, wspro ) )
-          this->websock_mode = true;
+          this->websock_off = this->nbytes_sent + this->strm.pending();
         else
           goto not_found;
       }
@@ -248,31 +283,163 @@ is_closed:;
   this->push( EV_CLOSE );
 break_loop:;
   this->pop( EV_PROCESS );
-  if ( strm.wr_pending + strm.sz > 0 ) {
+  if ( strm.pending() > 0 ) {
 need_write:;
     this->push( EV_WRITE );
   }
   return;
 }
 
+bool
+EvHttpService::try_write( void )
+{
+  if ( this->websock_off != 0 &&
+       this->websock_off < this->nbytes_sent + this->pending() )
+    if ( ! this->frame_websock() )
+      return false;
+  return this->EvConnection::try_write();
+}
+
+bool
+EvHttpService::write( void )
+{
+  if ( this->websock_off != 0 &&
+       this->websock_off < this->nbytes_sent + this->pending() )
+    if ( ! this->frame_websock() )
+      return false;
+  return this->EvConnection::write();
+}
+
+bool
+EvHttpService::frame_websock( void )
+{
+  StreamBuf & strm   = *this;
+  size_t      nbytes = this->nbytes_sent,
+              off    = strm.woff,
+              i;
+  char      * newbuf;
+
+  if ( strm.sz > 0 )
+    strm.flush();
+  /* find websock stream offset */
+  for ( ; off < strm.idx; off++ ) {
+    nbytes += strm.iov[ off ].iov_len;
+    if ( this->websock_off < nbytes )
+      break;
+  }
+  if ( off == strm.idx )
+    return true;
+  /* concat buffers */
+  if ( off + 1 < strm.idx ) {
+    nbytes = strm.iov[ off ].iov_len;
+    for ( i = off + 1; i < strm.idx; i++ )
+      nbytes += strm.iov[ i ].iov_len;
+    newbuf = strm.alloc_temp( nbytes );
+    if ( newbuf == NULL )
+      return false;
+    nbytes = strm.iov[ off ].iov_len;
+    ::memcpy( newbuf, strm.iov[ off ].iov_base, nbytes );
+    for ( i = off + 1; i < strm.idx; i++ ) {
+      size_t len = strm.iov[ i ].iov_len;
+      ::memcpy( &newbuf[ nbytes ], strm.iov[ i ].iov_base, len );
+      nbytes += len;
+    }
+    strm.iov[ off ].iov_base = newbuf;
+    strm.iov[ off ].iov_len  = nbytes;
+    strm.idx = off + 1;
+  }
+  /* frame the new data */
+  RedisMsg       msg;
+  WebSocketFrame ws;
+  char         * buf    = (char *) strm.iov[ off ].iov_base,
+               * wsmsg;
+  const size_t   buflen = strm.iov[ off ].iov_len;
+  size_t         bufoff,
+                 msgsize,
+                 hsz,
+                 sz,
+                 totsz = 0;
+  RedisMsgStatus mstatus;
+  /* determine the size of each framed json msg */
+  for ( bufoff = 0; ; ) {
+    msgsize = buflen - bufoff;
+    mstatus = msg.unpack( &buf[ bufoff ], msgsize, this->strm.tmp );
+    if ( mstatus != REDIS_MSG_OK )
+      return false;
+    sz = msg.to_almost_json_size( false );
+    ws.set( sz, 0, WebSocketFrame::WS_TEXT, true );
+    hsz = ws.hdr_size();
+    totsz += sz + hsz;
+    if ( (bufoff += msgsize) == buflen )
+      break;
+  }
+  /* frame and convert to json */
+  if ( totsz > 0 ) {
+    newbuf = strm.alloc_temp( totsz );
+    /* if only one msg, then it is already decoded */
+    if ( totsz == hsz + sz ) {
+      ws.encode( newbuf );
+      msg.to_almost_json( &newbuf[ hsz ], false );
+      printf( "frame: %.*s\n", (int) sz, &newbuf[ hsz ] );
+    }
+    else {
+      wsmsg = newbuf;
+      for ( bufoff = 0; ; ) {
+        msgsize = buflen - bufoff;
+        msg.unpack( &buf[ bufoff ], msgsize, this->strm.tmp );
+        bufoff += msgsize;
+        sz = msg.to_almost_json_size( false );
+        ws.set( sz, 0, WebSocketFrame::WS_TEXT, true );
+        hsz = ws.hdr_size();
+        ws.encode( wsmsg );
+        msg.to_almost_json( &wsmsg[ hsz ], false );
+        printf( "frame2: %.*s\n", (int) sz, &wsmsg[ hsz ] );
+        wsmsg = &wsmsg[ hsz + sz ];
+        if ( wsmsg == &newbuf[ totsz ] )
+          break;
+      }
+    }
+    if ( totsz >= buflen )
+      strm.wr_pending += totsz - buflen;
+    else
+      strm.wr_pending -= buflen - totsz;
+    strm.iov[ off ].iov_base = newbuf;
+    strm.iov[ off ].iov_len  = totsz;
+    this->websock_off += totsz;
+  }
+  return true;
+}
+
 static const char *
 get_mime_type( const char *path,  size_t len )
 {
-  if ( ( len > 4 && ::strcmp( &path[ len-4 ], "html" ) == 0 ) ||
-       ( len > 3 && ::strcmp( &path[ len-3 ], "htm" ) == 0 ) )
-    return "text/html";
-  if ( len > 2 && ::strcmp( &path[ len-2 ], "js" ) == 0 )
-    return "application/x-javascript";
-  if ( len > 3 && ::strcmp( &path[ len-3 ], "svg" ) == 0 )
-    return "image/svg+xml";
-  if ( len > 3 && ::strcmp( &path[ len-3 ], "jpg" ) == 0 )
-    return "image/jpeg";
-  if ( len > 3 && ::strcmp( &path[ len-3 ], "png" ) == 0 )
-    return "image/png";
-  if ( len > 3 && ::strcmp( &path[ len-3 ], "xml" ) == 0 )
-    return "text/xml";
-  if ( len > 3 && ::strcmp( &path[ len-3 ], "txt" ) == 0 )
-    return "text/plain";
+  if ( len >= 3 ) {
+    const char *p = &path[ len-3 ];
+    switch ( p[ 0 ] ) {
+#define CASE( c, d, e, s ) case c: if ( p[ 1 ] == d && p[ 2 ] == e ) return s
+      /* check for [.]js */
+      CASE( '.', 'j', 's', "application/x-javascript" ); break;
+      case 't': /* check for .h[t]ml */
+        if ( len >= 5 &&
+            p[ -2 ] == '.' && p[ -1 ] == 'h' && p[ 1 ] == 'm' && p[ 2 ] == 'l' )
+          return "text/html";
+        /* fall through, could be .[t]xt */
+      default:
+        if ( len < 4 || path[ len-4 ] != '.' )
+          break;
+        switch ( p[ 0 ] ) {
+          CASE( 'c', 's', 's', "text/css" ); break;      /* .css */
+          CASE( 'h', 't', 'm', "text/html" ); break;     /* .htm */
+          CASE( 'j', 'p', 'g', "image/jpeg" ); break;    /* .jpg */
+          CASE( 'p', 'n', 'g', "image/png" ); break;     /* .png */
+          CASE( 's', 'v', 'g', "image/svg+xml" ); break; /* .svg */
+          CASE( 't', 'x', 't', "text/plain" ); break;    /* .txt */
+          CASE( 'x', 'm', 'l', "text/xml" ); break;      /* .xml */
+#undef CASE
+        }
+        break;
+    }
+  }
   return "application/octet-stream";
 }
 
@@ -344,8 +511,9 @@ EvHttpService::send_ws_upgrade( const char *wsver, const char *wskey,
   uint32_t val, i, j = 0;
   char out[ 32 ];
   bool res = false;
-
+  /* websock switch hashes wskey with SHA1 and base64 encodes the result */
   SHA1( (const uint8_t *) wskey, wskeylen, digest );
+  /* base64 encode it */
   for ( i = 0; i < 18; i += 3 ) {
     val = ( (uint32_t) digest[ i ] << 16 ) | ( (uint32_t) digest[ i+1 ] << 8 ) |
           (uint32_t) digest[ i+2 ];
@@ -399,7 +567,7 @@ EvHttpService::send_ws_pong( const char *payload,  size_t len )
 void
 EvHttpService::release( void )
 {
-  this->websock_mode = false; /* this structure will be reused w/different fd */
+  this->websock_off = 0; /* this structure will be reused w/different fd */
   this->RedisExec::release();
   this->EvConnection::release();
   this->push_free_list();

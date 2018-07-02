@@ -526,91 +526,114 @@ json_escape_string( const char *str,  size_t len,  char *out )
   return sz;
 }
 
-/* uses different quote styles for various strings:
+/* uses different quote styles for various strings (if be_weird = true):
  *   " for simple, ` for error, ' for bulk strings
  * null = -1 sized array
  * nil  = -1 sized string
+ *
+ * does not null terminate strings;
+ * use to_almost_json_size() to determine the necessary length of the buffer
  */
-RedisMsgStatus
-RedisMsg::to_json( char *buf,  size_t &buflen ) const
+size_t
+RedisMsg::to_almost_json( char *buf,  bool be_weird ) const
 {
-  size_t         sz = buflen,
-                 elen;
-  RedisMsgStatus x;
-  char           q;
+  size_t elen;
+  char   q;
 
   switch ( this->type ) {
-    case SIMPLE_STRING: q = '"';
-      if ( 0 ) {
-    case ERROR_STRING:  q = '`';
-        if ( 0 ) {
-    case BULK_STRING:   q = '\'';
-      } }
+    case SIMPLE_STRING: q = '\''; elen = 1; if ( 0 ) {
+    case ERROR_STRING:  q = '`';  elen = 1; if ( 0 ) {
+    case BULK_STRING:   q = '"';  elen = 0; } }
       if ( this->len >= 0 ) {
-        if ( json_escape_strlen( this->strval, this->len ) + 3 > sz )
-          return REDIS_MSG_PARTIAL;
-        buf[ 0 ] = q;
-        elen = json_escape_string( this->strval, this->len, &buf[ 1 ] );
-        buf[ 1 + elen ] = q;
+        if ( ! be_weird ) { /* normal quoting */
+          buf[ 0 ] = '"';
+          if ( elen != 0 )
+            buf[ 1 ] = (char) this->type; /* simple and error have marker */
+        }
+        else {
+          buf[ 0 ] = q; /* weird quoting */
+          elen = 0;
+        }
+        elen += json_escape_string( this->strval, this->len, &buf[ elen + 1 ] );
+        buf[ 1 + elen ] = ( be_weird ? q : '"' );
         buf[ 2 + elen ] = '\0';
-        buflen = elen + 2;
+        return elen + 2;
       }
-      else {
-        if ( 4 > sz )
-          return REDIS_MSG_PARTIAL;
-        ::strcpy( buf, "nil" );
-        buflen = 3;
+      if ( be_weird ) {
+        ::memcpy( buf, "nil", 3 ); /* weird null */
+        return 3;
       }
-      return REDIS_MSG_OK;
+      ::memcpy( buf, "null", 4 );
+      return 4;
 
     case INTEGER_VALUE:
-      if ( 23 > sz )
-        return REDIS_MSG_PARTIAL;
-      buflen = RedisMsg::int_to_str( this->ival, buf );
-      return REDIS_MSG_OK;
+      return RedisMsg::int_to_str( this->ival, buf );
 
     case BULK_ARRAY:
       if ( this->len >= 0 ) {
-        if ( 3 > sz )
-          return REDIS_MSG_PARTIAL;
-        size_t j = 1;
+        elen = 1;
         buf[ 0 ] = '[';
-        if ( this->len > 0 ) {
-          size_t z = sz;
-          if ( (x = this->array[ 0 ].to_json( &buf[ j ], z )) != REDIS_MSG_OK )
-            return x;
-          j  += z;
-          sz -= z;
-        }
+        if ( this->len > 0 )
+          elen += this->array[ 0 ].to_almost_json( &buf[ elen ], be_weird );
         for ( size_t i = 1; i < (size_t) this->len; i++ ) {
-          if ( 1 > sz )
-            return REDIS_MSG_PARTIAL;
-          buf[ j++ ] = ',';
-          sz -= 1;
-          size_t z = sz;
-          if ( (x = this->array[ i ].to_json( &buf[ j ], z )) != REDIS_MSG_OK )
-            return x;
-          j  += z;
-          sz -= z;
+          buf[ elen++ ] = ',';
+          elen += this->array[ i ].to_almost_json( &buf[ elen ], be_weird );
         }
-        if ( 2 > sz )
-          return REDIS_MSG_PARTIAL;
-        buf[ j ] = ']';
-        buf[ j + 1 ] = '\0';
-        buflen = j + 1;
+        buf[ elen ] = ']';
+        return elen + 1;
       }
-      else {
-        if ( 5 > sz )
-          return REDIS_MSG_PARTIAL;
-        ::strcpy( buf, "null" );
-        buflen = 4;
-      }
-      return REDIS_MSG_OK;
+      ::memcpy( buf, "null", 4 );
+      return 4;
 
     default:
-      break;
+      return 0;
   }
-  return REDIS_MSG_BAD_TYPE;
+}
+
+size_t
+RedisMsg::to_almost_json_size( bool be_weird ) const
+{
+  size_t elen;
+
+  switch ( this->type ) {
+    case SIMPLE_STRING: elen = 1; if ( 0 ) {
+    case ERROR_STRING:  elen = 1; if ( 0 ) {
+    case BULK_STRING:   elen = 0; } }
+      if ( this->len >= 0 ) {
+        if ( be_weird ) /* normal quoting */
+          elen = 0;
+        elen += json_escape_strlen( this->strval, this->len );
+        return elen + 2;
+      }
+      if ( be_weird ) /* weird null (nil) */
+        return 3;
+      return 4; /* null */
+
+    case INTEGER_VALUE:
+      return RedisMsg::int_digits( this->ival );
+
+    case BULK_ARRAY:
+      if ( this->len >= 0 ) {
+        size_t sz;
+        elen = 1;
+        if ( this->len > 0 ) {
+          sz = this->array[ 0 ].to_almost_json_size( be_weird );
+          if ( sz == 0 )
+            return 0;
+          elen += sz;
+        }
+        for ( size_t i = 1; i < (size_t) this->len; i++ ) {
+          sz = this->array[ i ].to_almost_json_size( be_weird );
+          if ( sz == 0 )
+            return 0;
+          elen += 1 + sz;
+        }
+        return elen + 1;
+      }
+      return 4; /* null */
+    default:
+      return 0;
+  }
 }
 
 namespace rai {
@@ -878,9 +901,9 @@ RedisMsg::parse_string( JsonInput &input )
     }
     if ( c == quote ) {
       *str = '\0';
-      if ( quote == '\'' )
+      if ( quote == '"' )
         this->type = BULK_STRING;
-      else if ( quote == '"' )
+      else if ( quote == '\'' )
         this->type = SIMPLE_STRING;
       else
         this->type = ERROR_STRING;

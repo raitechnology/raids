@@ -47,42 +47,27 @@ EvService::process( bool use_prefetch )
     if ( (status = this->exec( this, q )) == EXEC_OK )
       if ( strm.alloc_fail )
         status = EXEC_ALLOC_FAIL;
-    if ( status == EXEC_SETUP_OK ) {
-      if ( q != NULL )
-        return;
-      if ( this->key_cnt == 1 ) { /* only one key */
-        while ( this->key->status == EXEC_CONTINUE ||
-                this->key->status == EXEC_DEPENDS )
-          this->exec_key_continue( *this->key );
-      }
-      else {
-        /* cycle through keys */
-        uint32_t j = 0;
-        for ( uint32_t i = 0; ; ) {
-          if ( this->keys[ i ]->status == EXEC_CONTINUE ||
-               this->keys[ i ]->status == EXEC_DEPENDS ) {
-            if ( this->exec_key_continue( *this->keys[ i ] ) == EXEC_SUCCESS )
-              break;
-            j = 0;
-          }
-          else if ( ++j == this->key_cnt )
-            break;
-          if ( ++i == this->key_cnt )
-            i = 0;
-        }
-      }
-    }
-    else if ( status == EXEC_QUIT ) {
-      this->poll.quit++;
-    }
-    else if ( status == EXEC_DEBUG ) {
-      this->debug();
-    }
-    else {
-      this->send_err( status );
+    switch ( status ) {
+      case EXEC_SETUP_OK:
+        if ( q != NULL )
+          return;
+        this->exec_run_to_completion();
+        if ( ! strm.alloc_fail )
+          break;
+        status = EXEC_ALLOC_FAIL;
+        /* fall through */
+      default:
+        this->send_err( status );
+        break;
+      case EXEC_QUIT:
+        this->poll.quit++;
+        break;
+      case EXEC_DEBUG:
+        this->debug();
+        break;
     }
   }
-  if ( strm.wr_pending + strm.sz > 0 )
+  if ( strm.pending() > 0 )
     this->push( EV_WRITE );
 }
 

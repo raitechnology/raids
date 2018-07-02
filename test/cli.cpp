@@ -58,10 +58,20 @@ struct MyClient {
 void
 StdinCallback::onMsg( RedisMsg &msg )
 {
-  char buf[ 1024 ];
-  size_t sz = sizeof( buf );
-  if ( msg.to_json( buf, sz ) == REDIS_MSG_OK )
-    printf( "executing: %s\n", buf );
+  char buf[ 1024 ], *b = buf;
+  size_t sz = msg.to_almost_json_size();
+
+  if ( sz > sizeof( buf ) ) {
+    b = (char *) ::malloc( sz );
+    if ( b == NULL )
+      printf( "msg too large" );
+  }
+  if ( b != NULL ) {
+    msg.to_almost_json( b );
+    printf( "executing: %s\n", b );
+    if ( b != buf )
+      ::free( b );
+  }
   printf( "> " ); fflush( stdout );
 
   sz = 1024;
@@ -98,37 +108,24 @@ void
 ClientCallback::onMsg( RedisMsg &msg )
 {
   char buf[ 64 * 1024 ], *b = buf;
-  size_t sz = sizeof( buf ), n;
-  int nb;
-  RedisMsgStatus status;
-  for (;;) {
-    if ( (status = msg.to_json( b, sz )) == REDIS_MSG_OK ) {
-      fflush( stdout );
-      for ( n = 0; n < sz; ) {
-        nb = write( 1, &b[ n ], sz - n );
-        if ( nb > 0 )
-          n += nb;
-      }
-      break;
-    }
-    else {
-      if ( status != REDIS_MSG_PARTIAL ) {
-        printf( "msg error: %d\n", status );
-        break;
-      }
-      if ( b == buf )
-        b = NULL;
-      char *tmp = (char *) ::realloc( b, sz * 2 );
-      if ( tmp == NULL ) {
-        printf( "msg too large" );
-        break;
-      }
-      b = tmp;
-      sz *= 2;
-    }
+  size_t sz = msg.to_almost_json_size();
+
+  if ( sz > sizeof( buf ) ) {
+    b = (char *) ::malloc( sz );
+    if ( b == NULL )
+      printf( "msg too large" );
   }
-  if ( b != buf && b != NULL )
-    ::free( b );
+  if ( b != NULL ) {
+    msg.to_almost_json( b );
+    fflush( stdout );
+    for ( size_t n = 0; n < sz; ) {
+      ssize_t nb = ::write( 1, &b[ n ], sz - n );
+      if ( nb > 0 )
+        n += nb;
+    }
+    if ( b != buf && b != NULL )
+      ::free( b );
+  }
   printf( "\n? " ); fflush( stdout );
 }
 

@@ -145,6 +145,33 @@ RedisExec::exec_key_setup( EvSocket *own,  EvPrefetchQueue *q,
   return EXEC_SETUP_OK;
 }
 
+void
+RedisExec::exec_run_to_completion( void )
+{
+  if ( this->key_cnt == 1 ) { /* only one key */
+    while ( this->key->status == EXEC_CONTINUE ||
+            this->key->status == EXEC_DEPENDS )
+      if ( this->exec_key_continue( *this->key ) == EXEC_SUCCESS )
+        break;
+  }
+  else {
+    /* cycle through keys */
+    uint32_t j = 0;
+    for ( uint32_t i = 0; ; ) {
+      if ( this->keys[ i ]->status == EXEC_CONTINUE ||
+           this->keys[ i ]->status == EXEC_DEPENDS ) {
+        if ( this->exec_key_continue( *this->keys[ i ] ) == EXEC_SUCCESS )
+          break;
+        j = 0;
+      }
+      else if ( ++j == this->key_cnt )
+        break;
+      if ( ++i == this->key_cnt )
+        i = 0;
+    }
+  }
+}
+
 ExecStatus
 RedisExec::exec( EvSocket *svc,  EvPrefetchQueue *q )
 {
@@ -1030,9 +1057,10 @@ RedisExec::send_err_bad_cmd( void )
   }
   {
     char tmpbuf[ 1024 ];
-    size_t tmpsz = sizeof( tmpbuf );
-    if ( this->msg.to_json( tmpbuf, tmpsz ) == REDIS_MSG_OK )
-      fprintf( stderr, "Bad command: %s\n", tmpbuf );
+    if ( this->msg.to_almost_json_size() < sizeof( tmpbuf ) ) {
+      size_t sz = this->msg.to_almost_json( tmpbuf );
+      fprintf( stderr, "Bad command: %.*s\n", (int) sz, tmpbuf );
+    }
   }
 }
 

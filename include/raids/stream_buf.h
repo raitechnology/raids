@@ -9,15 +9,15 @@ namespace ds {
 
 struct StreamBuf {
   static const size_t BUFSIZE = 1024;
-  size_t wr_pending;  /* how much is in send buffers */
-  char * out_buf;
-  size_t sz,
-         idx,         /* data in iov[] to send */
-         woff;        /* offset of iov[] sent */
-  bool   alloc_fail;
+  size_t wr_pending;  /* how much is in send buffers total */
+  char * out_buf;     /* current buffer to fill, up to BUFSIZE */
+  size_t sz,          /* sz bytes in out_buf */
+         idx,         /* head data in iov[] to send */
+         woff;        /* offset of iov[] sent, tail, idx >= woff */
+  bool   alloc_fail;  /* if alloc send buffers below failed */
 
   static const size_t vlen = 4096;
-  struct iovec   iov[ vlen ]; /* vec of send buffers */
+  struct iovec iov[ vlen ]; /* vec of send buffers */
   kv::WorkAllocT< 4096 > tmp;
 
   StreamBuf() { this->reset(); }
@@ -27,6 +27,9 @@ struct StreamBuf {
     this->tmp.release_all();
   }
 
+  size_t pending( void ) const { /* how much is read to send */
+    return this->wr_pending + this->sz;
+  }
   void reset( void ) {
     this->wr_pending = 0;
     this->out_buf    = NULL;
@@ -36,7 +39,7 @@ struct StreamBuf {
     this->alloc_fail = false;
     this->tmp.reset();
   }
-  void flush( void ) {
+  void flush( void ) { /* move work buffer to send iov */
     this->iov[ this->idx ].iov_base  = this->out_buf;
     this->iov[ this->idx++ ].iov_len = this->sz;
 
@@ -44,15 +47,15 @@ struct StreamBuf {
     this->out_buf     = NULL;
     this->sz          = 0;
   }
-  void append_iov( void *p,  size_t sz ) {
-    if ( this->out_buf != NULL )
+  void append_iov( void *p,  size_t amt ) {
+    if ( this->out_buf != NULL && this->sz > 0 )
       this->flush();
     this->iov[ this->idx ].iov_base  = p;
-    this->iov[ this->idx++ ].iov_len = sz;
-    this->wr_pending += sz;
+    this->iov[ this->idx++ ].iov_len = amt;
+    this->wr_pending += amt;
   }
-  char *alloc_temp( size_t sz ) {
-    char *spc = (char *) this->tmp.alloc( sz );
+  char *alloc_temp( size_t amt ) {
+    char *spc = (char *) this->tmp.alloc( amt );
     if ( spc == NULL ) {
       this->alloc_fail = true;
       return NULL;
