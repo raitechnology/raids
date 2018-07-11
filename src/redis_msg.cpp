@@ -659,6 +659,7 @@ struct JsonInput {
     return ( ++this->offset < this->length ) ?
       (int) (uint8_t) this->json[ this->offset ] : JSON_EOF;
   }
+  void consume( size_t len ) { this->offset += len; }
   bool match( char c1,  char c2,  char c3,  char c4,  char c5 );
   int  eat_white( void );
 
@@ -749,24 +750,28 @@ RedisMsg::parse_json( JsonInput &input )
                 this->type = INTEGER_VALUE;
                 this->len  = 0;
                 this->ival = 1;
+                input.consume( 4 );
                 return REDIS_MSG_OK;
               if ( 0 ) {
     case 'f': if ( input.match( 'f', 'a', 'l', 's', 'e' ) ) {
                 this->type = INTEGER_VALUE;
                 this->len  = 0;
                 this->ival = 0;
+                input.consume( 5 );
                 return REDIS_MSG_OK;
               if ( 0 ) {
     case 'n': if ( input.match( 'n', 'u', 'l', 'l', 0 ) ) {
                 this->type  = BULK_ARRAY;
                 this->len   = -1;
                 this->array = NULL;
+                input.consume( 4 );
                 return REDIS_MSG_OK;
               }
               else if ( input.match( 'n', 'i', 'l', 0, 0 ) ) {
                 this->type   = BULK_STRING;
                 this->len    = -1;
                 this->strval = NULL;
+                input.consume( 3 );
                 return REDIS_MSG_OK;
               }
               } } } }

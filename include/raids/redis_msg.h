@@ -92,9 +92,11 @@ struct RedisMsg {
   bool get_arg( int n,  int64_t &i ) const {
     if ( n < this->len ) {
       if ( this->array[ n ].is_string() ) {
-        const char * str = this->array[ n ].strval;
-        size_t       sz  = this->array[ n ].len;
-        return str_to_int( str, sz, i ) == REDIS_MSG_OK;
+        if ( this->array[ n ].len > 0 ) {
+          const char * str = this->array[ n ].strval;
+          size_t       sz  = this->array[ n ].len;
+          return str_to_int( str, sz, i ) == REDIS_MSG_OK;
+        }
       }
       else if ( this->array[ n ].type == INTEGER_VALUE ) {
         i = this->array[ n ].ival;

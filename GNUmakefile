@@ -130,10 +130,18 @@ redis_cmd_lnk   := $(dep_lib)
 
 $(bind)/redis_cmd: $(redis_cmd_objs) $(redis_cmd_libs)
 
+test_list_files := test_list
+test_list_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(test_list_files)))
+test_list_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(test_list_files)))
+test_list_libs  := $(libd)/libraids.a
+test_list_lnk   := $(test_list_libs) $(dep_lib)
+
+$(bind)/test_list: $(test_list_objs) $(test_list_libs)
+
 all_exes    += $(bind)/server $(bind)/client $(bind)/test_msg \
-               $(bind)/redis_cmd $(bind)/test_cmd
+               $(bind)/redis_cmd $(bind)/test_cmd $(bind)/test_list
 all_depends += $(server_deps) $(client_deps) $(test_msg_deps) \
-               $(redis_cmd_deps) $(test_cmd_deps)
+               $(redis_cmd_deps) $(test_cmd_deps) $(test_list_deps)
 
 all_dirs := $(bind) $(libd) $(objd) $(dependd)
 

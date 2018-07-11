@@ -134,6 +134,19 @@ RedisExec::exec_bitfield( RedisKeyCtx &ctx )
     return EXEC_ALLOC_FAIL;
   /* split args into bf[] array */
   for ( i = 2; ; ) {
+    /* [overflow (wrap|sat|fail)] incrby type off val */
+    if ( this->msg.match_arg( i, "overflow", 8, NULL ) == 1 ) {
+      int over = this->msg.match_arg( i + 1, "wrap", 4,
+                                             "sat",  3,
+                                             "fail", 4, NULL );
+      if ( over == 0 )
+        return EXEC_BAD_ARGS;
+      overflow = (BitfieldOver) ( over - 1 );
+      i += 2;
+    }
+    else {
+      overflow = OV_WRAP; /* default */
+    }
     /* all formats have a type (ex: u8, i3) and offset (ex: #1, 100) */
     if ( ! this->msg.get_arg( i+1, type, type_sz ) ||
          ! this->msg.get_arg( i+2, off, off_sz ) ||
@@ -166,18 +179,16 @@ RedisExec::exec_bitfield( RedisKeyCtx &ctx )
     type_off = (uint64_t) val;
     if ( off[ 0 ] == '#' )
       type_off *= type_width;
-    switch ( this->msg.match_arg( i, "get",    3,
-                                     "set",    3,
-                                     "incrby", 6, NULL ) ) {
+    switch ( this->msg.match_arg( i, "get",      3,
+                                     "set",      3,
+                                     "incrby",   6, NULL ) ) {
       case 1: /* bitfield key [get type off] */
         op = OP_GET;
-        overflow = OV_WRAP;
         val = 0;
         i += 3;
         break;
       case 2: /* bitfield key [set type off val] */
         op = OP_SET;
-        overflow = OV_WRAP;
         if ( ! this->msg.get_arg( i + 3, val ) )
           return EXEC_BAD_ARGS;
         i += 4;
@@ -185,19 +196,16 @@ RedisExec::exec_bitfield( RedisKeyCtx &ctx )
       case 3: /* bitfield key [incrby type off val] */
         if ( ! this->msg.get_arg( i + 3, val ) )
           return EXEC_BAD_ARGS;
-        op       = OP_INCRBY;
-        overflow = OV_WRAP;
+        op = OP_INCRBY;
         i += 4;
         /* incrby type off val [overflow (wrap|sat|fail)] */
         if ( this->msg.match_arg( i, "overflow", 8, NULL ) == 1 ) {
-          switch ( this->msg.match_arg( i + 1, "wrap", 4,
-                                               "sat",  3,
-                                               "fail", 4, NULL ) ) {
-            case 1: overflow = OV_WRAP; break;
-            case 2: overflow = OV_SAT;  break;
-            case 3: overflow = OV_FAIL; break;
-            default: return EXEC_BAD_ARGS;
-          }
+          int over = this->msg.match_arg( i + 1, "wrap", 4,
+                                                 "sat",  3,
+                                                 "fail", 4, NULL );
+          if ( over == 0 )
+            return EXEC_BAD_ARGS;
+          overflow = (BitfieldOver) ( over - 1 );
           i += 2;
         }
         break;
@@ -779,7 +787,6 @@ RedisExec::exec_add( RedisKeyCtx &ctx,  int64_t incr ) /* incr/decr value */
     /* fall through */
     default: return EXEC_KV_STATUS;
   }
-  return EXEC_BAD_CMD;
 }
 
 ExecStatus

@@ -197,7 +197,7 @@ CommandDB cmd_db[] = {
 { "RPOP", "key ; Pop last val",
   "[\"rpop\",2,['write','fast'],1,1,1]" },
 { "RPOPLPUSH", "src dest ; Pop src, push dest",
-  "[\"replconf\",-1,['admin','noscript','loading','stale'],0,0,0]" },
+  "[\"rpoplpush\",3,['write','denyoom'],1,2,1]" },
 
 { "RPUSH", "key [val ...] ; Append val to list",
   "[\"rpush\",-3,['write','denyoom','fast'],1,1,1]" },

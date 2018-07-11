@@ -57,10 +57,7 @@ struct RedisKeyRes {
 
 struct RedisKeyCtx {
   void * operator new( size_t sz, void *ptr ) { return ptr; }
-  bool operator>( const RedisKeyCtx *ctx2 ) const {
-    return this->dep > ctx2->dep ||
-           ( this->dep == ctx2->dep && this->hash1 > ctx2->hash1 );
-  }
+  bool operator>( const RedisKeyCtx *ctx2 ) const;
   uint64_t        hash1,  /* 128 bit hash of key */
                   hash2;
   RedisExec     & exec;   /* parent context */
@@ -402,6 +399,18 @@ RedisKeyCtx::run( EvSocket *&svc )
 {
   svc = this->owner;
   return this->exec.exec_key_continue( *this );
+}
+
+inline bool
+RedisKeyCtx::operator>( const RedisKeyCtx *ctx2 ) const
+{
+  if ( this->dep > ctx2->dep )
+    return true;
+  if ( this->dep == ctx2->dep ) {
+    kv::HashTab &ht = this->exec.kctx.ht;
+    return ht.hdr.ht_mod( this->hash1 ) > ht.hdr.ht_mod( ctx2->hash1 );
+  }
+  return false;
 }
 
 static inline void

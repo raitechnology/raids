@@ -224,43 +224,35 @@ gen_perfect_hash( void )
 {
   kv::rand::xoroshiro128plus rand;
   uint64_t x = 0;
-  uint32_t ht[ 2048 ], sz;
+  uint32_t ht[ 1024 ];
   size_t   i;
-  uint32_t r = 0, loop = 0;
+  uint32_t r = 0;
   const char *cmd;
 
   rand.init();
-  for ( sz = 1020; ; sz += 2 ) {
-    for ( int k = 0; k < 1000000; k++ ) {
-      ::memset( ht, 0, sizeof( ht ) );
-      if ( ( k & 1 ) == 0 ) {
-	x = rand.next();
-	r = (uint32_t) x;
-      }
-      else {
-        r = x >> 32;
-      }
-      for ( i = 1; i < cmd_db_cnt; i++ ) {
-        const char *cmd = cmd_db[ i ].name;
-        int len = ::strlen( cmd );
-
-        uint32_t h = kv_crc_c( cmd, len, r );
-        uint32_t *p = &ht[ h % sz ];
-        if ( h == 0 || *p != 0 )
-          goto try_next;
-        *p = h;
-      }
-      goto gen_hash_tab;
-    try_next:;
+  for ( int k = 0; ; k++ ) {
+    ::memset( ht, 0, sizeof( ht ) );
+    if ( ( k & 1 ) == 0 ) {
+      x = rand.next();
+      r = (uint32_t) x;
     }
-    if ( loop++ == 0 )
-      fprintf( stderr, "trying ht size %u ", sz );
-    else
-      fprintf( stderr, "%u ", sz );
-    fflush( stderr );
+    else {
+      r = x >> 32;
+    }
+    for ( i = 1; i < cmd_db_cnt; i++ ) {
+      const char *cmd = cmd_db[ i ].name;
+      int len = ::strlen( cmd );
+
+      uint32_t h = kv_crc_c( cmd, len, r );
+      uint32_t *p = &ht[ h % 1024 ];
+      if ( h == 0 || *p != 0 )
+        goto try_next;
+      *p = h;
+    }
+    goto gen_hash_tab;
+  try_next:;
   }
 gen_hash_tab:;
-  fprintf( stderr, "ht size = %u\n", sz );
   printf( "/* Generated ht[] is a perfect hash, but does not strcmp() cmd */\n"
           "static inline RedisCmd\n"
           "get_redis_cmd( const char *cmd,  size_t len ) {\n"
@@ -271,10 +263,10 @@ gen_hash_tab:;
     int len = ::strlen( cmd );
 
     uint32_t h = kv_crc_c( cmd, len, r );
-    ht[ h % sz ] = i;
+    ht[ h % 1024 ] = i;
   }
   printf( "%u", ht[ 0 ] );
-  for ( i = 1; i < sz; i++ ) {
+  for ( i = 1; i < 1024; i++ ) {
     printf( ",%u", ht[ i ] );
   }
   printf( "};\n"
@@ -288,7 +280,7 @@ gen_hash_tab:;
          "  uint32_t k = kv_crc_c( cmd, len, 0x%x );\n"
          "  uint8_t  c = ht[ k %% %u ];\n"
          "  return hashes[ c ] == k ? (RedisCmd) c : NO_CMD;\n"
-         "}\n\n", r, sz );
+         "}\n\n", r, 1024 );
 }
 
 int
