@@ -12,30 +12,30 @@ using namespace ds;
 ExecStatus
 RedisExec::exec_discard( RedisKeyCtx &ctx )
 {
-  return EXEC_BAD_CMD;
+  return ERR_BAD_CMD;
 }
 
 ExecStatus
 RedisExec::exec_exec( RedisKeyCtx &ctx )
 {
-  return EXEC_BAD_CMD;
+  return ERR_BAD_CMD;
 }
 
 ExecStatus
 RedisExec::exec_multi( RedisKeyCtx &ctx )
 {
-  return EXEC_BAD_CMD;
+  return ERR_BAD_CMD;
 }
 
 ExecStatus
 RedisExec::exec_unwatch( RedisKeyCtx &ctx )
 {
-  return EXEC_BAD_CMD;
+  return ERR_BAD_CMD;
 }
 
 ExecStatus
 RedisExec::exec_watch( RedisKeyCtx &ctx )
 {
-  return EXEC_BAD_CMD;
+  return ERR_BAD_CMD;
 }
 

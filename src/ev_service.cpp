@@ -26,6 +26,9 @@ EvService::process( bool use_prefetch )
       this->pop( EV_PROCESS );
       break;
     }
+    /* XXX need to keep stream buffers around longer?  write() will release them.
+     * Currently called only after each request is finished, which means it is
+     * safe to release */
     if ( strm.idx + strm.vlen / 4 >= strm.vlen ) {
       if ( ! this->try_write() || strm.idx + 8 >= strm.vlen )
         break;
@@ -46,7 +49,7 @@ EvService::process( bool use_prefetch )
 
     if ( (status = this->exec( this, q )) == EXEC_OK )
       if ( strm.alloc_fail )
-        status = EXEC_ALLOC_FAIL;
+        status = ERR_ALLOC_FAIL;
     switch ( status ) {
       case EXEC_SETUP_OK:
         if ( q != NULL )
@@ -54,7 +57,7 @@ EvService::process( bool use_prefetch )
         this->exec_run_to_completion();
         if ( ! strm.alloc_fail )
           break;
-        status = EXEC_ALLOC_FAIL;
+        status = ERR_ALLOC_FAIL;
         /* fall through */
       default:
         this->send_err( status );

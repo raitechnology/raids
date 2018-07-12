@@ -11,9 +11,6 @@ enum ListStatus {
   LIST_FULL      = 3
 };
 
-static const char *
-list_status_string[] = { "ok", "not found", "split", "full" };
-
 template <class UIntSig, class UIntType>
 struct ListStorage {
   void * operator new( size_t sz, void *ptr ) { return ptr; }
@@ -496,9 +493,8 @@ struct ListData {
     ListStorage32 * list32;
   };
   const size_t size;
-  ListData( void *l,  size_t sz ) : size( sz ) {
-    this->listp = l;
-  }
+  ListData() : size( 0 ) { this->listp = NULL; }
+  ListData( void *l,  size_t sz ) : size( sz ) { this->listp = l; }
 
   static bool is_uint8( size_t alloc_size ) {
     return alloc_size < ( 0x100 << 1 );
@@ -528,6 +524,13 @@ struct ListData {
       tz = sizeof( uint32_t );
     }
     return sz + tz * idx_size + tz * dat_size;
+  }
+  size_t resize_size( size_t &idx_size,  size_t &dat_size ) {
+    dat_size += this->data_len();
+    dat_size += dat_size / 2 + 2;
+    idx_size += this->count();
+    idx_size += idx_size / 2 + 2;
+    return alloc_size( idx_size, dat_size );
   }
   static const uint16_t lst8_sig  = 0xf7e4U;
   static const uint32_t lst16_sig = 0xddbe7a69UL;

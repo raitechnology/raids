@@ -26,16 +26,17 @@ enum ExecStatus {
   EXEC_CONTINUE,         /* continue working, more keys */
   EXEC_QUIT,             /* quit/shutdown command */
   EXEC_DEBUG,            /* debug command */
+  EXEC_ABORT_SEND_ZERO,  /* abort multiple key operation and return 0 */
   /* errors v v v / ok ^ ^ ^ */
-  EXEC_KV_STATUS,        /* kstatus != ok */
-  EXEC_MSG_STATUS,       /* mstatus != ok */
-  EXEC_BAD_ARGS,         /* argument mismatch or malformed command */
-  EXEC_BAD_CMD,          /* command unknown or not implmented */
-  EXEC_BAD_TYPE,         /* data type not compatible with operator */
-  EXEC_ALLOC_FAIL,       /* alloc returned NULL */
-  EXEC_KEY_EXISTS,       /* when set with NX operator */
-  EXEC_KEY_DOESNT_EXIST, /* when set with XX operator */
-  EXEC_ABORT_SEND_ZERO   /* abort multiple key operation and return 0 */
+  ERR_KV_STATUS,        /* kstatus != ok */
+  ERR_MSG_STATUS,       /* mstatus != ok */
+  ERR_BAD_ARGS,         /* argument mismatch or malformed command */
+  ERR_BAD_CMD,          /* command unknown or not implmented */
+  ERR_BAD_TYPE,         /* data type not compatible with operator */
+  ERR_BAD_RANGE,        /* index out of range */
+  ERR_ALLOC_FAIL,       /* alloc returned NULL */
+  ERR_KEY_EXISTS,       /* when set with NX operator */
+  ERR_KEY_DOESNT_EXIST  /* when set with XX operator */
 };
 
 inline static bool exec_status_success( ExecStatus status ) {
@@ -242,6 +243,9 @@ struct RedisExec {
   ExecStatus exec_rpoplpush( RedisKeyCtx &ctx );
   ExecStatus exec_rpush( RedisKeyCtx &ctx );
   ExecStatus exec_rpushx( RedisKeyCtx &ctx );
+  /* list extras */
+  ExecStatus exec_push( RedisKeyCtx &ctx,  int flags );
+  ExecStatus exec_pop( RedisKeyCtx &ctx,  int flags );
   /* PUBSUB */
   ExecStatus exec_psubscribe( RedisKeyCtx &ctx );
   ExecStatus exec_pubsub( RedisKeyCtx &ctx );
@@ -337,6 +341,11 @@ struct RedisExec {
   ExecStatus exec_setnx( RedisKeyCtx &ctx );
   ExecStatus exec_setrange( RedisKeyCtx &ctx );
   ExecStatus exec_strlen( RedisKeyCtx &ctx );
+  /* string extras */
+  ExecStatus exec_add( RedisKeyCtx &ctx,  int64_t incr );
+  ExecStatus exec_set_value( RedisKeyCtx &ctx,  int n,  int flags );
+  ExecStatus exec_set_value_expire( RedisKeyCtx &ctx,  int n,  uint64_t ns,
+                                    int flags );
   /* TRANSACTION */
   ExecStatus exec_discard( RedisKeyCtx &ctx );
   ExecStatus exec_exec( RedisKeyCtx &ctx );
@@ -357,11 +366,6 @@ struct RedisExec {
   ExecStatus exec_xinfo( RedisKeyCtx &ctx );
   ExecStatus exec_xdel( RedisKeyCtx &ctx );
 
-  /* string extras */
-  ExecStatus exec_add( RedisKeyCtx &ctx,  int64_t incr );
-  ExecStatus exec_set_value( RedisKeyCtx &ctx,  int n,  int flags );
-  ExecStatus exec_set_value_expire( RedisKeyCtx &ctx,  int n,  uint64_t ns,
-                                    int flags );
   /* result senders */
   void send_err( ExecStatus status,  kv::KeyStatus kstatus = KEY_OK );
   void send_ok( void );
@@ -373,18 +377,21 @@ struct RedisExec {
   void send_one( void );
   void send_neg_one( void );
   void send_zero_string( void );
-  size_t send_string( void *data,  size_t size );
+  size_t send_string( const void *data,  size_t size );
+  size_t send_concat_string( const void *data,  size_t size,
+                             const void *data2,  size_t size2 );
   void send_err_bad_args( void );
   void send_err_kv( kv::KeyStatus kstatus );
   void send_err_bad_cmd( void );
   void send_err_bad_type( void );
+  void send_err_bad_range( void );
   void send_err_msg( RedisMsgStatus mstatus );
   void send_err_alloc_fail( void );
   void send_err_key_exists( void );
   void send_err_key_doesnt_exist( void );
 
-  bool save_string_result( RedisKeyCtx &ctx,  void *data,  size_t size );
-  bool save_data( RedisKeyCtx &ctx,  void *data,  size_t size );
+  bool save_string_result( RedisKeyCtx &ctx,  const void *data,  size_t size );
+  bool save_data( RedisKeyCtx &ctx,  const void *data,  size_t size );
   void array_string_result( void );
 };
 

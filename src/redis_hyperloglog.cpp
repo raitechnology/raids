@@ -12,18 +12,18 @@ using namespace ds;
 ExecStatus
 RedisExec::exec_pfadd( RedisKeyCtx &ctx )
 {
-  return EXEC_BAD_CMD;
+  return ERR_BAD_CMD;
 }
 
 ExecStatus
 RedisExec::exec_pfcount( RedisKeyCtx &ctx )
 {
-  return EXEC_BAD_CMD;
+  return ERR_BAD_CMD;
 }
 
 ExecStatus
 RedisExec::exec_pfmerge( RedisKeyCtx &ctx )
 {
-  return EXEC_BAD_CMD;
+  return ERR_BAD_CMD;
 }
 

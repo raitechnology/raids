@@ -16,9 +16,11 @@ struct StreamBuf {
          woff;        /* offset of iov[] sent, tail, idx >= woff */
   bool   alloc_fail;  /* if alloc send buffers below failed */
 
-  static const size_t vlen = 4096;
-  struct iovec iov[ vlen ]; /* vec of send buffers */
+  //static const size_t vlen = 4096;
   kv::WorkAllocT< 4096 > tmp;
+  struct iovec iovbuf[ 2 * 1024 ], /* vec of send buffers */
+             * iov;
+  size_t       vlen;
 
   StreamBuf() { this->reset(); }
 
@@ -31,6 +33,8 @@ struct StreamBuf {
     return this->wr_pending + this->sz;
   }
   void reset( void ) {
+    this->iov        = this->iovbuf;
+    this->vlen       = sizeof( this->iovbuf ) / sizeof( this->iovbuf[ 0 ] );
     this->wr_pending = 0;
     this->out_buf    = NULL;
     this->sz         = 0;
@@ -39,7 +43,16 @@ struct StreamBuf {
     this->alloc_fail = false;
     this->tmp.reset();
   }
+  void expand_iov( void ) {
+    void *p;
+    p = this->alloc_temp( sizeof( struct iovec ) * this->vlen * 2 );
+    ::memcpy( p, this->iov, sizeof( struct iovec ) * this->vlen );
+    this->iov   = (struct iovec *) p;
+    this->vlen *= 2;
+  }
   void flush( void ) { /* move work buffer to send iov */
+    if ( this->idx == this->vlen )
+      this->expand_iov();
     this->iov[ this->idx ].iov_base  = this->out_buf;
     this->iov[ this->idx++ ].iov_len = this->sz;
 
@@ -50,6 +63,8 @@ struct StreamBuf {
   void append_iov( void *p,  size_t amt ) {
     if ( this->out_buf != NULL && this->sz > 0 )
       this->flush();
+    if ( this->idx == this->vlen )
+      this->expand_iov();
     this->iov[ this->idx ].iov_base  = p;
     this->iov[ this->idx++ ].iov_len = amt;
     this->wr_pending += amt;
@@ -81,6 +96,23 @@ struct StreamBuf {
     else {
       this->alloc_fail = true;
     }
+  }
+  struct BufList {
+    BufList * next;
+    size_t    used;
+    char      buf[ 0 ];
+  };
+  BufList *alloc_buf_list( BufList *&hd,  BufList *tl,  size_t len ) {
+    BufList *p = (BufList *) this->alloc_temp( sizeof( BufList ) + len );
+    if ( p == NULL )
+      return NULL;
+    if ( tl != NULL )
+      tl->next = p;
+    else
+      hd = p;
+    p->next = NULL;
+    p->used = 0;
+    return p;
   }
 };
 

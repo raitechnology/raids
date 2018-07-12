@@ -68,7 +68,7 @@ StdinCallback::onMsg( RedisMsg &msg )
   }
   if ( b != NULL ) {
     msg.to_almost_json( b );
-    printf( "executing: %s\n", b );
+    printf( "executing: %.*s\n", (int) sz, b );
     if ( b != buf )
       ::free( b );
   }

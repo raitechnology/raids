@@ -149,7 +149,7 @@ EvHttpService::process( bool use_prefetch )
             ExecStatus status;
             if ( (status = this->exec( this, NULL )) == EXEC_OK )
               if ( strm.alloc_fail )
-                status = EXEC_ALLOC_FAIL;
+                status = ERR_ALLOC_FAIL;
             switch ( status ) {
               case EXEC_SETUP_OK:
                 /*if ( q != NULL )
@@ -157,7 +157,7 @@ EvHttpService::process( bool use_prefetch )
                 this->exec_run_to_completion();
                 if ( ! strm.alloc_fail )
                   break;
-                status = EXEC_ALLOC_FAIL;
+                status = ERR_ALLOC_FAIL;
                 /* fall through */
               default:
                 this->send_err( status );

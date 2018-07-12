@@ -327,12 +327,16 @@ EvConnection::write( void )
   h.msg_iov    = &strm.iov[ strm.woff ];
   h.msg_iovlen = strm.idx - strm.woff;
   ssize_t nbytes = ::sendmsg( this->fd, &h, 0 );
+  while ( nbytes < 0 && errno == EMSGSIZE ) {
+    if ( (h.msg_iovlen /= 2) == 0 )
+      break;
+    nbytes = ::sendmsg( this->fd, &h, 0 );
+  }
   if ( nbytes > 0 ) {
     strm.wr_pending -= nbytes;
     this->nbytes_sent += nbytes;
     if ( strm.wr_pending == 0 ) {
-      strm.idx = strm.woff = 0;
-      strm.tmp.reset();
+      strm.reset();
       this->pop( EV_WRITE );
     }
     else {

@@ -12,72 +12,72 @@ using namespace ds;
 ExecStatus
 RedisExec::exec_xadd( RedisKeyCtx &ctx )
 {
-  return EXEC_BAD_CMD;
+  return ERR_BAD_CMD;
 }
 
 ExecStatus
 RedisExec::exec_xlen( RedisKeyCtx &ctx )
 {
-  return EXEC_BAD_CMD;
+  return ERR_BAD_CMD;
 }
 
 ExecStatus
 RedisExec::exec_xrange( RedisKeyCtx &ctx )
 {
-  return EXEC_BAD_CMD;
+  return ERR_BAD_CMD;
 }
 
 ExecStatus
 RedisExec::exec_xrevrange( RedisKeyCtx &ctx )
 {
-  return EXEC_BAD_CMD;
+  return ERR_BAD_CMD;
 }
 
 ExecStatus
 RedisExec::exec_xread( RedisKeyCtx &ctx )
 {
-  return EXEC_BAD_CMD;
+  return ERR_BAD_CMD;
 }
 
 ExecStatus
 RedisExec::exec_xreadgroup( RedisKeyCtx &ctx )
 {
-  return EXEC_BAD_CMD;
+  return ERR_BAD_CMD;
 }
 
 ExecStatus
 RedisExec::exec_xgroup( RedisKeyCtx &ctx )
 {
-  return EXEC_BAD_CMD;
+  return ERR_BAD_CMD;
 }
 
 ExecStatus
 RedisExec::exec_xack( RedisKeyCtx &ctx )
 {
-  return EXEC_BAD_CMD;
+  return ERR_BAD_CMD;
 }
 
 ExecStatus
 RedisExec::exec_xpending( RedisKeyCtx &ctx )
 {
-  return EXEC_BAD_CMD;
+  return ERR_BAD_CMD;
 }
 
 ExecStatus
 RedisExec::exec_xclaim( RedisKeyCtx &ctx )
 {
-  return EXEC_BAD_CMD;
+  return ERR_BAD_CMD;
 }
 
 ExecStatus
 RedisExec::exec_xinfo( RedisKeyCtx &ctx )
 {
-  return EXEC_BAD_CMD;
+  return ERR_BAD_CMD;
 }
 
 ExecStatus
 RedisExec::exec_xdel( RedisKeyCtx &ctx )
 {
-  return EXEC_BAD_CMD;
+  return ERR_BAD_CMD;
 }
 

@@ -12,36 +12,36 @@ using namespace ds;
 ExecStatus
 RedisExec::exec_psubscribe( RedisKeyCtx &ctx )
 {
-  return EXEC_BAD_CMD;
+  return ERR_BAD_CMD;
 }
 
 ExecStatus
 RedisExec::exec_pubsub( RedisKeyCtx &ctx )
 {
-  return EXEC_BAD_CMD;
+  return ERR_BAD_CMD;
 }
 
 ExecStatus
 RedisExec::exec_publish( RedisKeyCtx &ctx )
 {
-  return EXEC_BAD_CMD;
+  return ERR_BAD_CMD;
 }
 
 ExecStatus
 RedisExec::exec_punsubscribe( RedisKeyCtx &ctx )
 {
-  return EXEC_BAD_CMD;
+  return ERR_BAD_CMD;
 }
 
 ExecStatus
 RedisExec::exec_subscribe( RedisKeyCtx &ctx )
 {
-  return EXEC_BAD_CMD;
+  return ERR_BAD_CMD;
 }
 
 ExecStatus
 RedisExec::exec_unsubscribe( RedisKeyCtx &ctx )
 {
-  return EXEC_BAD_CMD;
+  return ERR_BAD_CMD;
 }
 

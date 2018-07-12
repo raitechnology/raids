@@ -41,7 +41,7 @@ RedisExec::exec_dump( RedisKeyCtx &ctx )
           size += this->kctx.msg->size;
         buf = (char *) this->strm.alloc_temp( size + 34 );
         if ( buf == NULL )
-          return EXEC_ALLOC_FAIL;
+          return ERR_ALLOC_FAIL;
         ::memcpy( &buf[ 32 ], this->kctx.entry, this->kctx.hash_entry_size );
         if ( this->kctx.entry->test( FL_SEGMENT_VALUE ) )
           ::memcpy( &buf[ 32 + this->kctx.hash_entry_size ], this->kctx.msg,
@@ -61,7 +61,7 @@ RedisExec::exec_dump( RedisKeyCtx &ctx )
         }
       }
     }
-    default:            return EXEC_KV_STATUS;
+    default:            return ERR_KV_STATUS;
     case KEY_NOT_FOUND: return EXEC_SEND_NIL;
   }
 }
@@ -73,7 +73,7 @@ RedisExec::exec_exists( RedisKeyCtx &ctx )
   switch ( this->exec_key_fetch( ctx ) ) {
     case KEY_OK:        ctx.ival = 1; break;
     case KEY_NOT_FOUND: ctx.ival = 0; break;
-    default:            return EXEC_KV_STATUS;
+    default:            return ERR_KV_STATUS;
   }
   return EXEC_SEND_INT;
 }
@@ -99,7 +99,7 @@ RedisExec::exec_keys( void )
   size_t       patlen;
   /* KEYS pattern */
   if ( ! this->msg.get_arg( 1, pattern, patlen ) )
-    return EXEC_BAD_ARGS;
+    return ERR_BAD_ARGS;
   return this->scan_keys( 0, -1, pattern, patlen );
 }
 
@@ -107,14 +107,14 @@ ExecStatus
 RedisExec::exec_migrate( RedisKeyCtx &ctx )
 {
   /* MIGRATE host port key */
-  return EXEC_BAD_CMD;
+  return ERR_BAD_CMD;
 }
 
 ExecStatus
 RedisExec::exec_move( RedisKeyCtx &ctx )
 {
   /* MOVE key db# */
-  return EXEC_BAD_CMD;
+  return ERR_BAD_CMD;
 }
 
 ExecStatus
@@ -124,7 +124,7 @@ RedisExec::exec_object( RedisKeyCtx &ctx )
   switch ( this->exec_key_fetch( ctx ) ) {
     case KEY_OK:        break;
     case KEY_NOT_FOUND: return EXEC_SEND_NIL;
-    default:            return EXEC_KV_STATUS;
+    default:            return ERR_KV_STATUS;
   }
   switch ( this->msg.match_arg( 1, "refcount", 8,
                                    "encoding", 8,
@@ -143,7 +143,7 @@ RedisExec::exec_object( RedisKeyCtx &ctx )
       uint64_t exp_ns, upd_ns;
       ctx.kstatus = this->kctx.get_stamps( exp_ns, upd_ns );
       if ( ctx.kstatus != KEY_OK )
-        return EXEC_KV_STATUS;
+        return ERR_KV_STATUS;
       if ( upd_ns != 0 )
         ctx.ival = ( this->kctx.ht.hdr.current_stamp - upd_ns ) /
                    ( 1000 * 1000 * 1000 );
@@ -164,7 +164,7 @@ RedisExec::exec_object( RedisKeyCtx &ctx )
       return EXEC_SEND_INT;
     default:
     case 5: /* help */
-      return EXEC_BAD_ARGS;
+      return ERR_BAD_ARGS;
   }
 }
 
@@ -195,7 +195,7 @@ RedisExec::do_pexpire( RedisKeyCtx &ctx,  uint64_t units )
   int64_t  ival;
   uint64_t exp;
   if ( ! this->msg.get_arg( 2, ival ) ) /* SETEX key secs value */
-    return EXEC_BAD_ARGS;
+    return ERR_BAD_ARGS;
   exp = (uint64_t) ival * units;
   if ( exp < this->kctx.ht.hdr.current_stamp )
     exp += this->kctx.ht.hdr.current_stamp;
@@ -222,7 +222,7 @@ RedisExec::do_pexpireat( RedisKeyCtx &ctx,  uint64_t units )
   int64_t  ival;
   uint64_t exp;
   if ( ! this->msg.get_arg( 2, ival ) ) /* SETEX key secs value */
-    return EXEC_BAD_ARGS;
+    return ERR_BAD_ARGS;
   exp = (uint64_t) ival * units;
   if ( this->exec_key_fetch( ctx ) == KEY_OK ) {
     this->kctx.update_stamps( exp, 0 );
@@ -295,7 +295,7 @@ RedisExec::exec_rename( RedisKeyCtx &ctx )
 
     sz = this->keys[ 0 ]->part->size; /* key saved here */
     if ( sz == 0 )
-      return EXEC_KEY_DOESNT_EXIST;
+      return ERR_KEY_DOESNT_EXIST;
 
     switch ( this->exec_key_fetch( ctx ) ) { /* write access */
       case KEY_OK:
@@ -310,7 +310,7 @@ RedisExec::exec_rename( RedisKeyCtx &ctx )
           return EXEC_SEND_INT;
         }
         /* fall through */
-      default: return EXEC_KV_STATUS;
+      default: return ERR_KV_STATUS;
     }
   }
 
@@ -327,7 +327,7 @@ RedisExec::exec_rename( RedisKeyCtx &ctx )
             return EXEC_DEPENDS; /* redo again after saving the value */
         }
         /* fall through */
-      default: return EXEC_KV_STATUS;
+      default: return ERR_KV_STATUS;
     }
   }
   else { /* delete the old data, it has been saved above */
@@ -341,7 +341,7 @@ RedisExec::exec_rename( RedisKeyCtx &ctx )
         ctx.ival = 1;
         return EXEC_SEND_INT;
 
-      default: return EXEC_KV_STATUS;
+      default: return ERR_KV_STATUS;
     }
   }
 }
@@ -357,7 +357,7 @@ RedisExec::exec_renamenx( RedisKeyCtx &ctx )
           return this->exec_rename( ctx );
         case KEY_OK:
           return EXEC_ABORT_SEND_ZERO;
-        default: return EXEC_KV_STATUS;
+        default: return ERR_KV_STATUS;
       }
     }
   }
@@ -368,7 +368,7 @@ ExecStatus
 RedisExec::exec_restore( RedisKeyCtx &ctx )
 {
   /* RESTORE key ttl value */
-  return EXEC_BAD_CMD;
+  return ERR_BAD_CMD;
 }
 
 ExecStatus
@@ -376,7 +376,7 @@ RedisExec::exec_sort( RedisKeyCtx &ctx )
 {
   /* SORT key [BY pat] [LIMIT off cnt] [GET pat] [ASC|DESC] 
    *          [ALPHA] [STORE dest] */
-  return EXEC_BAD_CMD;
+  return ERR_BAD_CMD;
 }
 
 ExecStatus
@@ -387,7 +387,7 @@ RedisExec::exec_touch( RedisKeyCtx &ctx )
   switch ( this->exec_key_fetch( ctx ) ) {
     case KEY_OK: this->kctx.update_stamps( 0, upd ); ctx.ival = 1; break;
     case KEY_IS_NEW: ctx.ival = 0; break;
-    default: return EXEC_KV_STATUS;
+    default: return ERR_KV_STATUS;
   }
   return EXEC_SEND_INT;
 }
@@ -408,7 +408,7 @@ RedisExec::exec_type( RedisKeyCtx &ctx )
   switch ( this->exec_key_fetch( ctx ) ) {
     case KEY_OK:        str = ctx.get_type_str(); len = ::strlen( str ); break;
     case KEY_NOT_FOUND: str = "none"; len = 4; break;
-    default:            return EXEC_KV_STATUS;
+    default:            return ERR_KV_STATUS;
   }
   this->strm.sz += this->send_string( (void *) str, len );
   return EXEC_OK;
@@ -425,7 +425,7 @@ ExecStatus
 RedisExec::exec_wait( void )
 {
   /* WAIT numslave timeout */
-  return EXEC_BAD_CMD;
+  return ERR_BAD_CMD;
 }
 
 ExecStatus
@@ -437,22 +437,22 @@ RedisExec::exec_scan( void )
                pos;
   /* SCAN cursor [MATCH pattern] [COUNT count] */
   if ( ! this->msg.get_arg( 1, pos ) )
-    return EXEC_BAD_ARGS;
+    return ERR_BAD_ARGS;
   for ( size_t i = 2; i < this->argc; ) {
     switch ( this->msg.match_arg( i, "match", 5,
                                      "count", 5, NULL ) ) {
       case 1:
         if ( ! this->msg.get_arg( i + 1, pattern, patlen ) )
-          return EXEC_BAD_ARGS;
+          return ERR_BAD_ARGS;
         i += 2;
         break;
       case 2:
         if ( ! this->msg.get_arg( i + 1, maxcnt ) )
-          return EXEC_BAD_ARGS;
+          return ERR_BAD_ARGS;
         i += 2;
         break;
       default:
-        return EXEC_BAD_ARGS;
+        return ERR_BAD_ARGS;
     }
   }
   return this->scan_keys( pos, maxcnt, pattern, patlen );
@@ -462,21 +462,17 @@ ExecStatus
 RedisExec::scan_keys( uint64_t pos,  int64_t maxcnt,  const char *pattern,
                       size_t patlen )
 {
-  struct BufList {
-    BufList * next;
-    size_t    used;
-    char      keybuf[ 0 ];
-  };
-  BufList * hd = NULL,
-          * ptr = NULL;
+  StreamBuf::BufList
+          * hd     = NULL,
+          * tl     = NULL;
   char    * keybuf = NULL;
   uint8_t   buf[ 1024 ],
           * bf = buf;
   size_t    erroff,
-            blen = sizeof( buf ),
-            cnt = 0,
+            blen    = sizeof( buf ),
+            cnt    = 0,
             buflen = 0,
-            used = 0;
+            used   = 0;
   int       rc,
             error;
   pcre2_code       * re = NULL;
@@ -487,14 +483,14 @@ RedisExec::scan_keys( uint64_t pos,  int64_t maxcnt,  const char *pattern,
                                 PCRE2_CONVERT_GLOB_NO_WILD_SEPARATOR,
                                 &bf, &blen, 0 );
     if ( rc != 0 )
-      return EXEC_BAD_ARGS;
+      return ERR_BAD_ARGS;
     re = pcre2_compile( bf, blen, 0, &error, &erroff, 0 );
     if ( re == NULL )
-      return EXEC_BAD_ARGS;
+      return ERR_BAD_ARGS;
     md = pcre2_match_data_create_from_pattern( re, NULL );
     if ( md == NULL ) {
       pcre2_code_free( re );
-      return EXEC_BAD_ARGS;
+      return ERR_BAD_ARGS;
     }
   }
   else {
@@ -516,20 +512,16 @@ RedisExec::scan_keys( uint64_t pos,  int64_t maxcnt,  const char *pattern,
           rc = pcre2_match( re, (PCRE2_SPTR8) kp->u.buf, keylen, 0, 0, md, 0 );
         if ( rc > 0 ) {
           if ( (size_t) keylen + 32 > buflen - used ) {
-            if ( ptr != NULL ) {
-              ptr->used = used;
-              ptr->next = hd;
-              hd = ptr;
-            }
-            buflen = 4 * 1024;
+            if ( tl != NULL )
+              tl->used = used;
+            used   = 0;
+            buflen = 2000;
             if ( buflen < (size_t) keylen + 32 )
               buflen = keylen + 32;
-            ptr = (BufList *) this->strm.alloc_temp( sizeof( BufList )+buflen );
-            if ( ptr == NULL )
-              return EXEC_ALLOC_FAIL;
-            ptr->next = NULL;
-            ptr->used = used = 0;
-            keybuf = ptr->keybuf;
+            tl = this->strm.alloc_buf_list( hd, tl, buflen );
+            if ( tl == NULL )
+              return ERR_ALLOC_FAIL;
+            keybuf = tl->buf;
           }
           keybuf[ used ] = '$';
           used += 1 + RedisMsg::int_to_str( keylen, &keybuf[ used + 1 ] );
@@ -552,18 +544,11 @@ break_loop:;
     pcre2_match_data_free( md );
     pcre2_code_free( re );
   }
-  if ( ptr != NULL ) {
-    ptr->used = used;
-    while ( hd != NULL ) {
-      BufList *next = hd->next;
-      hd->next = ptr;
-      ptr = hd;
-      hd  = next;
-    }
-  }
+  if ( tl != NULL )
+    tl->used = used;
   char *hdr = (char *) this->strm.alloc_temp( 64 );
   if ( hdr == NULL )
-    return EXEC_ALLOC_FAIL;
+    return ERR_ALLOC_FAIL;
   /* cursor usage */
   if ( maxcnt >= 0 ) {
     pos = ( ( pos == ht_size ) ? 0 : pos + 1 ); /* next cursor */
@@ -588,9 +573,10 @@ break_loop:;
   hdr[ used ] = '\r';
   hdr[ used + 1 ] = '\n';
   this->strm.append_iov( hdr, used + 2 );
-  while ( ptr != NULL ) {
-    this->strm.append_iov( ptr->keybuf, ptr->used );
-    ptr = ptr->next;
+  while ( hd != NULL ) {
+    if ( hd->used > 0 )
+      this->strm.append_iov( hd->buf, hd->used );
+    hd = hd->next;
   }
 
   return EXEC_OK;

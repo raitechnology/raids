@@ -12,35 +12,35 @@ using namespace ds;
 ExecStatus
 RedisExec::exec_geoadd( RedisKeyCtx &ctx )
 {
-  return EXEC_BAD_CMD;
+  return ERR_BAD_CMD;
 }
 
 ExecStatus
 RedisExec::exec_geohash( RedisKeyCtx &ctx )
 {
-  return EXEC_BAD_CMD;
+  return ERR_BAD_CMD;
 }
 
 ExecStatus
 RedisExec::exec_geopos( RedisKeyCtx &ctx )
 {
-  return EXEC_BAD_CMD;
+  return ERR_BAD_CMD;
 }
 
 ExecStatus
 RedisExec::exec_geodist( RedisKeyCtx &ctx )
 {
-  return EXEC_BAD_CMD;
+  return ERR_BAD_CMD;
 }
 
 ExecStatus
 RedisExec::exec_georadius( RedisKeyCtx &ctx )
 {
-  return EXEC_BAD_CMD;
+  return ERR_BAD_CMD;
 }
 
 ExecStatus
 RedisExec::exec_georadiusbymember( RedisKeyCtx &ctx )
 {
-  return EXEC_BAD_CMD;
+  return ERR_BAD_CMD;
 }

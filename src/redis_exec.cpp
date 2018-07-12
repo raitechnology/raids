@@ -34,7 +34,7 @@ void RedisExec::send_neg_one( void ) { this->strm.append( neg_one, neg_one_sz);}
 void RedisExec::send_zero_string( void ) { this->strm.append( mt, mt_sz ); }
 
 size_t
-RedisExec::send_string( void *data,  size_t size )
+RedisExec::send_string( const void *data,  size_t size )
 {
   size_t sz  = 32 + size;
   char * str = this->strm.alloc( sz );
@@ -49,8 +49,27 @@ RedisExec::send_string( void *data,  size_t size )
   return sz + 2;
 }
 
+size_t
+RedisExec::send_concat_string( const void *data,  size_t size,
+                               const void *data2,  size_t size2 )
+{
+  size_t sz  = 32 + size + size2;
+  char * str = this->strm.alloc( sz );
+  if ( str == NULL )
+    return 0;
+  str[ 0 ] = '$';
+  sz = 1 + RedisMsg::uint_to_str( size + size2, &str[ 1 ] );
+  str[ sz ] = '\r'; str[ sz + 1 ] = '\n';
+  ::memcpy( &str[ sz + 2 ], data, size );
+  if ( size2 > 0 )
+    ::memcpy( &str[ sz + 2 + size ], data2, size2 );
+  sz += 2 + size + size2;
+  str[ sz ] = '\r'; str[ sz + 1 ] = '\n';
+  return sz + 2;
+}
+
 bool
-RedisExec::save_string_result( RedisKeyCtx &ctx,  void *data,  size_t size )
+RedisExec::save_string_result( RedisKeyCtx &ctx,  const void *data,  size_t size )
 {
   size_t msz = sizeof( RedisKeyRes ) + size + 24;
   if ( ctx.part == NULL || msz > ctx.part->mem_size ) {
@@ -76,7 +95,7 @@ RedisExec::save_string_result( RedisKeyCtx &ctx,  void *data,  size_t size )
 }
 
 bool
-RedisExec::save_data( RedisKeyCtx &ctx,  void *data,  size_t size )
+RedisExec::save_data( RedisKeyCtx &ctx,  const void *data,  size_t size )
 {
   size_t msz = sizeof( RedisKeyRes ) + size;
   if ( ctx.part == NULL || msz > ctx.part->mem_size ) {
@@ -133,14 +152,14 @@ RedisExec::exec_key_setup( EvSocket *own,  EvPrefetchQueue *q,
   const char * key;
   size_t       keylen;
   if ( ! this->msg.get_arg( n, key, keylen ) )
-    return EXEC_BAD_ARGS;
+    return ERR_BAD_ARGS;
   void *p = this->strm.alloc_temp( RedisKeyCtx::size( keylen ) );
   if ( p == NULL )
-    return EXEC_ALLOC_FAIL;
+    return ERR_ALLOC_FAIL;
   ctx = new ( p ) RedisKeyCtx( *this, own, key, keylen, n,
                                this->seed, this->seed2 );
   if ( q != NULL && ! q->push( ctx ) )
-    return EXEC_ALLOC_FAIL;
+    return ERR_ALLOC_FAIL;
   ctx->status = EXEC_CONTINUE;
   return EXEC_SETUP_OK;
 }
@@ -182,20 +201,20 @@ RedisExec::exec( EvSocket *svc,  EvPrefetchQueue *q )
   arg0 = this->msg.command( arg0len, this->argc );
   /* max command len is 17 (GEORADIUSBYMEMBER) */
   if ( arg0len >= 32 )
-    return EXEC_BAD_CMD;
+    return ERR_BAD_CMD;
 
   str_to_upper( arg0, upper_cmd, arg0len );
   if ( (this->cmd = get_redis_cmd( upper_cmd, arg0len )) == NO_CMD )
-    return EXEC_BAD_CMD;
+    return ERR_BAD_CMD;
 
   get_cmd_arity( this->cmd, this->arity, this->first, this->last,
 		 this->step );
   if ( this->arity > 0 ) {
     if ( (size_t) this->arity != this->argc )
-      return EXEC_BAD_ARGS;
+      return ERR_BAD_ARGS;
   }
   else if ( (size_t) -this->arity > this->argc )
-    return EXEC_BAD_ARGS;
+    return ERR_BAD_ARGS;
   this->flags = get_cmd_flag_mask( this->cmd );
 
   /* if there are keys, setup a keyctx for each one */
@@ -219,7 +238,7 @@ RedisExec::exec( EvSocket *svc,  EvPrefetchQueue *q )
                      this->strm.alloc_temp( sizeof( this->keys[ 0 ] ) * 
                                            ( ( end + 1 ) - this->first ) );
         if ( this->keys == NULL )
-          status = EXEC_ALLOC_FAIL;
+          status = ERR_ALLOC_FAIL;
         else {
           i += this->step;
           this->keys[ 0 ] = this->key;
@@ -271,7 +290,7 @@ RedisExec::exec( EvSocket *svc,  EvPrefetchQueue *q )
     case RANDOMKEY_CMD:    return this->exec_randomkey();
     case WAIT_CMD:         return this->exec_wait();
     case SCAN_CMD:         return this->exec_scan();
-    default:               return EXEC_BAD_CMD;
+    default:               return ERR_BAD_CMD;
   }
 }
 
@@ -289,7 +308,7 @@ RedisExec::exec_key_fetch( RedisKeyCtx &ctx,  bool force_read )
   }
   else {
     ctx.kstatus = KEY_NO_VALUE;
-    ctx.status  = EXEC_BAD_CMD;
+    ctx.status  = ERR_BAD_CMD;
     ctx.is_read = true;
   }
   if ( ctx.kstatus == KEY_OK )
@@ -313,11 +332,11 @@ RedisExec::exec_key_continue( RedisKeyCtx &ctx )
       /* CLUSTER */
       case CLUSTER_CMD:  /* these exist so that the compiler errors when a */
       case READONLY_CMD: /* command is not handled by the switch() */
-      case READWRITE_CMD: ctx.status = EXEC_BAD_CMD; break;
+      case READWRITE_CMD: ctx.status = ERR_BAD_CMD; break;
       /* CONNECTION */
       case AUTH_CMD: case ECHO_CMD: case PING_CMD: case QUIT_CMD:
       case SELECT_CMD: case SWAPDB_CMD:
-                          ctx.status = EXEC_BAD_CMD; break; /* in exec() */
+                          ctx.status = ERR_BAD_CMD; break; /* in exec() */
       /* GEO */
       case GEOADD_CMD:    ctx.status = this->exec_geoadd( ctx ); break;
       case GEOHASH_CMD:   ctx.status = this->exec_geohash( ctx ); break;
@@ -352,7 +371,7 @@ RedisExec::exec_key_continue( RedisKeyCtx &ctx )
       case EXISTS_CMD:    ctx.status = this->exec_exists( ctx ); break;
       case EXPIRE_CMD:    ctx.status = this->exec_expire( ctx ); break;
       case EXPIREAT_CMD:  ctx.status = this->exec_expireat( ctx ); break;
-      case KEYS_CMD:      ctx.status = EXEC_BAD_CMD; break; /* in exec() */
+      case KEYS_CMD:      ctx.status = ERR_BAD_CMD; break; /* in exec() */
       case MIGRATE_CMD:   ctx.status = this->exec_migrate( ctx ); break;
       case MOVE_CMD:      ctx.status = this->exec_move( ctx ); break;
       case OBJECT_CMD:    ctx.status = this->exec_object( ctx ); break;
@@ -360,7 +379,7 @@ RedisExec::exec_key_continue( RedisKeyCtx &ctx )
       case PEXPIRE_CMD:   ctx.status = this->exec_pexpire( ctx ); break;
       case PEXPIREAT_CMD: ctx.status = this->exec_pexpireat( ctx ); break;
       case PTTL_CMD:      ctx.status = this->exec_pttl( ctx ); break;
-      case RANDOMKEY_CMD: ctx.status = EXEC_BAD_CMD; break; /* in exec() */
+      case RANDOMKEY_CMD: ctx.status = ERR_BAD_CMD; break; /* in exec() */
       case RENAME_CMD:    ctx.status = this->exec_rename( ctx ); break;
       case RENAMENX_CMD:  ctx.status = this->exec_renamenx( ctx ); break;
       case RESTORE_CMD:   ctx.status = this->exec_restore( ctx ); break;
@@ -370,7 +389,7 @@ RedisExec::exec_key_continue( RedisKeyCtx &ctx )
       case TYPE_CMD:      ctx.status = this->exec_type( ctx ); break;
       case UNLINK_CMD:    ctx.status = this->exec_unlink( ctx ); break;
       case WAIT_CMD: 
-      case SCAN_CMD:      ctx.status = EXEC_BAD_CMD; break; /* in exec() */
+      case SCAN_CMD:      ctx.status = ERR_BAD_CMD; break; /* in exec() */
       /* LIST */
       case BLPOP_CMD:     ctx.status = this->exec_blpop( ctx ); break;
       case BRPOP_CMD:     ctx.status = this->exec_brpop( ctx ); break;
@@ -406,7 +425,7 @@ RedisExec::exec_key_continue( RedisKeyCtx &ctx )
       case FLUSHDB_CMD: case INFO_CMD: case LASTSAVE_CMD: case MEMORY_CMD:
       case MONITOR_CMD: case ROLE_CMD: case SAVE_CMD: case SHUTDOWN_CMD:
       case SLAVEOF_CMD: case SLOWLOG_CMD: case SYNC_CMD:
-      case TIME_CMD:      ctx.status = EXEC_BAD_CMD; break; /* in exec() */
+      case TIME_CMD:      ctx.status = ERR_BAD_CMD; break; /* in exec() */
       /* SET */
       case SADD_CMD:      ctx.status = this->exec_sadd( ctx ); break;
       case SCARD_CMD:     ctx.status = this->exec_scard( ctx ); break;
@@ -496,7 +515,7 @@ RedisExec::exec_key_continue( RedisKeyCtx &ctx )
       case XINFO_CMD:     ctx.status = this->exec_xinfo( ctx ); break;
       case XDEL_CMD:      ctx.status = this->exec_xdel( ctx ); break;
 
-      case NO_CMD:        ctx.status = EXEC_BAD_CMD; break;
+      case NO_CMD:        ctx.status = ERR_BAD_CMD; break;
     }
     /* set the type when key is new */
     if ( ! ctx.is_read ) {
@@ -527,7 +546,7 @@ RedisExec::exec_key_continue( RedisKeyCtx &ctx )
       return EXEC_DEPENDS;
     }
     /* continue if read key mutated while running */
-    if ( ctx.status != EXEC_KV_STATUS || ctx.kstatus != KEY_MUTATED )
+    if ( ctx.status != ERR_KV_STATUS || ctx.kstatus != KEY_MUTATED )
       break;
   }
   if ( ++this->key_done < this->key_cnt ) {
@@ -563,26 +582,26 @@ RedisExec::exec_key_continue( RedisKeyCtx &ctx )
 ExecStatus
 RedisExec::exec_cluster( void )
 {
-  return EXEC_BAD_CMD;
+  return ERR_BAD_CMD;
 }
 
 ExecStatus
 RedisExec::exec_readonly( void )
 {
-  return EXEC_BAD_CMD;
+  return ERR_BAD_CMD;
 }
 
 ExecStatus
 RedisExec::exec_readwrite( void )
 {
-  return EXEC_BAD_CMD;
+  return ERR_BAD_CMD;
 }
 
 /* CONNECTION */
 ExecStatus
 RedisExec::exec_auth( void )
 {
-  return EXEC_BAD_CMD;
+  return ERR_BAD_CMD;
 }
 
 ExecStatus
@@ -613,13 +632,13 @@ RedisExec::exec_quit( void )
 ExecStatus
 RedisExec::exec_select( void )
 {
-  return EXEC_BAD_CMD;
+  return ERR_BAD_CMD;
 }
 
 ExecStatus
 RedisExec::exec_swapdb( void )
 {
-  return EXEC_BAD_CMD;
+  return ERR_BAD_CMD;
 }
 
 /* SERVER */
@@ -647,7 +666,7 @@ ExecStatus RedisExec::exec_client( void )
                                    "pause", 5,
                                    "reply", 5,
                                    "setname", 7, NULL ) ) {
-    default: return EXEC_BAD_ARGS;
+    default: return ERR_BAD_ARGS;
     case 1: /* getname */
       this->send_nil();  /* get my name */
       return EXEC_OK;
@@ -666,7 +685,7 @@ ExecStatus RedisExec::exec_client( void )
     case 4: /* pause (ms) pause clients for ms time*/
     case 5: /* reply (on/off/skip) en/disable replies */
     case 6: /* setname (name) set the name of this conn */
-      return EXEC_BAD_ARGS;
+      return ERR_BAD_ARGS;
   }
 }
 
@@ -685,7 +704,7 @@ RedisExec::exec_command( void )
                                    "help",    4, NULL ) ) {
     case 0: { /* no args */
       if ( ! m.alloc_array( this->strm.tmp, REDIS_CMD_COUNT - 1 ) )
-        return EXEC_ALLOC_FAIL;
+        return ERR_ALLOC_FAIL;
       for ( size_t i = 1; i < REDIS_CMD_COUNT; i++ ) {
         this->mstatus = m.array[ j++ ].unpack_json( cmd_db[ i ].attr,
                                                     this->strm.tmp );
@@ -697,7 +716,7 @@ RedisExec::exec_command( void )
     }
     case 1: { /* info */
       if ( ! m.alloc_array( this->strm.tmp, this->msg.len - 2 ) )
-        return EXEC_ALLOC_FAIL;
+        return ERR_ALLOC_FAIL;
       if ( m.len > 0 ) {
         for ( int i = 2; this->msg.get_arg( i, name, len ); i++ ) {
           cmd = get_upper_cmd( name, len );
@@ -708,13 +727,13 @@ RedisExec::exec_command( void )
       break;
     }
     case 2: /* getkeys */
-      return EXEC_BAD_ARGS;
+      return ERR_BAD_ARGS;
     case 3: /* count */
       m.set_int( REDIS_CMD_COUNT - 1 );
       break;
     case 4: { /* help */
       if ( ! m.alloc_array( this->strm.tmp, this->msg.len * 2 ) )
-        return EXEC_ALLOC_FAIL;
+        return ERR_ALLOC_FAIL;
       for ( int i = 2; this->msg.get_arg( i, name, len ); i++ ) {
         cmd = get_upper_cmd( name, len );
         m.array[ j++ ].set_simple_string( (char *) cmd_db[ cmd ].name );
@@ -728,17 +747,17 @@ RedisExec::exec_command( void )
       break;
     }
     default:
-      return EXEC_BAD_ARGS;
+      return ERR_BAD_ARGS;
   }
   if ( this->mstatus == REDIS_MSG_OK ) {
     size_t sz  = 16 * 1024;
     void * buf = this->strm.alloc( sz );
     if ( buf == NULL )
-      return EXEC_ALLOC_FAIL;
+      return ERR_ALLOC_FAIL;
     this->strm.append_iov( buf, m.pack( buf ) );
   }
   if ( this->mstatus != REDIS_MSG_OK )
-    return EXEC_MSG_STATUS;
+    return ERR_MSG_STATUS;
   return EXEC_OK;
 }
 
@@ -749,12 +768,12 @@ RedisExec::exec_config( void )
                                    "resetstat", 9,
                                    "rewrite",   7,
                                    "set",       3, NULL ) ) {
-    default: return EXEC_BAD_ARGS;
+    default: return ERR_BAD_ARGS;
     case 1: /* get */
     case 2: /* resetstat */
     case 3: /* rewrite */
     case 4: /* set */
-      return EXEC_BAD_CMD;
+      return ERR_BAD_CMD;
   }
 }
 
@@ -815,7 +834,7 @@ RedisExec::exec_info( void )
     this->strm.append_iov( &buf[ off ], n + dig + 3 + 2 );
     return EXEC_OK;
   }
-  return EXEC_ALLOC_FAIL;
+  return ERR_ALLOC_FAIL;
 }
 
 ExecStatus
@@ -834,14 +853,14 @@ RedisExec::exec_memory( void )
                                    "purge",        5,
                                    "stats",        5,
                                    "usage",        5, NULL ) ) {
-    default: return EXEC_BAD_ARGS;
+    default: return ERR_BAD_ARGS;
     case 1: /* doctor */
     case 2: /* help */
     case 3: /* malloc-stats */
     case 4: /* purge */
     case 5: /* stats */
     case 6: /* usage */
-      return EXEC_BAD_CMD;
+      return ERR_BAD_CMD;
   }
 }
 
@@ -870,13 +889,13 @@ RedisExec::exec_role( void )
     this->send_msg( m );
     return EXEC_OK;
   }
-  return EXEC_ALLOC_FAIL;
+  return ERR_ALLOC_FAIL;
 }
 
 ExecStatus
 RedisExec::exec_save( void )
 {
-  return EXEC_BAD_CMD;
+  return ERR_BAD_CMD;
 }
 
 ExecStatus
@@ -895,13 +914,13 @@ RedisExec::exec_slaveof( void )
 ExecStatus
 RedisExec::exec_slowlog( void )
 {
-  return EXEC_BAD_CMD;
+  return ERR_BAD_CMD;
 }
 
 ExecStatus
 RedisExec::exec_sync( void )
 {
-  return EXEC_BAD_CMD;
+  return ERR_BAD_CMD;
 }
 
 ExecStatus
@@ -917,7 +936,7 @@ RedisExec::exec_time( void )
     this->send_msg( m );
     return EXEC_OK;
   }
-  return EXEC_ALLOC_FAIL;
+  return ERR_ALLOC_FAIL;
 }
 
 void
@@ -975,16 +994,17 @@ RedisExec::send_err( ExecStatus status,  KeyStatus kstatus )
     case EXEC_SUCCESS:          break;
     case EXEC_DEPENDS:          break;
     case EXEC_CONTINUE:         break;
-    case EXEC_KV_STATUS:        this->send_err_kv( kstatus ); break;
-    case EXEC_MSG_STATUS:       this->send_err_msg( this->mstatus ); break;
-    case EXEC_BAD_ARGS:         this->send_err_bad_args(); break;
-    case EXEC_BAD_CMD:          this->send_err_bad_cmd(); break;
-    case EXEC_BAD_TYPE:         this->send_err_bad_type(); break;
+    case ERR_KV_STATUS:         this->send_err_kv( kstatus ); break;
+    case ERR_MSG_STATUS:        this->send_err_msg( this->mstatus ); break;
+    case ERR_BAD_ARGS:          this->send_err_bad_args(); break;
+    case ERR_BAD_CMD:           this->send_err_bad_cmd(); break;
+    case ERR_BAD_TYPE:          this->send_err_bad_type(); break;
+    case ERR_BAD_RANGE:         this->send_err_bad_range(); break;
     case EXEC_QUIT:
     case EXEC_DEBUG:            this->send_ok(); break;
-    case EXEC_ALLOC_FAIL:       this->send_err_alloc_fail(); break;
-    case EXEC_KEY_EXISTS:       this->send_err_key_exists(); break;
-    case EXEC_KEY_DOESNT_EXIST: this->send_err_key_doesnt_exist(); break;
+    case ERR_ALLOC_FAIL:        this->send_err_alloc_fail(); break;
+    case ERR_KEY_EXISTS:        this->send_err_key_exists(); break;
+    case ERR_KEY_DOESNT_EXIST:  this->send_err_key_doesnt_exist(); break;
   }
 }
 
@@ -1076,6 +1096,23 @@ RedisExec::send_err_bad_type( void )
     arg0len = ( arg0len < 24 ? arg0len : 24 );
     bsz = ::snprintf( (char *) buf, bsz,
                       "-ERR value type bad for command: '%.*s'\r\n",
+                     (int) arg0len, arg0 );
+    strm.sz += bsz;
+  }
+}
+
+void
+RedisExec::send_err_bad_range( void )
+{
+  size_t       arg0len;
+  const char * arg0 = this->msg.command( arg0len );
+  size_t       bsz  = 64 + 24;
+  void       * buf  = this->strm.alloc( bsz );
+
+  if ( buf != NULL ) {
+    arg0len = ( arg0len < 24 ? arg0len : 24 );
+    bsz = ::snprintf( (char *) buf, bsz,
+                      "-ERR index out of range for command: '%.*s'\r\n",
                      (int) arg0len, arg0 );
     strm.sz += bsz;
   }
