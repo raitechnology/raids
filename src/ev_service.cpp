@@ -134,11 +134,11 @@ EvService::debug( void )
       next = s->next[ i ];
       if ( s->type == EV_SERVICE_SOCK ) {
 	if ( ((EvService *) s)->off != ((EvService *) s)->len ) {
-	  printf( "%p: (%d) has buf(%u)\n", s, s->fd,
+	  printf( "%p: (%d) has buf(%u)\n", (void *) s, s->fd,
 		  ((EvService *) s)->len - ((EvService *) s)->off );
 	}
 	if ( ((EvService *) s)->wr_pending + ((EvService *) s)->sz != 0 ) {
-	  printf( "%p: (%d) has pend(%lu)\n", s, s->fd,
+	  printf( "%p: (%d) has pend(%lu)\n", (void *) s, s->fd,
 	         ((EvService *) s)->wr_pending + ((EvService *) s)->sz );
 	}
       }

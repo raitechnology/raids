@@ -10,91 +10,91 @@ using namespace rai;
 using namespace ds;
 
 ExecStatus
-RedisExec::exec_sadd( RedisKeyCtx &ctx )
+RedisExec::exec_sadd( RedisKeyCtx &/*ctx*/ )
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_scard( RedisKeyCtx &ctx )
+RedisExec::exec_scard( RedisKeyCtx &/*ctx*/ )
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_sdiff( RedisKeyCtx &ctx )
+RedisExec::exec_sdiff( RedisKeyCtx &/*ctx*/ )
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_sdiffstore( RedisKeyCtx &ctx )
+RedisExec::exec_sdiffstore( RedisKeyCtx &/*ctx*/ )
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_sinter( RedisKeyCtx &ctx )
+RedisExec::exec_sinter( RedisKeyCtx &/*ctx*/ )
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_sinterstore( RedisKeyCtx &ctx )
+RedisExec::exec_sinterstore( RedisKeyCtx &/*ctx*/ )
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_sismember( RedisKeyCtx &ctx )
+RedisExec::exec_sismember( RedisKeyCtx &/*ctx*/ )
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_smembers( RedisKeyCtx &ctx )
+RedisExec::exec_smembers( RedisKeyCtx &/*ctx*/ )
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_smove( RedisKeyCtx &ctx )
+RedisExec::exec_smove( RedisKeyCtx &/*ctx*/ )
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_spop( RedisKeyCtx &ctx )
+RedisExec::exec_spop( RedisKeyCtx &/*ctx*/ )
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_srandmember( RedisKeyCtx &ctx )
+RedisExec::exec_srandmember( RedisKeyCtx &/*ctx*/ )
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_srem( RedisKeyCtx &ctx )
+RedisExec::exec_srem( RedisKeyCtx &/*ctx*/ )
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_sunion( RedisKeyCtx &ctx )
+RedisExec::exec_sunion( RedisKeyCtx &/*ctx*/ )
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_sunionstore( RedisKeyCtx &ctx )
+RedisExec::exec_sunionstore( RedisKeyCtx &/*ctx*/ )
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_sscan( RedisKeyCtx &ctx )
+RedisExec::exec_sscan( RedisKeyCtx &/*ctx*/ )
 {
   return ERR_BAD_CMD;
 }

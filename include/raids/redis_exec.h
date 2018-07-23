@@ -49,15 +49,18 @@ inline static bool exec_status_fail( ExecStatus status ) {
 
 struct EvSocket;
 struct RedisExec;
+struct HScanArgs;
 
 struct RedisKeyRes {
   size_t mem_size, /* alloc size */
          size;     /* data size */
-  char   data[ 0 ];/* data start */
+  char * data( size_t x ) const {
+    return &((char *) (void *) &this[ 1 ])[ x ];
+  }
 };
 
 struct RedisKeyCtx {
-  void * operator new( size_t sz, void *ptr ) { return ptr; }
+  void * operator new( size_t, void *ptr ) { return ptr; }
   bool operator>( const RedisKeyCtx *ctx2 ) const;
   uint64_t        hash1,  /* 128 bit hash of key */
                   hash2;
@@ -98,7 +101,7 @@ struct RedisKeyCtx {
 };
 
 struct EvPrefetchQueue : public kv::PrioQueue<RedisKeyCtx *> {
-  void * operator new( size_t sz, void *ptr ) { return ptr; }
+  void * operator new( size_t, void *ptr ) { return ptr; }
   void operator delete( void *ptr ) { ::free( ptr ); }
 
   static EvPrefetchQueue *create( void ) {
@@ -191,6 +194,9 @@ struct RedisExec {
   ExecStatus exec_hstrlen( RedisKeyCtx &ctx );
   ExecStatus exec_hvals( RedisKeyCtx &ctx );
   ExecStatus exec_hscan( RedisKeyCtx &ctx );
+  ExecStatus exec_hmultiread( RedisKeyCtx &ctx,  int flags,  HScanArgs *hs=0 );
+  ExecStatus exec_hread( RedisKeyCtx &ctx,  int flags );
+  ExecStatus exec_hwrite( RedisKeyCtx &ctx,  int flags );
   /* HYPERLOGLOG */
   ExecStatus exec_pfadd( RedisKeyCtx &ctx );
   ExecStatus exec_pfcount( RedisKeyCtx &ctx );
@@ -243,7 +249,6 @@ struct RedisExec {
   ExecStatus exec_rpoplpush( RedisKeyCtx &ctx );
   ExecStatus exec_rpush( RedisKeyCtx &ctx );
   ExecStatus exec_rpushx( RedisKeyCtx &ctx );
-  /* list extras */
   ExecStatus exec_push( RedisKeyCtx &ctx,  int flags );
   ExecStatus exec_pop( RedisKeyCtx &ctx,  int flags );
   /* PUBSUB */
@@ -441,6 +446,11 @@ get_upper_cmd( const char *name,  size_t len )
 
 template <class Int> static inline Int max( Int i,  Int j ) { return i>j?i:j; }
 template <class Int> static inline Int min( Int i,  Int j ) { return i<j?i:j; }
+
+static inline size_t
+crlf( char *b,  size_t i ) {
+  b[ i ] = '\r'; b[ i + 1 ] = '\n'; return i + 2;
+}
 
 }
 }

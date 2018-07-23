@@ -10,73 +10,73 @@ using namespace rai;
 using namespace ds;
 
 ExecStatus
-RedisExec::exec_xadd( RedisKeyCtx &ctx )
+RedisExec::exec_xadd( RedisKeyCtx &/*ctx*/ )
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_xlen( RedisKeyCtx &ctx )
+RedisExec::exec_xlen( RedisKeyCtx &/*ctx*/ )
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_xrange( RedisKeyCtx &ctx )
+RedisExec::exec_xrange( RedisKeyCtx &/*ctx*/ )
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_xrevrange( RedisKeyCtx &ctx )
+RedisExec::exec_xrevrange( RedisKeyCtx &/*ctx*/ )
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_xread( RedisKeyCtx &ctx )
+RedisExec::exec_xread( RedisKeyCtx &/*ctx*/ )
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_xreadgroup( RedisKeyCtx &ctx )
+RedisExec::exec_xreadgroup( RedisKeyCtx &/*ctx*/ )
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_xgroup( RedisKeyCtx &ctx )
+RedisExec::exec_xgroup( RedisKeyCtx &/*ctx*/ )
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_xack( RedisKeyCtx &ctx )
+RedisExec::exec_xack( RedisKeyCtx &/*ctx*/ )
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_xpending( RedisKeyCtx &ctx )
+RedisExec::exec_xpending( RedisKeyCtx &/*ctx*/ )
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_xclaim( RedisKeyCtx &ctx )
+RedisExec::exec_xclaim( RedisKeyCtx &/*ctx*/ )
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_xinfo( RedisKeyCtx &ctx )
+RedisExec::exec_xinfo( RedisKeyCtx &/*ctx*/ )
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_xdel( RedisKeyCtx &ctx )
+RedisExec::exec_xdel( RedisKeyCtx &/*ctx*/ )
 {
   return ERR_BAD_CMD;
 }

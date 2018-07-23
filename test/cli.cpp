@@ -92,7 +92,7 @@ print_err( const char *w,  RedisMsgStatus status )
 }
 
 void
-StdinCallback::onErr( char *buf,  size_t buflen,  RedisMsgStatus status )
+StdinCallback::onErr( char *,  size_t,  RedisMsgStatus status )
 {
   print_err( "terminal", status );
   printf( "? " ); fflush( stdout );
@@ -130,7 +130,7 @@ ClientCallback::onMsg( RedisMsg &msg )
 }
 
 void
-ClientCallback::onErr( char *buf,  size_t buflen,  RedisMsgStatus status )
+ClientCallback::onErr( char *,  size_t,  RedisMsgStatus status )
 {
   print_err( "client", status );
   printf( "? " ); fflush( stdout );

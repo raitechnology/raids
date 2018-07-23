@@ -42,11 +42,9 @@ RedisExec::send_string( const void *data,  size_t size )
     return 0;
   str[ 0 ] = '$';
   sz = 1 + RedisMsg::uint_to_str( size, &str[ 1 ] );
-  str[ sz ] = '\r'; str[ sz + 1 ] = '\n';
-  ::memcpy( &str[ sz + 2 ], data, size );
-  sz += 2 + size;
-  str[ sz ] = '\r'; str[ sz + 1 ] = '\n';
-  return sz + 2;
+  sz = crlf( str, sz );
+  ::memcpy( &str[ sz ], data, size );
+  return crlf( str, sz + size );
 }
 
 size_t
@@ -59,13 +57,11 @@ RedisExec::send_concat_string( const void *data,  size_t size,
     return 0;
   str[ 0 ] = '$';
   sz = 1 + RedisMsg::uint_to_str( size + size2, &str[ 1 ] );
-  str[ sz ] = '\r'; str[ sz + 1 ] = '\n';
-  ::memcpy( &str[ sz + 2 ], data, size );
+  sz = crlf( str, sz );
+  ::memcpy( &str[ sz ], data, size );
   if ( size2 > 0 )
-    ::memcpy( &str[ sz + 2 + size ], data2, size2 );
-  sz += 2 + size + size2;
-  str[ sz ] = '\r'; str[ sz + 1 ] = '\n';
-  return sz + 2;
+    ::memcpy( &str[ sz + size ], data2, size2 );
+  return crlf( str, sz + size + size2 );
 }
 
 bool
@@ -82,15 +78,13 @@ RedisExec::save_string_result( RedisKeyCtx &ctx,  const void *data,  size_t size
       return false;
     }
   }
-  char *str = ctx.part->data;
+  char *str = ctx.part->data( 0 );
   size_t sz;
   str[ 0 ] = '$';
   sz = 1 + RedisMsg::uint_to_str( size, &str[ 1 ] );
-  str[ sz ] = '\r'; str[ sz + 1 ] = '\n';
-  ::memcpy( &str[ sz + 2 ], data, size );
-  sz += 2 + size;
-  str[ sz ] = '\r'; str[ sz + 1 ] = '\n';
-  ctx.part->size = sz + 2;
+  sz = crlf( str, sz );
+  ::memcpy( &str[ sz ], data, size );
+  ctx.part->size = crlf( str, sz + size );
   return true;
 }
 
@@ -108,7 +102,7 @@ RedisExec::save_data( RedisKeyCtx &ctx,  const void *data,  size_t size )
       return false;
     }
   }
-  ::memcpy( ctx.part->data, data, size );
+  ::memcpy( ctx.part->data( 0 ), data, size );
   ctx.part->size = size;
   return true;
 }
@@ -123,8 +117,7 @@ RedisExec::array_string_result( void )
     return;
   str[ 0 ] = '*';
   sz = 1 + RedisMsg::uint_to_str( this->key_cnt, &str[ 1 ] );
-  str[ sz ] = '\r'; str[ sz + 1 ] = '\n';
-  this->strm.sz += sz + 2;
+  this->strm.sz += crlf( str, sz );
 
   if ( this->key_cnt == 1 ) /* only one part, no keys[] array */
     part = this->key->part;
@@ -133,9 +126,9 @@ RedisExec::array_string_result( void )
   for ( uint32_t i = 0; ; ) {
     if ( part != NULL ) {
       if ( part->size < 256 )
-        this->strm.append( part->data, part->size );
+        this->strm.append( part->data( 0 ), part->size );
       else
-        this->strm.append_iov( part->data, part->size );
+        this->strm.append_iov( part->data( 0 ), part->size );
     }
     else
       this->strm.append( nil, nil_sz );
@@ -821,16 +814,13 @@ RedisExec::exec_info( void )
       kv_stringify( DS_VER ),
       __GNUC__, __GNUC_MINOR__, __GNUC_PATCHLEVEL__,
       ::getpid() );
-
     size_t dig = RedisMsg::uint_digits( n ),
            off = 32 - ( dig + 3 );
 
     buf[ off ] = '$';
     RedisMsg::uint_to_str( n, &buf[ off + 1 ], dig );
-    buf[ off + 1 + dig ] = '\r';
-    buf[ off + 2 + dig ] = '\n';
-    buf[ 32 + n ] = '\r';
-    buf[ 32 + n + 1 ] = '\n';
+    crlf( buf, off + 1 + dig );
+    crlf( buf, 32 + n );
     this->strm.append_iov( &buf[ off ], n + dig + 3 + 2 );
     return EXEC_OK;
   }
@@ -971,9 +961,9 @@ RedisExec::send_int( int64_t ival )
   char  * buf  = this->strm.alloc( len );
   if ( buf != NULL ) {
     buf[ 0 ] = ':';
-    len  = 1 + RedisMsg::int_to_str( ival, &buf[ 1 ] );
-    buf[ len ] = '\r'; buf[ len + 1 ] = '\n';
-    this->strm.sz += len + 2;
+    len = 1 + RedisMsg::int_to_str( ival, &buf[ 1 ] );
+    len = crlf( buf, len );
+    this->strm.sz += len;
   }
 }
 

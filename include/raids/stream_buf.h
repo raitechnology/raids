@@ -100,7 +100,9 @@ struct StreamBuf {
   struct BufList {
     BufList * next;
     size_t    used;
-    char      buf[ 0 ];
+    char    * buf( size_t x ) const {
+      return &((char *) (void *) &this[ 1 ])[ x ];
+    }
   };
   BufList *alloc_buf_list( BufList *&hd,  BufList *tl,  size_t len ) {
     BufList *p = (BufList *) this->alloc_temp( sizeof( BufList ) + len );

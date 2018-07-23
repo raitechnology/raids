@@ -10,31 +10,31 @@ using namespace rai;
 using namespace ds;
 
 ExecStatus
-RedisExec::exec_discard( RedisKeyCtx &ctx )
+RedisExec::exec_discard( RedisKeyCtx &/*ctx*/ )
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_exec( RedisKeyCtx &ctx )
+RedisExec::exec_exec( RedisKeyCtx &/*ctx*/ )
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_multi( RedisKeyCtx &ctx )
+RedisExec::exec_multi( RedisKeyCtx &/*ctx*/ )
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_unwatch( RedisKeyCtx &ctx )
+RedisExec::exec_unwatch( RedisKeyCtx &/*ctx*/ )
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_watch( RedisKeyCtx &ctx )
+RedisExec::exec_watch( RedisKeyCtx &/*ctx*/ )
 {
   return ERR_BAD_CMD;
 }

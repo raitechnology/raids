@@ -10,19 +10,19 @@ using namespace rai;
 using namespace ds;
 
 ExecStatus
-RedisExec::exec_pfadd( RedisKeyCtx &ctx )
+RedisExec::exec_pfadd( RedisKeyCtx &/*ctx*/ )
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_pfcount( RedisKeyCtx &ctx )
+RedisExec::exec_pfcount( RedisKeyCtx &/*ctx*/ )
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_pfmerge( RedisKeyCtx &ctx )
+RedisExec::exec_pfmerge( RedisKeyCtx &/*ctx*/ )
 {
   return ERR_BAD_CMD;
 }

@@ -16,7 +16,7 @@ struct EvPrefetchQueue;
 
 struct EvHttpService : public EvConnection, public RedisExec {
   uint64_t websock_off;
-  void * operator new( size_t sz, void *ptr ) { return ptr; }
+  void * operator new( size_t, void *ptr ) { return ptr; }
 
   EvHttpService( EvPoll &p ) : EvConnection( p, EV_HTTP_SOCK ),
     RedisExec( *p.map, p.ctx_id, *this, p.single_thread ),

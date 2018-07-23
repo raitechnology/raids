@@ -11,6 +11,7 @@
 using namespace rai;
 using namespace ds;
 using namespace kv;
+#define fallthrough __attribute__ ((fallthrough))
 
 ExecStatus
 RedisExec::exec_del( RedisKeyCtx &ctx )
@@ -50,16 +51,15 @@ RedisExec::exec_dump( RedisKeyCtx &ctx )
         if ( ctx.kstatus == KEY_OK ) {
           buf[ 0 ] = '$';
           off = 1 + RedisMsg::int_to_str( size, &buf[ 1 ] );
-          buf[ off ] = '\r';
-          buf[ off + 1 ] = '\n';
-          off += 2;
+          off = crlf( buf, off );
           ::memmove( &buf[ 32 - off ], buf, off );
-          buf[ 32 + size ] = '\r';
-          buf[ 32 + size + 1 ] = '\n';
+          off = crlf( buf, 32 + size );
+          crlf( buf, 32 + size );
           this->strm.append_iov( &buf[ 32 - off ], size + off + 2 );
           return EXEC_OK;
         }
       }
+      fallthrough;
     }
     default:            return ERR_KV_STATUS;
     case KEY_NOT_FOUND: return EXEC_SEND_NIL;
@@ -104,14 +104,14 @@ RedisExec::exec_keys( void )
 }
 
 ExecStatus
-RedisExec::exec_migrate( RedisKeyCtx &ctx )
+RedisExec::exec_migrate( RedisKeyCtx &/*ctx*/ )
 {
   /* MIGRATE host port key */
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_move( RedisKeyCtx &ctx )
+RedisExec::exec_move( RedisKeyCtx &/*ctx*/ )
 {
   /* MOVE key db# */
   return ERR_BAD_CMD;
@@ -302,7 +302,7 @@ RedisExec::exec_rename( RedisKeyCtx &ctx )
       case KEY_IS_NEW:
         ctx.kstatus = this->kctx.resize( &data, sz );
         if ( ctx.kstatus == KEY_OK ) {
-          ::memcpy( data, this->keys[ 0 ]->part->data, sz ); /* copy key data */
+          ::memcpy( data, this->keys[ 0 ]->part->data( 0 ), sz ); /* key data */
           this->kctx.set_type( this->keys[ 0 ]->type );
           /* inherits expire time? */
           if ( this->cmd == RENAME_CMD )
@@ -365,14 +365,14 @@ RedisExec::exec_renamenx( RedisKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::exec_restore( RedisKeyCtx &ctx )
+RedisExec::exec_restore( RedisKeyCtx &/*ctx*/ )
 {
   /* RESTORE key ttl value */
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_sort( RedisKeyCtx &ctx )
+RedisExec::exec_sort( RedisKeyCtx &/*ctx*/ )
 {
   /* SORT key [BY pat] [LIMIT off cnt] [GET pat] [ASC|DESC] 
    *          [ALPHA] [STORE dest] */
@@ -473,7 +473,7 @@ RedisExec::scan_keys( uint64_t pos,  int64_t maxcnt,  const char *pattern,
             cnt    = 0,
             buflen = 0,
             used   = 0;
-  int       rc,
+  int       rc     = 1,
             error;
   pcre2_code       * re = NULL;
   pcre2_match_data * md = NULL;
@@ -492,11 +492,6 @@ RedisExec::scan_keys( uint64_t pos,  int64_t maxcnt,  const char *pattern,
       pcre2_code_free( re );
       return ERR_BAD_ARGS;
     }
-  }
-  else {
-    re = NULL;
-    md = NULL;
-    rc = 1;
   }
   uint64_t ht_size = this->kctx.ht.hdr.ht_size;
   for ( ; pos < ht_size; pos++ ) {
@@ -521,17 +516,13 @@ RedisExec::scan_keys( uint64_t pos,  int64_t maxcnt,  const char *pattern,
             tl = this->strm.alloc_buf_list( hd, tl, buflen );
             if ( tl == NULL )
               return ERR_ALLOC_FAIL;
-            keybuf = tl->buf;
+            keybuf = tl->buf( 0 );
           }
           keybuf[ used ] = '$';
           used += 1 + RedisMsg::int_to_str( keylen, &keybuf[ used + 1 ] );
-          keybuf[ used ] = '\r';
-          keybuf[ used + 1 ] = '\n';
-          ::memcpy( &keybuf[ used + 2 ], kp->u.buf, keylen );
-          used += keylen + 2;
-          keybuf[ used ] = '\r';
-          keybuf[ used + 1 ] = '\n';
-          used += 2;
+          used  = crlf( keybuf, used );
+          ::memcpy( &keybuf[ used ], kp->u.buf, keylen );
+          used  = crlf( keybuf, used + keylen );
           cnt++;
           if ( --maxcnt == 0 )
             goto break_loop;
@@ -555,14 +546,10 @@ break_loop:;
     /* construct [cursor, [key, ...]] */
     ::strcpy( hdr, "*2\r\n$" );
     size_t len = RedisMsg::uint_digits( pos );
-    used = 5 + RedisMsg::uint_to_str( len, &hdr[ 5 ] );
-    hdr[ used ] = '\r';
-    hdr[ used + 1 ] = '\n';
-    used += 2;
+    used  = 5 + RedisMsg::uint_to_str( len, &hdr[ 5 ] );
+    used  = crlf( hdr, used );
     used += RedisMsg::uint_to_str( pos, &hdr[ used ], len );
-    hdr[ used ] = '\r';
-    hdr[ used + 1 ] = '\n';
-    used += 2;
+    used  = crlf( hdr, used );
   }
   else {
     /* construct [key, ...] */
@@ -570,12 +557,11 @@ break_loop:;
   }
   hdr[ used ] = '*';
   used += 1 + RedisMsg::int_to_str( cnt, &hdr[ used + 1 ] );
-  hdr[ used ] = '\r';
-  hdr[ used + 1 ] = '\n';
-  this->strm.append_iov( hdr, used + 2 );
+  used  = crlf( hdr, used );
+  this->strm.append_iov( hdr, used );
   while ( hd != NULL ) {
     if ( hd->used > 0 )
-      this->strm.append_iov( hd->buf, hd->used );
+      this->strm.append_iov( hd->buf( 0 ), hd->used );
     hd = hd->next;
   }
 

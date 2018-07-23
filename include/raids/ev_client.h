@@ -14,7 +14,7 @@ struct EvCallback {
 };
 
 struct EvClient : public EvConnection {
-  void * operator new( size_t sz, void *ptr ) { return ptr; }
+  void * operator new( size_t, void *ptr ) { return ptr; }
   void operator delete( void *ptr ) { ::free( ptr ); }
 
   EvCallback &cb;
@@ -27,7 +27,7 @@ struct EvClient : public EvConnection {
 };
 
 struct EvTerminal : public EvClient {
-  void * operator new( size_t sz, void *ptr ) { return ptr; }
+  void * operator new( size_t, void *ptr ) { return ptr; }
   void operator delete( void *ptr ) { ::free( ptr ); }
 
   EvTerminal( EvPoll &p,  EvCallback &callback )

@@ -9,7 +9,7 @@
 #include <raids/redis_list.h>
 
 static const char *
-list_status_string[] = { "ok", "not found", "split", "full" };
+list_status_string[] = { "ok", "not found", "full" };
 
 using namespace rai;
 using namespace ds;
@@ -19,7 +19,7 @@ resize_list( ListData *curr,  size_t add_len )
 {
   size_t count;
   size_t data_len;
-  count = ( add_len >> 3 );
+  count = ( add_len >> 3 ) | 1;
   data_len = add_len + 1;
   if ( curr != NULL ) {
     data_len  = add_len + curr->data_len();
@@ -41,9 +41,9 @@ resize_list( ListData *curr,  size_t add_len )
 }
 
 int
-main( int argc, char *argv[] )
+main( int, char ** )
 {
-  ListData *list = resize_list( NULL, 64 );
+  ListData *list = resize_list( NULL, 16 );
 
   char buf[ 1024 ], buf2[ 1024 ];
   RedisMsg msg;
@@ -51,8 +51,8 @@ main( int argc, char *argv[] )
   char upper_cmd[ 32 ];
   size_t cmdlen, arglen, pivlen, argcount;
   const char *cmdbuf, *arg, *piv;
-  size_t sz, sz2, pos;
-  const void *p, *p2;
+  size_t sz, pos;
+  ListVal lv;
   int64_t ival, jval, cnt;
   bool after;
   RedisMsgStatus mstatus;
@@ -97,10 +97,10 @@ main( int argc, char *argv[] )
       case LINDEX_CMD:  /* LINDEX key idx -- get key[ idx ] */
         if ( ! msg.get_arg( 2, ival ) )
           goto bad_args;
-        lstat = list->lindex( ival, p, sz, p2, sz2 );
-        if ( lstat != LIST_NOT_FOUND ) {
-          printf( "%ld. %.*s", ival, (int) sz, (char *) p );
-          if ( sz2 > 0 ) printf( "%.*s", (int) sz2, (char *) p2 );
+        lstat = list->lindex( ival, lv );
+        if ( lstat == LIST_OK ) {
+          printf( "%ld. %.*s", ival, (int) lv.sz, (char *) lv.data );
+          if ( lv.sz2 > 0 ) printf( "%.*s", (int) lv.sz2, (char *) lv.data2 );
           printf( "\n" );
         }
         else {
@@ -128,13 +128,13 @@ main( int argc, char *argv[] )
         printf( "%d\n", (int) list->count() );
         break;
       case RPOP_CMD:    /* RPOP key */
-        lstat = list->rpop( p, sz, p2, sz2 );
+        lstat = list->rpop( lv );
         if ( 0 ) {
       case LPOP_CMD:    /* LPOP key */
-        lstat = list->lpop( p, sz, p2, sz2 ); }
-        if ( lstat != LIST_NOT_FOUND ) {
-          printf( "%.*s", (int) sz, (char *) p );
-          if ( sz2 > 0 ) printf( "%.*s", (int) sz2, (char *) p2 );
+        lstat = list->lpop( lv ); }
+        if ( lstat == LIST_OK ) {
+          printf( "%.*s", (int) lv.sz, (char *) lv.data );
+          if ( lv.sz2 > 0 ) printf( "%.*s", (int) lv.sz2, (char *) lv.data2 );
           printf( "\n" );
         }
         else {
@@ -142,13 +142,15 @@ main( int argc, char *argv[] )
         }
         break;
       case LPUSH_CMD:   /* LPUSH key value */
-        if ( ! msg.get_arg( 2, arg, arglen ) )
-          goto bad_args;
-        for (;;) {
-          lstat = list->lpush( arg, arglen );
-          printf( "%s\n", list_status_string[ lstat ] );
-          if ( lstat != LIST_FULL ) break;
-          list = resize_list( list, arglen );
+        for ( size_t i = 2; i < argcount; i++ ) {
+          if ( ! msg.get_arg( i, arg, arglen ) )
+            goto bad_args;
+          for (;;) {
+            lstat = list->lpush( arg, arglen );
+            printf( "%s\n", list_status_string[ lstat ] );
+            if ( lstat != LIST_FULL ) break;
+            list = resize_list( list, arglen );
+          }
         }
         break;
       case LRANGE_CMD:  /* LRANGE key start stop */
@@ -163,13 +165,14 @@ main( int argc, char *argv[] )
         jval = min<int64_t>( cnt, max<int64_t>( 0, jval + 1 ) );
         if ( ival < jval ) {
           for ( int64_t i = 0; ival < jval; ival++ ) {
-            lstat = list->lindex( ival, p, sz, p2, sz2 );
+            lstat = list->lindex( ival, lv );
             printf( "%ld. off(%ld) ", i, list->offset( ival ) );
             if ( ival != i )
               printf( "[%ld] ", ival );
             if ( lstat != LIST_NOT_FOUND ) {
-              printf( "[%.*s]", (int) sz, (char *) p );
-              if ( sz2 > 0 ) printf( "[%.*s]", (int) sz2, (char *) p2 );
+              printf( "[%.*s]", (int) lv.sz, (char *) lv.data );
+              if ( lv.sz2 > 0 )
+                printf( "[%.*s]", (int) lv.sz2, (char *) lv.data2 );
             }
             else {
               printf( "empty" );
@@ -240,13 +243,15 @@ main( int argc, char *argv[] )
         printf( "ok\n" );
         break;
       case RPUSH_CMD:   /* RPUSH key value */
-        if ( ! msg.get_arg( 2, arg, arglen ) )
-          goto bad_args;
-        for (;;) {
-          lstat = list->rpush( arg, arglen );
-          printf( "%s\n", list_status_string[ lstat ] );
-          if ( lstat != LIST_FULL ) break;
-          list = resize_list( list, arglen );
+        for ( size_t i = 2; i < argcount; i++ ) {
+          if ( ! msg.get_arg( i, arg, arglen ) )
+            goto bad_args;
+          for (;;) {
+            lstat = list->rpush( arg, arglen );
+            printf( "%s\n", list_status_string[ lstat ] );
+            if ( lstat != LIST_FULL ) break;
+            list = resize_list( list, arglen );
+          }
         }
         break;
       default:

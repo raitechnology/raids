@@ -28,7 +28,7 @@ cpp         := $(CXX)
 cppflags    := -fno-rtti -fno-exceptions
 arch_cflags := -march=corei7-avx -fno-omit-frame-pointer
 cpplink     := gcc
-gcc_wflags  := -Wall -Werror
+gcc_wflags  := -Wall -Wextra -Werror
 fpicflags   := -fPIC
 soflag      := -shared
 
@@ -44,13 +44,13 @@ CFLAGS ?= $(default_cflags)
 cflags := $(gcc_wflags) $(CFLAGS) $(arch_cflags)
 
 # where to find the raids/xyz.h files
-INCLUDES    ?= -Iinclude
+INCLUDES    ?= -I/usr/local/include/dfp -Iinclude
 includes    := $(INCLUDES)
 DEFINES     ?=
 defines     := $(DEFINES)
 cpp_lnk     :=
 sock_lib    :=
-math_lib    := -lm
+math_lib    := -L/usr/local/lib -ldfp -lm
 thread_lib  := -pthread -lrt
 dep_lib     := -lraikv -lpcre2-8 -lcrypto
 malloc_lib  :=
@@ -138,10 +138,20 @@ test_list_lnk   := $(test_list_libs) $(dep_lib)
 
 $(bind)/test_list: $(test_list_objs) $(test_list_libs)
 
+test_hash_files := test_hash
+test_hash_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(test_hash_files)))
+test_hash_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(test_hash_files)))
+test_hash_libs  := $(libd)/libraids.a
+test_hash_lnk   := $(test_hash_libs) $(dep_lib)
+
+$(bind)/test_hash: $(test_hash_objs) $(test_hash_libs)
+
 all_exes    += $(bind)/server $(bind)/client $(bind)/test_msg \
-               $(bind)/redis_cmd $(bind)/test_cmd $(bind)/test_list
+               $(bind)/redis_cmd $(bind)/test_cmd $(bind)/test_list \
+	       $(bind)/test_hash
 all_depends += $(server_deps) $(client_deps) $(test_msg_deps) \
-               $(redis_cmd_deps) $(test_cmd_deps) $(test_list_deps)
+               $(redis_cmd_deps) $(test_cmd_deps) $(test_list_deps) \
+	       $(test_hash_deps)
 
 all_dirs := $(bind) $(libd) $(objd) $(dependd)
 

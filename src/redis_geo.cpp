@@ -10,37 +10,37 @@ using namespace rai;
 using namespace ds;
 
 ExecStatus
-RedisExec::exec_geoadd( RedisKeyCtx &ctx )
+RedisExec::exec_geoadd( RedisKeyCtx &/*ctx*/ )
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_geohash( RedisKeyCtx &ctx )
+RedisExec::exec_geohash( RedisKeyCtx &/*ctx*/ )
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_geopos( RedisKeyCtx &ctx )
+RedisExec::exec_geopos( RedisKeyCtx &/*ctx*/ )
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_geodist( RedisKeyCtx &ctx )
+RedisExec::exec_geodist( RedisKeyCtx &/*ctx*/ )
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_georadius( RedisKeyCtx &ctx )
+RedisExec::exec_georadius( RedisKeyCtx &/*ctx*/ )
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_georadiusbymember( RedisKeyCtx &ctx )
+RedisExec::exec_georadiusbymember( RedisKeyCtx &/*ctx*/ )
 {
   return ERR_BAD_CMD;
 }

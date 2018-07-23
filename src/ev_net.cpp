@@ -320,17 +320,24 @@ bool
 EvConnection::write( void )
 {
   struct msghdr h;
+  ssize_t nbytes;
   StreamBuf & strm = *this;
   if ( strm.sz > 0 )
     strm.flush();
   ::memset( &h, 0, sizeof( h ) );
   h.msg_iov    = &strm.iov[ strm.woff ];
   h.msg_iovlen = strm.idx - strm.woff;
-  ssize_t nbytes = ::sendmsg( this->fd, &h, 0 );
-  while ( nbytes < 0 && errno == EMSGSIZE ) {
-    if ( (h.msg_iovlen /= 2) == 0 )
-      break;
+  if ( h.msg_iovlen == 1 ) {
+    nbytes = ::send( this->fd, h.msg_iov[ 0 ].iov_base,
+                     h.msg_iov[ 0 ].iov_len, 0 );
+  }
+  else {
     nbytes = ::sendmsg( this->fd, &h, 0 );
+    while ( nbytes < 0 && errno == EMSGSIZE ) {
+      if ( (h.msg_iovlen /= 2) == 0 )
+        break;
+      nbytes = ::sendmsg( this->fd, &h, 0 );
+    }
   }
   if ( nbytes > 0 ) {
     strm.wr_pending -= nbytes;

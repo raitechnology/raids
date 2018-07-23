@@ -121,7 +121,7 @@ struct EvSocket {
 };
 
 struct EvListen : public EvSocket {
-  void * operator new( size_t sz, void *ptr ) { return ptr; }
+  void * operator new( size_t, void *ptr ) { return ptr; }
   void operator delete( void *ptr ) { ::free( ptr ); }
 
   EvListen( EvPoll &p ) : EvSocket( p, EV_LISTEN_SOCK ) {}

@@ -284,7 +284,7 @@ gen_hash_tab:;
 }
 
 int
-main( int argc, char *argv[] )
+main( int, char ** )
 {
   printf( "#ifndef __rai_raids__redis_cmd_h__\n"
           "#define __rai_raids__redis_cmd_h__\n\n"

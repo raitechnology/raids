@@ -83,7 +83,7 @@ EvCallback::onMsg( RedisMsg &msg )
 }
 
 void
-EvCallback::onErr( char *buf,  size_t buflen,  RedisMsgStatus status )
+EvCallback::onErr( char *,  size_t buflen,  RedisMsgStatus status )
 {
   fprintf( stderr, "protocol error(%d/%s), ignoring %lu bytes\n",
 	   status, redis_msg_status_string( status ), buflen );

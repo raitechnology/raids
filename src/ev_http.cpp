@@ -15,6 +15,7 @@
 
 using namespace rai;
 using namespace ds;
+#define fallthrough __attribute__ ((fallthrough))
 
 void
 EvHttpListen::accept( void )
@@ -75,7 +76,7 @@ static char page404[] =
 "<html><body> Not  Found </body></html>\r\n";
 
 void
-EvHttpService::process( bool use_prefetch )
+EvHttpService::process( bool /*use_prefetch*/ )
 {
   StreamBuf       & strm = *this;
   //EvPrefetchQueue * q    = ( use_prefetch ? this->poll.prefetch_queue : NULL );
@@ -423,6 +424,7 @@ get_mime_type( const char *path,  size_t len )
         if ( len >= 5 &&
             p[ -2 ] == '.' && p[ -1 ] == 'h' && p[ 1 ] == 'm' && p[ 2 ] == 'l' )
           return "text/html";
+        fallthrough;
         /* fall through, could be .[t]xt */
       default:
         if ( len < 4 || path[ len-4 ] != '.' )

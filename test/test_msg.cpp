@@ -55,7 +55,7 @@ static struct {
 };
 
 int
-main( int argc, char *argv[] )
+main( int, char ** )
 {
   char buf[ 1024 ];
   size_t sz;

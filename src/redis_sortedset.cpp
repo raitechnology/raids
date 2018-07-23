@@ -10,127 +10,127 @@ using namespace rai;
 using namespace ds;
 
 ExecStatus
-RedisExec::exec_zadd( RedisKeyCtx &ctx )
+RedisExec::exec_zadd( RedisKeyCtx &/*ctx*/ )
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_zcard( RedisKeyCtx &ctx )
+RedisExec::exec_zcard( RedisKeyCtx &/*ctx*/ )
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_zcount( RedisKeyCtx &ctx )
+RedisExec::exec_zcount( RedisKeyCtx &/*ctx*/ )
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_zincrby( RedisKeyCtx &ctx )
+RedisExec::exec_zincrby( RedisKeyCtx &/*ctx*/ )
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_zinterstore( RedisKeyCtx &ctx )
+RedisExec::exec_zinterstore( RedisKeyCtx &/*ctx*/ )
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_zlexcount( RedisKeyCtx &ctx )
+RedisExec::exec_zlexcount( RedisKeyCtx &/*ctx*/ )
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_zrange( RedisKeyCtx &ctx )
+RedisExec::exec_zrange( RedisKeyCtx &/*ctx*/ )
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_zrangebylex( RedisKeyCtx &ctx )
+RedisExec::exec_zrangebylex( RedisKeyCtx &/*ctx*/ )
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_zrevrangebylex( RedisKeyCtx &ctx )
+RedisExec::exec_zrevrangebylex( RedisKeyCtx &/*ctx*/ )
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_zrangebyscore( RedisKeyCtx &ctx )
+RedisExec::exec_zrangebyscore( RedisKeyCtx &/*ctx*/ )
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_zrank( RedisKeyCtx &ctx )
+RedisExec::exec_zrank( RedisKeyCtx &/*ctx*/ )
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_zrem( RedisKeyCtx &ctx )
+RedisExec::exec_zrem( RedisKeyCtx &/*ctx*/ )
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_zremrangebylex( RedisKeyCtx &ctx )
+RedisExec::exec_zremrangebylex( RedisKeyCtx &/*ctx*/ )
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_zremrangebyrank( RedisKeyCtx &ctx )
+RedisExec::exec_zremrangebyrank( RedisKeyCtx &/*ctx*/ )
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_zremrangebyscore( RedisKeyCtx &ctx )
+RedisExec::exec_zremrangebyscore( RedisKeyCtx &/*ctx*/ )
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_zrevrange( RedisKeyCtx &ctx )
+RedisExec::exec_zrevrange( RedisKeyCtx &/*ctx*/ )
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_zrevrangebyscore( RedisKeyCtx &ctx )
+RedisExec::exec_zrevrangebyscore( RedisKeyCtx &/*ctx*/ )
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_zrevrank( RedisKeyCtx &ctx )
+RedisExec::exec_zrevrank( RedisKeyCtx &/*ctx*/ )
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_zscore( RedisKeyCtx &ctx )
+RedisExec::exec_zscore( RedisKeyCtx &/*ctx*/ )
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_zunionstore( RedisKeyCtx &ctx )
+RedisExec::exec_zunionstore( RedisKeyCtx &/*ctx*/ )
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_zscan( RedisKeyCtx &ctx )
+RedisExec::exec_zscan( RedisKeyCtx &/*ctx*/ )
 {
   return ERR_BAD_CMD;
 }
