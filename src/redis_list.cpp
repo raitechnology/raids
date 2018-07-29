@@ -14,15 +14,15 @@ using namespace kv;
 #define fallthrough __attribute__ ((fallthrough))
 
 enum {
-  DO_LPUSH     = 1<<1,
-  DO_RPUSH     = 1<<2,
-  DO_LINSERT   = 1<<3,
-  DO_LSET      = 1<<4,
-  DO_LPOP      = 1<<5,
-  DO_RPOP      = 1<<6,
-  DO_LREM      = 1<<7,
-  DO_LTRIM     = 1<<8,
-  L_MUST_EXIST = 1<<9
+  DO_LPUSH     = 1<<0,
+  DO_RPUSH     = 1<<1,
+  DO_LINSERT   = 1<<2,
+  DO_LSET      = 1<<3,
+  DO_LPOP      = 1<<4,
+  DO_RPOP      = 1<<5,
+  DO_LREM      = 1<<6,
+  DO_LTRIM     = 1<<7,
+  L_MUST_EXIST = 1<<8
 };
 
 ExecStatus
@@ -50,30 +50,36 @@ ExecStatus
 RedisExec::exec_lindex( RedisKeyCtx &ctx )
 {
   /* LINDEX key idx */
-  void       * data;
-  char       * itembuf;
-  size_t       datalen,
-               used;
-  ListVal      lv;
-  size_t       itemlen;
-  int64_t      idx;
-  ListStatus   lstatus;
+  void     * data;
+  char     * itembuf;
+  size_t     datalen,
+             used;
+  ListVal    lv;
+  size_t     itemlen;
+  int64_t    idx;
+  uint8_t    lhdr[ LIST_HDR_OOB_SIZE ];
+  uint64_t   llen;
+  ListStatus lstatus;
 
   if ( ! this->msg.get_arg( 2, idx ) )
     return ERR_BAD_ARGS;
 
   switch ( this->exec_key_fetch( ctx ) ) {
+
     case KEY_NOT_FOUND:
       return EXEC_SEND_NIL;
+
     case KEY_OK:
       if ( ctx.type != MD_LIST )
         return ERR_BAD_TYPE;
       if ( ctx.type == MD_NODATA )
         return EXEC_SEND_NIL;
-      ctx.kstatus = this->kctx.value( &data, datalen );
+
+      llen = sizeof( lhdr );
+      ctx.kstatus = this->kctx.value_copy( &data, datalen, lhdr, llen );
       if ( ctx.kstatus == KEY_OK ) {
         ListData list( data, datalen );
-        list.open();
+        list.open( lhdr, llen );
         lstatus = list.lindex( idx, lv );
         itemlen = lv.sz + lv.sz2;
         if ( lstatus == LIST_NOT_FOUND || itemlen > 30000 ) {
@@ -117,8 +123,10 @@ RedisExec::exec_llen( RedisKeyCtx &ctx )
   size_t datalen;
 
   switch ( this->exec_key_fetch( ctx ) ) {
+
     case KEY_NOT_FOUND:
       return EXEC_SEND_ZERO;
+
     case KEY_OK:
       if ( ctx.type != MD_LIST )
         return ERR_BAD_TYPE;
@@ -162,39 +170,34 @@ ExecStatus
 RedisExec::exec_lrange( RedisKeyCtx &ctx )
 {
   /* LRANGE key start stop */
-  StreamBuf::BufList
-           * hd     = NULL,
-           * tl     = NULL;
-  char     * keybuf = NULL;
+  StreamBuf::BufQueue q( this->strm );
   void     * data;
   size_t     datalen,
              count,
-             itemlen,
-             buflen  = 0,
-             used    = 0,
-             itemcnt = 0;
+             itemcnt;
   ListVal    lv;
   int64_t    from, to;
+  uint8_t    lhdr[ LIST_HDR_OOB_SIZE ];
+  uint64_t   llen;
   ListStatus lstatus;
 
   if ( ! this->msg.get_arg( 2, from ) || ! this->msg.get_arg( 3, to ) )
     return ERR_BAD_ARGS;
 
   switch ( this->exec_key_fetch( ctx ) ) {
-
     case KEY_NOT_FOUND:
       return EXEC_SEND_ZERO;
-
     case KEY_OK:
       if ( ctx.type != MD_LIST )
         return ERR_BAD_TYPE;
       if ( ctx.type == MD_NODATA )
         return EXEC_SEND_ZERO;
 
-      ctx.kstatus = this->kctx.value( &data, datalen );
+      llen = sizeof( lhdr );
+      ctx.kstatus = this->kctx.value_copy( &data, datalen, lhdr, llen );
       if ( ctx.kstatus == KEY_OK ) {
         ListData list( data, datalen );
-        list.open();
+        list.open( lhdr, llen );
         count = list.count();
 
         if ( from < 0 )
@@ -204,51 +207,18 @@ RedisExec::exec_lrange( RedisKeyCtx &ctx )
         from = min<int64_t>( count, max<int64_t>( 0, from ) );
         to   = min<int64_t>( count, max<int64_t>( 0, to + 1 ) );
 
-        for ( ; from < to; from++ ) {
+        for ( itemcnt = 0; from < to; from++ ) {
           lstatus = list.lindex( from, lv );
           if ( lstatus == LIST_NOT_FOUND )
             break;
-          itemlen = lv.sz + lv.sz2;
-          if ( (size_t) itemlen + 32 > buflen - used ) {
-            if ( tl != NULL )
-              tl->used = used;
-            used   = 0;
-            buflen = 2000;
-            if ( buflen < (size_t) itemlen + 32 )
-              buflen = itemlen + 32;
-            if ( buflen > 30000 ) {
-              if ( (ctx.kstatus = this->kctx.validate_value()) != KEY_OK )
-                return ERR_KV_STATUS;
-            }
-            tl = this->strm.alloc_buf_list( hd, tl, buflen );
-            if ( tl == NULL )
-              return ERR_ALLOC_FAIL;
-            keybuf = tl->buf( 0 );
-          }
-
-          keybuf[ used ] = '$';
-          used += 1 + RedisMsg::int_to_str( itemlen, &keybuf[ used + 1 ] );
-          used = crlf( keybuf, used );
-          ::memcpy( &keybuf[ used ], lv.data, lv.sz );
-          if ( lv.sz2 > 0 )
-            ::memcpy( &keybuf[ used + lv.sz ], lv.data2, lv.sz2 );
-          used = crlf( keybuf, used + itemlen );
+          if ( q.append_string( lv.data, lv.sz, lv.data2, lv.sz2 ) == 0 )
+            return ERR_ALLOC_FAIL;
           itemcnt++;
         }
-        if ( tl != NULL )
-          tl->used = used;
-
-        char *hdr = (char *) this->strm.alloc_temp( 32 );
-        hdr[ 0 ] = '*';
-        used = 1 + RedisMsg::int_to_str( itemcnt, &hdr[ 1 ] );
-        used = crlf( hdr, used );
+        q.finish_tail();
+        q.prepend_array( itemcnt );
         if ( (ctx.kstatus = this->kctx.validate_value()) == KEY_OK ) {
-          this->strm.append_iov( hdr, used );
-          while ( hd != NULL ) {
-            if ( hd->used > 0 )
-              this->strm.append_iov( hd->buf( 0 ), hd->used );
-            hd = hd->next;
-          }
+          this->strm.append_iov( q );
           return EXEC_OK;
         }
       }

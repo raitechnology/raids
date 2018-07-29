@@ -65,7 +65,8 @@ RedisExec::send_concat_string( const void *data,  size_t size,
 }
 
 bool
-RedisExec::save_string_result( RedisKeyCtx &ctx,  const void *data,  size_t size )
+RedisExec::save_string_result( RedisKeyCtx &ctx,  const void *data,
+                               size_t size )
 {
   size_t msz = sizeof( RedisKeyRes ) + size + 24;
   if ( ctx.part == NULL || msz > ctx.part->mem_size ) {
@@ -957,13 +958,22 @@ RedisExec::send_int( void )
 void
 RedisExec::send_int( int64_t ival )
 {
-  size_t  len  = 32;
-  char  * buf  = this->strm.alloc( len );
-  if ( buf != NULL ) {
-    buf[ 0 ] = ':';
-    len = 1 + RedisMsg::int_to_str( ival, &buf[ 1 ] );
-    len = crlf( buf, len );
-    this->strm.sz += len;
+  if ( ival >= 0 && ival < 10 ) {
+    char  * buf = this->strm.alloc( 4 );
+    if ( buf != NULL ) {
+      buf[ 0 ] = ':';
+      buf[ 1 ] = (char) ival + '0';
+      this->strm.sz += crlf( buf, 2 );
+    }
+  }
+  else {
+    size_t ilen = RedisMsg::int_digits( ival );
+    char  * buf = this->strm.alloc( ilen + 3 );
+    if ( buf != NULL ) {
+      buf[ 0 ] = ':';
+      ilen = 1 + RedisMsg::int_to_str( ival, &buf[ 1 ], ilen );
+      this->strm.sz += crlf( buf, ilen );
+    }
   }
 }
 

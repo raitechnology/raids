@@ -22,9 +22,10 @@ struct HashVal : public ListVal {
   }
 };
 
-struct FindPos {
+struct HashPos {
   size_t   i;
   uint32_t h;
+  HashPos() : i( 0 ), h( 0 ) {}
   void init( const void *key,  size_t keylen ) {
     this->i = 0;
     this->h = kv_crc_c( key, keylen, 0 );
@@ -52,7 +53,9 @@ struct HashStorage : public ListStorage<UIntSig, UIntType> {
     this->data_start = new_start;
     this->index_ref( hdr, 0 ) = (UIntType) new_start;
     this->data_len += need;
-    if ( start + cur_size <= hdr.data_size() )
+    if ( cur_size == 0 )
+      ((uint8_t *) hdr.blob( new_start ))[ 0 ] = 0;
+    else if ( start + cur_size <= hdr.data_size() )
       this->copy_move( hdr, start, cur_size, new_start );
     else {
       need = hdr.data_size() - start;
@@ -63,7 +66,7 @@ struct HashStorage : public ListStorage<UIntSig, UIntType> {
     return true;
   }
 
-  bool hash_find( const ListHeader &hdr,  FindPos &pos ) const {
+  bool hash_find( const ListHeader &hdr,  HashPos &pos ) const {
     if ( this->count == 0 )
       return false;
     size_t          start,
@@ -96,11 +99,11 @@ struct HashStorage : public ListStorage<UIntSig, UIntType> {
       return true;
     }
   not_found:;
-    pos.i = this->count;
+    pos.i = hdr.index( this->count );
     return false;
   }
 
-  HashStatus hash_append( const ListHeader &hdr,  const FindPos &pos ) {
+  HashStatus hash_append( const ListHeader &hdr,  const HashPos &pos ) {
     if ( this->count == 0 )
       this->init_hash( hdr );
     size_t start,
@@ -116,18 +119,20 @@ struct HashStorage : public ListStorage<UIntSig, UIntType> {
     return HASH_OK;
   }
 
-  void hash_del( const ListHeader &hdr,  const FindPos &pos ) {
+  void hash_del( const ListHeader &hdr,  size_t pos ) {
     size_t    start,
               end,
               len,
               sz;
     uint8_t * map,
             * hmap;
+    if ( pos == this->count ) /* delete the last item */
+      return;
     sz    = this->get_size( hdr, 0, start, end );
     len   = min<size_t>( this->count + 1, sz ); /* already deleted list item */
     end   = hdr.data_offset( start, len );
-    start = hdr.data_offset( start, pos.i );
-    len  -= pos.i;
+    start = hdr.data_offset( start, pos );
+    len  -= pos;
     map   = (uint8_t *) hdr.blob( start );
     if ( end >= start ) {
       ::memmove( map, &map[ 1 ], len );
@@ -145,7 +150,7 @@ struct HashStorage : public ListStorage<UIntSig, UIntType> {
     printf( "]\n" );*/
   }
 
-  void print( const ListHeader &hdr ) const {
+  void print_hashes( const ListHeader &hdr ) const {
     size_t          start, end, len, sz, off;
     const uint8_t * map;
     sz  = this->get_size( hdr, 0, start, end );
@@ -167,52 +172,44 @@ struct HashStorage : public ListStorage<UIntSig, UIntType> {
     }
   }
 
-  bool match( const ListHeader &hdr,  const void *key,  size_t keylen,
-             size_t pos,  size_t *data_off = 0,  size_t *data_size = 0 ) const {
-    size_t start,
-           len,
-           end = this->get_offset( hdr, pos, true );
-    if ( pos < this->count ) {
-      start = ( end == hdr.data_size() ) ? 0 : end;
-      end   = this->get_offset( hdr, pos + 1, true );
-      len   = ( end >= start ? end - start : hdr.data_size() - start + end );
+  bool match_key( const ListHeader &hdr,  const void *key,  size_t keylen,
+                  size_t pos,  size_t *data_off = 0,
+                  size_t *data_size = 0 ) const {
+    size_t start, end, len;
+    if ( pos < hdr.index( this->count ) ) {
+      len = this->get_size( hdr, pos, start, end );
       if ( len >= keylen + 1 ) {
         uint8_t * kp = (uint8_t *) hdr.blob( start );
         if ( kp[ 0 ] == (uint8_t) keylen ) {
           if ( start + keylen + 1 <= hdr.data_size() ) {
-            if ( ::memcmp( &kp[ 1 ], key, keylen ) == 0 ) {
-              if ( data_off != NULL )
-                goto found;
-              return true;
-            }
+            if ( ::memcmp( &kp[ 1 ], key, keylen ) == 0 )
+              goto found;
           }
           else {
             size_t part = hdr.data_size() - ( start + 1 );
             if ( ( part == 0 || ::memcmp( &kp[ 1 ], key, part ) == 0 ) &&
                  ::memcmp( hdr.blob( 0 ), &((uint8_t *) key)[ part ],
-                           keylen - part ) == 0 ) {
-              if ( data_off != NULL )
-                goto found;
-              return true;
-            }
+                           keylen - part ) == 0 )
+              goto found;
           }
         }
       }
     }
     return false;
   found:;
-    *data_off  = hdr.data_offset( start, keylen + 1 );
-    *data_size = len - ( keylen + 1 );
+    if ( data_off != NULL ) {
+      *data_off  = hdr.data_offset( start, keylen + 1 );
+      *data_size = len - ( keylen + 1 );
+    }
     return true;
   }
 
   HashStatus hexists( const ListHeader &hdr,  const void *key,
-                      size_t keylen ) const {
-    FindPos pos;
-    for ( pos.init( key, keylen ); ; pos.i++ ) {
+                      size_t keylen,  HashPos &pos ) const {
+    for ( ; ; pos.i++ ) {
       if ( ! this->hash_find( hdr, pos ) )
         return HASH_NOT_FOUND;
-      if ( this->match( hdr, key, keylen, pos.i ) )
+      if ( this->match_key( hdr, key, keylen, pos.i ) )
         return HASH_OK;
     }
   }
@@ -241,15 +238,15 @@ struct HashStorage : public ListStorage<UIntSig, UIntType> {
     return hstat;
   }
 
-  HashStatus hgetpos( const ListHeader &hdr,  const void *key,  size_t keylen,
-                      ListVal &kv,  FindPos &pos ) const {
+  HashStatus hget( const ListHeader &hdr,  const void *key,  size_t keylen,
+                   ListVal &kv,  HashPos &pos ) const {
     size_t  data_off,
             data_len;
     kv.zero();
-    for ( pos.init( key, keylen ); ; pos.i++ ) {
+    for ( ; ; pos.i++ ) {
       if ( ! this->hash_find( hdr, pos ) )
         return HASH_NOT_FOUND;
-      if ( this->match( hdr, key, keylen, pos.i, &data_off, &data_len ) ) {
+      if ( this->match_key( hdr, key, keylen, pos.i, &data_off, &data_len ) ) {
         kv.data = hdr.blob( data_off );
         kv.sz   = data_len;
         if ( data_off + data_len > hdr.data_size() ) {
@@ -260,12 +257,6 @@ struct HashStorage : public ListStorage<UIntSig, UIntType> {
         return HASH_OK;
       }
     }
-  }
-
-  HashStatus hget( const ListHeader &hdr,  const void *key,  size_t keylen,
-                   ListVal &kv ) const {
-    FindPos pos;
-    return this->hgetpos( hdr, key, keylen, kv, pos );
   }
 
   void copy_item( const ListHeader &hdr,  const void *key,  size_t keylen,
@@ -338,7 +329,7 @@ struct HashStorage : public ListStorage<UIntSig, UIntType> {
   }
 
   HashStatus hupdate( const ListHeader &hdr,  const void *key,  size_t keylen,
-                      const void *val,  size_t vallen,  const FindPos &pos ) {
+                      const void *val,  size_t vallen,  const HashPos &pos ) {
     size_t start, end,
            old_size = this->get_size( hdr, pos.i, start, end ),
            new_size = keylen + vallen + 1;
@@ -371,7 +362,7 @@ struct HashStorage : public ListStorage<UIntSig, UIntType> {
   }
 
   HashStatus happend( const ListHeader &hdr,  const void *key,  size_t keylen,
-                      const void *val,  size_t vallen,  const FindPos &pos ) {
+                      const void *val,  size_t vallen,  const HashPos &pos ) {
     size_t     start;
     HashStatus hstat = this->hash_append( hdr, pos );
     if ( hstat == HASH_OK )
@@ -382,43 +373,39 @@ struct HashStorage : public ListStorage<UIntSig, UIntType> {
   }
 
   HashStatus hset( const ListHeader &hdr,  const void *key,  size_t keylen,
-                   const void *val,  size_t vallen ) {
-    FindPos pos;
-    for ( pos.init( key, keylen ); ; pos.i++ ) {
-      if ( ! this->hash_find( hdr, pos ) )
-        return this->happend( hdr, key, keylen, val, vallen, pos );
-      if ( this->match( hdr, key, keylen, pos.i ) )
-        return this->hupdate( hdr, key, keylen, val, vallen, pos );
+                   const void *val,  size_t vallen,  HashPos &pos ) {
+    /* this can be used as: hget() + hset() for update or just hset() */
+    if ( pos.i == 0 ) {
+      for ( ; ; pos.i++ ) {
+        if ( ! this->hash_find( hdr, pos ) ||
+             this->match_key( hdr, key, keylen, pos.i ) )
+          break;
+      }
     }
-  }
-
-  HashStatus hsetnx( const ListHeader &hdr,  const void *key,  size_t keylen,
-                     const void *val,  size_t vallen ) {
-    FindPos pos;
-    for ( pos.init( key, keylen ); ; pos.i++ ) {
-      if ( ! this->hash_find( hdr, pos ) )
-        return this->happend( hdr, key, keylen, val, vallen, pos );
-      if ( this->match( hdr, key, keylen, pos.i ) )
-        return HASH_EXISTS;
-    }
-  }
-
-  HashStatus hsetpos( const ListHeader &hdr,  const void *key,  size_t keylen,
-                      const void *val,  size_t vallen,  const FindPos &pos ) {
     if ( pos.i != this->count )
       return this->hupdate( hdr, key, keylen, val, vallen, pos );
     return this->happend( hdr, key, keylen, val, vallen, pos );
   }
 
-  HashStatus hdel( const ListHeader &hdr,  const void *key,  size_t keylen ) {
-    FindPos pos;
-    for ( pos.init( key, keylen ); ; pos.i++ ) {
+  HashStatus hsetnx( const ListHeader &hdr,  const void *key,  size_t keylen,
+                     const void *val,  size_t vallen,  HashPos &pos ) {
+    for ( ; ; pos.i++ ) {
+      if ( ! this->hash_find( hdr, pos ) )
+        return this->happend( hdr, key, keylen, val, vallen, pos );
+      if ( this->match_key( hdr, key, keylen, pos.i ) )
+        return HASH_EXISTS;
+    }
+  }
+
+  HashStatus hdel( const ListHeader &hdr,  const void *key,  size_t keylen,
+                   HashPos &pos ) {
+    for ( ; ; pos.i++ ) {
       if ( ! this->hash_find( hdr, pos ) )
         return HASH_NOT_FOUND;
-      if ( this->match( hdr, key, keylen, pos.i ) ) {
+      if ( this->match_key( hdr, key, keylen, pos.i ) ) {
         HashStatus hstat = (HashStatus) this->lrem( hdr, pos.i );
         if ( hstat == HASH_OK )
-          this->hash_del( hdr, pos );
+          this->hash_del( hdr, pos.i );
         return hstat;
       }
     }
@@ -489,43 +476,35 @@ struct HashData : public ListData {
   ( is_uint8( this->size ) ? ((HashStorage8 *) this->listp)->GOTO : \
     is_uint16( this->size ) ? ((HashStorage16 *) this->listp)->GOTO : \
                               ((HashStorage32 *) this->listp)->GOTO )
-
   int hverify( void ) const {
     int x = this->lverify();
     if ( x == 0 )
       x = HASH_CALL( hverify( *this ) );
     return x;
   }
-  HashStatus hexists( const void *key,  size_t keylen ) {
-    return HASH_CALL( hexists( *this, key, keylen ) );
+  HashStatus hexists( const void *key,  size_t keylen,  HashPos &pos ) {
+    return HASH_CALL( hexists( *this, key, keylen, pos ) );
   }
-  HashStatus hget( const void *key,  size_t keylen,  ListVal &kv ) const {
-    return HASH_CALL( hget( *this, key, keylen, kv ) );
-  }
-  HashStatus hgetpos( const void *key,  size_t keylen,  ListVal &kv,
-                      FindPos &pos ) const {
-    return HASH_CALL( hgetpos( *this, key, keylen, kv, pos ) );
+  HashStatus hget( const void *key,  size_t keylen,  ListVal &kv,
+                   HashPos &pos ) const {
+    return HASH_CALL( hget( *this, key, keylen, kv, pos ) );
   }
   HashStatus hset( const void *key,  size_t keylen,
-                   const void *val,  size_t vallen ) {
-    return HASH_CALL( hset( *this, key, keylen, val, vallen ) );
+                   const void *val,  size_t vallen,  HashPos &pos ) {
+    return HASH_CALL( hset( *this, key, keylen, val, vallen, pos ) );
   }
   HashStatus hsetnx( const void *key,  size_t keylen,
-                     const void *val,  size_t vallen ) {
-    return HASH_CALL( hsetnx( *this, key, keylen, val, vallen ) );
-  }
-  HashStatus hsetpos( const void *key,  size_t keylen,  const void *val,
-                      size_t vallen,  const FindPos &pos ) {
-    return HASH_CALL( hsetpos( *this, key, keylen, val, vallen, pos ) );
+                     const void *val,  size_t vallen,  HashPos &pos ) {
+    return HASH_CALL( hsetnx( *this, key, keylen, val, vallen, pos ) );
   }
   HashStatus hindex( size_t n,  HashVal &kv ) const {
     return HASH_CALL( hindex( *this, n, kv ) );
   }
-  HashStatus hdel( const void *key,  size_t keylen ) {
-    return HASH_CALL( hdel( *this, key, keylen ) );
+  HashStatus hdel( const void *key,  size_t keylen,  HashPos &pos ) {
+    return HASH_CALL( hdel( *this, key, keylen, pos ) );
   }
-  void print( void ) {
-    return HASH_CALL( print( *this ) );
+  void print_hashes( void ) {
+    return HASH_CALL( print_hashes( *this ) );
   }
 };
 

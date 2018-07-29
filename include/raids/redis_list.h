@@ -10,6 +10,10 @@ enum ListStatus {
   LIST_FULL      = 2
 };
 
+/* max size is hdr of ListStorage<uint64_t, uint32_t> */
+static const size_t LIST_HDR_OOB_SIZE =
+  sizeof( uint64_t ) + sizeof( uint32_t ) * 2;
+
 struct ListHeader {
   size_t sig;
   size_t index_mask, data_mask;
@@ -18,6 +22,8 @@ struct ListHeader {
   size_t index_size( void ) const { return this->index_mask+1; }
   size_t data_size( void )  const { return this->data_mask+1; }
   size_t max_count( void )  const { return this->index_mask; }
+  size_t index( size_t i )  const { return i & this->index_mask; }
+  size_t length( size_t l ) const { return l & this->data_mask; }
   /* wrap len around */
   size_t data_offset( size_t start,  ssize_t len ) const {
     return ( start + len ) & this->data_mask;
@@ -34,14 +40,36 @@ struct ListVal {
     this->data = this->data2 = NULL;
     this->sz = this->sz2 = 0;
   }
-  size_t concat( char *out,  size_t out_sz ) const {
+  size_t concat( void *out,  size_t out_sz ) const {
     size_t y, x = min<size_t>( this->sz, out_sz );
     if ( x != 0 ) ::memcpy( out, this->data, x );
     y = min<size_t>( this->sz2, out_sz - x );
-    if ( y != 0 ) ::memcpy( &out[ x ], this->data2, y );
+    if ( y != 0 ) ::memcpy( &((char *) out)[ x ], this->data2, y );
     return x + y;
   }
+  size_t unitary( void *&out,  void *buf,  size_t buf_sz,  bool &is_a ) const {
+    if ( this->sz + this->sz2 != this->sz ) {
+      if ( buf_sz < this->sz + this->sz2 ) {
+        buf = ::malloc( this->sz + this->sz2 );
+        if ( buf == NULL ) {
+          out = NULL;
+          return 0;
+        }
+        is_a = true;
+      }
+      out = buf;
+      ::memcpy( buf, this->data, this->sz );
+      ::memcpy( &((char *) buf)[ this->sz ], this->data2, this->sz2 );
+    }
+    else if ( this->sz > 0 )
+      out = (void *) this->data;
+    else
+      out = (void *) this->data2;
+    return this->sz + this->sz2;
+  }
 };
+
+static const uint8_t mt_list[] = {0xe4,0xf7,3,3,0,0,0,0,0,0,0,0,0,0,0,0};
 
 template <class UIntSig, class UIntType>
 struct ListStorage {
@@ -74,11 +102,24 @@ struct ListStorage {
     this->idx( 0 )   = 0;
     this->open( hdr );
  }
- void open( ListHeader &hdr ) {
-    hdr.sig        = this->_list_sig;
-    hdr.index_mask = this->_list_index_mask;
-    hdr.data_mask  = this->_list_data_mask;
-    hdr.blobp      = (void *) &this->idx( hdr.index_size() );
+ void open( ListHeader &hdr,  const void *oob = NULL,  size_t loob = 0 ) const {
+    /* Out of band header to defang mutations.  The hdr controls the sandbox
+     * of the list, derefs are restricted to the areas within the masks */
+    if ( loob >= sizeof( this->_list_sig ) +
+                 sizeof( this->_list_index_mask ) +
+                 sizeof( this->_list_data_mask ) ) {
+      const ListStorage<UIntSig, UIntType> & p =
+        *(const ListStorage<UIntSig, UIntType> *) oob;
+      hdr.sig        = p._list_sig;
+      hdr.index_mask = p._list_index_mask;
+      hdr.data_mask  = p._list_data_mask;
+    }
+    else {
+      hdr.sig        = this->_list_sig;
+      hdr.index_mask = this->_list_index_mask;
+      hdr.data_mask  = this->_list_data_mask;
+    }
+    hdr.blobp = (void *) &this->idx( hdr.index_size() );
   }
   bool empty( void ) const {
     return this->count == 0;
@@ -126,6 +167,20 @@ struct ListStorage {
       this->copy_into( hdr, data, size, start );
     return lstat;
   }
+  /* push data/size at tail */
+  ListStatus rpush( const ListHeader &hdr,  const ListVal &lv ) {
+    size_t start;
+    ListStatus lstat = this->rpush_size( hdr, lv.sz + lv.sz2, start );
+    if ( lstat == LIST_OK ) {
+      if ( lv.sz > 0 )
+        this->copy_into( hdr, lv.data, lv.sz, start );
+      if ( lv.sz2 > 0 ) {
+        start = hdr.data_offset( start, lv.sz );
+        this->copy_into( hdr, lv.data2, lv.sz2, start );
+      }
+    }
+    return lstat;
+  }
   /* push size at head */
   ListStatus lpush_size( const ListHeader &hdr,  size_t size,  size_t &start ) {
     size_t end;
@@ -153,9 +208,12 @@ struct ListStorage {
                      bool end = false ) const {
     i = ( this->first + i ) & hdr.index_mask;
     size_t j = this->idx( i );
-    return ( ! end || j != 0 || i == this->first ||
-               this->idx( ( i - 1 ) & hdr.index_mask ) == 0 )
-             ? j : hdr.data_size();
+    if ( ! end ||  /* if not end of segment, then 0 is the start offset    */
+         j != 0 || /* if j == 0, it is both the start and the end offset   */
+         i == this->first ||  /* an elem cannot span the whole data_size() */
+         this->idx( ( i - 1 ) & hdr.index_mask ) == 0 ) /* check prev is 0 */
+      return j;
+    return hdr.data_size(); /* change 0 to data_size(), it is at the end */
   }
   /* fetch nth item, if wrapped around buffer, p2/sz2 will be set */
   ListStatus lindex( const ListHeader &hdr,  size_t n,  ListVal &lv ) const {
@@ -210,9 +268,9 @@ struct ListStorage {
   ListStatus scan_fwd( const ListHeader &hdr,  const void *data,  size_t size,
                        size_t &pos ) const {
     size_t start, end, len;
-    size_t n = pos;
+    size_t n = pos, cnt = hdr.index( this->count );
     end = this->get_offset( hdr, n, true );
-    for ( ; n < this->count; n++ ) {
+    for ( ; n < cnt; n++ ) {
       start = ( end == hdr.data_size() ) ? 0 : end;
       end   = this->get_offset( hdr, n + 1, true );
       if ( start <= end ) {
@@ -474,23 +532,21 @@ struct ListStorage {
       return -11;
     if ( hdr.blobp != (void *) &this->idx( hdr.index_size() ) )
       return -12;
-    if ( this->data_full( hdr, 0 ) )
+    if ( this->count != hdr.index( this->count ) )
       return -13;
-    if ( this->full( hdr, 0 ) )
-      return -14;
     size_t total = 0;
     for ( size_t i = 0; i < this->count; i++ ) {
       size_t start, end, size = this->get_size( hdr, i, start, end );
       if ( start >= hdr.data_size() )
-        return -15;
+        return -14;
       if ( end > hdr.data_size() )
-        return -16;
+        return -15;
       if ( size >= hdr.data_size() )
-        return -17;
+        return -16;
       total += size;
     }
     if ( total != this->data_len )
-      return -18;
+      return -17;
     return 0;
   }
   void lprint( const ListHeader &hdr ) const {
@@ -582,7 +638,7 @@ struct ListData : public ListHeader {
         sz = sizeof( ListStorage32 );
         tz = sizeof( uint32_t );
       }
-      lst_size = sz + tz * idx_size + tz * dat_size;
+      lst_size = sz + tz * idx_size + dat_size;
       if ( ( is_uint8( lst_size ) && tz != sizeof( uint8_t ) ) ||
            ( ! is_uint8( lst_size ) && is_uint16( lst_size ) && tz != sizeof( uint16_t ) ) ||
            ( ! is_uint8( lst_size ) && ! is_uint16( lst_size ) &&
@@ -616,9 +672,15 @@ struct ListData : public ListHeader {
         (new ( this->listp )
           ListStorage32( lst32_sig, count, data_len ))->init( *this ) );
   }
-  void open( void )             { LIST_CALL( open( *this ) ); }
-  size_t count( void )    const { return LIST_CALL( count ); }
-  size_t data_len( void ) const { return LIST_CALL( data_len ); }
+  void open( const void *oob = NULL,  size_t loob = 0 ) {
+    LIST_CALL( open( *this, oob, loob ) );
+  }
+  size_t count( void ) const {
+    return this->index( LIST_CALL( count ) );
+  }
+  size_t data_len( void ) const {
+    return this->length( LIST_CALL( data_len ) );
+  }
 
   int lverify( void ) const {
     if ( is_uint8( this->size ) ) {
@@ -641,11 +703,14 @@ struct ListData : public ListHeader {
   template<class T, class U>
   void copy( ListData &list ) const {
     if ( is_uint8( this->size ) )
-      ((ListStorage8 *) this->listp)->copy<T, U>( *this, list, *(ListStorage<T, U> *) list.listp );
+      ((ListStorage8 *) this->listp)->copy<T, U>( *this, list,
+                                            *(ListStorage<T, U> *) list.listp );
     else if ( is_uint16( this->size ) )
-      ((ListStorage16 *) this->listp)->copy<T, U>( *this, list, *(ListStorage<T, U> *) list.listp );
+      ((ListStorage16 *) this->listp)->copy<T, U>( *this, list,
+                                            *(ListStorage<T, U> *) list.listp );
     else
-      ((ListStorage32 *) this->listp)->copy<T, U>( *this, list, *(ListStorage<T, U> *) list.listp );
+      ((ListStorage32 *) this->listp)->copy<T, U>( *this, list,
+                                            *(ListStorage<T, U> *) list.listp );
   }
   void copy( ListData &list ) const {
     if ( is_uint8( list.size ) )

@@ -72,7 +72,7 @@ defines     := -DDS_VER=$(ver_build)
 .PHONY: everything
 everything: all
 
-libraids_files := ev_net ev_service ev_http ev_client ev_tcp ev_unix \
+libraids_files := ev_net ev_service ev_http ev_client ev_tcp ev_unix stream_buf \
                   redis_msg redis_cmd_db redis_exec redis_geo redis_hash \
 		  redis_hyperloglog redis_key redis_list redis_pubsub \
 		  redis_script redis_set redis_sortedset redis_stream \
@@ -146,12 +146,20 @@ test_hash_lnk   := $(test_hash_libs) $(dep_lib)
 
 $(bind)/test_hash: $(test_hash_objs) $(test_hash_libs)
 
+test_set_files := test_set
+test_set_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(test_set_files)))
+test_set_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(test_set_files)))
+test_set_libs  := $(libd)/libraids.a
+test_set_lnk   := $(test_set_libs) $(dep_lib)
+
+$(bind)/test_set: $(test_set_objs) $(test_set_libs)
+
 all_exes    += $(bind)/server $(bind)/client $(bind)/test_msg \
                $(bind)/redis_cmd $(bind)/test_cmd $(bind)/test_list \
-	       $(bind)/test_hash
+	       $(bind)/test_hash $(bind)/test_set
 all_depends += $(server_deps) $(client_deps) $(test_msg_deps) \
                $(redis_cmd_deps) $(test_cmd_deps) $(test_list_deps) \
-	       $(test_hash_deps)
+	       $(test_hash_deps) $(test_set_deps)
 
 all_dirs := $(bind) $(libd) $(objd) $(dependd)
 

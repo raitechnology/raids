@@ -50,8 +50,8 @@ resize_hash( HashData *curr,  size_t add_len )
     delete curr;
   }
   printf( "%.2f%% data %.2f%% hash\n",
-          newbe->data_len() * 100.0 / newbe->data_size(),
-          newbe->count() * 100.0 / newbe->max_count() );
+          ( newbe->data_len() + add_len ) * 100.0 / newbe->data_size(),
+          ( newbe->count() + 1 ) * 100.0 / newbe->max_count() );
   return newbe;
 }
 
@@ -69,7 +69,7 @@ main( int, char ** )
   const char *cmdbuf, *arg, *val, *fval;
   ListVal lv;
   HashVal kv;
-  FindPos pos;
+  HashPos pos;
   int64_t ival, jval;
   _Decimal128 fp;
   RedisMsgStatus mstatus;
@@ -117,7 +117,8 @@ main( int, char ** )
         for ( i = 2; i < argcount; i++ ) {
           if ( ! msg.get_arg( i, arg, arglen ) )
             goto bad_args;
-          hstat = hash->hdel( arg, arglen );
+          pos.init( arg, arglen );
+          hstat = hash->hdel( arg, arglen, pos );
           if ( hstat == HASH_OK )
             sz++;
         }
@@ -126,7 +127,8 @@ main( int, char ** )
       case HEXISTS_CMD: /* HEXISTS key field */
         if ( ! msg.get_arg( 2, arg, arglen ) )
           goto bad_args;
-        hstat = hash->hexists( arg, arglen );
+        pos.init( arg, arglen );
+        hstat = hash->hexists( arg, arglen, pos );
         printf( "%s\n", hstat == HASH_OK ? "true" : "false" );
         break;
       case HGETALL_CMD: /* HGETALL key */
@@ -146,12 +148,13 @@ main( int, char ** )
                 hash->max_count() - 1 );
         printf( "bytes %lu of %lu\n", (size_t) hash->data_len(),
                 hash->data_size() );
-        printf( "[" ); hash->print(); printf( "]\n" );
+        printf( "[" ); hash->print_hashes(); printf( "]\n" );
 
         for ( i = 1; i < count; i++ ) {
           hstat = hash->hindex( i, kv );
           if ( hstat == HASH_OK ) {
-            hstat = hash->hgetpos( kv.key, kv.keylen, lv, pos );
+            pos.init( kv.key, kv.keylen );
+            hstat = hash->hget( kv.key, kv.keylen, lv, pos );
             if ( hstat == HASH_OK )
               printf( "%ld. idx(%ld) h(%u) %.*s\n", i, pos.i, (uint8_t) pos.h,
                       (int) kv.keylen, kv.key );
@@ -168,7 +171,8 @@ main( int, char ** )
         if ( ! msg.get_arg( 2, arg, arglen ) ||
              ! msg.get_arg( 3, ival ) )
           goto bad_args;
-        hstat = hash->hgetpos( arg, arglen, lv, pos );
+        pos.init( arg, arglen );
+        hstat = hash->hget( arg, arglen, lv, pos );
         is_new = ( hstat == HASH_NOT_FOUND );
         if ( ! is_new ) {
           const char *data;
@@ -187,7 +191,7 @@ main( int, char ** )
         }
         sz = RedisMsg::int_to_str( ival, ibuf );
         for (;;) {
-          hstat = hash->hsetpos( arg, arglen, ibuf, sz, pos );
+          hstat = hash->hset( arg, arglen, ibuf, sz, pos );
           if ( hstat != HASH_FULL ) {
             printf( "%.*s\n", (int) sz, ibuf );
             break;
@@ -200,7 +204,8 @@ main( int, char ** )
         if ( ! msg.get_arg( 2, arg, arglen ) ||
              ! msg.get_arg( 3, fval, fvallen ) )
           goto bad_args;
-        hstat = hash->hgetpos( arg, arglen, lv, pos );
+        pos.init( arg, arglen );
+        hstat = hash->hget( arg, arglen, lv, pos );
         is_new = ( hstat == HASH_NOT_FOUND );
         if ( ! is_new ) {
           sz = lv.concat( ibuf, sizeof( ibuf ) - 1 );
@@ -215,7 +220,7 @@ main( int, char ** )
         sz  = ::snprintf( ibuf, sizeof( ibuf ), DDfmt, fp );
         if ( sz == 0 ) sz = ::strlen( ibuf );
         for (;;) {
-          hstat = hash->hsetpos( arg, arglen, ibuf, sz, pos );
+          hstat = hash->hset( arg, arglen, ibuf, sz, pos );
           if ( hstat != HASH_FULL ) {
             printf( "%.*s\n", (int) sz, ibuf );
             break;
@@ -242,7 +247,8 @@ main( int, char ** )
         for ( i = 2; i < argcount; i++ ) {
           if ( ! msg.get_arg( i, arg, arglen ) )
             goto bad_args;
-          hstat = hash->hget( arg, arglen, kv );
+          pos.init( arg, arglen );
+          hstat = hash->hget( arg, arglen, kv, pos );
           printf( "%.*s: ", (int) arglen, arg );
           if ( hstat == HASH_OK ) {
             printf( "%.*s", (int) kv.sz, (char *) kv.data );
@@ -260,8 +266,9 @@ main( int, char ** )
           if ( ! msg.get_arg( i, arg, arglen ) ||
                ! msg.get_arg( i+1, val, vallen ) )
             goto bad_args;
+          pos.init( arg, arglen );
           for (;;) {
-            hstat = hash->hset( arg, arglen, val, vallen );
+            hstat = hash->hset( arg, arglen, val, vallen, pos );
             printf( "%s\n", hash_status_string[ hstat ] );
             if ( hstat != HASH_FULL ) break;
             hash = resize_hash( hash, arglen + vallen + 1 );
@@ -272,8 +279,9 @@ main( int, char ** )
         if ( ! msg.get_arg( 2, arg, arglen ) ||
              ! msg.get_arg( 3, val, vallen ) )
           goto bad_args;
+        pos.init( arg, arglen );
         for (;;) {
-          hstat = hash->hsetnx( arg, arglen, val, vallen );
+          hstat = hash->hsetnx( arg, arglen, val, vallen, pos );
           printf( "%s\n", hash_status_string[ hstat ] );
           if ( hstat != HASH_FULL ) break;
           hash = resize_hash( hash, arglen + vallen + 1 );
@@ -282,7 +290,8 @@ main( int, char ** )
       case HSTRLEN_CMD: /* HSTRLEN key field */
         if ( ! msg.get_arg( 2, arg, arglen ) )
           goto bad_args;
-        hstat = hash->hget( arg, arglen, kv );
+        pos.init( arg, arglen );
+        hstat = hash->hget( arg, arglen, kv, pos );
         printf( "%.*s: ", (int) arglen, arg );
         if ( hstat == HASH_OK )
           printf( "%ld\n", kv.sz + kv.sz2 );

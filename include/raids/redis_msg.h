@@ -145,12 +145,15 @@ struct RedisMsg {
   static size_t uint_to_str( uint64_t v,  char *buf ) {
     return uint_to_str( v, buf, uint_digits( v ) );
   }
-  static size_t int_to_str( int64_t v,  char *buf ) {
+  static size_t int_to_str( int64_t v,  char *buf,  size_t len ) {
     if ( v < 0 ) {
       buf[ 0 ] = '-';
-      return 1 + uint_to_str( neg( v ), &buf[ 1 ] );
+      return 1 + uint_to_str( neg( v ), &buf[ 1 ], len - 1 );
     }
-    return uint_to_str( v, buf );
+    return uint_to_str( v, buf, len );
+  }
+  static size_t int_to_str( int64_t v,  char *buf ) {
+    return int_to_str( v, buf, int_digits( v ) );
   }
   /* str length sz to int */
   static RedisMsgStatus str_to_int( const char *str,  size_t sz,

@@ -18,20 +18,20 @@ using namespace kv;
 #define fallthrough __attribute__ ((fallthrough))
 
 enum {
-  DO_HEXISTS      = 1<<1,
-  DO_HGET         = 1<<2,
-  DO_HGETALL      = 1<<3,
-  DO_HKEYS        = 1<<4,
-  DO_HLEN         = 1<<5,
+  DO_HEXISTS      = 1<<0,
+  DO_HGET         = 1<<1,
+  DO_HGETALL      = 1<<2,
+  DO_HKEYS        = 1<<3,
+  DO_HLEN         = 1<<4,
   DO_HMGET        = 1<<5,
-  DO_HVALS        = 1<<7,
-  DO_HSTRLEN      = 1<<8,
-  DO_HSCAN        = 1<<9,
-  DO_HINCRBY      = 1<<10,
-  DO_HINCRBYFLOAT = 1<<11,
-  DO_HMSET        = 1<<12,
-  DO_HSET         = 1<<13,
-  DO_HSETNX       = 1<<14
+  DO_HVALS        = 1<<6,
+  DO_HSTRLEN      = 1<<7,
+  DO_HSCAN        = 1<<8,
+  DO_HINCRBY      = 1<<9,
+  DO_HINCRBYFLOAT = 1<<10,
+  DO_HMSET        = 1<<11,
+  DO_HSET         = 1<<12,
+  DO_HSETNX       = 1<<13
 };
 
 ExecStatus
@@ -41,10 +41,13 @@ RedisExec::exec_hdel( RedisKeyCtx &ctx )
   size_t       datalen;
   const char * arg;
   size_t       arglen, i = 2;
+  HashPos      pos;
 
   /* HDEL key field [field ...] */
   if ( ! this->msg.get_arg( i, arg, arglen ) )
     return ERR_BAD_ARGS;
+  pos.init( arg, arglen );
+
   switch ( this->exec_key_fetch( ctx ) ) {
     case KEY_IS_NEW:
       return EXEC_SEND_ZERO;
@@ -58,13 +61,14 @@ RedisExec::exec_hdel( RedisKeyCtx &ctx )
         hash.open();
         ctx.ival = 0;
         for (;;) {
-          hstat = hash.hdel( arg, arglen );
+          hstat = hash.hdel( arg, arglen, pos );
           if ( hstat == HASH_OK )
             ctx.ival++;
           if ( ++i == this->argc )
             break;
           if ( ! this->msg.get_arg( i, arg, arglen ) )
             return ERR_BAD_ARGS;
+          pos.init( arg, arglen );
         }
         return EXEC_SEND_INT;
       }
@@ -164,93 +168,44 @@ RedisExec::exec_hvals( RedisKeyCtx &ctx )
   return this->exec_hmultiread( ctx, DO_HVALS );
 }
 
-namespace rai {
-namespace ds {
-struct HScanArgs {
-  int64_t            pos,
-                     maxcnt;
-  pcre2_code       * re;
-  pcre2_match_data * md;
-  HScanArgs() : pos( 0 ), maxcnt( 10 ), re( 0 ), md( 0 ) {}
-};
-}
-}
-
 ExecStatus
 RedisExec::exec_hscan( RedisKeyCtx &ctx )
 {
   /* HSCAN key cursor [MATCH pat] */
-  uint8_t      buf[ 1024 ],
-             * bf = buf;
-  size_t       erroff,
-               blen = sizeof( buf );
-  int          rc,
-               error;
-  const char * pattern = NULL;
-  size_t       patlen  = 0;
-  HScanArgs    hs;
-
-  /* HSCAN key cursor [MATCH pat] */
-  if ( ! this->msg.get_arg( 2, hs.pos ) )
-    return ERR_BAD_ARGS;
-  for ( size_t i = 3; i < this->argc; i += 2 ) {
-    switch ( this->msg.match_arg( i, "match", 5,
-                                     "count", 5, NULL ) ) {
-      case 1:
-        if ( ! this->msg.get_arg( i+1, pattern, patlen ) )
-          return ERR_BAD_ARGS;
-        break;
-      case 2:
-        if ( ! this->msg.get_arg( i+1, hs.maxcnt ) )
-          return ERR_BAD_ARGS;
-        break;
-      default:
-        return ERR_BAD_ARGS;
-    }
-  }
-  if ( pattern != NULL ) {
-    rc = pcre2_pattern_convert( (PCRE2_SPTR8) pattern, patlen,
-                                PCRE2_CONVERT_GLOB_NO_WILD_SEPARATOR,
-                                &bf, &blen, 0 );
-    if ( rc != 0 )
-      return ERR_BAD_ARGS;
-    hs.re = pcre2_compile( bf, blen, 0, &error, &erroff, 0 );
-    if ( hs.re == NULL )
-      return ERR_BAD_ARGS;
-    hs.md = pcre2_match_data_create_from_pattern( hs.re, NULL );
-    if ( hs.md == NULL ) {
-      pcre2_code_free( hs.re );
-      return ERR_BAD_ARGS;
-    }
-  }
-  ExecStatus status = this->exec_hmultiread( ctx, DO_HSCAN, &hs );
-  if ( hs.re != NULL ) {
-    pcre2_match_data_free( hs.md );
-    pcre2_code_free( hs.re );
-  }
+  ScanArgs   sa;
+  ExecStatus status;
+  if ( (status = this->match_scan_args( sa, 2 )) != EXEC_OK )
+    return status;
+  status = this->exec_hmultiread( ctx, DO_HSCAN, &sa );
+  this->release_scan_args( sa );
   return status;
 }
 
 ExecStatus
-RedisExec::exec_hmultiread( RedisKeyCtx &ctx,  int flags,  HScanArgs *hs )
+RedisExec::exec_hmultiread( RedisKeyCtx &ctx,  int flags,  ScanArgs *sa )
 {
-  /* HSCAN key cursor [MATCH pat] */
+  const char * key    = NULL;
+  size_t       keylen = 0;
+  HashPos      pos;
+
   /* HMGET key value [value...] */
+  if ( ( flags & DO_HMGET ) != 0 ) {
+    if ( ! this->msg.get_arg( 2, key, keylen ) )
+      return ERR_BAD_ARGS;
+    pos.init( key, keylen );
+  }
+  /* HSCAN key cursor [MATCH pat] */
   /* HGETALL/HKEYS/HVALS key */
-  StreamBuf::BufList
-           * hd     = NULL,
-           * tl     = NULL;
-  char     * keybuf = NULL;
+  StreamBuf::BufQueue q( this->strm );
   void     * data;
   size_t     datalen,
              count   = 0,
-             itemlen,
-             buflen  = 0,
-             used    = 0,
              itemcnt = 0,
-             argi    = 2,
-             i       = ( hs != NULL && hs->pos > 0 ? hs->pos : 1 ),
-             maxcnt  = ( hs != NULL ? hs->maxcnt * 2 : 0 );
+             i       = ( sa != NULL && sa->pos > 0 ? sa->pos : 1 ),
+             maxcnt  = ( sa != NULL ? sa->maxcnt * 2 : 0 ),
+             argi    = 3;
+  uint8_t    lhdr[ LIST_HDR_OOB_SIZE ];
+  uint64_t   llen;
   HashVal    kv;
   HashStatus hstatus;
 
@@ -263,130 +218,71 @@ RedisExec::exec_hmultiread( RedisKeyCtx &ctx,  int flags,  HScanArgs *hs )
       if ( ctx.type == MD_NODATA )
         break;
 
-      ctx.kstatus = this->kctx.value( &data, datalen );
+      llen = sizeof( lhdr );
+      ctx.kstatus = this->kctx.value_copy( &data, datalen, lhdr, llen );
       if ( ctx.kstatus == KEY_OK ) {
         HashData hash( data, datalen );
-        hash.open();
+        hash.open( lhdr, llen );
         count = hash.count();
 
         for (;;) {
-          if ( ( flags & ( DO_HGETALL | DO_HKEYS | DO_HVALS |
-                           DO_HSCAN ) ) != 0 ) {
+          /* scan keys except for HMGET */
+          if ( ( flags & DO_HMGET ) == 0 ) {
             if ( i >= count || ( maxcnt != 0 && itemcnt >= maxcnt ) )
               break;
             hstatus = hash.hindex( i++, kv );
             if ( ( flags & DO_HSCAN ) != 0 ) {
-              if ( hs->re != NULL ) {
-                int rc = pcre2_match( hs->re, (PCRE2_SPTR8) kv.key, kv.keylen,
-                                      0, 0, hs->md, 0 );
+              if ( sa->re != NULL ) {
+                int rc = pcre2_match( sa->re, (PCRE2_SPTR8) kv.key, kv.keylen,
+                                      0, 0, sa->md, 0 );
                 if ( rc < 1 )
                   continue;
               }
             }
           }
-          else {
-            const char * key;
-            size_t       keylen;
-            if ( argi >= this->argc )
-              break;
-            if ( ! this->msg.get_arg( argi++, key, keylen ) )
-              return ERR_BAD_ARGS;
-            hstatus = hash.hget( key, keylen, kv );
+          else { /* HMGET */
+            hstatus = hash.hget( key, keylen, kv, pos );
           }
-          itemlen = 0;
-          if ( hstatus == HASH_OK ) {
-            if ( ( flags & ( DO_HGETALL | DO_HKEYS ) ) != 0 )
-              itemlen += kv.keylen;
-            if ( ( flags & ( DO_HGETALL | DO_HVALS | DO_HMGET ) ) != 0 )
-              itemlen += kv.sz + kv.sz2;
-          }
-          if ( itemlen + 48 > buflen - used ) {
-            if ( tl != NULL )
-              tl->used = used;
-            used   = 0;
-            buflen = 500;
-            if ( buflen < (size_t) itemlen + 48 )
-              buflen = itemlen + 48;
-            if ( buflen > 30000 ) {
-              if ( (ctx.kstatus = this->kctx.validate_value()) != KEY_OK )
-                return ERR_KV_STATUS;
-            }
-            tl = this->strm.alloc_buf_list( hd, tl, buflen );
-            if ( tl == NULL )
-              return ERR_ALLOC_FAIL;
-            keybuf = tl->buf( 0 );
-          }
-
+          /* append key for HGETALL, HKEYS, HSCAN */
           if ( ( flags & ( DO_HGETALL | DO_HKEYS | DO_HSCAN ) ) != 0 ) {
-            keybuf[ used ] = '$';
-            if ( hstatus == HASH_OK ) {
-              used += 1 + RedisMsg::int_to_str( kv.keylen, &keybuf[ used + 1 ]);
-              used = crlf( keybuf, used );
-              ::memcpy( &keybuf[ used ], kv.key, kv.keylen );
-              used = crlf( keybuf, used + kv.keylen );
-            }
-            else {
-              keybuf[ used + 1 ] = '-';
-              keybuf[ used + 2 ] = '1';
-              used = crlf( keybuf, used + 3 );
-            }
+            if ( hstatus == HASH_OK )
+              q.append_string( kv.key, kv.keylen );
+            else
+              q.append_nil();
             itemcnt++;
           }
+          /* append value for HGETALL, HVALS, HMGET, HSCAN */
           if ( ( flags & ( DO_HGETALL | DO_HVALS | DO_HMGET |
                            DO_HSCAN ) ) != 0 ) {
-            keybuf[ used ] = '$';
-            if ( hstatus == HASH_OK ) {
-              itemlen = kv.sz + kv.sz2;
-              used += 1 + RedisMsg::int_to_str( itemlen, &keybuf[ used + 1 ] );
-              used = crlf( keybuf, used );
-              ::memcpy( &keybuf[ used ], kv.data, kv.sz );
-              if ( kv.sz2 > 0 )
-                ::memcpy( &keybuf[ used + kv.sz ], kv.data2, kv.sz2 );
-              used = crlf( keybuf, used + itemlen );
-            }
-            else {
-              keybuf[ used + 1 ] = '-';
-              keybuf[ used + 2 ] = '1';
-              used = crlf( keybuf, used + 3 );
-            }
+            if ( hstatus == HASH_OK )
+              q.append_string( kv.data, kv.sz, kv.data2, kv.sz2 );
+            else
+              q.append_nil();
             itemcnt++;
+            /* next key to find for HMGET */
+            if ( ( flags & DO_HMGET ) != 0 ) {
+              if ( argi >= this->argc )
+                break;
+              if ( ! this->msg.get_arg( argi++, key, keylen ) )
+                return ERR_BAD_ARGS;
+              pos.init( key, keylen );
+            }
           }
         }
-        if ( tl != NULL )
-          tl->used = used;
+        q.finish_tail();
         break;
       }
       fallthrough;
     default: return ERR_KV_STATUS;
   }
 
-  char *hdr = (char *) this->strm.alloc_temp( 32 );
-  used = 0;
-  if ( ( flags & DO_HSCAN ) != 0 ) {
-    if ( i < count ) { /* next cursor */
-    /* construct [cursor, [key, ...]] */
-      ::strcpy( hdr, "*2\r\n$" );
-      size_t len = RedisMsg::uint_digits( i );
-      used  = 5 + RedisMsg::uint_to_str( len, &hdr[ 5 ] );
-      used  = crlf( hdr, used );
-      used += RedisMsg::uint_to_str( i, &hdr[ used ], len );
-      used  = crlf( hdr, used );
-    }
-    else {
-      ::strcpy( hdr, "*2\r\n$1\r\n0\r\n" );
-      used = 11;
-    }
-  }
-  hdr[ used ] = '*';
-  used += 1 + RedisMsg::int_to_str( itemcnt, &hdr[ used + 1 ] );
-  used = crlf( hdr, used );
+  if ( ( flags & DO_HSCAN ) != 0 )
+    q.prepend_cursor_array( i == count ? 0 : i, itemcnt );
+  else
+    q.prepend_array( itemcnt );
+
   if ( (ctx.kstatus = this->kctx.validate_value()) == KEY_OK ) {
-    this->strm.append_iov( hdr, used );
-    while ( hd != NULL ) {
-      if ( hd->used > 0 )
-        this->strm.append_iov( hd->buf( 0 ), hd->used );
-      hd = hd->next;
-    }
+    this->strm.append_iov( q );
     return EXEC_OK;
   }
   return ERR_KV_STATUS;
@@ -395,16 +291,21 @@ RedisExec::exec_hmultiread( RedisKeyCtx &ctx,  int flags,  HScanArgs *hs )
 ExecStatus
 RedisExec::exec_hread( RedisKeyCtx &ctx,  int flags )
 {
-  void       * data;
-  size_t       datalen;
   const char * arg    = NULL;
   size_t       arglen = 0;
+  HashPos      pos;
 
   if ( ( flags & ( DO_HEXISTS | DO_HGET | DO_HSTRLEN ) ) != 0 ) {
     /* HEXISTS/HGET/HSTRLEN key field */
     if ( ! this->msg.get_arg( 2, arg, arglen ) )
       return ERR_BAD_ARGS;
+    pos.init( arg, arglen );
   }
+  void   * data;
+  size_t   datalen;
+  uint8_t  lhdr[ LIST_HDR_OOB_SIZE ];
+  uint64_t llen;
+
   switch ( this->exec_key_fetch( ctx ) ) {
     case KEY_NOT_FOUND:
       switch ( flags & ( DO_HEXISTS | DO_HGET | DO_HLEN | DO_HSTRLEN ) ) {
@@ -416,18 +317,19 @@ RedisExec::exec_hread( RedisKeyCtx &ctx,  int flags )
     case KEY_OK:
       if ( ctx.type != MD_HASH && ctx.type != MD_NODATA )
         return ERR_BAD_TYPE;
-      ctx.kstatus = this->kctx.value( &data, datalen );
+      llen = sizeof( lhdr );
+      ctx.kstatus = this->kctx.value_copy( &data, datalen, lhdr, llen );
       if ( ctx.kstatus == KEY_OK ) {
         HashData   hash( data, datalen );
         ListVal    lv;
         size_t     sz = 0;
         HashStatus hstat;
         ExecStatus status;
-        hash.open();
+        hash.open( lhdr, llen );
 
         switch ( flags & ( DO_HEXISTS | DO_HGET | DO_HLEN | DO_HSTRLEN ) ) {
           case DO_HEXISTS:
-            if ( hash.hexists( arg, arglen ) == HASH_OK )
+            if ( hash.hexists( arg, arglen, pos ) == HASH_OK )
               status = EXEC_SEND_ONE;
             else
               status = EXEC_SEND_ZERO;
@@ -439,7 +341,7 @@ RedisExec::exec_hread( RedisKeyCtx &ctx,  int flags )
             break;
           case DO_HSTRLEN:
           case DO_HGET:
-            hstat = hash.hget( arg, arglen, lv );
+            hstat = hash.hget( arg, arglen, lv, pos );
             if ( flags == DO_HGET ) {
               if ( hstat == HASH_OK ) {
                 sz = lv.sz + lv.sz2;
@@ -482,36 +384,39 @@ RedisExec::exec_hread( RedisKeyCtx &ctx,  int flags )
 ExecStatus
 RedisExec::exec_hwrite( RedisKeyCtx &ctx,  int flags )
 {
-  static char  DDfmt[5] = { '%', 'D', 'D', 'a', 0 };
-  void       * data;
-  size_t       datalen;
   const char * arg    = NULL;
   size_t       arglen = 0;
   const char * val    = NULL;
-  size_t       vallen = 0,
-               argi   = 4;
+  size_t       vallen = 0;
+  HashPos      pos;
 
   if ( ( flags & ( DO_HSET | DO_HSETNX | DO_HMSET | DO_HINCRBYFLOAT ) ) != 0 ) {
     /* HSET/HSETNX/HMSET/HINCRBYFLOAT key field value */
     if ( ! this->msg.get_arg( 2, arg, arglen ) ||
          ! this->msg.get_arg( 3, val, vallen ) )
       return ERR_BAD_ARGS;
+    pos.init( arg, arglen );
   }
   else if ( ( flags & DO_HINCRBY ) != 0 ) {
     /* HINCRBY key field ival */
     if ( ! this->msg.get_arg( 2, arg, arglen ) ||
          ! this->msg.get_arg( 3, ctx.ival ) )
       return ERR_BAD_ARGS;
+    vallen = 4; /* in case of resize() */
+    pos.init( arg, arglen );
   }
-  size_t       count    = 2, /* set by alloc_size() */
-               ndata    = vallen;
+  static char  DDfmt[5] = { '%', 'D', 'D', 'a', 0 };
+  void       * data;
+  size_t       datalen,
+               count,
+               ndata,
+               argi     = 4;
   HashData   * old_hash = NULL,
              * hash     = NULL,
                tmp[ 2 ];
   MsgCtx     * msg      = NULL;
   MsgCtxBuf    tmpm;
   ListVal      lv;
-  FindPos      pos;
   const char * idata;
   char         ibuf[ 64 ],
              * str      = NULL;
@@ -524,6 +429,9 @@ RedisExec::exec_hwrite( RedisKeyCtx &ctx,  int flags )
   switch ( this->exec_key_fetch( ctx ) ) {
 
     case KEY_IS_NEW:
+      count   = this->argc / 2 + 1; /* set by alloc_size() */
+      /* estimate for hmset, didn't look at the hmset args */
+      ndata   = ( arglen + vallen + 1 ) * ( count - 1 );
       datalen = HashData::alloc_size( count, ndata );
       ctx.kstatus = this->kctx.resize( &data, datalen );
       if ( ctx.kstatus == KEY_OK ) {
@@ -556,13 +464,13 @@ RedisExec::exec_hwrite( RedisKeyCtx &ctx,  int flags )
                              DO_HINCRBYFLOAT | DO_HINCRBY ) ) {
             case DO_HSET:
             case DO_HMSET:
-              hstatus = hash->hset( arg, arglen, val, vallen );
+              hstatus = hash->hset( arg, arglen, val, vallen, pos );
               break;
             case DO_HSETNX:
-              hstatus = hash->hsetnx( arg, arglen, val, vallen );
+              hstatus = hash->hsetnx( arg, arglen, val, vallen, pos );
               break;
             case DO_HINCRBY:
-              hstatus = hash->hgetpos( arg, arglen, lv, pos );
+              hstatus = hash->hget( arg, arglen, lv, pos );
               ival = ctx.ival;
               if ( hstatus == HASH_OK ) { /* exists */
                 sz = lv.sz + lv.sz2;
@@ -582,12 +490,12 @@ RedisExec::exec_hwrite( RedisKeyCtx &ctx,  int flags )
               str[ 0 ] = ':';
               sz = 1 + RedisMsg::int_to_str( ival, &str[ 1 ] );
               sz = crlf( str, sz );
-              hstatus = hash->hsetpos( arg, arglen, &str[ 1 ], sz - 3, pos );
+              hstatus = hash->hset( arg, arglen, &str[ 1 ], sz - 3, pos );
               break;
             case DO_HINCRBYFLOAT: {
               _Decimal128 fp;
               int fvallen;
-              hstatus = hash->hgetpos( arg, arglen, lv, pos );
+              hstatus = hash->hget( arg, arglen, lv, pos );
               if ( hstatus == HASH_OK ) { /* exists */
                 sz = lv.concat( ibuf, sizeof( ibuf ) - 1 );
                 ibuf[ sz ] = '\0';
@@ -607,7 +515,7 @@ RedisExec::exec_hwrite( RedisKeyCtx &ctx,  int flags )
               sz = crlf( str, sz ); 
               ::memcpy( &str[ sz ], ibuf, fvallen );
               sz = crlf( str, sz + fvallen );
-              hstatus = hash->hsetpos( arg, arglen, ibuf, fvallen, pos );
+              hstatus = hash->hset( arg, arglen, ibuf, fvallen, pos );
               break;
             }
           }
@@ -628,6 +536,7 @@ RedisExec::exec_hwrite( RedisKeyCtx &ctx,  int flags )
                        ! this->msg.get_arg( argi+1, val, vallen ) )
                     return ERR_BAD_ARGS;
                   argi += 2;
+                  pos.init( arg, arglen );
                   goto set_next_value;
                 }
                 return EXEC_SEND_OK; /* send OK status */

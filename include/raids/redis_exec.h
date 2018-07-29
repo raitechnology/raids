@@ -8,6 +8,11 @@
 #include <raids/redis_msg.h>
 #include <raids/stream_buf.h>
 
+extern "C" {
+  struct pcre2_real_code_8;
+  struct pcre2_real_match_data_8;
+}
+
 namespace rai {
 namespace ds {
 
@@ -49,7 +54,14 @@ inline static bool exec_status_fail( ExecStatus status ) {
 
 struct EvSocket;
 struct RedisExec;
-struct HScanArgs;
+
+struct ScanArgs {
+  int64_t pos,    /* position argument, the position where scan starts */
+          maxcnt; /* COUNT argument, the maximum number of elements    */
+  pcre2_real_code_8       * re; /* pcre regex compiled */
+  pcre2_real_match_data_8 * md; /* pcre match context  */
+  ScanArgs() : pos( 0 ), maxcnt( 10 ), re( 0 ), md( 0 ) {}
+};
 
 struct RedisKeyRes {
   size_t mem_size, /* alloc size */
@@ -194,7 +206,7 @@ struct RedisExec {
   ExecStatus exec_hstrlen( RedisKeyCtx &ctx );
   ExecStatus exec_hvals( RedisKeyCtx &ctx );
   ExecStatus exec_hscan( RedisKeyCtx &ctx );
-  ExecStatus exec_hmultiread( RedisKeyCtx &ctx,  int flags,  HScanArgs *hs=0 );
+  ExecStatus exec_hmultiread( RedisKeyCtx &ctx,  int flags,  ScanArgs *hs=0 );
   ExecStatus exec_hread( RedisKeyCtx &ctx,  int flags );
   ExecStatus exec_hwrite( RedisKeyCtx &ctx,  int flags );
   /* HYPERLOGLOG */
@@ -208,8 +220,6 @@ struct RedisExec {
   ExecStatus exec_expire( RedisKeyCtx &ctx );
   ExecStatus exec_expireat( RedisKeyCtx &ctx );
   ExecStatus exec_keys( void );
-  ExecStatus scan_keys( uint64_t pos,  int64_t maxcnt,  const char *pattern,
-                        size_t patlen );
   ExecStatus exec_migrate( RedisKeyCtx &ctx );
   ExecStatus exec_move( RedisKeyCtx &ctx );
   ExecStatus exec_object( RedisKeyCtx &ctx );
@@ -231,6 +241,9 @@ struct RedisExec {
   ExecStatus exec_unlink( RedisKeyCtx &ctx );
   ExecStatus exec_wait( void );
   ExecStatus exec_scan( void );
+  ExecStatus match_scan_args( ScanArgs &sa,  size_t i );
+  void release_scan_args( ScanArgs &sa );
+  ExecStatus scan_keys( ScanArgs &sa );
   /* LIST */
   ExecStatus exec_blpop( RedisKeyCtx &ctx );
   ExecStatus exec_brpop( RedisKeyCtx &ctx );
@@ -299,6 +312,10 @@ struct RedisExec {
   ExecStatus exec_sunion( RedisKeyCtx &ctx );
   ExecStatus exec_sunionstore( RedisKeyCtx &ctx );
   ExecStatus exec_sscan( RedisKeyCtx &ctx );
+  ExecStatus exec_sread( RedisKeyCtx &ctx,  int flags );
+  ExecStatus exec_swrite( RedisKeyCtx &ctx,  int flags );
+  ExecStatus exec_smultiscan( RedisKeyCtx &ctx,  int flags,  ScanArgs *sa );
+  ExecStatus exec_ssetop( RedisKeyCtx &ctx,  int flags );
   /* SORTED_SET */
   ExecStatus exec_zadd( RedisKeyCtx &ctx );
   ExecStatus exec_zcard( RedisKeyCtx &ctx );

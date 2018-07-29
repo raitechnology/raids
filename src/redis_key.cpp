@@ -92,15 +92,43 @@ RedisExec::exec_expireat( RedisKeyCtx &ctx )
   return this->do_pexpireat( ctx, 1000 * 1000 * 1000 );
 }
 
+/* XXX add option to synchronize scanning to prevent multiple copies of same k*/
 ExecStatus
 RedisExec::exec_keys( void )
 {
+  ScanArgs     sa;
   const char * pattern;
   size_t       patlen;
+  uint8_t      buf[ 1024 ],
+             * bf = buf;
+  size_t       erroff,
+               blen = sizeof( buf );
+  int          rc,
+               error;
+  ExecStatus   status;
   /* KEYS pattern */
   if ( ! this->msg.get_arg( 1, pattern, patlen ) )
     return ERR_BAD_ARGS;
-  return this->scan_keys( 0, -1, pattern, patlen );
+  /* if not matching everything */
+  if ( patlen > 1 || pattern[ 0 ] != '*' ) {
+    rc = pcre2_pattern_convert( (PCRE2_SPTR8) pattern, patlen,
+                                PCRE2_CONVERT_GLOB_NO_WILD_SEPARATOR,
+                                &bf, &blen, 0 );
+    if ( rc != 0 )
+      return ERR_BAD_ARGS;
+    sa.re = pcre2_compile( bf, blen, 0, &error, &erroff, 0 );
+    if ( sa.re == NULL )
+      return ERR_BAD_ARGS;
+    sa.md = pcre2_match_data_create_from_pattern( sa.re, NULL );
+    if ( sa.md == NULL ) {
+      pcre2_code_free( sa.re );
+      return ERR_BAD_ARGS;
+    }
+  }
+  sa.maxcnt = -1;
+  status = this->scan_keys( sa );
+  this->release_scan_args( sa );
+  return status;
 }
 
 ExecStatus
@@ -283,6 +311,7 @@ RedisExec::exec_randomkey( void )
   return EXEC_SEND_NIL;
 }
 
+/* XXX do atomic rename */
 ExecStatus
 RedisExec::exec_rename( RedisKeyCtx &ctx )
 {
@@ -431,139 +460,114 @@ RedisExec::exec_wait( void )
 ExecStatus
 RedisExec::exec_scan( void )
 {
+  ScanArgs   sa;
+  ExecStatus status;
+  /* SCAN cursor [MATCH pat] [COUNT cnt] */
+  if ( (status = this->match_scan_args( sa, 1 )) != EXEC_OK )
+    return status;
+  status = this->scan_keys( sa );
+  this->release_scan_args( sa );
+  return status;
+}
+
+ExecStatus
+RedisExec::match_scan_args( ScanArgs &sa,  size_t i )
+{
+  uint8_t      buf[ 1024 ],
+             * bf = buf;
+  size_t       erroff,
+               blen = sizeof( buf );
+  int          rc,
+               error;
   const char * pattern = NULL;
   size_t       patlen  = 0;
-  int64_t      maxcnt  = 10,
-               pos;
-  /* SCAN cursor [MATCH pattern] [COUNT count] */
-  if ( ! this->msg.get_arg( 1, pos ) )
+
+  /* SCAN/HSCAN/SSCAN [key] cursor [MATCH pat] [COUNT cnt] */
+  if ( ! this->msg.get_arg( i++, sa.pos ) )
     return ERR_BAD_ARGS;
-  for ( size_t i = 2; i < this->argc; ) {
+  for ( ; i < this->argc; i += 2 ) {
     switch ( this->msg.match_arg( i, "match", 5,
                                      "count", 5, NULL ) ) {
       case 1:
-        if ( ! this->msg.get_arg( i + 1, pattern, patlen ) )
+        if ( ! this->msg.get_arg( i+1, pattern, patlen ) )
           return ERR_BAD_ARGS;
-        i += 2;
         break;
       case 2:
-        if ( ! this->msg.get_arg( i + 1, maxcnt ) )
+        if ( ! this->msg.get_arg( i+1, sa.maxcnt ) )
           return ERR_BAD_ARGS;
-        i += 2;
         break;
       default:
         return ERR_BAD_ARGS;
     }
   }
-  return this->scan_keys( pos, maxcnt, pattern, patlen );
-}
-
-ExecStatus
-RedisExec::scan_keys( uint64_t pos,  int64_t maxcnt,  const char *pattern,
-                      size_t patlen )
-{
-  StreamBuf::BufList
-          * hd     = NULL,
-          * tl     = NULL;
-  char    * keybuf = NULL;
-  uint8_t   buf[ 1024 ],
-          * bf = buf;
-  size_t    erroff,
-            blen    = sizeof( buf ),
-            cnt    = 0,
-            buflen = 0,
-            used   = 0;
-  int       rc     = 1,
-            error;
-  pcre2_code       * re = NULL;
-  pcre2_match_data * md = NULL;
-
-  if ( patlen > 0 ) {
+  if ( pattern != NULL ) {
     rc = pcre2_pattern_convert( (PCRE2_SPTR8) pattern, patlen,
                                 PCRE2_CONVERT_GLOB_NO_WILD_SEPARATOR,
                                 &bf, &blen, 0 );
     if ( rc != 0 )
       return ERR_BAD_ARGS;
-    re = pcre2_compile( bf, blen, 0, &error, &erroff, 0 );
-    if ( re == NULL )
+    sa.re = pcre2_compile( bf, blen, 0, &error, &erroff, 0 );
+    if ( sa.re == NULL )
       return ERR_BAD_ARGS;
-    md = pcre2_match_data_create_from_pattern( re, NULL );
-    if ( md == NULL ) {
-      pcre2_code_free( re );
+    sa.md = pcre2_match_data_create_from_pattern( sa.re, NULL );
+    if ( sa.md == NULL ) {
+      pcre2_code_free( sa.re );
       return ERR_BAD_ARGS;
     }
   }
+  return EXEC_OK;
+}
+
+void
+RedisExec::release_scan_args( ScanArgs &sa )
+{
+  if ( sa.re != NULL ) {
+    pcre2_match_data_free( sa.md );
+    pcre2_code_free( sa.re );
+  }
+}
+
+ExecStatus
+RedisExec::scan_keys( ScanArgs &sa )
+{
+  StreamBuf::BufQueue q( this->strm );
+  size_t cnt = 0;
+  int    rc  = 1; /* 1=matched when no regex */
+
   uint64_t ht_size = this->kctx.ht.hdr.ht_size;
-  for ( ; pos < ht_size; pos++ ) {
-    KeyStatus status = this->kctx.fetch( &this->wrk, pos, 0, true );
+  for ( ; (uint64_t) sa.pos < ht_size; sa.pos++ ) {
+    KeyStatus status = this->kctx.fetch( &this->wrk, sa.pos, 0, true );
     if ( status == KEY_OK ) {
       KeyFragment *kp;
       status = this->kctx.get_key( kp );
       if ( status == KEY_OK ) {
         uint16_t keylen = kp->keylen;
+        /* keys are null terminated */
         if ( keylen > 0 && kp->u.buf[ keylen - 1 ] == '\0' )
           keylen--;
-        if ( re != NULL )
-          rc = pcre2_match( re, (PCRE2_SPTR8) kp->u.buf, keylen, 0, 0, md, 0 );
+        if ( sa.re != NULL )
+          rc = pcre2_match( sa.re, (PCRE2_SPTR8) kp->u.buf, keylen, 0, 0,
+                            sa.md, 0 );
         if ( rc > 0 ) {
-          if ( (size_t) keylen + 32 > buflen - used ) {
-            if ( tl != NULL )
-              tl->used = used;
-            used   = 0;
-            buflen = 2000;
-            if ( buflen < (size_t) keylen + 32 )
-              buflen = keylen + 32;
-            tl = this->strm.alloc_buf_list( hd, tl, buflen );
-            if ( tl == NULL )
-              return ERR_ALLOC_FAIL;
-            keybuf = tl->buf( 0 );
-          }
-          keybuf[ used ] = '$';
-          used += 1 + RedisMsg::int_to_str( keylen, &keybuf[ used + 1 ] );
-          used  = crlf( keybuf, used );
-          ::memcpy( &keybuf[ used ], kp->u.buf, keylen );
-          used  = crlf( keybuf, used + keylen );
+          if ( q.append_string( kp->u.buf, keylen ) == 0 )
+            return ERR_ALLOC_FAIL;
           cnt++;
-          if ( --maxcnt == 0 )
+          if ( --sa.maxcnt == 0 )
             goto break_loop;
         }
       }
     }
   }
 break_loop:;
-  if ( re != NULL ) {
-    pcre2_match_data_free( md );
-    pcre2_code_free( re );
+  q.finish_tail();
+  if ( sa.maxcnt >= 0 ) {
+    /* next cursor */
+    sa.pos = ( ( (uint64_t) sa.pos == ht_size ) ? 0 : sa.pos + 1 );
+    q.prepend_cursor_array( sa.pos, cnt );
   }
-  if ( tl != NULL )
-    tl->used = used;
-  char *hdr = (char *) this->strm.alloc_temp( 64 );
-  if ( hdr == NULL )
-    return ERR_ALLOC_FAIL;
-  /* cursor usage */
-  if ( maxcnt >= 0 ) {
-    pos = ( ( pos == ht_size ) ? 0 : pos + 1 ); /* next cursor */
-    /* construct [cursor, [key, ...]] */
-    ::strcpy( hdr, "*2\r\n$" );
-    size_t len = RedisMsg::uint_digits( pos );
-    used  = 5 + RedisMsg::uint_to_str( len, &hdr[ 5 ] );
-    used  = crlf( hdr, used );
-    used += RedisMsg::uint_to_str( pos, &hdr[ used ], len );
-    used  = crlf( hdr, used );
-  }
-  else {
-    /* construct [key, ...] */
-    used = 0;
-  }
-  hdr[ used ] = '*';
-  used += 1 + RedisMsg::int_to_str( cnt, &hdr[ used + 1 ] );
-  used  = crlf( hdr, used );
-  this->strm.append_iov( hdr, used );
-  while ( hd != NULL ) {
-    if ( hd->used > 0 )
-      this->strm.append_iov( hd->buf( 0 ), hd->used );
-    hd = hd->next;
-  }
+  else
+    q.prepend_array( cnt );
+  this->strm.append_iov( q );
 
   return EXEC_OK;
 }

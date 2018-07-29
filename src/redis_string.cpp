@@ -578,8 +578,7 @@ RedisExec::exec_bitpos( RedisKeyCtx &ctx )
             break;
           }
         }
-        ctx.kstatus = this->kctx.validate_value();
-        if ( ctx.kstatus == KEY_OK )
+        if ( (ctx.kstatus = this->kctx.validate_value()) == KEY_OK )
           return EXEC_SEND_INT;
       }
       fallthrough;

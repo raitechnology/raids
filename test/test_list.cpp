@@ -34,9 +34,14 @@ resize_list( ListData *curr,  size_t add_len )
   ListData *newbe = new ( m ) ListData( p, asize );
   newbe->init( count, data_len );
   if ( curr != NULL ) {
+    printf( "verify curr: %d\n", curr->lverify() );
     curr->copy( *newbe );
+    printf( "verify newbe: %d\n", newbe->lverify() );
     delete curr;
   }
+  printf( "%.2f%% data %.2f%% index\n",
+          ( newbe->data_len() + add_len ) * 100.0 / newbe->data_size(),
+          ( newbe->count() + 1 ) * 100.0 / newbe->max_count() );
   return newbe;
 }
 
