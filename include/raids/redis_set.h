@@ -11,7 +11,8 @@ enum SetStatus {
   SET_NOT_FOUND = HASH_NOT_FOUND, /* key not found */
   SET_FULL      = HASH_FULL,      /* no room, needs resize */
   SET_UPDATED   = HASH_UPDATED,   /* success, replaced existing key/value */
-  SET_EXISTS    = HASH_EXISTS     /* found existing item, not updated */
+  SET_EXISTS    = HASH_EXISTS,    /* found existing item, not updated */
+  SET_BAD       = HASH_BAD        /* data corrupt */
 };
 
 template <class UIntSig, class UIntType>
@@ -22,62 +23,19 @@ struct SetStorage : public HashStorage<UIntSig, UIntType> {
     size_t start, end, len;
     if ( pos < hdr.index( this->count ) ) {
       len = this->get_size( hdr, pos, start, end );
-      if ( len == keylen ) {
-        const uint8_t * kp = (const uint8_t *) hdr.blob( start );
-        if ( start + keylen <= hdr.data_size() ) {
-          if ( ::memcmp( kp, key, keylen ) == 0 )
-            return true;
-        }
-        else {
-          size_t part = hdr.data_size() - start;
-          if ( ::memcmp( kp, key, part ) == 0 &&
-               ::memcmp( hdr.blob( 0 ), &((uint8_t *) key)[ part ],
-                         keylen - part ) == 0 )
-            return true;
-        }
-      }
+      if ( len == keylen )
+        return hdr.equals( start, key, keylen );
     }
     return false;
   }
 
   bool match_member( const ListHeader &hdr,  const ListVal &lv,
                      size_t pos ) const {
-    if ( lv.sz2 == 0 )
-      return this->match_member( hdr, lv.data, lv.sz, pos );
-    if ( lv.sz == 0 )
-      return this->match_member( hdr, lv.data2, lv.sz2, pos );
     size_t start, end, len;
-    size_t keylen = lv.sz + lv.sz2;
     if ( pos < hdr.index( this->count ) ) {
       len = this->get_size( hdr, pos, start, end );
-      if ( len == keylen ) {
-        const uint8_t * kp = (const uint8_t *) hdr.blob( start );
-        if ( start + keylen <= hdr.data_size() ) {
-          if ( ::memcmp( kp, lv.data, lv.sz ) == 0 &&
-               ::memcmp( &kp[ lv.sz ], lv.data2, lv.sz2 ) == 0 )
-            return true;
-        }
-        else {
-          size_t part         = hdr.data_size() - start;
-          size_t hd           = min<size_t>( part, lv.sz );
-          const uint8_t * kp2 = (const uint8_t *) hdr.blob( 0 ),
-                        * p   = (const uint8_t *) lv.data,
-                        * p2  = (const uint8_t *) lv.data2;
-          if ( ::memcmp( kp, p, hd ) == 0 ) {
-            if ( hd == part ) {
-              if ( ::memcmp( kp2, &p[ hd ], lv.sz - hd ) == 0 &&
-                   ::memcmp( &kp2[ lv.sz - hd ], p2, lv.sz2 ) == 0 )
-                return true;
-            }
-            else { /* hd == lv.sz */
-              part -= lv.sz;
-              if ( ::memcmp( &kp[ hd ], p2, part ) == 0 &&
-                   ::memcmp( kp2, &p2[ part ], lv.sz2 - part ) == 0 )
-                return true;
-            }
-          }
-        }
-      }
+      if ( len == lv.sz + lv.sz2 )
+        return hdr.equals( start, lv.data, lv.sz, lv.data2, lv.sz2 );
     }
     return false;
   }
@@ -146,24 +104,14 @@ struct SetStorage : public HashStorage<UIntSig, UIntType> {
       return SET_NOT_FOUND;
     sstat = (SetStatus) this->lrem( hdr, pos.i );
     if ( sstat == SET_OK )
-      this->hash_del( hdr, pos.i );
-    return sstat;
-  }
-
-  SetStatus srem( const ListHeader &hdr,  const ListVal &lv,  HashPos &pos ) {
-    SetStatus sstat = this->sismember( hdr, lv, pos );
-    if ( sstat == SET_NOT_FOUND )
-      return SET_NOT_FOUND;
-    sstat = (SetStatus) this->lrem( hdr, pos.i );
-    if ( sstat == SET_OK )
-      this->hash_del( hdr, pos.i );
+      this->hash_delete( hdr, pos.i );
     return sstat;
   }
 
   SetStatus spopn( const ListHeader &hdr,  size_t n ) {
     SetStatus sstat = (SetStatus) this->lrem( hdr, n );
     if ( sstat == SET_OK )
-      this->hash_del( hdr, n );
+      this->hash_delete( hdr, n );
     return sstat;
   }
 
@@ -202,126 +150,77 @@ struct SetStorage : public HashStorage<UIntSig, UIntType> {
     }
     return 0;
   }
-
-  void get_hash_bits( const ListHeader &hdr,  uint64_t *bits ) const {
-    size_t          start, end, len, sz, i, j;
-    const uint8_t * map;
-    /* set hash bits for each element */
-    sz  = this->get_size( hdr, 0, start, end );
-    len = min<size_t>( this->count, sz );
-    for ( j = 0; j < 4; j++ )
-      bits[ j ] = 0;
-    map = (const uint8_t *) hdr.blob( hdr.data_offset( start, 0 ) );
-    if ( end >= start )
-      j = len;
-    else
-      j = min<size_t>( hdr.data_size() - start, len );
-    for ( i = 1; i < j; i++ )
-      bits[ map[ i ] >> 6 ] |= (uint64_t) 1U << ( map[ i ] & 63 );
-    if ( j != len ) {
-      map = (const uint8_t *) hdr.blob( 0 );
-      for ( j = 0; i < len; i++, j++ )
-        bits[ map[ j ] >> 6 ] |= (uint64_t) 1U << ( map[ j ] & 63 );
-    }
-  }
   /* me={a,b,c,d} | x={a,c,e} = me={a,b,c,d,e} */
   template<class T, class U>
   SetStatus sunion( const ListHeader &myhdr,  const ListHeader &xhdr,
-                    SetStorage<T, U> &x ) {
-    HashPos         pos;
-    size_t          start,
-                    end,
-                    len,
-                    sz,
-                    i, j, k;
-    ListVal         lv;
-    uint64_t        bits[ 4 ];
-    const uint8_t * map;
-    SetStatus       sstat;
+                    SetStorage<T, U> &x,  MergeCtx &ctx ) {
+    HashPos   pos;
+    ListVal   lv;
+    SetStatus sstat;
 
     if ( x.count <= 1 )
       return SET_OK;
-    this->get_hash_bits( myhdr, bits );
-    sz  = x.get_size( xhdr, 0, start, end );
-    len = min<size_t>( x.count, sz );
-    map = (const uint8_t *) xhdr.blob( xhdr.data_offset( start, 0 ) );
-    j   = min<size_t>( xhdr.data_size() - start, len );
-    for ( i = 1, k = 1; ; i++ ) {
-      if ( i == j ) {
-        if ( k == len )
-          return SET_OK;
-        j = len - i;
-        i = 0;
-        map = (const uint8_t *) xhdr.blob( 0 );
-      }
+    if ( ! ctx.is_started ) {
+      size_t start, end, sz;
+      this->get_hash_bits( myhdr, ctx.bits );
+      sz = x.get_size( xhdr, 0, start, end );
+      ctx.start( start, sz, x.count, xhdr.data_size(), xhdr.blob( start ),
+                 xhdr.blob( 0 ), false );
+    }
+    while ( ! ctx.is_complete() ) {
       /* get element */
-      sstat = (SetStatus) x.lindex( xhdr, k++, lv );
+      sstat = (SetStatus) x.lindex( xhdr, ctx.j, lv );
       if ( sstat != SET_OK )
         return sstat;
-      pos.i = 0;
-      pos.h = map[ i ];
-      /* if not present */
-      if ( ( bits[ pos.h >> 6 ] & ( (uint64_t) 1U << ( pos.h & 63 ) ) ) == 0 )
+      if ( ! ctx.get_pos( pos ) )
         sstat = this->sappend( myhdr, lv, pos );
       else /* search for it */
         sstat = this->sadd( myhdr, lv, pos );
-      if ( sstat == SET_FULL )
+      if ( sstat == SET_FULL || sstat == SET_BAD )
         return sstat;
+      ctx.incr();
     }
+    return SET_OK;
   }
   /* intersect:  me={a,b,c,d} & x={a,c,e} = me={a,c} */
   /* difference: me={a,b,c,d} - x={a,c,e} = me={b,d} */
   template<class T, class U>
   SetStatus sinter( const ListHeader &myhdr,  const ListHeader &xhdr,
-                    SetStorage<T, U> &x,  bool is_intersect /* or diff */) {
-    HashPos         pos;
-    size_t          start,
-                    end,
-                    len,
-                    sz,
-                    i, j;
-    ListVal         lv;
-    uint64_t        bits[ 4 ];
-    const uint8_t * map,
-                  * map2;
-    SetStatus       sstat;
-    bool            diff;
-
+                    SetStorage<T, U> &x,  MergeCtx &ctx,
+                    bool is_intersect /* or diff */) {
+    HashPos   pos;
+    ListVal   lv;
+    SetStatus sstat;
     if ( x.count <= 1 || this->count <= 1 ) {
       if ( is_intersect )
         this->count = 0;
       return SET_OK;
     }
-    x.get_hash_bits( xhdr, bits );
-    sz   = this->get_size( myhdr, 0, start, end );
-    len  = min<size_t>( this->count, sz );
-    map  = (const uint8_t *) myhdr.blob( myhdr.data_offset( start, 0 ) );
-    j    = min<size_t>( myhdr.data_size() - start, len );
-    map2 = (const uint8_t *) myhdr.blob( 0 );
-
-    for ( i = len; ; ) {
-      if ( (i -= 1) == 0 )
-        break;
-      pos.h = ( i >= j ? map2[ i - j ] : map[ i ] );
-      diff  = false;
-      if ( ( bits[ pos.h >> 6 ] & ( (uint64_t) 1U << ( pos.h & 63 ) ) ) == 0 )
-        diff = true;
-      else {
-        sstat = (SetStatus) this->lindex( myhdr, i, lv );
+    if ( ! ctx.is_started ) {
+      size_t start, end, sz;
+      x.get_hash_bits( xhdr, ctx.bits );
+      sz = this->get_size( myhdr, 0, start, end );
+      ctx.start( start, sz, this->count, myhdr.data_size(), myhdr.blob( start ),
+                 myhdr.blob( 0 ), true );
+    }
+    while ( ! ctx.is_complete() ) {
+      bool diff = ! ctx.get_pos( pos );
+      if ( ! diff ) {
+        sstat = (SetStatus) this->lindex( myhdr, ctx.j, lv );
         if ( sstat != SET_OK )
           return sstat;
-        pos.i = 0;
         if ( x.sismember( xhdr, lv, pos ) == SET_NOT_FOUND )
           diff = true;
       }
       if ( is_intersect ) {
         if ( diff )
-          this->spopn( myhdr, i );
+          this->spopn( myhdr, ctx.j );
       }
       else {
         if ( ! diff )
-          this->spopn( myhdr, i );
+          this->spopn( myhdr, ctx.j );
       }
+      ctx.incr();
     }
     return SET_OK;
   }
@@ -364,47 +263,47 @@ struct SetData : public HashData {
     return SET_CALL( spopall( *this ) );
   }
   template<class T, class U>
-  SetStatus sunion( SetData &set ) {
+  SetStatus sunion( SetData &set,  MergeCtx &ctx ) {
     if ( is_uint8( this->size ) )
       return ((SetStorage8 *) this->listp)->sunion<T, U>( *this, set,
-                                              *(SetStorage<T, U> *) set.listp );
+                                        *(SetStorage<T, U> *) set.listp, ctx );
     else if ( is_uint16( this->size ) )
       return ((SetStorage16 *) this->listp)->sunion<T, U>( *this, set,
-                                              *(SetStorage<T, U> *) set.listp );
+                                        *(SetStorage<T, U> *) set.listp, ctx );
     return ((SetStorage32 *) this->listp)->sunion<T, U>( *this, set,
-                                              *(SetStorage<T, U> *) set.listp );
+                                        *(SetStorage<T, U> *) set.listp, ctx );
   }
   template<class T, class U>
-  SetStatus sinter( SetData &set,  bool is_intersect ) {
+  SetStatus sinter( SetData &set,  MergeCtx &ctx,  bool is_intersect ) {
     if ( is_uint8( this->size ) )
       return ((SetStorage8 *) this->listp)->sinter<T, U>( *this, set,
-                                *(SetStorage<T, U> *) set.listp, is_intersect );
+                          *(SetStorage<T, U> *) set.listp, ctx, is_intersect );
     else if ( is_uint16( this->size ) )
       return ((SetStorage16 *) this->listp)->sinter<T, U>( *this, set,
-                                *(SetStorage<T, U> *) set.listp, is_intersect );
+                          *(SetStorage<T, U> *) set.listp, ctx, is_intersect );
     return ((SetStorage32 *) this->listp)->sinter<T, U>( *this, set,
-                                *(SetStorage<T, U> *) set.listp, is_intersect );
+                          *(SetStorage<T, U> *) set.listp, ctx, is_intersect );
   }
-  SetStatus sunion( SetData &set ) {
+  SetStatus sunion( SetData &set,  MergeCtx &ctx ) {
     if ( is_uint8( set.size ) )
-      return this->sunion<uint16_t, uint8_t>( set );
+      return this->sunion<uint16_t, uint8_t>( set, ctx );
     else if ( is_uint16( set.size ) )
-      return this->sunion<uint32_t, uint16_t>( set );
-    return this->sunion<uint64_t, uint32_t>( set );
+      return this->sunion<uint32_t, uint16_t>( set, ctx );
+    return this->sunion<uint64_t, uint32_t>( set, ctx );
   }
-  SetStatus sinter( SetData &set ) {
+  SetStatus sinter( SetData &set,  MergeCtx &ctx ) {
     if ( is_uint8( set.size ) )
-      return this->sinter<uint16_t, uint8_t>( set, true );
+      return this->sinter<uint16_t, uint8_t>( set, ctx, true );
     else if ( is_uint16( set.size ) )
-      return this->sinter<uint32_t, uint16_t>( set, true );
-    return this->sinter<uint64_t, uint32_t>( set, true );
+      return this->sinter<uint32_t, uint16_t>( set, ctx, true );
+    return this->sinter<uint64_t, uint32_t>( set, ctx, true );
   }
-  SetStatus sdiff( SetData &set ) {
+  SetStatus sdiff( SetData &set,  MergeCtx &ctx ) {
     if ( is_uint8( set.size ) )
-      return this->sinter<uint16_t, uint8_t>( set, false );
+      return this->sinter<uint16_t, uint8_t>( set, ctx, false );
     else if ( is_uint16( set.size ) )
-      return this->sinter<uint32_t, uint16_t>( set, false );
-    return this->sinter<uint64_t, uint32_t>( set, false );
+      return this->sinter<uint32_t, uint16_t>( set, ctx, false );
+    return this->sinter<uint64_t, uint32_t>( set, ctx, false );
   }
 };
 

@@ -139,6 +139,7 @@ struct RedisExec {
                  first,       /* first key in args */
                  last,        /* last key in args */
                  step;        /* incr between keys */
+  uint64_t       step_mask;   /* step key mask */
   size_t         argc;        /* count of args in cmd msg */
 
   RedisExec( kv::HashTab &map,  uint32_t ctx_id,  StreamBuf &s,  bool single ) :
@@ -154,6 +155,12 @@ struct RedisExec {
     this->wrk.reset();
     this->wrk.release_all();
   }
+  /* handle the keys are cmd specific */
+  bool locate_movablekeys( void );
+  /* fetch next key arg[ i ] after current i, return false if none */
+  bool next_key( int &i );
+  /* return number of keys in cmd */
+  size_t calc_key_count( void );
   /* set up a single key, there may be multiple in a command */
   ExecStatus exec_key_setup( EvSocket *svc,  EvPrefetchQueue *q,
                              RedisKeyCtx *&ctx,  int n );
@@ -206,7 +213,7 @@ struct RedisExec {
   ExecStatus exec_hstrlen( RedisKeyCtx &ctx );
   ExecStatus exec_hvals( RedisKeyCtx &ctx );
   ExecStatus exec_hscan( RedisKeyCtx &ctx );
-  ExecStatus exec_hmultiread( RedisKeyCtx &ctx,  int flags,  ScanArgs *hs=0 );
+  ExecStatus exec_hmultiscan( RedisKeyCtx &ctx,  int flags,  ScanArgs *hs );
   ExecStatus exec_hread( RedisKeyCtx &ctx,  int flags );
   ExecStatus exec_hwrite( RedisKeyCtx &ctx,  int flags );
   /* HYPERLOGLOG */
@@ -338,6 +345,11 @@ struct RedisExec {
   ExecStatus exec_zscore( RedisKeyCtx &ctx );
   ExecStatus exec_zunionstore( RedisKeyCtx &ctx );
   ExecStatus exec_zscan( RedisKeyCtx &ctx );
+  ExecStatus exec_zread( RedisKeyCtx &ctx,  int flags );
+  ExecStatus exec_zwrite( RedisKeyCtx &ctx,  int flags );
+  ExecStatus exec_zmultiscan( RedisKeyCtx &ctx,  int flags,  ScanArgs *sa );
+  ExecStatus exec_zremrange( RedisKeyCtx &ctx,  int flags );
+  ExecStatus exec_zsetop( RedisKeyCtx &ctx,  int flags );
   /* STRING */
   ExecStatus exec_append( RedisKeyCtx &ctx );
   ExecStatus exec_bitcount( RedisKeyCtx &ctx );

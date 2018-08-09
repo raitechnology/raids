@@ -178,9 +178,7 @@ RedisExec::exec_sread( RedisKeyCtx &ctx,  int flags )
         set.open( lhdr, llen );
         switch ( flags & ( DO_SCARD | DO_SISMEMBER ) ) {
           case DO_SCARD:
-            ctx.ival = set.count();
-            if ( ctx.ival > 0 )
-              ctx.ival -= 1;
+            ctx.ival = set.hcount();
             status = EXEC_SEND_INT;
             break;
           case DO_SISMEMBER:
@@ -246,7 +244,7 @@ RedisExec::exec_swrite( RedisKeyCtx &ctx,  int flags )
           size_t       tmplen;
           if ( ! this->msg.get_arg( i, tmparg, tmplen ) )
             return ERR_BAD_ARGS;
-          ndata += tmplen;
+          ndata += 2 + tmplen;
         }
       }
       else {
@@ -372,7 +370,7 @@ RedisExec::exec_smultiscan( RedisKeyCtx &ctx,  int flags,  ScanArgs *sa )
   SetStatus sstatus;
 
   switch ( this->exec_key_fetch( ctx ) ) {
-    case KEY_IS_NEW:
+    case KEY_IS_NEW: /* SPOP is a write op */
     case KEY_NOT_FOUND:
       break;
     case KEY_OK:
@@ -386,10 +384,8 @@ RedisExec::exec_smultiscan( RedisKeyCtx &ctx,  int flags,  ScanArgs *sa )
       if ( ctx.kstatus == KEY_OK ) {
         SetData set( data, datalen );
         set.open( lhdr, llen );
-        count = set.count();
-        if ( count <= 1 )
+        if ( (count = set.hcount()) == 0 )
           break;
-        count -= 1;
 
         bool use_bits = false;
         if ( ( flags & ( DO_SRANDMEMBER | DO_SPOP ) ) != 0 ) {
@@ -518,6 +514,7 @@ RedisExec::exec_ssetop( RedisKeyCtx &ctx,  int flags )
       src = 1; /* src starts at key[1] */
     }
   }
+  /* fetch the src data */
   if ( src == 0 ) {
     /* SDIFF key [key ...] */
     /* SINTER key [key ...] */
@@ -550,32 +547,35 @@ RedisExec::exec_ssetop( RedisKeyCtx &ctx,  int flags )
       default: return ERR_KV_STATUS;
     }
   }
+  /* if only one key argument, not an array */
   if ( this->key_cnt == 1 ) {
     data    = this->key->part->data( 0 );
     datalen = this->key->part->size;
   }
-  else {
+  else { /* src is 0 when not stored, src is 1 when have dest key */
     data    = this->keys[ src ]->part->data( 0 );
     datalen = this->keys[ src ]->part->size;
   }
 
-  StreamBuf::BufQueue q( this->strm );
   SetData   tmp[ 2 ];
   SetData * set,
           * old_set;
-  ListVal   lv;
-  int       n = 1;
+  size_t    i,
+            retry = 0,
+            ndata,
+            count;
+  int       n = 0;
   SetStatus sstatus;
+  /* first set */
   set = new ( (void *) &tmp[ n++%2 ] ) SetData( data, datalen );
   set->open();
-  size_t i,
-         retry = 0,
-         ndata,
-         count;
+  /* merge key[ src+1 ] into key[ src ], if more than one source */
   for ( i = src+1; i < this->key_cnt; i++ ) {
     SetData set2( this->keys[ i ]->part->data( 0 ),
                   this->keys[ i ]->part->size );
+    MergeCtx ctx;
     SetStatus sstat = SET_OK;
+    ctx.init();
     set2.open();
     for (;;) {
       switch ( flags & ( DO_SUNION | DO_SUNIONSTORE |
@@ -583,20 +583,20 @@ RedisExec::exec_ssetop( RedisKeyCtx &ctx,  int flags )
                          DO_SDIFF  | DO_SDIFFSTORE ) ) {
         case DO_SUNION:
         case DO_SUNIONSTORE:
-          sstat = set->sunion( set2 );
+          sstat = set->sunion( set2, ctx );
           break;
         case DO_SINTER:
         case DO_SINTERSTORE:
-          sstat = set->sinter( set2 );
+          sstat = set->sinter( set2, ctx );
           break;
         case DO_SDIFF:
         case DO_SDIFFSTORE:
-          sstat = set->sdiff( set2 );
+          sstat = set->sdiff( set2, ctx );
           break;
       }
-      if ( sstat == SET_OK )
+      if ( sstat == SET_OK ) /* merge successful */
         break;
-      /* resize set */
+      /* SET_FULL, merge out of space, resize set */
       count = set2.count() + 2;
       ndata = set2.data_len() + retry;
       retry += 16;
@@ -610,8 +610,11 @@ RedisExec::exec_ssetop( RedisKeyCtx &ctx,  int flags )
       old_set->copy( *set );
     }
   }
-  if ( src == 0 ) { /* no store */
-    size_t itemcnt = 0;
+  /* if no dest key, return the result */
+  if ( src == 0 ) {
+    StreamBuf::BufQueue q( this->strm );
+    ListVal lv;
+    size_t  itemcnt = 0;
     count = set->count();
     for ( i = 0; ; ) {
       if ( i == count )
@@ -629,19 +632,18 @@ RedisExec::exec_ssetop( RedisKeyCtx &ctx,  int flags )
     this->strm.append_iov( q );
     return EXEC_OK;
   }
-  else {
-    switch ( this->exec_key_fetch( ctx ) ) {
-      case KEY_IS_NEW:
-      case KEY_OK:
-        ctx.kstatus = this->kctx.resize( &data, set->size );
-        if ( ctx.kstatus == KEY_OK ) {
-          ::memcpy( data, set->listp, set->size );
-          ctx.ival = set->count();
-          return EXEC_SEND_INT;
-        }
-      fallthrough;
-      default: return ERR_KV_STATUS;
-    }
+  /* cmd has a dest key, store the result and return the set member count */
+  switch ( this->exec_key_fetch( ctx ) ) {
+    case KEY_IS_NEW:
+    case KEY_OK:
+      ctx.kstatus = this->kctx.resize( &data, set->size );
+      if ( ctx.kstatus == KEY_OK ) {
+        ::memcpy( data, set->listp, set->size );
+        ctx.ival = set->hcount();
+        return EXEC_SEND_INT;
+      }
+    fallthrough;
+    default: return ERR_KV_STATUS;
   }
 }
 

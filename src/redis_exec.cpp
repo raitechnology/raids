@@ -185,6 +185,72 @@ RedisExec::exec_run_to_completion( void )
   }
 }
 
+bool
+RedisExec::locate_movablekeys( void )
+{
+  int64_t i;
+  this->step_mask = 0;
+  this->first     = 0;
+  this->last      = 0;
+  this->step      = 0;
+  switch ( this->cmd ) {
+    case GEORADIUS_CMD: break;  /* these commands do not follow regular rules */
+    case GEORADIUSBYMEMBER_CMD: break;
+    case MIGRATE_CMD: break;
+    case SORT_CMD: break;
+    case EVAL_CMD: break;
+    case EVALSHA_CMD: break;
+    case ZINTERSTORE_CMD:
+    case ZUNIONSTORE_CMD:
+      /* ZINTERSTORE dest nkeys key key [WEIGHTS w1 w2] [AGGREGATE ...] */
+      if ( ! this->msg.get_arg( 2, i ) ) /* num keys */
+        return false;
+      /* mask which args are keys */
+      this->step_mask  = ( ( (uint64_t) 1 << i ) - 1 ) << 3;
+      this->step_mask |= 2;     /* the dest key */
+      this->first      = 1;
+      this->last       = 2 + i; /* the last key = 2 + nkeys */
+      this->step       = 1;     /* step through step_mask 1 bit at a time */
+      if ( (size_t) ( 3 + i ) > this->argc ) /* if args above fit into argc */
+        return false;
+      return true;
+    case XREADGROUP_CMD: break;
+    default: break;
+  }
+  return false;
+}
+
+bool
+RedisExec::next_key( int &i )
+{
+  /* step through argc until last key */
+  i += this->step;
+  if ( this->last < 0 && (size_t) i < this->argc )
+    return true;
+  if ( test_cmd_mask( this->flags, CMD_MOVABLEKEYS_FLAG ) ) {
+    while ( ( ( (uint64_t) 1 << i ) & this->step_mask ) == 0 ) {
+      i += this->step;
+      if ( i > this->last )
+        return false;
+    }
+    return true;
+  }
+  return ( i <= this->last );
+}
+
+size_t
+RedisExec::calc_key_count( void )
+{
+  /* how many keys are in the command */
+  if ( test_cmd_mask( this->flags, CMD_MOVABLEKEYS_FLAG ) )
+    return __builtin_popcountl( this->step_mask );
+  if ( this->last > 0 )
+    return ( this->last + 1 - this->first ) / this->step;
+  if ( this->last < 0 )
+    return ( this->argc - this->first ) / this->step;
+  return 0;
+}
+
 ExecStatus
 RedisExec::exec( EvSocket *svc,  EvPrefetchQueue *q )
 {
@@ -211,35 +277,37 @@ RedisExec::exec( EvSocket *svc,  EvPrefetchQueue *q )
     return ERR_BAD_ARGS;
   this->flags = get_cmd_flag_mask( this->cmd );
 
+  if ( test_cmd_mask( this->flags, CMD_MOVABLEKEYS_FLAG ) )
+    if ( ! this->locate_movablekeys() )
+      return ERR_BAD_ARGS;
   /* if there are keys, setup a keyctx for each one */
   if ( this->first > 0 ) {
-    int i, end;
+    int i = this->first;
     ExecStatus status;
 
     this->key_cnt  = 1;
     this->key_done = 0;
-    if ( (end = this->last) < 0 )
-      end = this->argc - 1;
 
     this->key  = NULL;
     this->keys = NULL;
-    i = this->first; /* setup first key */
+    /* setup first key */
     status = this->exec_key_setup( svc, q, this->key, i );
     if ( status == EXEC_SETUP_OK ) {
       /* setup rest of keys, if any */
-      if ( i < end ) {
+      if ( this->next_key( i ) ) {
+        size_t key_count = this->calc_key_count();
+        if ( key_count == 0 )
+          return ERR_BAD_ARGS;
         this->keys = (RedisKeyCtx **)
-                     this->strm.alloc_temp( sizeof( this->keys[ 0 ] ) * 
-                                           ( ( end + 1 ) - this->first ) );
+          this->strm.alloc_temp( sizeof( this->keys[ 0 ] ) * key_count );
         if ( this->keys == NULL )
           status = ERR_ALLOC_FAIL;
         else {
-          i += this->step;
           this->keys[ 0 ] = this->key;
           do {
             status = this->exec_key_setup( svc, q,
                                            this->keys[ this->key_cnt++ ], i );
-          } while ( status == EXEC_SETUP_OK && (i += this->step) <= end );
+          } while ( status == EXEC_SETUP_OK && this->next_key( i ) );
         }
       }
     }

@@ -225,16 +225,18 @@ main( int, char ** )
           return 1;
         }
         for ( ; i < argcount; i++ ) {
+          MergeCtx ctx;
           if ( ! msg.get_arg( i, name, namelen ) )
             goto bad_args;
           sk2 = setdb.fetch( name, namelen );
+          ctx.init();
           for (;;) {
             if ( cmd == SUNION_CMD || cmd == SUNIONSTORE_CMD )
-              sstat = sk->set->sunion( *sk2->set );
+              sstat = sk->set->sunion( *sk2->set, ctx );
             else if ( cmd == SINTER_CMD || cmd == SINTERSTORE_CMD )
-              sstat = sk->set->sinter( *sk2->set );
+              sstat = sk->set->sinter( *sk2->set, ctx );
             else if ( cmd == SDIFF_CMD || cmd == SDIFFSTORE_CMD )
-              sstat = sk->set->sdiff( *sk2->set );
+              sstat = sk->set->sdiff( *sk2->set, ctx );
             else
               sstat = SET_OK;
             printf( "%s\n", set_status_string[ sstat ] );

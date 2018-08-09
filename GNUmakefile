@@ -154,12 +154,20 @@ test_set_lnk   := $(test_set_libs) $(dep_lib)
 
 $(bind)/test_set: $(test_set_objs) $(test_set_libs)
 
+test_zset_files := test_zset
+test_zset_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(test_zset_files)))
+test_zset_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(test_zset_files)))
+test_zset_libs  := $(libd)/libraids.a
+test_zset_lnk   := $(test_zset_libs) $(dep_lib)
+
+$(bind)/test_zset: $(test_zset_objs) $(test_zset_libs)
+
 all_exes    += $(bind)/server $(bind)/client $(bind)/test_msg \
                $(bind)/redis_cmd $(bind)/test_cmd $(bind)/test_list \
-	       $(bind)/test_hash $(bind)/test_set
+	       $(bind)/test_hash $(bind)/test_set $(bind)/test_zset
 all_depends += $(server_deps) $(client_deps) $(test_msg_deps) \
                $(redis_cmd_deps) $(test_cmd_deps) $(test_list_deps) \
-	       $(test_hash_deps) $(test_set_deps)
+	       $(test_hash_deps) $(test_set_deps) $(test_zset_deps)
 
 all_dirs := $(bind) $(libd) $(objd) $(dependd)
 

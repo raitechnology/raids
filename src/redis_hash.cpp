@@ -95,7 +95,7 @@ ExecStatus
 RedisExec::exec_hgetall( RedisKeyCtx &ctx )
 {
   /* HGETALL key */
-  return this->exec_hmultiread( ctx, DO_HGETALL );
+  return this->exec_hmultiscan( ctx, DO_HGETALL, NULL );
 }
 
 ExecStatus
@@ -116,7 +116,7 @@ ExecStatus
 RedisExec::exec_hkeys( RedisKeyCtx &ctx )
 {
   /* HKEYS key */
-  return this->exec_hmultiread( ctx, DO_HKEYS );
+  return this->exec_hmultiscan( ctx, DO_HKEYS, NULL );
 }
 
 ExecStatus
@@ -130,7 +130,7 @@ ExecStatus
 RedisExec::exec_hmget( RedisKeyCtx &ctx )
 {
   /* HMGET key field [field ...] */
-  return this->exec_hmultiread( ctx, DO_HMGET );
+  return this->exec_hmultiscan( ctx, DO_HMGET, NULL );
 }
 
 ExecStatus
@@ -165,7 +165,7 @@ ExecStatus
 RedisExec::exec_hvals( RedisKeyCtx &ctx )
 {
   /* HVALS key */
-  return this->exec_hmultiread( ctx, DO_HVALS );
+  return this->exec_hmultiscan( ctx, DO_HVALS, NULL );
 }
 
 ExecStatus
@@ -176,13 +176,13 @@ RedisExec::exec_hscan( RedisKeyCtx &ctx )
   ExecStatus status;
   if ( (status = this->match_scan_args( sa, 2 )) != EXEC_OK )
     return status;
-  status = this->exec_hmultiread( ctx, DO_HSCAN, &sa );
+  status = this->exec_hmultiscan( ctx, DO_HSCAN, &sa );
   this->release_scan_args( sa );
   return status;
 }
 
 ExecStatus
-RedisExec::exec_hmultiread( RedisKeyCtx &ctx,  int flags,  ScanArgs *sa )
+RedisExec::exec_hmultiscan( RedisKeyCtx &ctx,  int flags,  ScanArgs *sa )
 {
   const char * key    = NULL;
   size_t       keylen = 0;
@@ -490,7 +490,7 @@ RedisExec::exec_hwrite( RedisKeyCtx &ctx,  int flags )
               str[ 0 ] = ':';
               sz = 1 + RedisMsg::int_to_str( ival, &str[ 1 ] );
               sz = crlf( str, sz );
-              hstatus = hash->hset( arg, arglen, &str[ 1 ], sz - 3, pos );
+              hstatus = hash->hupdate( arg, arglen, &str[ 1 ], sz - 3, pos );
               break;
             case DO_HINCRBYFLOAT: {
               _Decimal128 fp;
@@ -515,7 +515,7 @@ RedisExec::exec_hwrite( RedisKeyCtx &ctx,  int flags )
               sz = crlf( str, sz ); 
               ::memcpy( &str[ sz ], ibuf, fvallen );
               sz = crlf( str, sz + fvallen );
-              hstatus = hash->hset( arg, arglen, ibuf, fvallen, pos );
+              hstatus = hash->hupdate( arg, arglen, ibuf, fvallen, pos );
               break;
             }
           }

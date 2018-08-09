@@ -31,6 +31,45 @@ struct ListHeader {
   void * blob( size_t off ) const {
     return &((uint8_t *) this->blobp)[ off ];
   }
+  /* compare mem with blob region */
+  bool equals( size_t start,  const void *mem,  size_t len ) const {
+    size_t sz = this->data_size();
+    if ( start + len <= sz )
+      return ::memcmp( this->blob( start ), mem, len ) == 0;
+    size_t part = sz - start;
+    return ::memcmp( this->blob( start ), mem, part ) == 0 &&
+           ::memcmp( this->blob( 0 ), &((const char *) mem)[ part ],
+                     len - part );
+  }
+  /* compare concatenated mem1 + mem2 with blob region */
+  bool equals( size_t start,  const void *mem1,  size_t len1,
+                              const void *mem2,  size_t len2 ) const {
+    return ( len1 == 0 || this->equals( start, mem1, len1 ) ) &&
+           ( len2 == 0 ||
+             this->equals( this->data_offset( start, len1 ), mem2, len2 ) );
+  }
+  /* copy from blob region to dest */
+  void copy( void *dest,  size_t off,  size_t len ) const {
+    size_t sz = this->data_size();
+    if ( off + len <= sz )
+      ::memcpy( dest, this->blob( off ), len );
+    else {
+      size_t part = sz - off;
+      ::memcpy( dest, this->blob( off ), part );
+      ::memcpy( &((char *) dest)[ part ], this->blob( 0 ), len - part );
+    }
+  }
+  /* copy from src into blob region */
+  void copy2( size_t off,  const void *src,  size_t len ) const {
+    size_t sz = this->data_size();
+    if ( off + len <= sz )
+      ::memcpy( this->blob( off ), src, len );
+    else {
+      size_t part = sz - off;
+      ::memcpy( this->blob( off ), src, part );
+      ::memcpy( this->blob( 0 ), &((char *) src)[ part ], len - part );
+    }
+  }
 };
 
 struct ListVal {
@@ -40,15 +79,23 @@ struct ListVal {
     this->data = this->data2 = NULL;
     this->sz = this->sz2 = 0;
   }
+  /* concatenate data and data2 */
   size_t concat( void *out,  size_t out_sz ) const {
     size_t y, x = min<size_t>( this->sz, out_sz );
-    if ( x != 0 ) ::memcpy( out, this->data, x );
+    if ( x != 0 ) {
+      ::memcpy( out, this->data, x );
+      if ( x == out_sz )
+        return out_sz;
+    }
     y = min<size_t>( this->sz2, out_sz - x );
-    if ( y != 0 ) ::memcpy( &((char *) out)[ x ], this->data2, y );
+    if ( y != 0 ) {
+      ::memcpy( &((char *) out)[ x ], this->data2, y );
+    }
     return x + y;
   }
+  /* get data pointer, with copy or malloc if region is split into data/data2 */
   size_t unitary( void *&out,  void *buf,  size_t buf_sz,  bool &is_a ) const {
-    if ( this->sz + this->sz2 != this->sz ) {
+    if ( this->sz + this->sz2 != this->sz ) { /* if sz != 0 and sz2 != 0 */
       if ( buf_sz < this->sz + this->sz2 ) {
         buf = ::malloc( this->sz + this->sz2 );
         if ( buf == NULL ) {
@@ -66,6 +113,32 @@ struct ListVal {
     else
       out = (void *) this->data2;
     return this->sz + this->sz2;
+  }
+  /* does memcmp:  key - lv == lv.cmp_key( key, keylen ) */
+  int cmp_key( const void *key,  size_t keylen ) const {
+    size_t len = min<size_t>( keylen, this->sz );
+    int    cmp = ::memcmp( key, this->data, len );
+    if ( cmp == 0 ) {
+      if ( keylen < this->sz )
+        cmp = -1;
+      else if ( this->sz2 == 0 ) {
+        if ( keylen > this->sz )
+          cmp = 1;
+      }
+      else {
+        key     = &((const char *) key)[ this->sz ];
+        keylen -= this->sz;
+        len     = min<size_t>( keylen, this->sz2 );
+        cmp     = ::memcmp( key, this->data2, len );
+        if ( cmp == 0 ) {
+          if ( keylen < this->sz2 )
+            cmp = -1;
+          else if ( keylen > this->sz2 )
+            cmp = 1;
+        }
+      }
+    }
+    return cmp;
   }
 };
 
@@ -135,14 +208,8 @@ struct ListStorage {
   }
   /* copy into circular buffer */
   void copy_into( const ListHeader &hdr,  const void *data,  size_t size,
-                  size_t start ) {
-    if ( start + size <= hdr.data_size() )
-      ::memcpy( hdr.blob( start ), data, size );
-    else {
-      size_t len = hdr.data_size() - start;
-      ::memcpy( hdr.blob( start ), data, len );
-      ::memcpy( hdr.blob( 0 ), &((const uint8_t *) data)[ len ], size - len );
-    }
+                  size_t start ) const {
+    hdr.copy2( start, data, size );
   }
   /* return a reference to the nth element starting from off */
   UIntType &index_ref( const ListHeader &hdr,  size_t n ) {
@@ -234,61 +301,28 @@ struct ListStorage {
     lv.sz2   = end;
     return LIST_OK;
   }
-  /* scan tail to head to find data and return pos */
+  /* scan tail to head to find data, pre decrement */
   ListStatus scan_rev( const ListHeader &hdr,  const void *data,  size_t size,
                        size_t &pos ) const {
     size_t start, end, len;
-    start = this->get_offset( hdr, this->count );
     for ( size_t n = pos; n > 0; ) {
-      end   = start;
-      start = this->get_offset( hdr, --n );
-      if ( end == 0 && start != 0 )
-        end = hdr.data_size();
-      if ( start <= end ) {
-        len = end - start;
-        if ( len == size &&
-             ::memcmp( hdr.blob( start ), data, size ) == 0 ) {
-          pos = n;
-          return LIST_OK;
-        }
-      }
-      else {
-        len = hdr.data_size() - start;
-        if ( len + end == size &&
-             ::memcmp( hdr.blob( start ), data, len ) == 0 &&
-             ::memcmp( hdr.blob( 0 ), &((char *) data)[ len ], end ) == 0 ) {
-          pos = n;
-          return LIST_OK;
-        }
+      len = this->get_size( hdr, --n, start, end );
+      if ( len == size && hdr.equals( start, data, size ) ) {
+        pos = n;
+        return LIST_OK;
       }
     }
     return LIST_NOT_FOUND;
   }
-  /* scan head to tail to find data and return pos+1 */
+  /* scan head to tail to find data, post increment */
   ListStatus scan_fwd( const ListHeader &hdr,  const void *data,  size_t size,
                        size_t &pos ) const {
-    size_t start, end, len;
-    size_t n = pos, cnt = hdr.index( this->count );
-    end = this->get_offset( hdr, n, true );
-    for ( ; n < cnt; n++ ) {
-      start = ( end == hdr.data_size() ) ? 0 : end;
-      end   = this->get_offset( hdr, n + 1, true );
-      if ( start <= end ) {
-        len = end - start;
-        if ( len == size &&
-             ::memcmp( hdr.blob( start ), data, size ) == 0 ) {
-          pos = n;
-          return LIST_OK;
-        }
-      }
-      else {
-        len = hdr.data_size() - start;
-        if ( len + end == size &&
-             ::memcmp( hdr.blob( start ), data, len ) == 0 &&
-             ::memcmp( hdr.blob( 0 ), &((char *) data)[ len ], end ) == 0 ) {
-          pos = n;
-          return LIST_OK;
-        }
+    size_t start, end, len, cnt = hdr.index( this->count );
+    for ( size_t n = pos; n < cnt; n++ ) {
+      len = this->get_size( hdr, n, start, end );
+      if ( len == size && hdr.equals( start, data, size ) ) {
+        pos = n;
+        return LIST_OK;
       }
     }
     return LIST_NOT_FOUND;
@@ -384,9 +418,13 @@ struct ListStorage {
     end   = this->get_offset( hdr, n+1, true );
     return ( end >= start ? end - start : hdr.data_size() - start + end );
   }
+  size_t get_size( const ListHeader &hdr,  size_t n ) {
+    size_t start, end;
+    return this->get_size( hdr, n, start, end );
+  }
   /* remove the nth item */
   ListStatus lrem( const ListHeader &hdr,  size_t n ) {
-    size_t start, end, size = this->get_size( hdr, n, start, end );
+    size_t size = this->get_size( hdr, n );
     if ( n < this->count ) {
       if ( n == 0 || n + 1 == this->count ) {
         if ( n == 0 )
@@ -412,7 +450,7 @@ struct ListStorage {
                    size_t size ) {
     if ( n >= (size_t) this->count ) /* if n doesn't exist */
       return LIST_NOT_FOUND;
-    size_t start, end, cur_size = this->get_size( hdr, n, start, end );
+    size_t cur_size = this->get_size( hdr, n );
     ssize_t amt = (ssize_t) size - (ssize_t) cur_size;
     if ( amt > 0 ) { /* expand nth data item */
       if ( this->data_full( hdr, amt ) )
@@ -657,7 +695,7 @@ struct ListData : public ListHeader {
   }
   static const uint16_t lst8_sig  = 0xf7e4U;
   static const uint32_t lst16_sig = 0xddbe7a69UL;
-  static const uint64_t lst32_sig = 0xf5ff85c9f6c343ULL;
+  static const uint64_t lst32_sig = 0xa5f5ff85c9f6c343ULL;
 #define LIST_CALL( GOTO ) \
   ( is_uint8( this->size ) ? ((ListStorage8 *) this->listp)->GOTO : \
     is_uint16( this->size ) ? ((ListStorage16 *) this->listp)->GOTO : \
