@@ -162,12 +162,35 @@ test_zset_lnk   := $(test_zset_libs) $(dep_lib)
 
 $(bind)/test_zset: $(test_zset_objs) $(test_zset_libs)
 
+test_hllnum_files := test_hllnum
+test_hllnum_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(test_hllnum_files)))
+test_hllnum_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(test_hllnum_files)))
+test_hllnum_lnk   := $(test_hllnum_libs) $(dep_lib)
+
+$(bind)/test_hllnum: $(test_hllnum_objs) $(test_hllnum_libs)
+
+test_hllw_files := test_hllw
+test_hllw_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(test_hllw_files)))
+test_hllw_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(test_hllw_files)))
+test_hllw_lnk   := $(test_hllw_libs) $(dep_lib)
+
+$(bind)/test_hllw: $(test_hllw_objs) $(test_hllw_libs)
+
+test_hllsub_files := test_hllsub
+test_hllsub_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(test_hllsub_files)))
+test_hllsub_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(test_hllsub_files)))
+test_hllsub_lnk   := $(test_hllsub_libs) $(dep_lib)
+
+$(bind)/test_hllsub: $(test_hllsub_objs) $(test_hllsub_libs)
+
 all_exes    += $(bind)/server $(bind)/client $(bind)/test_msg \
                $(bind)/redis_cmd $(bind)/test_cmd $(bind)/test_list \
-	       $(bind)/test_hash $(bind)/test_set $(bind)/test_zset
+	       $(bind)/test_hash $(bind)/test_set $(bind)/test_zset \
+	       $(bind)/test_hllnum $(bind)/test_hllw $(bind)/test_hllsub
 all_depends += $(server_deps) $(client_deps) $(test_msg_deps) \
                $(redis_cmd_deps) $(test_cmd_deps) $(test_list_deps) \
-	       $(test_hash_deps) $(test_set_deps) $(test_zset_deps)
+	       $(test_hash_deps) $(test_set_deps) $(test_zset_deps) \
+	       $(test_hllnum_deps) $(test_hllw_deps) $(test_hllsub_deps)
 
 all_dirs := $(bind) $(libd) $(objd) $(dependd)
 

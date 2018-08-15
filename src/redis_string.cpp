@@ -606,7 +606,7 @@ RedisExec::exec_decrby( RedisKeyCtx &ctx )
 ExecStatus
 RedisExec::exec_get( RedisKeyCtx &ctx )
 {
-  void *data;
+  void   * data;
   uint64_t size;
   /* GET key */
   switch ( this->exec_key_fetch( ctx ) )
@@ -675,7 +675,7 @@ RedisExec::exec_getrange( RedisKeyCtx &ctx )
 
   switch ( this->exec_key_fetch( ctx ) ) {
     case KEY_OK: {
-      void *data;
+      void   * data;
       uint64_t size;
 
       ctx.kstatus = this->kctx.value( &data, size );
@@ -853,7 +853,7 @@ RedisExec::exec_incrbyfloat( RedisKeyCtx &ctx )
 ExecStatus
 RedisExec::exec_mget( RedisKeyCtx &ctx )
 {
-  void *data;
+  void   * data;
   uint64_t size;
   /* MGET key [key2 key3] */
   switch ( this->exec_key_fetch( ctx ) ) {

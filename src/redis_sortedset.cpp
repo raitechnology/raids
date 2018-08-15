@@ -790,11 +790,9 @@ RedisExec::exec_zsetop( RedisKeyCtx &ctx,  int flags )
       case KEY_OK:
           if ( ctx.type != MD_SORTEDSET )
             return ERR_BAD_TYPE;
-          if ( ctx.type != MD_NODATA ) {
-            ctx.kstatus = this->kctx.value( &data, datalen );
-            if ( ctx.kstatus != KEY_OK )
-              return ERR_KV_STATUS;
-          }
+          ctx.kstatus = this->kctx.value( &data, datalen );
+          if ( ctx.kstatus != KEY_OK )
+            return ERR_KV_STATUS;
         }
         if ( datalen == 0 ) {
           data    = (void *) mt_list;
@@ -802,11 +800,8 @@ RedisExec::exec_zsetop( RedisKeyCtx &ctx,  int flags )
         }
         if ( ! this->save_data( ctx, data, datalen ) )
           return ERR_ALLOC_FAIL;
-        if ( (ctx.kstatus = this->kctx.validate_value()) == KEY_OK ) {
-          if ( this->key_cnt == this->key_done + 1 )
-            break;
+        if ( (ctx.kstatus = this->kctx.validate_value()) == KEY_OK )
           return EXEC_OK;
-        }
       fallthrough;
       default: return ERR_KV_STATUS;
     }

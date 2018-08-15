@@ -70,11 +70,11 @@ RedisExec::exec_lindex( RedisKeyCtx &ctx )
       return EXEC_SEND_NIL;
 
     case KEY_OK:
-      if ( ctx.type != MD_LIST )
+      if ( ctx.type != MD_LIST ) {
+        if ( ctx.type == MD_NODATA )
+          return EXEC_SEND_NIL;
         return ERR_BAD_TYPE;
-      if ( ctx.type == MD_NODATA )
-        return EXEC_SEND_NIL;
-
+      }
       llen = sizeof( lhdr );
       ctx.kstatus = this->kctx.value_copy( &data, datalen, lhdr, llen );
       if ( ctx.kstatus == KEY_OK ) {
@@ -128,10 +128,11 @@ RedisExec::exec_llen( RedisKeyCtx &ctx )
       return EXEC_SEND_ZERO;
 
     case KEY_OK:
-      if ( ctx.type != MD_LIST )
+      if ( ctx.type != MD_LIST ) {
+        if ( ctx.type == MD_NODATA )
+          return EXEC_SEND_ZERO;
         return ERR_BAD_TYPE;
-      if ( ctx.type == MD_NODATA )
-        return EXEC_SEND_ZERO;
+      }
       ctx.kstatus = this->kctx.value( &data, datalen );
       if ( ctx.kstatus == KEY_OK ) {
         ListData list( data, datalen );
@@ -188,11 +189,11 @@ RedisExec::exec_lrange( RedisKeyCtx &ctx )
     case KEY_NOT_FOUND:
       return EXEC_SEND_ZERO;
     case KEY_OK:
-      if ( ctx.type != MD_LIST )
+      if ( ctx.type != MD_LIST ) {
+        if ( ctx.type == MD_NODATA )
+          return EXEC_SEND_ZERO;
         return ERR_BAD_TYPE;
-      if ( ctx.type == MD_NODATA )
-        return EXEC_SEND_ZERO;
-
+      }
       llen = sizeof( lhdr );
       ctx.kstatus = this->kctx.value_copy( &data, datalen, lhdr, llen );
       if ( ctx.kstatus == KEY_OK ) {

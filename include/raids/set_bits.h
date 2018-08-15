@@ -5,10 +5,10 @@ namespace rai {
 namespace ds {
 
 struct SetBits {
-  size_t     last,
-             size;
-  uint64_t * bits,
-             work[ 1024 / 64 ];
+  size_t     last, /* last uint64_t word cleared, incr as bits are added */
+             size; /* count of uint64_t words allocated, initially work[] */
+  uint64_t * bits, /* the bits, allocted if work[] bits exhausted */
+             work[ 1024 / 64 ]; /* static bits */
 
   SetBits() : last( 0 ) {
     this->size = sizeof( this->work ) / sizeof( this->work[ 0 ] );
@@ -25,13 +25,13 @@ struct SetBits {
   }
   bool alloc( size_t sz ) {
     void * p;
-    if ( ( sz & ( sz - 1 ) ) != 0 )
+    if ( ( sz & ( sz - 1 ) ) != 0 ) /* power of 2 alloc */
       sz = (size_t) 1 << ( 64 - __builtin_clzl( sz ) );
-    if ( this->bits == this->work ) {
+    if ( this->bits == this->work ) { /* copy from work[] */
       if ( (p = ::malloc( sizeof( this->bits[ 0 ] ) * sz )) != NULL )
         ::memcpy( p, this->work, sizeof( this->work ) );
     }
-    else
+    else /* use realloc for copy */
       p = ::realloc( this->bits, sizeof( this->bits[ 0 ] ) * sz );
     if ( p != NULL ) {
       this->bits = (uint64_t *) p;
