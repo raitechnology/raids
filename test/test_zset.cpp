@@ -223,6 +223,7 @@ main( int, char ** )
         count = 0;
         if ( cmd == ZINCRBY_CMD ) {
           fl |= ZADD_INCR;
+          i = 2;
           goto get_zadd_args;
         }
         else {
@@ -297,7 +298,7 @@ main( int, char ** )
         if ( ! isfwd( cmd ) )
           swap( i, j );
         for (;;) {
-          zstat = (ZSetStatus) sk->zset->zindex( i, zv );
+          zstat = sk->zset->zindex( i, zv );
           if ( zstat == ZSET_OK ) {
             printf( "%ld. off(%ld) %sscore(", i, sk->zset->offset( i ),
                     withscores ? "*" : "" );
@@ -322,7 +323,7 @@ main( int, char ** )
         if ( ! isfwd( cmd ) )
           swap( i, j );
         for (;;) {
-          zstat = (ZSetStatus) sk->zset->zindex( i, zv );
+          zstat = sk->zset->zindex( i, zv );
           if ( zstat == ZSET_OK ) {
             keylen = min<size_t>( zv.sz, sizeof( key ) );
             ::memcpy( key, zv.data, keylen );

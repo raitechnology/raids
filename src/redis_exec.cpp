@@ -68,11 +68,13 @@ bool
 RedisExec::save_string_result( RedisKeyCtx &ctx,  const void *data,
                                size_t size )
 {
-  size_t msz = sizeof( RedisKeyRes ) + size + 24;
+  size_t msz = sizeof( RedisKeyTempResult ) + size + 24;
   if ( ctx.part == NULL || msz > ctx.part->mem_size ) {
-    RedisKeyRes *part = (RedisKeyRes *) this->strm.alloc_temp( msz );
+    RedisKeyTempResult *part;
+    part = (RedisKeyTempResult *) this->strm.alloc_temp( msz );
     if ( part != NULL ) {
       part->mem_size = msz;
+      part->type = 0; /* no type */
       ctx.part = part;
     }
     else {
@@ -90,11 +92,13 @@ RedisExec::save_string_result( RedisKeyCtx &ctx,  const void *data,
 }
 
 bool
-RedisExec::save_data( RedisKeyCtx &ctx,  const void *data,  size_t size )
+RedisExec::save_data( RedisKeyCtx &ctx,  const void *data,  size_t size,
+                      uint8_t type )
 {
-  size_t msz = sizeof( RedisKeyRes ) + size;
+  size_t msz = sizeof( RedisKeyTempResult ) + size;
   if ( ctx.part == NULL || msz > ctx.part->mem_size ) {
-    RedisKeyRes *part = (RedisKeyRes *) this->strm.alloc_temp( msz );
+    RedisKeyTempResult *part;
+    part = (RedisKeyTempResult *) this->strm.alloc_temp( msz );
     if ( part != NULL ) {
       part->mem_size = msz;
       ctx.part = part;
@@ -105,15 +109,16 @@ RedisExec::save_data( RedisKeyCtx &ctx,  const void *data,  size_t size )
   }
   ::memcpy( ctx.part->data( 0 ), data, size );
   ctx.part->size = size;
+  ctx.part->type = type;
   return true;
 }
 
 void
 RedisExec::array_string_result( void )
 {
-  char        * str = this->strm.alloc( 32 );
-  RedisKeyRes * part;
-  size_t        sz;
+  char               * str = this->strm.alloc( 32 );
+  RedisKeyTempResult * part;
+  size_t               sz;
   if ( str == NULL )
     return;
   str[ 0 ] = '*';
@@ -193,13 +198,29 @@ RedisExec::locate_movablekeys( void )
   this->first     = 0;
   this->last      = 0;
   this->step      = 0;
-  switch ( this->cmd ) {
-    case GEORADIUS_CMD: break;  /* these commands do not follow regular rules */
-    case GEORADIUSBYMEMBER_CMD: break;
+  switch ( this->cmd ) {  /* these commands do not follow regular rules */
+    /* GEORADIUS key long lat mem rad unit [WITHCOORD] [WITHDIST]
+     * [WITHHASH] [COUNT count] [ASC|DESC] [STORE key] [STOREDIST key] */
+    /* GEORADIUSBYMEMBER key mem ... */
+    case GEORADIUS_CMD:
+    case GEORADIUSBYMEMBER_CMD:
+      this->first = this->last = 1; /* source key */
+      this->step  = 1;
+      this->step_mask = 1 << this->first;
+      if ( this->argc > 2 &&
+           this->msg.match_arg( this->argc - 2,
+                                "STORE", 5, "STOREDIST", 9, NULL ) != 0 ) {
+        this->last = this->argc - 1;
+        this->step_mask = 1 << this->last;
+        this->step = this->last - this->first;
+      }
+      return true;
+
     case MIGRATE_CMD: break;
     case SORT_CMD: break;
     case EVAL_CMD: break;
     case EVALSHA_CMD: break;
+
     case ZINTERSTORE_CMD:
     case ZUNIONSTORE_CMD:
       /* ZINTERSTORE dest nkeys key key [WEIGHTS w1 w2] [AGGREGATE ...] */
@@ -207,8 +228,8 @@ RedisExec::locate_movablekeys( void )
         return false;
       /* mask which args are keys */
       this->step_mask  = ( ( (uint64_t) 1 << i ) - 1 ) << 3;
-      this->step_mask |= 2;     /* the dest key */
       this->first      = 1;
+      this->step_mask |= 1 << this->first; /* the dest key */
       this->last       = 2 + i; /* the last key = 2 + nkeys */
       this->step       = 1;     /* step through step_mask 1 bit at a time */
       if ( (size_t) ( 3 + i ) > this->argc ) /* if args above fit into argc */
@@ -373,7 +394,7 @@ RedisExec::exec_key_fetch( RedisKeyCtx &ctx,  bool force_read )
     ctx.status  = ERR_BAD_CMD;
     ctx.is_read = true;
   }
-  if ( ctx.kstatus == KEY_OK )
+  if ( ctx.kstatus == KEY_OK ) /* not new and is found */
     ctx.type = this->kctx.get_type();
   return ctx.kstatus;
 }
@@ -583,19 +604,21 @@ RedisExec::exec_key_continue( RedisKeyCtx &ctx )
     if ( ! ctx.is_read ) {
       if ( ctx.is_new && exec_status_success( ctx.status ) ) {
         uint8_t type;
-        switch ( get_cmd_category( this->cmd ) ) {
-          default:               type = MD_NODATA;      break;
-          case GEO_CATG:         type = MD_GEO;         break;
-          case HASH_CATG:        type = MD_HASH;        break;
-          case HYPERLOGLOG_CATG: type = MD_HYPERLOGLOG; break;
-          case LIST_CATG:        type = MD_LIST;        break;
-          case PUBSUB_CATG:      type = MD_PUBSUB;      break;
-          case SCRIPT_CATG:      type = MD_SCRIPT;      break;
-          case SET_CATG:         type = MD_SET;         break;
-          case SORTED_SET_CATG:  type = MD_SORTEDSET;   break;
-          case STRING_CATG:      type = MD_STRING;      break;
-          case TRANSACTION_CATG: type = MD_TRANSACTION; break;
-          case STREAM_CATG:      type = MD_STREAM;      break;
+        if ( (type = ctx.type) == MD_NODATA ) {
+          switch ( get_cmd_category( this->cmd ) ) {
+            default:               type = MD_NODATA;      break;
+            case GEO_CATG:         type = MD_GEO;         break;
+            case HASH_CATG:        type = MD_HASH;        break;
+            case HYPERLOGLOG_CATG: type = MD_HYPERLOGLOG; break;
+            case LIST_CATG:        type = MD_LIST;        break;
+            case PUBSUB_CATG:      type = MD_PUBSUB;      break;
+            case SCRIPT_CATG:      type = MD_SCRIPT;      break;
+            case SET_CATG:         type = MD_SET;         break;
+            case SORTED_SET_CATG:  type = MD_SORTEDSET;   break;
+            case STRING_CATG:      type = MD_STRING;      break;
+            case TRANSACTION_CATG: type = MD_TRANSACTION; break;
+            case STREAM_CATG:      type = MD_STREAM;      break;
+          }
         }
         if ( type != MD_NODATA )
           this->kctx.set_type( type );

@@ -32,7 +32,7 @@ RedisExec::exec_append( RedisKeyCtx &ctx )
   if ( ! this->msg.get_arg( 2, value, valuelen ) ) /* APPEND KEY VALUE */
     return ERR_BAD_ARGS;
 
-  switch ( this->exec_key_fetch( ctx ) ) {
+  switch ( this->get_key_write( ctx, MD_STRING ) ) {
     case KEY_OK:
       ctx.kstatus = this->kctx.get_size( data_sz );
       if ( ctx.kstatus == KEY_OK ) {
@@ -43,9 +43,9 @@ RedisExec::exec_append( RedisKeyCtx &ctx )
           ::memcpy( &((uint8_t *) data)[ data_sz ], value, valuelen );
         return EXEC_SEND_INT;
       }
-      fallthrough;
-      /* fall through */
-    default: return ERR_KV_STATUS;
+    fallthrough;
+    default:           return ERR_KV_STATUS;
+    case KEY_NO_VALUE: return ERR_BAD_TYPE;
   }
 }
 
@@ -60,7 +60,7 @@ RedisExec::exec_bitcount( RedisKeyCtx &ctx )
   if ( this->argc > 3 && ! this->msg.get_arg( 3, end ) )
     return ERR_BAD_ARGS;
 
-  switch ( this->exec_key_fetch( ctx ) ) {
+  switch ( this->get_key_read( ctx, MD_STRING ) ) {
     case KEY_OK: {
       void *data;
       uint64_t size;
@@ -108,6 +108,7 @@ RedisExec::exec_bitcount( RedisKeyCtx &ctx )
     /* fall through */
     default:            return ERR_KV_STATUS;
     case KEY_NOT_FOUND: return EXEC_SEND_ZERO;
+    case KEY_NO_VALUE:  return ERR_BAD_TYPE;
   }
 }
 
@@ -235,7 +236,7 @@ RedisExec::exec_bitfield( RedisKeyCtx &ctx )
     max_off  = align<uint64_t>( max_off, 8 );
     size     = max_off / 8;
     old_size = 0;
-    switch ( this->exec_key_fetch( ctx ) ) {
+    switch ( this->get_key_write( ctx, MD_STRING ) ) {
       case KEY_OK:
         ctx.kstatus = this->kctx.get_size( old_size );
         if ( ctx.kstatus == KEY_OK ) {
@@ -249,12 +250,12 @@ RedisExec::exec_bitfield( RedisKeyCtx &ctx )
 	    break;
         }
         fallthrough;
-      /* fall through */
-      default: return ERR_KV_STATUS;
+      default:            return ERR_KV_STATUS;
+      case KEY_NO_VALUE:  return ERR_BAD_TYPE;
     }
   }
   else { /* read access */
-    switch ( this->exec_key_fetch( ctx, true ) ) {
+    switch ( this->get_key_read( ctx, MD_STRING ) ) {
       case KEY_OK:
         ctx.kstatus = this->kctx.value( &data, size );
         if ( ctx.kstatus == KEY_OK )
@@ -262,6 +263,7 @@ RedisExec::exec_bitfield( RedisKeyCtx &ctx )
         fallthrough;
       default:            return ERR_KV_STATUS;
       case KEY_NOT_FOUND: data = NULL; size = 0; break;
+      case KEY_NO_VALUE:  return ERR_BAD_TYPE;
     }
   }
   size_t sz  = 32 + k * 32;
@@ -456,7 +458,7 @@ RedisExec::exec_bitop( RedisKeyCtx &ctx )
         break;
     }
 
-    switch ( this->exec_key_fetch( ctx ) ) { /* write access */
+    switch ( this->get_key_write( ctx, MD_STRING ) ) { /* write access */
       case KEY_OK:
       case KEY_IS_NEW:
         ctx.kstatus = this->kctx.resize( &data, ctx.ival );
@@ -495,31 +497,36 @@ RedisExec::exec_bitop( RedisKeyCtx &ctx )
           return EXEC_SEND_INT;
         }
         fallthrough;
-      default: return ERR_KV_STATUS;
+      default:           return ERR_KV_STATUS;
+      case KEY_NO_VALUE: return ERR_BAD_TYPE;
     }
   }
   data = NULL;
   sz   = 0;
-  switch ( this->exec_key_fetch( ctx, true ) ) { /* read access */
+  switch ( this->get_key_read( ctx, MD_STRING ) ) { /* read access */
     case KEY_OK:
       if ( (ctx.kstatus = this->kctx.value( &data, sz )) == KEY_OK ) {
     case KEY_NOT_FOUND:
-        this->save_data( ctx, data, sz );
+        this->save_data( ctx, data, sz, 0 );
         ctx.kstatus = this->kctx.validate_value();
         if ( ctx.kstatus == KEY_OK )
           return EXEC_OK;
       }
       fallthrough;
-    default: return ERR_KV_STATUS;
+    default:           return ERR_KV_STATUS;
+    case KEY_NO_VALUE: return ERR_BAD_TYPE;
   }
 }
 
 ExecStatus
 RedisExec::exec_bitpos( RedisKeyCtx &ctx )
 {
-  int64_t bit,
-          start_off = 0,
-          end_off   = -1;
+  int64_t  bit,
+           start_off = 0,
+           end_off   = -1;
+  void   * data;
+  size_t   size;
+
   if ( ! this->msg.get_arg( 2, bit ) )
     return ERR_BAD_ARGS;
 
@@ -533,11 +540,8 @@ RedisExec::exec_bitpos( RedisKeyCtx &ctx )
   if ( start_off < 0 )
     return ERR_BAD_ARGS;
 
-  switch ( this->exec_key_fetch( ctx ) ) {
-    case KEY_OK: {
-      void *data;
-      uint64_t size;
-
+  switch ( this->get_key_read( ctx, MD_STRING ) ) {
+    case KEY_OK:
       ctx.kstatus = this->kctx.value( &data, size );
       if ( ctx.kstatus == KEY_OK ) {
         const uint8_t * start = (const uint8_t *) data,
@@ -582,16 +586,16 @@ RedisExec::exec_bitpos( RedisKeyCtx &ctx )
           return EXEC_SEND_INT;
       }
       fallthrough;
-    }
     default:            return ERR_KV_STATUS;
     case KEY_NOT_FOUND: return EXEC_SEND_ZERO;
+    case KEY_NO_VALUE:  return ERR_BAD_TYPE;
   }
 }
 
 ExecStatus
 RedisExec::exec_decr( RedisKeyCtx &ctx )
 {
-  return this->exec_add( ctx, -1 );
+  return this->do_add( ctx, -1 );
 }
 
 ExecStatus
@@ -600,16 +604,16 @@ RedisExec::exec_decrby( RedisKeyCtx &ctx )
   int64_t decr;
   if ( ! this->msg.get_arg( 2, decr ) )
     return ERR_BAD_ARGS;
-  return this->exec_add( ctx, -decr );
+  return this->do_add( ctx, -decr );
 }
 
 ExecStatus
 RedisExec::exec_get( RedisKeyCtx &ctx )
 {
-  void   * data;
-  uint64_t size;
+  void * data;
+  size_t size;
   /* GET key */
-  switch ( this->exec_key_fetch( ctx ) )
+  switch ( this->get_key_read( ctx, MD_STRING ) )
     case KEY_OK: {
       ctx.kstatus = this->kctx.value( &data, size );
       if ( ctx.kstatus == KEY_OK ) {
@@ -623,6 +627,7 @@ RedisExec::exec_get( RedisKeyCtx &ctx )
       fallthrough;
     default:            return ERR_KV_STATUS;
     case KEY_NOT_FOUND: return EXEC_SEND_NIL;
+    case KEY_NO_VALUE:  return ERR_BAD_TYPE;
   }
 }
 
@@ -630,6 +635,8 @@ ExecStatus
 RedisExec::exec_getbit( RedisKeyCtx &ctx )
 {
   int64_t off;
+  void  * data;
+  size_t  size;
 
   if ( ! this->msg.get_arg( 2, off ) ) /* GETBIT key bit-offset */
     return ERR_BAD_ARGS;
@@ -640,11 +647,8 @@ RedisExec::exec_getbit( RedisKeyCtx &ctx )
   uint64_t byte_off = off / 8;
   uint8_t  mask     = ( 1U << ( off % 8 ) );
 
-  switch ( this->exec_key_fetch( ctx ) ) {
-    case KEY_OK: {
-      void *data;
-      uint64_t size;
-
+  switch ( this->get_key_read( ctx, MD_STRING ) ) {
+    case KEY_OK:
       ctx.kstatus = this->kctx.value( &data, size );
       if ( ctx.kstatus == KEY_OK ) {
         bool is_one = false;
@@ -656,16 +660,19 @@ RedisExec::exec_getbit( RedisKeyCtx &ctx )
           return is_one ? EXEC_SEND_ONE : EXEC_SEND_ZERO;
       }
       fallthrough;
-    }
     default:            return ERR_KV_STATUS;
     case KEY_NOT_FOUND: return EXEC_SEND_ZERO;
+    case KEY_NO_VALUE:  return ERR_BAD_TYPE;
   }
 }
 
 ExecStatus
 RedisExec::exec_getrange( RedisKeyCtx &ctx )
 {
-  int64_t start = 0, end = -1;
+  int64_t start = 0,
+          end = -1;
+  void  * data;
+  size_t  size;
 
   /* GETRANGE KEY [start end] */
   if ( this->argc > 2 && ! this->msg.get_arg( 2, start ) )
@@ -673,11 +680,8 @@ RedisExec::exec_getrange( RedisKeyCtx &ctx )
   if ( this->argc > 3 && ! this->msg.get_arg( 3, end ) )
     return ERR_BAD_ARGS;
 
-  switch ( this->exec_key_fetch( ctx ) ) {
-    case KEY_OK: {
-      void   * data;
-      uint64_t size;
-
+  switch ( this->get_key_read( ctx, MD_STRING ) ) {
+    case KEY_OK:
       ctx.kstatus = this->kctx.value( &data, size );
       if ( size == 0 )
         return EXEC_SEND_ZERO_STRING;
@@ -701,9 +705,9 @@ RedisExec::exec_getrange( RedisKeyCtx &ctx )
         }
       }
       fallthrough;
-    }
     default:            return ERR_KV_STATUS;
     case KEY_NOT_FOUND: return EXEC_SEND_ZERO_STRING;
+    case KEY_NO_VALUE:  return ERR_BAD_TYPE;
   }
 }
 
@@ -714,19 +718,18 @@ RedisExec::exec_getset( RedisKeyCtx &ctx )
   size_t       valuelen,
                sz = 0;
   void       * data;
-  uint64_t     size;
+  size_t       size;
 
   if ( ! this->msg.get_arg( 2, value, valuelen ) ) /* GETSET key value */
     return ERR_BAD_ARGS;
 
-  switch ( this->exec_key_fetch( ctx ) ) { /* write access */
+  switch ( this->get_key_write( ctx, MD_STRING ) ) { /* write access */
     case KEY_OK:
       ctx.kstatus = this->kctx.value( &data, size );
       if ( ctx.kstatus != KEY_OK )
         return ERR_KV_STATUS;
       sz = this->send_string( data, size );
-
-      /* fall through */
+      fallthrough;
     case KEY_IS_NEW:
       this->kctx.clear_stamps( true, false );
       ctx.kstatus = this->kctx.resize( &data, valuelen );
@@ -738,14 +741,15 @@ RedisExec::exec_getset( RedisKeyCtx &ctx )
         return EXEC_OK;
       }
       fallthrough;
-    default: return ERR_KV_STATUS;
+    default:           return ERR_KV_STATUS;
+    case KEY_NO_VALUE: return ERR_BAD_TYPE;
   }
 }
 
 ExecStatus
 RedisExec::exec_incr( RedisKeyCtx &ctx )
 {
-  return this->exec_add( ctx, 1 ); /* INCR key */
+  return this->do_add( ctx, 1 ); /* INCR key */
 }
 
 ExecStatus
@@ -754,19 +758,19 @@ RedisExec::exec_incrby( RedisKeyCtx &ctx )
   int64_t incr;
   if ( ! this->msg.get_arg( 2, incr ) ) /* INCRBY key incr */
     return ERR_BAD_ARGS;
-  return this->exec_add( ctx, incr );
+  return this->do_add( ctx, incr );
 }
 
 ExecStatus
-RedisExec::exec_add( RedisKeyCtx &ctx,  int64_t incr ) /* incr/decr value */
+RedisExec::do_add( RedisKeyCtx &ctx,  int64_t incr ) /* incr/decr value */
 {
-  void   * data;
-  char   * str;
-  uint64_t size;
-  size_t   sz;
+  void * data;
+  char * str;
+  size_t size,
+         sz;
 
   ctx.ival = 0;
-  switch ( this->exec_key_fetch( ctx ) ) {
+  switch ( this->get_key_write( ctx, MD_STRING ) ) {
     case KEY_OK:
       ctx.kstatus = this->kctx.value( &data, size );
       if ( ctx.kstatus != KEY_OK )
@@ -790,7 +794,8 @@ RedisExec::exec_add( RedisKeyCtx &ctx,  int64_t incr ) /* incr/decr value */
         return EXEC_OK;
       }
       fallthrough;
-    default: return ERR_KV_STATUS;
+    default:           return ERR_KV_STATUS;
+    case KEY_NO_VALUE: return ERR_BAD_TYPE;
   }
 }
 
@@ -804,13 +809,13 @@ RedisExec::exec_incrbyfloat( RedisKeyCtx &ctx )
   size_t       fvallen;
   void       * data;
   char       * str;
-  uint64_t     size;
+  size_t       size;
   size_t       sz;
 
   if ( ! this->msg.get_arg( 2, fval, fvallen ) ) /* INCRBYFLOAT key value */
     return ERR_BAD_ARGS;
 
-  switch ( this->exec_key_fetch( ctx ) ) {
+  switch ( this->get_key_write( ctx, MD_STRING ) ) {
     case KEY_OK:
       ctx.kstatus = this->kctx.value( &data, size );
       if ( ctx.kstatus != KEY_OK )
@@ -846,7 +851,8 @@ RedisExec::exec_incrbyfloat( RedisKeyCtx &ctx )
         return EXEC_OK;
       }
       fallthrough;
-    default: return ERR_KV_STATUS;
+    default:           return ERR_KV_STATUS;
+    case KEY_NO_VALUE: return ERR_BAD_TYPE;
   }
 }
 
@@ -856,7 +862,7 @@ RedisExec::exec_mget( RedisKeyCtx &ctx )
   void   * data;
   uint64_t size;
   /* MGET key [key2 key3] */
-  switch ( this->exec_key_fetch( ctx ) ) {
+  switch ( this->get_key_read( ctx, MD_STRING ) ) {
     case KEY_OK:
       ctx.kstatus = this->kctx.value( &data, size );
       if ( ctx.kstatus == KEY_OK ) {
@@ -869,13 +875,14 @@ RedisExec::exec_mget( RedisKeyCtx &ctx )
       fallthrough;
     default:            return ERR_KV_STATUS;
     case KEY_NOT_FOUND: return EXEC_SEND_NIL;
+    case KEY_NO_VALUE:  return ERR_BAD_TYPE;
   }
 }
 
 ExecStatus
 RedisExec::exec_mset( RedisKeyCtx &ctx )
 {
-  return this->exec_set_value( ctx, ctx.argn+1, 0 );
+  return this->do_set_value( ctx, ctx.argn+1, 0 );
 }
 
 ExecStatus
@@ -890,7 +897,7 @@ RedisExec::exec_msetnx( RedisKeyCtx &ctx )
       return EXEC_DEPENDS;
   }
   /* set the value second time around */
-  return this->exec_set_value( ctx, ctx.argn+1, 0 );
+  return this->do_set_value( ctx, ctx.argn+1, 0 );
 }
 
 ExecStatus
@@ -905,7 +912,7 @@ RedisExec::exec_psetex( RedisKeyCtx &ctx )
   if ( ns < this->kctx.ht.hdr.current_stamp )
     ns += this->kctx.ht.hdr.current_stamp;
   /* PSET key ms value */
-  return this->exec_set_value_expire( ctx, 3, ns, HAS_EXPIRE_NS );
+  return this->do_set_value_expire( ctx, 3, ns, HAS_EXPIRE_NS );
 }
 
 ExecStatus
@@ -955,13 +962,13 @@ RedisExec::exec_set( RedisKeyCtx &ctx )
     }
   }
   if ( ( flags & HAS_EXPIRE_NS ) != 0 )
-    return this->exec_set_value_expire( ctx, 2, ns, flags );
-  return this->exec_set_value( ctx, 2, flags );
+    return this->do_set_value_expire( ctx, 2, ns, flags );
+  return this->do_set_value( ctx, 2, flags );
 }
 
 ExecStatus
-RedisExec::exec_set_value_expire( RedisKeyCtx &ctx,  int n,  uint64_t ns,
-                                  int flags )
+RedisExec::do_set_value_expire( RedisKeyCtx &ctx,  int n,  uint64_t ns,
+                                int flags )
 {
   const char * value;
   size_t       valuelen;
@@ -970,7 +977,11 @@ RedisExec::exec_set_value_expire( RedisKeyCtx &ctx,  int n,  uint64_t ns,
   if ( ! this->msg.get_arg( n, value, valuelen ) ) /* SET value w/clear EX */
     return ERR_BAD_ARGS;
 
-  switch ( this->exec_key_fetch( ctx ) ) {
+  switch ( this->get_key_write( ctx, MD_STRING ) ) {
+    case KEY_NO_VALUE: /* overwrite key */
+      ctx.is_new = true;
+      ctx.type   = MD_STRING;
+      fallthrough;
     case KEY_OK:
     case KEY_IS_NEW:
       if ( ( flags & ( K_MUST_NOT_EXIST | K_MUST_EXIST ) ) != 0 ) {
@@ -991,7 +1002,7 @@ RedisExec::exec_set_value_expire( RedisKeyCtx &ctx,  int n,  uint64_t ns,
 }
 
 ExecStatus
-RedisExec::exec_set_value( RedisKeyCtx &ctx,  int n,  int flags )
+RedisExec::do_set_value( RedisKeyCtx &ctx,  int n,  int flags )
 {
   const char * value;
   size_t       valuelen;
@@ -1000,7 +1011,11 @@ RedisExec::exec_set_value( RedisKeyCtx &ctx,  int n,  int flags )
   if ( ! this->msg.get_arg( n, value, valuelen ) ) /* SET value w/set EX */
     return ERR_BAD_ARGS;
 
-  switch ( this->exec_key_fetch( ctx ) ) {
+  switch ( this->get_key_write( ctx, MD_STRING ) ) {
+    case KEY_NO_VALUE: /* overwrite key */
+      ctx.is_new = true;
+      ctx.type   = MD_STRING;
+      fallthrough;
     case KEY_OK:
     case KEY_IS_NEW:
       if ( ( flags & ( K_MUST_NOT_EXIST | K_MUST_EXIST ) ) != 0 ) {
@@ -1038,7 +1053,7 @@ RedisExec::exec_setbit( RedisKeyCtx &ctx )
 
   byte_off = (uint64_t) off / 8;
   bit_mask = (uint8_t) ( 1U << ( (uint64_t) off % 8 ) );
-  switch ( this->exec_key_fetch( ctx ) ) {
+  switch ( this->get_key_write( ctx, MD_STRING ) ) {
     case KEY_OK:
       ctx.kstatus = this->kctx.get_size( data_sz );
       if ( ctx.kstatus == KEY_OK ) {
@@ -1058,7 +1073,8 @@ RedisExec::exec_setbit( RedisKeyCtx &ctx )
         }
       }
       fallthrough;
-    default: return ERR_KV_STATUS;
+    default:           return ERR_KV_STATUS;
+    case KEY_NO_VALUE: return ERR_BAD_TYPE;
   }
 }
 
@@ -1073,13 +1089,13 @@ RedisExec::exec_setex( RedisKeyCtx &ctx )
   ns = (uint64_t) ival * 1000 * 1000 * 1000;
   if ( ns < this->kctx.ht.hdr.current_stamp )
     ns += this->kctx.ht.hdr.current_stamp;
-  return this->exec_set_value_expire( ctx, 3, ns, HAS_EXPIRE_NS );
+  return this->do_set_value_expire( ctx, 3, ns, HAS_EXPIRE_NS );
 }
 
 ExecStatus
 RedisExec::exec_setnx( RedisKeyCtx &ctx )
 {
-  return this->exec_set_value( ctx, 2, K_MUST_NOT_EXIST ); /* SETNX key value */
+  return this->do_set_value( ctx, 2, K_MUST_NOT_EXIST ); /* SETNX key value */
 }
 
 ExecStatus
@@ -1097,7 +1113,7 @@ RedisExec::exec_setrange( RedisKeyCtx &ctx )
   if ( ! this->msg.get_arg( 3, value, valuelen ) )
     return ERR_BAD_ARGS;
 
-  switch ( this->exec_key_fetch( ctx ) ) {
+  switch ( this->get_key_write( ctx, MD_STRING ) ) {
     case KEY_OK:
       ctx.kstatus = this->kctx.get_size( data_sz );
       if ( ctx.kstatus == KEY_OK ) {
@@ -1113,7 +1129,8 @@ RedisExec::exec_setrange( RedisKeyCtx &ctx )
         }
       }
       fallthrough;
-    default: return ERR_KV_STATUS;
+    default:           return ERR_KV_STATUS;
+    case KEY_NO_VALUE: return ERR_BAD_TYPE;
   }
 }
 
@@ -1122,7 +1139,7 @@ RedisExec::exec_strlen( RedisKeyCtx &ctx )
 {
   uint64_t data_sz = 0;
   /* STRLEN key */
-  switch ( this->exec_key_fetch( ctx ) ) {
+  switch ( this->get_key_read( ctx, MD_STRING ) ) {
     case KEY_OK:
       ctx.kstatus = this->kctx.get_size( data_sz );
       if ( ctx.kstatus == KEY_OK ) {
@@ -1131,7 +1148,8 @@ RedisExec::exec_strlen( RedisKeyCtx &ctx )
         return EXEC_SEND_INT;
       }
       fallthrough;
-    default: return ERR_KV_STATUS;
+    default:           return ERR_KV_STATUS;
+    case KEY_NO_VALUE: return ERR_BAD_TYPE;
   }
 }
 

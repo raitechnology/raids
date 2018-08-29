@@ -11,13 +11,15 @@ struct BulkStr;
 struct BulkArr;
 
 enum RedisMsgStatus {
-  REDIS_MSG_OK           = 0,
-  REDIS_MSG_BAD_TYPE     = 1,
-  REDIS_MSG_PARTIAL      = 2,
-  REDIS_MSG_ALLOC_FAIL   = 3,
-  REDIS_MSG_BAD_JSON     = 4,
-  REDIS_MSG_BAD_INT      = 5,
-  REDIS_MSG_INT_OVERFLOW = 6
+  REDIS_MSG_OK             = 0,
+  REDIS_MSG_BAD_TYPE       = 1,
+  REDIS_MSG_PARTIAL        = 2,
+  REDIS_MSG_ALLOC_FAIL     = 3,
+  REDIS_MSG_BAD_JSON       = 4,
+  REDIS_MSG_BAD_INT        = 5,
+  REDIS_MSG_INT_OVERFLOW   = 6,
+  REDIS_MSG_BAD_FLOAT      = 7,
+  REDIS_MSG_FLOAT_OVERFLOW = 8
 };
 
 const char *redis_msg_status_string( RedisMsgStatus status );
@@ -105,6 +107,23 @@ struct RedisMsg {
     }
     return false;
   }
+  /* get an double argument */
+  bool get_arg( int n,  double &f ) const {
+    if ( n < this->len ) {
+      if ( this->array[ n ].is_string() ) {
+        if ( this->array[ n ].len > 0 ) {
+          const char * str = this->array[ n ].strval;
+          size_t       sz  = this->array[ n ].len;
+          return str_to_dbl( str, sz, f ) == REDIS_MSG_OK;
+        }
+      }
+      else if ( this->array[ n ].type == INTEGER_VALUE ) {
+        f = (double) this->array[ n ].ival;
+        return true;
+      }
+    }
+    return false;
+  }
   /* match argument by string, returns which arg matched, 0 if none
    * the arg n indicates which arg to start, -2 means args [2 -> end]
    *   int n = match( -2, "one", "two", NULL );
@@ -158,6 +177,12 @@ struct RedisMsg {
   /* str length sz to int */
   static RedisMsgStatus str_to_int( const char *str,  size_t sz,
                                     int64_t &ival );
+  /* str length sz to uint */
+  static RedisMsgStatus str_to_uint( const char *str,  size_t sz,
+                                     uint64_t &ival );
+  /* str length sz to double */
+  static RedisMsgStatus str_to_dbl( const char *str,  size_t sz,
+                                    double &fval );
   /* various simple encodings used by redis */
   void set_nil( void ) {
     this->type   = BULK_STRING;

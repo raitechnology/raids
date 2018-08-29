@@ -127,6 +127,8 @@ struct HashStorage : public ListStorage<UIntSig, UIntType> {
     len   = min<size_t>( this->count, sz );
     end   = hdr.data_offset( start, len );
     start = hdr.data_offset( start, pos.i );
+    if ( pos.i >= len )
+      return false;
     len  -= pos.i;
     map   = (const uint8_t *) hdr.blob( start );
     if ( end >= start ) {

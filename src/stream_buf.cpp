@@ -72,16 +72,40 @@ StreamBuf::BufQueue::append_string( const void *str,  size_t len,
 }
 
 size_t
-StreamBuf::BufQueue::append_nil( void )
+StreamBuf::BufQueue::append_nil( bool is_null )
 {
   if ( 5 > this->buflen - this->used )
     if ( ! this->append_buf( 5 ) )
       return 0;
-  this->bufp[ this->used ] = '$';
+  this->bufp[ this->used ] = ( is_null ? '*' : '$' );
   this->bufp[ this->used+1 ] = '-';
   this->bufp[ this->used+2 ] = '1';
   this->used = crlf( this->bufp, this->used + 3 );
 
+  return this->total + this->used;
+}
+
+size_t
+StreamBuf::BufQueue::append_bytes( const void *buf,  size_t len )
+{
+  if ( len > this->buflen - this->used )
+    if ( ! this->append_buf( len ) )
+      return 0;
+  ::memcpy( &this->bufp[ this->used ], buf, len );
+  this->used += len;
+  return this->total + this->used;
+}
+
+size_t
+StreamBuf::BufQueue::append_uint( uint64_t val )
+{
+  size_t d = RedisMsg::uint_digits( val );
+  if ( d + 3 > this->buflen - this->used )
+    if ( ! this->append_buf( d + 3 ) )
+      return 0;
+  this->bufp[ this->used++ ] = ':';
+  this->used += RedisMsg::uint_to_str( val, &this->bufp[ this->used ], d );
+  this->used = crlf( this->bufp, this->used );
   return this->total + this->used;
 }
 

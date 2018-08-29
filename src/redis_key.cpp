@@ -350,7 +350,7 @@ RedisExec::exec_rename( RedisKeyCtx &ctx )
       case KEY_OK:
         if ( (ctx.kstatus = this->kctx.value( &data, sz )) == KEY_OK ) {
       case KEY_NOT_FOUND:
-          this->save_data( ctx, data, sz );
+          this->save_data( ctx, data, sz, 0 );
           ctx.kstatus = this->kctx.validate_value();
           if ( ctx.kstatus == KEY_OK )
             return EXEC_DEPENDS; /* redo again after saving the value */

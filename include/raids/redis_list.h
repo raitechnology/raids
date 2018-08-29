@@ -660,6 +660,10 @@ struct ListData : public ListHeader {
   }
   static size_t alloc_size( size_t &idx_size,  size_t &dat_size ) {
     size_t sz, tz, lst_size;
+    if ( idx_size < 2 )
+      idx_size = 2;
+    if ( dat_size < 4 )
+      dat_size = 4;
     for (;;) {
       idx_size = pow2size( idx_size );
       dat_size = pow2size( dat_size );

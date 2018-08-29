@@ -3,10 +3,6 @@
 
 /* redis commands copied from https://redis.io/commands
  * attributes derived from redis command: 'command info name'
- *
- * offset +1 from enum (NO_CMD=0), so description can be accessed by:
- * RedisCmd redis_cmd = GET_CMD;
- * const char *name = cmd_db[ (int) redis_cmd - 1 ].name;
  */
 
 namespace rai {
@@ -14,6 +10,7 @@ namespace ds {
 
 CommandDB cmd_db[] = {
 { "NONE", "", "nil" },
+
 #define CLUSTER_CNT 3
   /* cluster */
 { "CLUSTER", "[ADDSLOTS|COUNT-FAILURE|COUNTKEYSINSLOT|DELSLOTS|"

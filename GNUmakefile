@@ -50,7 +50,7 @@ DEFINES     ?=
 defines     := $(DEFINES)
 cpp_lnk     :=
 sock_lib    :=
-math_lib    := -L/usr/local/lib -ldfp -lm
+math_lib    := -L/usr/local/lib -ldfp -lh3 -lm
 thread_lib  := -pthread -lrt
 dep_lib     := -lraikv -lpcre2-8 -lcrypto
 malloc_lib  :=
@@ -88,7 +88,8 @@ libraids_ver   := $(major_num).$(minor_num)
 $(libd)/libraids.a: $(libraids_objs)
 $(libd)/libraids.so: $(libraids_dbjs)
 
-all_libs    += $(libd)/libraids.a $(libd)/libraids.so
+all_libs    += $(libd)/libraids.a
+# $(libd)/libraids.so
 all_depends += $(libraids_deps)
 
 server_files := emain
@@ -183,14 +184,24 @@ test_hllsub_lnk   := $(test_hllsub_libs) $(dep_lib)
 
 $(bind)/test_hllsub: $(test_hllsub_objs) $(test_hllsub_libs)
 
+test_geo_files := test_geo
+test_geo_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(test_geo_files)))
+test_geo_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(test_geo_files)))
+test_geo_libs  := $(libd)/libraids.a
+test_geo_lnk   := $(test_geo_libs) $(dep_lib)
+
+$(bind)/test_geo: $(test_geo_objs) $(test_geo_libs)
+
 all_exes    += $(bind)/server $(bind)/client $(bind)/test_msg \
                $(bind)/redis_cmd $(bind)/test_cmd $(bind)/test_list \
 	       $(bind)/test_hash $(bind)/test_set $(bind)/test_zset \
-	       $(bind)/test_hllnum $(bind)/test_hllw $(bind)/test_hllsub
+	       $(bind)/test_hllnum $(bind)/test_hllw $(bind)/test_hllsub \
+	       $(bind)/test_geo
 all_depends += $(server_deps) $(client_deps) $(test_msg_deps) \
                $(redis_cmd_deps) $(test_cmd_deps) $(test_list_deps) \
 	       $(test_hash_deps) $(test_set_deps) $(test_zset_deps) \
-	       $(test_hllnum_deps) $(test_hllw_deps) $(test_hllsub_deps)
+	       $(test_hllnum_deps) $(test_hllw_deps) $(test_hllsub_deps) \
+	       $(test_geo_deps)
 
 all_dirs := $(bind) $(libd) $(objd) $(dependd)
 

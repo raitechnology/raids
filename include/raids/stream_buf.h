@@ -41,12 +41,16 @@ struct StreamBuf {
     }
     /* allocate a new BufList that fits at least len and append to list */
     bool append_buf( size_t len );
-    /* a nil string */
-    size_t append_nil( void );
-    /* one item */
+    /* a nil string: $-1\r\n or *-1\r\n if is_null true */
+    size_t append_nil( bool is_null = false );
+    /* one string item, appended with decorations: $<strlen>\r\n<string>\r\n */
     size_t append_string( const void *str,  size_t len,  const void *str2=0,
                           size_t len2=0 );
-    /* make array: [item1, item2, ...] */
+    /* an int, appended with decorations: :<val>\r\n */
+    size_t append_uint( uint64_t val );
+    /* arbitrary bytes, no formatting */
+    size_t append_bytes( const void *buf,  size_t len );
+    /* make array: [item1, item2, ...], prepends decorations *<arraylen>\r\n */
     size_t prepend_array( size_t nitems );
     /* cursor is two arrays: [cursor,[items]] */
     size_t prepend_cursor_array( size_t curs,  size_t nitems );

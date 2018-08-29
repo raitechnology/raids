@@ -7,6 +7,7 @@
 #include <raids/redis_exec.h>
 #include <raids/md_type.h>
 #include <raids/redis_list.h>
+#include <raids/exec_list_ctx.h>
 
 using namespace rai;
 using namespace ds;
@@ -29,6 +30,7 @@ ExecStatus
 RedisExec::exec_blpop( RedisKeyCtx &/*ctx*/ )
 {
   /* BLPOP key [key...] timeout */
+  //return this->do_pop( ctx, DO_LPOP );
   return ERR_BAD_CMD;
 }
 
@@ -36,6 +38,7 @@ ExecStatus
 RedisExec::exec_brpop( RedisKeyCtx &/*ctx*/ )
 {
   /* BRPOP key [key...] timeout */
+  //return this->do_pop( ctx, DO_LPOP );
   return ERR_BAD_CMD;
 }
 
@@ -49,211 +52,164 @@ RedisExec::exec_brpoplpush( RedisKeyCtx &/*ctx*/ )
 ExecStatus
 RedisExec::exec_lindex( RedisKeyCtx &ctx )
 {
-  /* LINDEX key idx */
-  void     * data;
-  char     * itembuf;
-  size_t     datalen,
-             used;
+  ExecListCtx<ListData, MD_LIST> list( *this, ctx );
   ListVal    lv;
-  size_t     itemlen;
   int64_t    idx;
-  uint8_t    lhdr[ LIST_HDR_OOB_SIZE ];
-  uint64_t   llen;
+  size_t     sz;
+  ExecStatus status;
   ListStatus lstatus;
 
+  /* LINDEX key idx */
   if ( ! this->msg.get_arg( 2, idx ) )
     return ERR_BAD_ARGS;
 
-  switch ( this->exec_key_fetch( ctx ) ) {
-
-    case KEY_NOT_FOUND:
-      return EXEC_SEND_NIL;
-
-    case KEY_OK:
-      if ( ctx.type != MD_LIST ) {
-        if ( ctx.type == MD_NODATA )
-          return EXEC_SEND_NIL;
-        return ERR_BAD_TYPE;
-      }
-      llen = sizeof( lhdr );
-      ctx.kstatus = this->kctx.value_copy( &data, datalen, lhdr, llen );
-      if ( ctx.kstatus == KEY_OK ) {
-        ListData list( data, datalen );
-        list.open( lhdr, llen );
-        lstatus = list.lindex( idx, lv );
-        itemlen = lv.sz + lv.sz2;
-        if ( lstatus == LIST_NOT_FOUND || itemlen > 30000 ) {
-          if ( (ctx.kstatus = this->kctx.validate_value()) != KEY_OK )
-            return ERR_KV_STATUS;
-          if ( lstatus == LIST_NOT_FOUND )
-            return EXEC_SEND_NIL;
-        }
-        itembuf = this->strm.alloc( itemlen + 32 );
-        if ( itembuf == NULL )
-          return ERR_ALLOC_FAIL;
-        itembuf[ 0 ] = '$';
-        used = 1 + RedisMsg::int_to_str( itemlen, &itembuf[ 1 ] );
-        used = crlf( itembuf, used );
-        ::memcpy( &itembuf[ used ], lv.data, lv.sz );
-        if ( lv.sz2 > 0 )
-          ::memcpy( &itembuf[ used + lv.sz ], lv.data2, lv.sz2 );
-        used = crlf( itembuf, used + itemlen );
-        if ( (ctx.kstatus = this->kctx.validate_value()) == KEY_OK ) {
-          this->strm.sz += used;
-          return EXEC_OK;
-        }
-      }
-      fallthrough;
-    default: return ERR_KV_STATUS;
+  switch ( list.get_key_read() ) {
+    default:            return ERR_KV_STATUS;
+    case KEY_NO_VALUE:  return ERR_BAD_TYPE;
+    case KEY_NOT_FOUND: return EXEC_SEND_NIL;
+    case KEY_OK:        break;
   }
+  if ( ! list.open_readonly() )
+    return ERR_KV_STATUS;
+  lstatus = list.x->lindex( idx, lv );
+  if ( lstatus != LIST_NOT_FOUND ) {
+    sz     = this->send_concat_string( lv.data, lv.sz, lv.data2, lv.sz2 );
+    status = EXEC_OK;
+  }
+  else {
+    sz     = 0;
+    status = EXEC_SEND_NIL;
+  }
+  if ( ! list.validate_value() )
+    return ERR_KV_STATUS;
+  this->strm.sz += sz;
+  return status;
 }
 
 ExecStatus
 RedisExec::exec_linsert( RedisKeyCtx &ctx )
 {
   /* LINSERT key [before|after] piv val */
-  return this->exec_push( ctx, DO_LINSERT );
+  return this->do_push( ctx, DO_LINSERT );
 }
 
 ExecStatus
 RedisExec::exec_llen( RedisKeyCtx &ctx )
 {
+  ExecListCtx<ListData, MD_LIST> list( *this, ctx );
   /* LLEN key */
-  void * data;
-  size_t datalen;
-
-  switch ( this->exec_key_fetch( ctx ) ) {
-
-    case KEY_NOT_FOUND:
-      return EXEC_SEND_ZERO;
-
-    case KEY_OK:
-      if ( ctx.type != MD_LIST ) {
-        if ( ctx.type == MD_NODATA )
-          return EXEC_SEND_ZERO;
-        return ERR_BAD_TYPE;
-      }
-      ctx.kstatus = this->kctx.value( &data, datalen );
-      if ( ctx.kstatus == KEY_OK ) {
-        ListData list( data, datalen );
-        list.open();
-        ctx.ival = list.count();
-        if ( (ctx.kstatus = this->kctx.validate_value()) == KEY_OK )
-          return EXEC_SEND_INT;
-      }
-      fallthrough;
-    default: return ERR_KV_STATUS;
+  switch ( list.get_key_read() ) {
+    default:            return ERR_KV_STATUS;
+    case KEY_NO_VALUE:  return ERR_BAD_TYPE;
+    case KEY_NOT_FOUND: return EXEC_SEND_ZERO;
+    case KEY_OK:        break;
   }
+  if ( ! list.open_readonly() )
+    return ERR_KV_STATUS;
+  ctx.ival = list.x->count();
+  if ( ! list.validate_value() )
+    return ERR_KV_STATUS;
+  return EXEC_SEND_INT;
 }
 
 ExecStatus
 RedisExec::exec_lpop( RedisKeyCtx &ctx )
 {
   /* LPOP key */
-  return this->exec_pop( ctx, DO_LPOP );
+  return this->do_pop( ctx, DO_LPOP );
 }
 
 ExecStatus
 RedisExec::exec_lpush( RedisKeyCtx &ctx )
 {
   /* LPUSH key val [val..] */
-  return this->exec_push( ctx, DO_LPUSH );
+  return this->do_push( ctx, DO_LPUSH );
 }
 
 ExecStatus
 RedisExec::exec_lpushx( RedisKeyCtx &ctx )
 {
   /* LPUSHX key val [val..] */
-  return this->exec_push( ctx, DO_LPUSH | L_MUST_EXIST );
+  return this->do_push( ctx, DO_LPUSH | L_MUST_EXIST );
 }
 
 ExecStatus
 RedisExec::exec_lrange( RedisKeyCtx &ctx )
 {
-  /* LRANGE key start stop */
+  ExecListCtx<ListData, MD_LIST> list( *this, ctx );
   StreamBuf::BufQueue q( this->strm );
-  void     * data;
-  size_t     datalen,
-             count,
-             itemcnt;
   ListVal    lv;
   int64_t    from, to;
-  uint8_t    lhdr[ LIST_HDR_OOB_SIZE ];
-  uint64_t   llen;
+  size_t     count,
+             itemcnt;
   ListStatus lstatus;
 
+  /* LRANGE key start stop */
   if ( ! this->msg.get_arg( 2, from ) || ! this->msg.get_arg( 3, to ) )
     return ERR_BAD_ARGS;
 
-  switch ( this->exec_key_fetch( ctx ) ) {
-    case KEY_NOT_FOUND:
-      return EXEC_SEND_ZERO;
-    case KEY_OK:
-      if ( ctx.type != MD_LIST ) {
-        if ( ctx.type == MD_NODATA )
-          return EXEC_SEND_ZERO;
-        return ERR_BAD_TYPE;
-      }
-      llen = sizeof( lhdr );
-      ctx.kstatus = this->kctx.value_copy( &data, datalen, lhdr, llen );
-      if ( ctx.kstatus == KEY_OK ) {
-        ListData list( data, datalen );
-        list.open( lhdr, llen );
-        count = list.count();
-
-        if ( from < 0 )
-          from = count + from;
-        if ( to < 0 )
-          to = count + to;
-        from = min<int64_t>( count, max<int64_t>( 0, from ) );
-        to   = min<int64_t>( count, max<int64_t>( 0, to + 1 ) );
-
-        for ( itemcnt = 0; from < to; from++ ) {
-          lstatus = list.lindex( from, lv );
-          if ( lstatus == LIST_NOT_FOUND )
-            break;
-          if ( q.append_string( lv.data, lv.sz, lv.data2, lv.sz2 ) == 0 )
-            return ERR_ALLOC_FAIL;
-          itemcnt++;
-        }
-        q.finish_tail();
-        q.prepend_array( itemcnt );
-        if ( (ctx.kstatus = this->kctx.validate_value()) == KEY_OK ) {
-          this->strm.append_iov( q );
-          return EXEC_OK;
-        }
-      }
-      fallthrough;
-    default: return ERR_KV_STATUS;
+  itemcnt = 0;
+  switch ( list.get_key_read() ) {
+    default:            return ERR_KV_STATUS;
+    case KEY_NO_VALUE:  return ERR_BAD_TYPE;
+    case KEY_NOT_FOUND: goto finished;
+    case KEY_OK:        break;
   }
+  if ( ! list.open_readonly() )
+    return ERR_KV_STATUS;
+  count = list.x->count();
+  if ( count > 0 ) {
+    if ( from < 0 )
+      from = count + from;
+    if ( to < 0 )
+      to = count + to;
+    from = min<int64_t>( count, max<int64_t>( 0, from ) );
+    to   = min<int64_t>( count, max<int64_t>( 0, to + 1 ) );
+
+    for ( ; from < to; from++ ) {
+      lstatus = list.x->lindex( from, lv );
+      if ( lstatus != LIST_OK )
+        break;
+      if ( q.append_string( lv.data, lv.sz, lv.data2, lv.sz2 ) == 0 )
+        return ERR_ALLOC_FAIL;
+      itemcnt++;
+    }
+  }
+finished:;
+  if ( ! list.validate_value() )
+    return ERR_KV_STATUS;
+  q.finish_tail();
+  q.prepend_array( itemcnt );
+  this->strm.append_iov( q );
+  return EXEC_OK;
 }
 
 ExecStatus
 RedisExec::exec_lrem( RedisKeyCtx &ctx )
 {
   /* LREM key count value */
-  return this->exec_pop( ctx, DO_LREM );
+  return this->do_pop( ctx, DO_LREM );
 }
 
 ExecStatus
 RedisExec::exec_lset( RedisKeyCtx &ctx )
 {
   /* LSET key idx value */
-  return this->exec_push( ctx, DO_LSET );
+  return this->do_push( ctx, DO_LSET );
 }
 
 ExecStatus
 RedisExec::exec_ltrim( RedisKeyCtx &ctx )
 {
   /* LTRIM key start stop */
-  return this->exec_pop( ctx, DO_LTRIM );
+  return this->do_pop( ctx, DO_LTRIM );
 }
 
 ExecStatus
 RedisExec::exec_rpop( RedisKeyCtx &ctx )
 {
   /* RPOP key */
-  return this->exec_pop( ctx, DO_RPOP );
+  return this->do_pop( ctx, DO_RPOP );
 }
 
 ExecStatus
@@ -267,27 +223,31 @@ ExecStatus
 RedisExec::exec_rpush( RedisKeyCtx &ctx )
 {
   /* RPUSH key [val..] */
-  return this->exec_push( ctx, DO_RPUSH );
+  return this->do_push( ctx, DO_RPUSH );
 }
 
 ExecStatus
 RedisExec::exec_rpushx( RedisKeyCtx &ctx )
 {
   /* RPUSHX key [val..] */
-  return this->exec_push( ctx, DO_RPUSH | L_MUST_EXIST );
+  return this->do_push( ctx, DO_RPUSH | L_MUST_EXIST );
 }
 
 ExecStatus
-RedisExec::exec_push( RedisKeyCtx &ctx,  int flags )
+RedisExec::do_push( RedisKeyCtx &ctx,  int flags )
 {
-  void       * data;
-  size_t       datalen;
+  ExecListCtx<ListData, MD_LIST> list( *this, ctx );
   const char * value    = NULL,
              * piv      = NULL;
   size_t       valuelen = 0,
                pivlen   = 0,
                argi     = 3;
   int64_t      pos      = 0;
+  size_t       count,
+               ndata;
+  const char * tmparg;
+  size_t       tmplen;
+  ListStatus   lstatus  = LIST_OK;
   bool         after    = false;
 
   if ( ( flags & ( DO_LPUSH | DO_RPUSH ) ) != 0 ) {
@@ -312,118 +272,81 @@ RedisExec::exec_push( RedisKeyCtx &ctx,  int flags )
          ! this->msg.get_arg( 3, value, valuelen ) )
       return ERR_BAD_ARGS;
   }
-  size_t     count    = 2, /* set by alloc_size() */
-             ndata    = valuelen,
-             retry    = 0;
-  ListData * old_list = NULL,
-           * list     = NULL,
-             tmp[ 2 ];
-  MsgCtx   * msg      = NULL;
-  MsgCtxBuf  tmpm;
-  uint32_t   n        = 0;
-  ListStatus lstatus  = LIST_OK;
 
-  switch ( this->exec_key_fetch( ctx ) ) {
-
+  switch ( list.get_key_write() ) {
+    default:           return ERR_KV_STATUS;
+    case KEY_NO_VALUE: return ERR_BAD_TYPE;
     case KEY_IS_NEW:
-      if ( ( flags & L_MUST_EXIST ) != 0 )
-        return EXEC_SEND_ZERO;
-      datalen = ListData::alloc_size( count, ndata );
-      ctx.kstatus = this->kctx.resize( &data, datalen );
-      if ( ctx.kstatus == KEY_OK ) {
-        list = new ( &tmp[ n++%2 ]) ListData( data, datalen );
-        list->init( count, ndata );
+      count = this->argc;
+      ndata = 1 + valuelen;
+      for ( size_t j = argi; j < this->argc; j++ ) {
+        if ( ! this->msg.get_arg( j, tmparg, tmplen ) )
+          return ERR_BAD_ARGS;
+        ndata += 1 + tmplen;
       }
-      if ( 0 ) {
-        fallthrough;
-
+      if ( ! list.create( count, ndata ) )
+        return ERR_KV_STATUS;
+      break;
     case KEY_OK:
-        if ( ctx.type != MD_LIST && ctx.type != MD_NODATA )
-          return ERR_BAD_TYPE;
-        ctx.kstatus = this->kctx.value( &data, datalen );
-        if ( ctx.kstatus == KEY_OK ) {
-          list = new ( &tmp[ n++%2 ] ) ListData( data, datalen );
-          list->open();
+      if ( ! list.open() )
+        return ERR_KV_STATUS;
+      break;
+  }
+  for (;;) {
+    switch ( flags & ( DO_LPUSH | DO_RPUSH | DO_LINSERT | DO_LSET ) ) {
+      case DO_LPUSH:
+        lstatus = list.x->lpush( value, valuelen );
+        break;
+      case DO_RPUSH:
+        lstatus = list.x->rpush( value, valuelen );
+        break;
+      case DO_LINSERT:
+        lstatus = list.x->linsert( piv, pivlen, value, valuelen, after );
+        break;
+      case DO_LSET:
+        lstatus = list.x->lset( pos, value, valuelen );
+        break;
+    }
+    if ( lstatus == LIST_FULL ) {
+      if ( ! list.realloc( 1 + valuelen ) )
+        return ERR_KV_STATUS;
+      continue;
+    }
+    switch ( flags & ( DO_LPUSH | DO_RPUSH | DO_LINSERT | DO_LSET ) ) {
+      case DO_LPUSH:
+      case DO_RPUSH:
+        if ( this->argc > argi ) {
+          if ( ! this->msg.get_arg( argi++, value, valuelen ) )
+            return ERR_BAD_ARGS;
+          break;
         }
-      }
-      if ( list != NULL ) {
-        for (;;) {
-          if ( old_list != NULL ) {
-            old_list->copy( *list );
-            ctx.kstatus = this->kctx.load( *msg ); /* swap new and old */
-            if ( ctx.kstatus != KEY_OK )
-              break;
-            old_list = NULL;
-          }
-        push_next_value:; /* lpush/rpush can have multiple values */
-          switch ( flags & ( DO_LPUSH | DO_RPUSH | DO_LINSERT | DO_LSET ) ) {
-            case DO_LPUSH:
-              lstatus = list->lpush( value, valuelen );
-              break;
-            case DO_RPUSH:
-              lstatus = list->rpush( value, valuelen );
-              break;
-            case DO_LINSERT:
-              lstatus = list->linsert( piv, pivlen, value, valuelen, after );
-              break;
-            case DO_LSET:
-              lstatus = list->lset( pos, value, valuelen );
-              break;
-          }
-          if ( lstatus != LIST_FULL ) { /* no realloc */
-            switch ( flags & ( DO_LPUSH | DO_RPUSH | DO_LINSERT | DO_LSET ) ) {
-              case DO_LPUSH:
-              case DO_RPUSH:
-                if ( this->argc > argi ) {
-                  if ( ! this->msg.get_arg( argi++, value, valuelen ) )
-                    return ERR_BAD_ARGS;
-                  goto push_next_value;
-                }
-                fallthrough;
-              case DO_LINSERT:
-                if ( lstatus == LIST_OK ) {
-                  ctx.ival = list->count();
-                  return EXEC_SEND_INT;
-                }
-                return EXEC_SEND_NIL;
-              case DO_LSET:
-                if ( lstatus == LIST_OK )
-                  return EXEC_SEND_OK;
-                return ERR_BAD_RANGE;
-            }
-          }
-          count = 2;
-          ndata = valuelen + retry;
-          retry += 16;
-          datalen = list->resize_size( count, ndata );
-          msg = new ( tmpm ) MsgCtx( this->kctx.ht, this->kctx.thr_ctx );
-          msg->set_key( ctx.kbuf );
-          msg->set_hash( ctx.hash1, ctx.hash2 );
-          ctx.kstatus = msg->alloc_segment( &data, datalen, 8 );
-          if ( ctx.kstatus != KEY_OK )
-            break;
-          old_list = list;
-          list = new ( (void *) &tmp[ n++%2 ] ) ListData( data, datalen );
-          list->init( count, ndata );
+        fallthrough;
+      case DO_LINSERT:
+        if ( lstatus == LIST_OK ) {
+          ctx.ival = list.x->count();
+          return EXEC_SEND_INT;
         }
-      }
-      fallthrough;
-    default: return ERR_KV_STATUS;
+        return EXEC_SEND_NIL;
+      case DO_LSET:
+        if ( lstatus == LIST_OK )
+          return EXEC_SEND_OK;
+        return ERR_BAD_RANGE;
+    }
   }
 }
 
 ExecStatus
-RedisExec::exec_pop( RedisKeyCtx &ctx,  int flags )
+RedisExec::do_pop( RedisKeyCtx &ctx,  int flags )
 {
-  void       * data;
-  size_t       datalen;
+  ExecListCtx<ListData, MD_LIST> list( *this, ctx );
   ListVal      lv;
   const char * arg      = NULL;
   size_t       arglen   = 0,
-               sz, cnt, pos;
+               cnt, pos;
   int64_t      ival     = 0,
                start    = 0,
                stop     = 0;
+  ListStatus   lstatus  = LIST_OK;
 
   if ( ( flags & DO_LREM ) != 0 ) {
     /* LREM key count value */
@@ -437,71 +360,65 @@ RedisExec::exec_pop( RedisKeyCtx &ctx,  int flags )
       return ERR_BAD_ARGS;
   }
 
-  switch ( this->exec_key_fetch( ctx ) ) {
+  switch ( list.get_key_write() ) {
+    default:           return ERR_KV_STATUS;
+    case KEY_NO_VALUE: return ERR_BAD_TYPE;
     case KEY_IS_NEW:
       switch ( flags & ( DO_LPOP | DO_RPOP | DO_LREM | DO_LTRIM ) ) {
         case DO_LPOP:
-        case DO_RPOP:  return EXEC_SEND_NIL;
+        case DO_RPOP:  break;
         case DO_LREM:  return EXEC_SEND_ZERO;
         case DO_LTRIM: return EXEC_SEND_OK;
       }
       return EXEC_SEND_NIL;
     case KEY_OK:
-      if ( ctx.type != MD_LIST && ctx.type != MD_NODATA )
-        return ERR_BAD_TYPE;
-      ctx.kstatus = this->kctx.value( &data, datalen );
-      if ( ctx.kstatus == KEY_OK ) {
-        ListData list( data, datalen );
-        ListStatus lstatus = LIST_OK;
-        list.open();
-        switch ( flags & ( DO_LPOP | DO_RPOP | DO_LREM | DO_LTRIM ) ) {
-          case DO_LPOP: lstatus = list.lpop( lv ); break;
-          case DO_RPOP: lstatus = list.rpop( lv ); break;
-          case DO_LREM:
-            cnt = 0;
-            if ( ival < 0 ) {
-              pos = list.count();
-              do {
-                if ( list.scan_rev( arg, arglen, pos ) == LIST_NOT_FOUND )
-                  break;
-                list.lrem( pos );
-                cnt++;
-              } while ( ++ival != 0 );
-            }
-            else {
-              pos = 0;
-              do {
-                if ( list.scan_fwd( arg, arglen, pos ) == LIST_NOT_FOUND )
-                  break;
-                list.lrem( pos );
-                cnt++;
-              } while ( --ival != 0 );
-            }
-            ctx.ival = cnt;
-            return EXEC_SEND_INT;
-
-          case DO_LTRIM:
-	    cnt = list.count();
-	    if ( start < 0 )
-	      start = cnt + start;
-	    if ( stop < 0 )
-	      stop = cnt + stop;
-	    start = min<int64_t>( cnt, max<int64_t>( 0, start ) );
-	    stop = min<int64_t>( cnt, max<int64_t>( 0, stop + 1 ) );
-	    stop = cnt - stop;
-	    list.ltrim( start );
-	    list.rtrim( stop );
-            return EXEC_SEND_OK;
-        }
-        /* lpop & rpop */
-        if ( lstatus == LIST_NOT_FOUND ) /* success */
-          return EXEC_SEND_NIL;
-        sz = this->send_concat_string( lv.data, lv.sz, lv.data2, lv.sz2 );
-        this->strm.sz += sz;
-        return EXEC_OK;
-      }
-      fallthrough;
-    default: return ERR_KV_STATUS;
+      if ( ! list.open() )
+        return ERR_KV_STATUS;
+      break;
   }
+  switch ( flags & ( DO_LPOP | DO_RPOP | DO_LREM | DO_LTRIM ) ) {
+    case DO_LPOP: lstatus = list.x->lpop( lv ); break;
+    case DO_RPOP: lstatus = list.x->rpop( lv ); break;
+    case DO_LREM:
+      cnt = 0;
+      if ( ival < 0 ) {
+        pos = list.x->count();
+        do {
+          if ( list.x->scan_rev( arg, arglen, pos ) == LIST_NOT_FOUND )
+            break;
+          list.x->lrem( pos );
+          cnt++;
+        } while ( ++ival != 0 );
+      }
+      else {
+        pos = 0;
+        do {
+          if ( list.x->scan_fwd( arg, arglen, pos ) == LIST_NOT_FOUND )
+            break;
+          list.x->lrem( pos );
+          cnt++;
+        } while ( --ival != 0 );
+      }
+      ctx.ival = cnt;
+      return EXEC_SEND_INT;
+
+    case DO_LTRIM:
+      cnt = list.x->count();
+      if ( start < 0 )
+        start = cnt + start;
+      if ( stop < 0 )
+        stop = cnt + stop;
+      start = min<int64_t>( cnt, max<int64_t>( 0, start ) );
+      stop = min<int64_t>( cnt, max<int64_t>( 0, stop + 1 ) );
+      stop = cnt - stop;
+      list.x->ltrim( start );
+      list.x->rtrim( stop );
+      return EXEC_SEND_OK;
+  }
+  /* lpop & rpop */
+  if ( lstatus == LIST_NOT_FOUND ) /* success */
+    return EXEC_SEND_NIL;
+  this->strm.sz += this->send_concat_string( lv.data, lv.sz, lv.data2, lv.sz2 );
+  return EXEC_OK;
 }
 

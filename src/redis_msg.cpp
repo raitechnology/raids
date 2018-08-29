@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stdarg.h>
 #include <ctype.h>
+#include <errno.h>
 #include <raids/redis_msg.h>
 
 using namespace rai;
@@ -14,13 +15,15 @@ using namespace kv;
 const char *
 rai::ds::redis_msg_status_string( RedisMsgStatus status ) {
   switch ( status ) {
-    case REDIS_MSG_OK:           return "OK";
-    case REDIS_MSG_BAD_TYPE:     return "BAD_TYPE";
-    case REDIS_MSG_PARTIAL:      return "PARTIAL";
-    case REDIS_MSG_ALLOC_FAIL:   return "ALLOC_FAIL";
-    case REDIS_MSG_BAD_JSON:     return "BAD_JSON";
-    case REDIS_MSG_BAD_INT:      return "BAD_INT";
-    case REDIS_MSG_INT_OVERFLOW: return "INT_OVERFLOW";
+    case REDIS_MSG_OK:             return "OK";
+    case REDIS_MSG_BAD_TYPE:       return "BAD_TYPE";
+    case REDIS_MSG_PARTIAL:        return "PARTIAL";
+    case REDIS_MSG_ALLOC_FAIL:     return "ALLOC_FAIL";
+    case REDIS_MSG_BAD_JSON:       return "BAD_JSON";
+    case REDIS_MSG_BAD_INT:        return "BAD_INT";
+    case REDIS_MSG_INT_OVERFLOW:   return "INT_OVERFLOW";
+    case REDIS_MSG_BAD_FLOAT:      return "BAD_FLOAT";
+    case REDIS_MSG_FLOAT_OVERFLOW: return "FLOAT_OVERFLOW";
   }
   return "UNKNOWN";
 }
@@ -28,13 +31,15 @@ rai::ds::redis_msg_status_string( RedisMsgStatus status ) {
 const char *
 rai::ds::redis_msg_status_description( RedisMsgStatus status ) {
   switch ( status ) {
-    case REDIS_MSG_OK:           return "OK";
-    case REDIS_MSG_BAD_TYPE:     return "Message decoding error, bad type char";
-    case REDIS_MSG_PARTIAL:      return "Partial value";
-    case REDIS_MSG_ALLOC_FAIL:   return "Alloc failed";
-    case REDIS_MSG_BAD_JSON:     return "Unable to parse JSON message";
-    case REDIS_MSG_BAD_INT:      return "Unable to parse integer";
-    case REDIS_MSG_INT_OVERFLOW: return "Integer overflow";
+    case REDIS_MSG_OK:             return "OK";
+    case REDIS_MSG_BAD_TYPE:       return "Message decoding error, bad type char";
+    case REDIS_MSG_PARTIAL:        return "Partial value";
+    case REDIS_MSG_ALLOC_FAIL:     return "Alloc failed";
+    case REDIS_MSG_BAD_JSON:       return "Unable to parse JSON message";
+    case REDIS_MSG_BAD_INT:        return "Unable to parse integer";
+    case REDIS_MSG_INT_OVERFLOW:   return "Integer overflow";
+    case REDIS_MSG_BAD_FLOAT:      return "Unable to parse float number";
+    case REDIS_MSG_FLOAT_OVERFLOW: return "Float number overflow";
   }
   return "Unknown msg status";
 }
@@ -238,7 +243,7 @@ RedisMsg::string_array( ScratchMem &wrk,  int64_t sz,  ... )
   }
   return true;
 }
-
+/* Split a string into argv[]/argc, used when message is not structured */
 RedisMsgStatus
 RedisMsg::split( ScratchMem &wrk )
 {
@@ -281,7 +286,7 @@ RedisMsg::split( ScratchMem &wrk )
   this->array = tmp;
   return REDIS_MSG_OK;
 }
-
+/* Split buffer bytes into a message */
 RedisMsgStatus
 RedisMsg::unpack( void *buf,  size_t &buflen,  ScratchMem &wrk )
 {
@@ -466,6 +471,40 @@ RedisMsg::str_to_int( const char *str,  size_t sz,  int64_t &ival )
     ival = -(int64_t) n;
   else
     ival = (int64_t) n;
+  return REDIS_MSG_OK;
+}
+
+RedisMsgStatus
+RedisMsg::str_to_dbl( const char *str,  size_t sz,  double &fval )
+{
+  char buf[ 64 ], *endptr = NULL;
+  /* null terminate string */
+  if ( sz > sizeof( buf ) - 1 )
+    sz = sizeof( buf ) - 1;
+  ::memcpy( buf, str, sz );
+  buf[ sz ] = '\0';
+  fval = strtod( buf, &endptr );
+  if ( endptr == buf )
+    return REDIS_MSG_BAD_FLOAT;
+  if ( fval == 0 && errno == ERANGE )
+    return REDIS_MSG_FLOAT_OVERFLOW;
+  return REDIS_MSG_OK;
+}
+
+RedisMsgStatus
+RedisMsg::str_to_uint( const char *str,  size_t sz,  uint64_t &ival )
+{
+  char buf[ 64 ], *endptr = NULL;
+  /* null terminate string */
+  if ( sz > sizeof( buf ) - 1 )
+    sz = sizeof( buf ) - 1;
+  ::memcpy( buf, str, sz );
+  buf[ sz ] = '\0';
+  ival = strtoull( buf, &endptr, 0 );
+  if ( endptr == buf )
+    return REDIS_MSG_BAD_INT;
+  if ( ival == 0 && errno == ERANGE )
+    return REDIS_MSG_INT_OVERFLOW;
   return REDIS_MSG_OK;
 }
 
@@ -678,8 +717,8 @@ struct JsonInput {
   void * alloc( size_t sz ) {
     return this->wrk.alloc( sz );
   }
-  void * extend( void *obj,  size_t oldsz,  size_t newsz ) {
-    void * p = this->wrk.alloc( newsz );
+  void * extend( void *obj,  size_t oldsz,  size_t addsz ) {
+    void * p = this->wrk.alloc( oldsz + addsz );
     if ( p != NULL )
       ::memcpy( p, obj, oldsz );
     return p;

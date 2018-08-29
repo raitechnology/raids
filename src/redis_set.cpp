@@ -7,6 +7,7 @@
 #include <raids/md_type.h>
 #include <raids/redis_set.h>
 #include <raids/set_bits.h>
+#include <raids/exec_list_ctx.h>
 #define PCRE2_CODE_UNIT_WIDTH 8
 #include <pcre2.h>
 
@@ -37,56 +38,56 @@ ExecStatus
 RedisExec::exec_sadd( RedisKeyCtx &ctx )
 {
   /* SADD key member [member ...] */
-  return this->exec_swrite( ctx, DO_SADD );
+  return this->do_swrite( ctx, DO_SADD );
 }
 
 ExecStatus
 RedisExec::exec_scard( RedisKeyCtx &ctx )
 {
   /* SCARD key */
-  return this->exec_sread( ctx, DO_SCARD );
+  return this->do_sread( ctx, DO_SCARD );
 }
 
 ExecStatus
 RedisExec::exec_sdiff( RedisKeyCtx &ctx )
 {
   /* SDIFF key [key ...] */
-  return this->exec_ssetop( ctx, DO_SDIFF );
+  return this->do_ssetop( ctx, DO_SDIFF );
 }
 
 ExecStatus
 RedisExec::exec_sdiffstore( RedisKeyCtx &ctx )
 {
   /* SDIFFSTORE dest key [key ...] */
-  return this->exec_ssetop( ctx, DO_SDIFFSTORE );
+  return this->do_ssetop( ctx, DO_SDIFFSTORE );
 }
 
 ExecStatus
 RedisExec::exec_sinter( RedisKeyCtx &ctx )
 {
   /* SINTER key [key ...] */
-  return this->exec_ssetop( ctx, DO_SINTER );
+  return this->do_ssetop( ctx, DO_SINTER );
 }
 
 ExecStatus
 RedisExec::exec_sinterstore( RedisKeyCtx &ctx )
 {
   /* SINTERSTORE dest key [key ...] */
-  return this->exec_ssetop( ctx, DO_SINTERSTORE );
+  return this->do_ssetop( ctx, DO_SINTERSTORE );
 }
 
 ExecStatus
 RedisExec::exec_sismember( RedisKeyCtx &ctx )
 {
   /* SISMEMBER key member */
-  return this->exec_sread( ctx, DO_SISMEMBER );
+  return this->do_sread( ctx, DO_SISMEMBER );
 }
 
 ExecStatus
 RedisExec::exec_smembers( RedisKeyCtx &ctx )
 {
   /* SMEMBERS key */
-  return this->exec_smultiscan( ctx, DO_SMEMBERS, NULL );
+  return this->do_smultiscan( ctx, DO_SMEMBERS, NULL );
 }
 
 ExecStatus
@@ -95,42 +96,42 @@ RedisExec::exec_smove( RedisKeyCtx &ctx )
   /* SMOVE src dest member */
   if ( ctx.argn == 2 && this->key_done == 0 )
     return EXEC_DEPENDS;
-  return this->exec_swrite( ctx, DO_SMOVE );
+  return this->do_swrite( ctx, DO_SMOVE );
 }
 
 ExecStatus
 RedisExec::exec_spop( RedisKeyCtx &ctx )
 {
   /* SPOP key [count] */
-  return this->exec_smultiscan( ctx, DO_SPOP, NULL );
+  return this->do_smultiscan( ctx, DO_SPOP, NULL );
 }
 
 ExecStatus
 RedisExec::exec_srandmember( RedisKeyCtx &ctx )
 {
   /* SRANDMEMBER key [count] */
-  return this->exec_smultiscan( ctx, DO_SRANDMEMBER, NULL );
+  return this->do_smultiscan( ctx, DO_SRANDMEMBER, NULL );
 }
 
 ExecStatus
 RedisExec::exec_srem( RedisKeyCtx &ctx )
 {
   /* SREM key member [member ...] */
-  return this->exec_swrite( ctx, DO_SREM );
+  return this->do_swrite( ctx, DO_SREM );
 }
 
 ExecStatus
 RedisExec::exec_sunion( RedisKeyCtx &ctx )
 {
   /* SUNION key [key  ...] */
-  return this->exec_ssetop( ctx, DO_SUNION );
+  return this->do_ssetop( ctx, DO_SUNION );
 }
 
 ExecStatus
 RedisExec::exec_sunionstore( RedisKeyCtx &ctx )
 {
   /* SUNIONSTORE dest key [key ...] */
-  return this->exec_ssetop( ctx, DO_SUNIONSTORE );
+  return this->do_ssetop( ctx, DO_SUNIONSTORE );
 }
 
 ExecStatus
@@ -141,20 +142,17 @@ RedisExec::exec_sscan( RedisKeyCtx &ctx )
   ExecStatus status;
   if ( (status = this->match_scan_args( sa, 2 )) != EXEC_OK )
     return status;
-  status = this->exec_smultiscan( ctx, DO_SSCAN, &sa );
+  status = this->do_smultiscan( ctx, DO_SSCAN, &sa );
   this->release_scan_args( sa );
   return status;
 }
 
 ExecStatus
-RedisExec::exec_sread( RedisKeyCtx &ctx,  int flags )
+RedisExec::do_sread( RedisKeyCtx &ctx,  int flags )
 {
-  void       * data;
-  size_t       datalen;
+  ExecListCtx<SetData, MD_SET> set( *this, ctx );
   const char * arg    = NULL;
   size_t       arglen = 0;
-  uint8_t      lhdr[ LIST_HDR_OOB_SIZE ];
-  uint64_t     llen;
   HashPos      pos;
   ExecStatus   status = EXEC_OK;
 
@@ -165,43 +163,42 @@ RedisExec::exec_sread( RedisKeyCtx &ctx,  int flags )
       return ERR_BAD_ARGS;
     pos.init( arg, arglen );
   }
-  switch ( this->exec_key_fetch( ctx ) ) {
-    case KEY_NOT_FOUND:
-      return EXEC_SEND_ZERO;
-    case KEY_OK:
-      if ( ctx.type != MD_SET && ctx.type != MD_NODATA )
-        return ERR_BAD_TYPE;
-      llen = sizeof( lhdr );
-      ctx.kstatus = this->kctx.value_copy( &data, datalen, lhdr, llen );
-      if ( ctx.kstatus == KEY_OK ) {
-        SetData set( data, datalen );
-        set.open( lhdr, llen );
-        switch ( flags & ( DO_SCARD | DO_SISMEMBER ) ) {
-          case DO_SCARD:
-            ctx.ival = set.hcount();
-            status = EXEC_SEND_INT;
-            break;
-          case DO_SISMEMBER:
-            if ( set.sismember( arg, arglen, pos ) == SET_OK )
-              status = EXEC_SEND_ONE;
-            else
-              status = EXEC_SEND_ZERO;
-            break;
-        }
-        if ( (ctx.kstatus = this->kctx.validate_value()) == KEY_OK )
-          return status;
-      }
-      fallthrough;
-    default: return ERR_KV_STATUS;
+  switch ( set.get_key_read() ) {
+    default:            return ERR_KV_STATUS;
+    case KEY_NO_VALUE:  return ERR_BAD_TYPE;
+    case KEY_NOT_FOUND: return EXEC_SEND_ZERO;
+    case KEY_OK:        break;
   }
+  if ( ! set.open_readonly() )
+    return ERR_KV_STATUS;
+  switch ( flags & ( DO_SCARD | DO_SISMEMBER ) ) {
+    case DO_SCARD:
+      ctx.ival = set.x->hcount();
+      status = EXEC_SEND_INT;
+      break;
+    case DO_SISMEMBER:
+      if ( set.x->sismember( arg, arglen, pos ) == SET_OK )
+        status = EXEC_SEND_ONE;
+      else
+        status = EXEC_SEND_ZERO;
+      break;
+  }
+  if ( ! set.validate_value() )
+    return ERR_KV_STATUS;
+  return status;
 }
 
 ExecStatus
-RedisExec::exec_swrite( RedisKeyCtx &ctx,  int flags )
+RedisExec::do_swrite( RedisKeyCtx &ctx,  int flags )
 {
-  const char * arg    = NULL;
-  size_t       arglen = 0;
+  ExecListCtx<SetData, MD_SET> set( *this, ctx );
+  const char * arg     = NULL;
+  size_t       arglen  = 0;
   HashPos      pos;
+  size_t       count,
+               ndata,
+               argi    = 3;
+  SetStatus    sstatus = SET_OK;
 
   /* SADD key member [member ...] */
   /* SREM key member [member ...] */
@@ -216,21 +213,7 @@ RedisExec::exec_swrite( RedisKeyCtx &ctx,  int flags )
   }
   pos.init( arg, arglen );
 
-  size_t       count,
-               ndata;
-  void       * data;
-  size_t       datalen,
-               argi    = 3,
-               retry   = 0;
-  SetData    * old_set = NULL,
-             * set     = NULL,
-               tmp[ 2 ];
-  MsgCtx     * msg     = NULL;
-  MsgCtxBuf    tmpm;
-  uint32_t     n       = 0;
-  SetStatus    sstatus = SET_OK;
-
-  switch ( this->exec_key_fetch( ctx ) ) {
+  switch ( set.get_key_write() ) {
     case KEY_IS_NEW:
       if ( ( flags & DO_SREM ) != 0 ) /* no data to move or remove */
         return EXEC_SEND_ZERO;
@@ -250,258 +233,216 @@ RedisExec::exec_swrite( RedisKeyCtx &ctx,  int flags )
       else {
     erase_existing_data:;
         count = 2; /* SMOVE to destination not yet initialized */
-        ndata = 2;
-        if ( ( flags & DO_SMOVE ) != 0 )
-          ndata += arglen;
+        ndata = 2 + arglen;
       }
-      datalen = SetData::alloc_size( count, ndata );
-      ctx.kstatus = this->kctx.resize( &data, datalen );
-      if ( ctx.kstatus == KEY_OK ) {
-        set = new ( &tmp[ n++%2 ]) SetData( data, datalen );
-        set->init( count, ndata );
-      }
-      if ( 0 ) {
-        fallthrough;
+      if ( ! set.create( count, ndata ) )
+        return ERR_KV_STATUS;
+      break;
+    case KEY_NO_VALUE:
+      if ( ( flags & DO_SMOVE ) != 0 && ctx.argn == 2 )
+        goto erase_existing_data; /* XXX redis does not allow this */
+      return ERR_BAD_TYPE;
     case KEY_OK:
-        if ( ctx.type != MD_SET ) {
-          if ( ( flags & DO_SMOVE ) != 0 && ctx.argn == 2 ) {
-            this->kctx.set_type( MD_SET ); /* XXX redis does not allow this */
-            goto erase_existing_data;
-          }
-          if ( ctx.type != MD_NODATA )
-            return ERR_BAD_TYPE;
-        }
-        ctx.kstatus = this->kctx.value( &data, datalen );
-        if ( ctx.kstatus == KEY_OK ) {
-          set = new ( &tmp[ n++%2 ] ) SetData( data, datalen );
-          set->open();
-        }
-      }
-      if ( set != NULL ) {
-        for (;;) {
-          if ( old_set != NULL ) {
-            old_set->copy( *set );
-            ctx.kstatus = this->kctx.load( *msg ); /* swap new and old */
-            if ( ctx.kstatus != KEY_OK )
-              break;
-            old_set = NULL;
-          }
-        set_next_value:;
-          switch ( flags & ( DO_SADD | DO_SREM | DO_SMOVE ) ) {
-            case DO_SMOVE:
-              if ( ctx.argn == 1 ) { /* src */
-                sstatus = set->srem( arg, arglen, pos );
-                if ( sstatus == SET_OK )
-                  return EXEC_OK;
-                return EXEC_ABORT_SEND_ZERO;
-              }
-              /* dest */
-              fallthrough;
-            case DO_SADD:
-              sstatus = set->sadd( arg, arglen, pos );
-              if ( sstatus == SET_UPDATED )
-                ctx.ival++;
-              break;
-            case DO_SREM:
-              sstatus = set->srem( arg, arglen, pos );
-              if ( sstatus == SET_OK )
-                ctx.ival++;
-              break;
-          }
-          if ( sstatus != SET_FULL ) {
-            if ( ( flags & DO_SMOVE ) == 0 ) {
-              if ( this->argc > argi ) {
-                if ( ! this->msg.get_arg( argi++, arg, arglen ) )
-                  return ERR_BAD_ARGS;
-                pos.init( arg, arglen );
-                goto set_next_value;
-              }
-              return EXEC_SEND_INT;
-            }
-            else { /* DO_SMOVE */
-              return EXEC_SEND_ONE;
-            }
-          }
-          count = 2;
-          ndata = arglen + 1 + retry;
-          retry += 16;
-          datalen = set->resize_size( count, ndata );
-          msg = new ( tmpm ) MsgCtx( this->kctx.ht, this->kctx.thr_ctx );
-          msg->set_key( ctx.kbuf );
-          msg->set_hash( ctx.hash1, ctx.hash2 );
-          ctx.kstatus = msg->alloc_segment( &data, datalen, 8 );
-          if ( ctx.kstatus != KEY_OK )
-            break;
-          old_set = set;
-          set = new ( (void *) &tmp[ n++%2 ] ) SetData( data, datalen );
-          set->init( count, ndata );
-        }
-      }
-      fallthrough;
+      if ( ! set.open() )
+        return ERR_KV_STATUS;
+      break;
     default: return ERR_KV_STATUS;
+  }
+
+  for (;;) {
+    switch ( flags & ( DO_SADD | DO_SREM | DO_SMOVE ) ) {
+      case DO_SMOVE:
+        if ( ctx.argn == 1 ) { /* src */
+          sstatus = set.x->srem( arg, arglen, pos );
+          if ( sstatus == SET_OK )
+            return EXEC_OK;
+          return EXEC_ABORT_SEND_ZERO;
+        }
+        /* dest */
+        fallthrough;
+      case DO_SADD:
+        sstatus = set.x->sadd( arg, arglen, pos );
+        if ( sstatus == SET_UPDATED )
+          ctx.ival++;
+        break;
+      case DO_SREM:
+        sstatus = set.x->srem( arg, arglen, pos );
+        if ( sstatus == SET_OK )
+          ctx.ival++;
+        break;
+    }
+    if ( sstatus == SET_FULL ) {
+      if ( ! set.realloc( arglen + 2 ) )
+        return ERR_KV_STATUS;
+      continue;
+    }
+    if ( ( flags & DO_SMOVE ) != 0 )
+      return EXEC_SEND_ONE;
+    if ( this->argc == argi )
+      return EXEC_SEND_INT;
+    if ( ! this->msg.get_arg( argi++, arg, arglen ) )
+      return ERR_BAD_ARGS;
+    pos.init( arg, arglen );
   }
 }
 
 ExecStatus
-RedisExec::exec_smultiscan( RedisKeyCtx &ctx,  int flags,  ScanArgs *sa )
+RedisExec::do_smultiscan( RedisKeyCtx &ctx,  int flags,  ScanArgs *sa )
 {
+  ExecListCtx<SetData, MD_SET> set( *this, ctx );
+  StreamBuf::BufQueue q( this->strm );
+  size_t    count   = 0,
+            itemcnt = 0,
+            i       = ( sa != NULL && sa->pos > 0 ? sa->pos : 0 ),
+            maxcnt  = ( sa != NULL ? sa->maxcnt : 0 );
+  ListVal   lv;
+  SetBits   bits;
+  int64_t   ival = 1;
+  SetStatus sstatus;
+  bool      use_bits = false;
+
   /* SSCAN key cursor [MATCH pat] */
   /* SMEMBERS key */
   /* SRANDMEMBER key [COUNT] */
   /* SPOP key [COUNT] */
-  SetBits bits;
-  int64_t ival = 1;
-
   if ( ( flags & ( DO_SRANDMEMBER | DO_SPOP ) ) != 0 ) {
     if ( this->argc > 2 )
       if ( ! this->msg.get_arg( 2, ival ) )
         return ERR_BAD_ARGS;
   }
-  StreamBuf::BufQueue q( this->strm );
-  void    * data;
-  size_t    datalen,
-            count   = 0,
-            itemcnt = 0,
-            i       = ( sa != NULL && sa->pos > 0 ? sa->pos : 0 ),
-            maxcnt  = ( sa != NULL ? sa->maxcnt : 0 );
-  uint8_t   lhdr[ LIST_HDR_OOB_SIZE ];
-  uint64_t  llen;
-  ListVal   lv;
-  SetStatus sstatus;
 
-  switch ( this->exec_key_fetch( ctx ) ) {
-    case KEY_IS_NEW: /* SPOP is a write op */
-    case KEY_NOT_FOUND:
-      break;
-    case KEY_OK:
-      if ( ctx.type == MD_NODATA )
-        break;
-      if ( ctx.type != MD_SET )
-        return ERR_BAD_TYPE;
+  if ( ( flags & DO_SPOP ) != 0 ) {
+    switch ( set.get_key_write() ) {
+      default:            return ERR_KV_STATUS;
+      case KEY_NO_VALUE:  return ERR_BAD_TYPE;
+      case KEY_IS_NEW:    goto finished;
+      case KEY_OK:        break;
+    }
+    if ( ! set.open() )
+      return ERR_KV_STATUS;
+  }
+  else {
+    switch ( set.get_key_read() ) {
+      default:            return ERR_KV_STATUS;
+      case KEY_NO_VALUE:  return ERR_BAD_TYPE;
+      case KEY_NOT_FOUND: goto finished;
+      case KEY_OK:        break;
+    }
+    if ( ! set.open_readonly() )
+      return ERR_KV_STATUS;
+  }
+  if ( (count = set.x->hcount()) == 0 )
+    goto finished;
 
-      llen = sizeof( lhdr );
-      ctx.kstatus = this->kctx.value_copy( &data, datalen, lhdr, llen );
-      if ( ctx.kstatus == KEY_OK ) {
-        SetData set( data, datalen );
-        set.open( lhdr, llen );
-        if ( (count = set.hcount()) == 0 )
-          break;
-
-        bool use_bits = false;
-        if ( ( flags & ( DO_SRANDMEMBER | DO_SPOP ) ) != 0 ) {
-          if ( (size_t) ival >= count ) {
-            ival = count;
-          }
-          else { /* generate random set elements */
-            rand::xoroshiro128plus &r = this->kctx.thr_ctx.rng;
-            if ( ival == 1 ) {
-              i = r.next() & set.index_mask;
-              while ( i >= count )
-                i >>= 1;
-              maxcnt = 1;
-            }
-            else {
-              bool flip = false;
-              if ( (size_t) ival > count / 2 ) {
-                ival = count - ival; /* invert bits if more than half */
-                flip = true;
-              }
-              for (;;) {
-                uint64_t n = r.next();
-                for ( int k = 0; k < 64; k += 16 ) {
-                  size_t m = n & set.index_mask;
-                  while ( m >= count )
-                    m >>= 1;
-                  if ( ! bits.test_set( m ) )
-                    if ( --ival == 0 )
-                      goto break_loop;
-                  n >>= 16;
-                }
-              }
-            break_loop:;
-              if ( flip )
-                bits.flip( count );
-              i = 0;
-              use_bits = true;
-            }
-          }
-        }
-
-        for (;;) {
-          if ( i >= count || ( maxcnt != 0 && itemcnt >= maxcnt ) )
-            break;
-          if ( use_bits ) {
-            if ( ! bits.next( i ) )
-              break;
-          }
-          /* set index 1 -> count */
-          sstatus = (SetStatus) set.lindex( ++i, lv );
-          if ( sstatus != SET_OK )
-            break;
-          /* match wildcard */
-          if ( ( flags & DO_SSCAN ) != 0 ) {
-            if ( sa->re != NULL ) {
-              char buf[ 256 ];
-              void * subj;
-              size_t subjlen;
-              bool is_alloced = false;
-              subjlen = lv.unitary( subj, buf, sizeof( buf ), is_alloced );
-              int rc = pcre2_match( sa->re, (PCRE2_SPTR8) subj, subjlen,
-                                    0, 0, sa->md, 0 );
-              if ( is_alloced )
-                ::free( subj );
-              if ( rc < 1 )
-                continue;
-            }
-          }
-          if ( q.append_string( lv.data, lv.sz, lv.data2, lv.sz2 ) == 0 )
-            return ERR_ALLOC_FAIL;
-          itemcnt++;
-        }
-        q.finish_tail();
-        /* pop the items in case of SPOP */
-        if ( ( flags & DO_SPOP ) != 0 && itemcnt > 0 ) {
-          if ( itemcnt == 1 ) {
-            set.spopn( i );
-          }
-          else if ( itemcnt == count ) {
-            set.spopall();
-          }
-          else {
-            /* pop the members in reverse so that the index is correct */
-            for ( size_t j = count; ; ) {
-              if ( ! bits.prev( j ) )
-                break;
-              set.spopn( j + 1 );
-            }
-          }
-        }
-        break;
+  if ( ( flags & ( DO_SRANDMEMBER | DO_SPOP ) ) != 0 ) {
+    if ( (size_t) ival >= count ) {
+      ival = count;
+    }
+    else { /* generate random set elements */
+      rand::xoroshiro128plus &r = this->kctx.thr_ctx.rng;
+      if ( ival == 1 ) {
+        i = r.next() & set.x->index_mask;
+        while ( i >= count )
+          i >>= 1;
+        maxcnt = 1;
       }
-      fallthrough;
-    default: return ERR_KV_STATUS;
+      else {
+        bool flip = false;
+        if ( (size_t) ival > count / 2 ) {
+          ival = count - ival; /* invert bits if more than half */
+          flip = true;
+        }
+        for (;;) {
+          uint64_t n = r.next();
+          for ( int k = 0; k < 64; k += 16 ) {
+            size_t m = n & set.x->index_mask;
+            while ( m >= count )
+              m >>= 1;
+            if ( ! bits.test_set( m ) )
+              if ( --ival == 0 )
+                goto break_loop;
+            n >>= 16;
+          }
+        }
+      break_loop:;
+        if ( flip )
+          bits.flip( count );
+        i = 0;
+        use_bits = true;
+      }
+    }
   }
 
+  for (;;) {
+    if ( i >= count || ( maxcnt != 0 && itemcnt >= maxcnt ) )
+      break;
+    if ( use_bits ) {
+      if ( ! bits.next( i ) )
+        break;
+    }
+    /* set index 1 -> count */
+    sstatus = (SetStatus) set.x->lindex( ++i, lv );
+    if ( sstatus != SET_OK )
+      break;
+    /* match wildcard */
+    if ( ( flags & DO_SSCAN ) != 0 ) {
+      if ( sa->re != NULL ) {
+        char buf[ 256 ];
+        void * subj;
+        size_t subjlen;
+        bool is_alloced = false;
+        subjlen = lv.unitary( subj, buf, sizeof( buf ), is_alloced );
+        int rc = pcre2_match( sa->re, (PCRE2_SPTR8) subj, subjlen,
+                              0, 0, sa->md, 0 );
+        if ( is_alloced )
+          ::free( subj );
+        if ( rc < 1 )
+          continue;
+      }
+    }
+    if ( q.append_string( lv.data, lv.sz, lv.data2, lv.sz2 ) == 0 )
+      return ERR_ALLOC_FAIL;
+    itemcnt++;
+  }
+  /* pop the items in case of SPOP */
+  if ( ( flags & DO_SPOP ) != 0 && itemcnt > 0 ) {
+    if ( itemcnt == 1 ) {
+      set.x->spopn( i );
+    }
+    else if ( itemcnt == count ) {
+      set.x->spopall();
+    }
+    else {
+      /* pop the members in reverse so that the index is correct */
+      for ( size_t j = count; ; ) {
+        if ( ! bits.prev( j ) )
+          break;
+        set.x->spopn( j + 1 );
+      }
+    }
+  }
+
+finished:;
+  q.finish_tail();
   if ( ( flags & DO_SSCAN ) != 0 )
     q.prepend_cursor_array( i == count ? 0 : i, itemcnt );
   else
     q.prepend_array( itemcnt );
 
-  if ( ( flags & DO_SPOP ) != 0 ||
-       (ctx.kstatus = this->kctx.validate_value()) == KEY_OK ) {
-    this->strm.append_iov( q );
-    return EXEC_OK;
+  if ( ( flags & DO_SPOP ) == 0 ) {
+    if ( ! set.validate_value() )
+      return ERR_KV_STATUS;
   }
-  return ERR_KV_STATUS;
+  this->strm.append_iov( q );
+  return EXEC_OK;
 }
 
 ExecStatus
-RedisExec::exec_ssetop( RedisKeyCtx &ctx,  int flags )
+RedisExec::do_ssetop( RedisKeyCtx &ctx,  int flags )
 {
-  void   * data;
-  uint64_t datalen;
-  size_t   src = 0;
-
+  void * data;
+  size_t datalen,
+         src = 0;
   /* SDIFFSTORE dest key [key ...] */
   /* SINTERSTORE dest key [key ...] */
   /* SUNIONSTORE dest key [key  ...] */
@@ -516,30 +457,28 @@ RedisExec::exec_ssetop( RedisKeyCtx &ctx,  int flags )
   }
   /* fetch the src data */
   if ( src == 0 ) {
+    ExecListCtx<SetData, MD_SET> set( *this, ctx );
     /* SDIFF key [key ...] */
     /* SINTER key [key ...] */
     /* SUNION key [key  ...] */
     data    = NULL;
     datalen = 0;
-    switch ( this->exec_key_fetch( ctx, true ) ) {
-      case KEY_NOT_FOUND: if ( 0 ) {
+    switch ( set.get_key_read() ) {
+      case KEY_NO_VALUE:  return ERR_BAD_TYPE;
       case KEY_OK:
-          if ( ctx.type != MD_SET )
-            return ERR_BAD_TYPE;
-          if ( ctx.type != MD_NODATA ) {
-            ctx.kstatus = this->kctx.value( &data, datalen );
-            if ( ctx.kstatus != KEY_OK )
-              return ERR_KV_STATUS;
-          }
-        }
+        ctx.kstatus = this->kctx.value( &data, datalen );
+        if ( ctx.kstatus != KEY_OK )
+          return ERR_KV_STATUS;
+      fallthrough;
+      case KEY_NOT_FOUND:
         if ( datalen == 0 ) {
-          data    = (void *) mt_list;
+          data    = (void *) mt_list; /* empty */
           datalen = sizeof( mt_list );
         }
-        if ( ! this->save_data( ctx, data, datalen ) )
+        if ( ! this->save_data( ctx, data, datalen, 0 ) )
           return ERR_ALLOC_FAIL;
-        if ( (ctx.kstatus = this->kctx.validate_value()) == KEY_OK ) {
-          if ( this->key_cnt == this->key_done + 1 )
+        if ( set.validate_value() ) {
+          if ( this->key_cnt == this->key_done + 1 ) /* the last key */
             break;
           return EXEC_OK;
         }
@@ -633,13 +572,19 @@ RedisExec::exec_ssetop( RedisKeyCtx &ctx,  int flags )
     return EXEC_OK;
   }
   /* cmd has a dest key, store the result and return the set member count */
-  switch ( this->exec_key_fetch( ctx ) ) {
+  switch ( this->get_key_write( ctx, MD_SET ) ) {
+    case KEY_NO_VALUE: /* overwrite key */
+      ctx.is_new = true;
+      ctx.type   = MD_SET;
+      fallthrough;
     case KEY_IS_NEW:
     case KEY_OK:
       ctx.kstatus = this->kctx.resize( &data, set->size );
       if ( ctx.kstatus == KEY_OK ) {
         ::memcpy( data, set->listp, set->size );
-        ctx.ival = set->hcount();
+        ctx.ival   = set->hcount();
+        ctx.type   = MD_SET;
+        ctx.is_new = true;
         return EXEC_SEND_INT;
       }
     fallthrough;

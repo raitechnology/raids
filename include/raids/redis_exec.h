@@ -63,9 +63,10 @@ struct ScanArgs {
   ScanArgs() : pos( 0 ), maxcnt( 10 ), re( 0 ), md( 0 ) {}
 };
 
-struct RedisKeyRes {
-  size_t mem_size, /* alloc size */
-         size;     /* data size */
+struct RedisKeyTempResult {
+  size_t  mem_size, /* alloc size */
+          size;     /* data size */
+  uint8_t type;     /* type of data */
   char * data( size_t x ) const {
     return &((char *) (void *) &this[ 1 ])[ x ];
   }
@@ -74,20 +75,20 @@ struct RedisKeyRes {
 struct RedisKeyCtx {
   void * operator new( size_t, void *ptr ) { return ptr; }
   bool operator>( const RedisKeyCtx *ctx2 ) const;
-  uint64_t        hash1,  /* 128 bit hash of key */
-                  hash2;
-  RedisExec     & exec;   /* parent context */
-  EvSocket      * owner;  /* parent connection */
-  int64_t         ival;   /* if it returns int */
-  RedisKeyRes   * part;   /* saved data for key */
-  const int       argn;   /* which arg number of command */
-  uint8_t         dep,    /* depends on another key */
-                  type;   /* value type, string, list, hash, etc */
-  ExecStatus      status; /* result of exec for this key */
-  kv::KeyStatus   kstatus;/* result of key lookup */
-  bool            is_new, /* if the key does not exist */
-                  is_read;/* if the key is read only */
-  kv::KeyFragment kbuf;   /* key material, extends past structure */
+  uint64_t             hash1,  /* 128 bit hash of key */
+                       hash2;
+  RedisExec          & exec;   /* parent context */
+  EvSocket           * owner;  /* parent connection */
+  int64_t              ival;   /* if it returns int */
+  RedisKeyTempResult * part;   /* saved data for key */
+  const int            argn;   /* which arg number of command */
+  uint8_t              dep,    /* depends on another key */
+                       type;   /* value type, string, list, hash, etc */
+  ExecStatus           status; /* result of exec for this key */
+  kv::KeyStatus        kstatus;/* result of key lookup */
+  bool                 is_new, /* if the key does not exist */
+                       is_read;/* if the key is read only */
+  kv::KeyFragment      kbuf;   /* key material, extends past structure */
 
   RedisKeyCtx( RedisExec &ex,  EvSocket *own,  const char *key,  size_t keylen,
                const int n,  const uint64_t seed,  const uint64_t seed2 )
@@ -176,6 +177,25 @@ struct RedisExec {
     this->kctx.set_hash( ctx.hash1, ctx.hash2 );
     this->kctx.prefetch( 1 );
   }
+  /* fetch key for write and check type matches or is not set */
+  kv::KeyStatus get_key_write( RedisKeyCtx &ctx,  uint8_t type ) {
+    kv::KeyStatus status = this->exec_key_fetch( ctx, false );
+    if ( status == KEY_OK && ctx.type != type ) {
+      if ( ctx.type == 0 ) {
+        ctx.is_new = true;
+        return KEY_IS_NEW;
+      }
+      return KEY_NO_VALUE;
+    }
+    return status;
+  }
+  /* fetch key for read and check type matches or is not set */
+  kv::KeyStatus get_key_read( RedisKeyCtx &ctx,  uint8_t type ) {
+    kv::KeyStatus status = this->exec_key_fetch( ctx, true );
+    if ( status == KEY_OK && ctx.type != type )
+      return ( ctx.type == 0 ) ? KEY_NOT_FOUND : KEY_NO_VALUE;
+    return status;
+  }
   /* fetch a read key value or acquire it for write */
   kv::KeyStatus exec_key_fetch( RedisKeyCtx &ctx,  bool force_read = false );
 
@@ -197,6 +217,9 @@ struct RedisExec {
   ExecStatus exec_geodist( RedisKeyCtx &ctx );
   ExecStatus exec_georadius( RedisKeyCtx &ctx );
   ExecStatus exec_georadiusbymember( RedisKeyCtx &ctx );
+  ExecStatus do_gread( RedisKeyCtx &ctx,  int flags );
+  ExecStatus do_gradius( RedisKeyCtx &ctx,  int flags );
+  ExecStatus do_gradius_store( RedisKeyCtx &ctx );
   /* HASH */
   ExecStatus exec_hdel( RedisKeyCtx &ctx );
   ExecStatus exec_hexists( RedisKeyCtx &ctx );
@@ -213,9 +236,9 @@ struct RedisExec {
   ExecStatus exec_hstrlen( RedisKeyCtx &ctx );
   ExecStatus exec_hvals( RedisKeyCtx &ctx );
   ExecStatus exec_hscan( RedisKeyCtx &ctx );
-  ExecStatus exec_hmultiscan( RedisKeyCtx &ctx,  int flags,  ScanArgs *hs );
-  ExecStatus exec_hread( RedisKeyCtx &ctx,  int flags );
-  ExecStatus exec_hwrite( RedisKeyCtx &ctx,  int flags );
+  ExecStatus do_hmultiscan( RedisKeyCtx &ctx,  int flags,  ScanArgs *hs );
+  ExecStatus do_hread( RedisKeyCtx &ctx,  int flags );
+  ExecStatus do_hwrite( RedisKeyCtx &ctx,  int flags );
   /* HYPERLOGLOG */
   ExecStatus exec_pfadd( RedisKeyCtx &ctx );
   ExecStatus exec_pfcount( RedisKeyCtx &ctx );
@@ -269,8 +292,8 @@ struct RedisExec {
   ExecStatus exec_rpoplpush( RedisKeyCtx &ctx );
   ExecStatus exec_rpush( RedisKeyCtx &ctx );
   ExecStatus exec_rpushx( RedisKeyCtx &ctx );
-  ExecStatus exec_push( RedisKeyCtx &ctx,  int flags );
-  ExecStatus exec_pop( RedisKeyCtx &ctx,  int flags );
+  ExecStatus do_push( RedisKeyCtx &ctx,  int flags );
+  ExecStatus do_pop( RedisKeyCtx &ctx,  int flags );
   /* PUBSUB */
   ExecStatus exec_psubscribe( RedisKeyCtx &ctx );
   ExecStatus exec_pubsub( RedisKeyCtx &ctx );
@@ -319,10 +342,10 @@ struct RedisExec {
   ExecStatus exec_sunion( RedisKeyCtx &ctx );
   ExecStatus exec_sunionstore( RedisKeyCtx &ctx );
   ExecStatus exec_sscan( RedisKeyCtx &ctx );
-  ExecStatus exec_sread( RedisKeyCtx &ctx,  int flags );
-  ExecStatus exec_swrite( RedisKeyCtx &ctx,  int flags );
-  ExecStatus exec_smultiscan( RedisKeyCtx &ctx,  int flags,  ScanArgs *sa );
-  ExecStatus exec_ssetop( RedisKeyCtx &ctx,  int flags );
+  ExecStatus do_sread( RedisKeyCtx &ctx,  int flags );
+  ExecStatus do_swrite( RedisKeyCtx &ctx,  int flags );
+  ExecStatus do_smultiscan( RedisKeyCtx &ctx,  int flags,  ScanArgs *sa );
+  ExecStatus do_ssetop( RedisKeyCtx &ctx,  int flags );
   /* SORTED_SET */
   ExecStatus exec_zadd( RedisKeyCtx &ctx );
   ExecStatus exec_zcard( RedisKeyCtx &ctx );
@@ -345,11 +368,12 @@ struct RedisExec {
   ExecStatus exec_zscore( RedisKeyCtx &ctx );
   ExecStatus exec_zunionstore( RedisKeyCtx &ctx );
   ExecStatus exec_zscan( RedisKeyCtx &ctx );
-  ExecStatus exec_zread( RedisKeyCtx &ctx,  int flags );
-  ExecStatus exec_zwrite( RedisKeyCtx &ctx,  int flags );
-  ExecStatus exec_zmultiscan( RedisKeyCtx &ctx,  int flags,  ScanArgs *sa );
-  ExecStatus exec_zremrange( RedisKeyCtx &ctx,  int flags );
-  ExecStatus exec_zsetop( RedisKeyCtx &ctx,  int flags );
+  ExecStatus do_zread( RedisKeyCtx &ctx,  int flags );
+  ExecStatus do_zwrite( RedisKeyCtx &ctx,  int flags );
+  ExecStatus do_zmultiscan( RedisKeyCtx &ctx,  int flags,  ScanArgs *sa );
+  ExecStatus do_zremrange( RedisKeyCtx &ctx,  int flags );
+  ExecStatus do_zsetop( RedisKeyCtx &ctx,  int flags );
+  ExecStatus do_zsetop_store( RedisKeyCtx &ctx,  int flags );
   /* STRING */
   ExecStatus exec_append( RedisKeyCtx &ctx );
   ExecStatus exec_bitcount( RedisKeyCtx &ctx );
@@ -376,10 +400,10 @@ struct RedisExec {
   ExecStatus exec_setrange( RedisKeyCtx &ctx );
   ExecStatus exec_strlen( RedisKeyCtx &ctx );
   /* string extras */
-  ExecStatus exec_add( RedisKeyCtx &ctx,  int64_t incr );
-  ExecStatus exec_set_value( RedisKeyCtx &ctx,  int n,  int flags );
-  ExecStatus exec_set_value_expire( RedisKeyCtx &ctx,  int n,  uint64_t ns,
-                                    int flags );
+  ExecStatus do_add( RedisKeyCtx &ctx,  int64_t incr );
+  ExecStatus do_set_value( RedisKeyCtx &ctx,  int n,  int flags );
+  ExecStatus do_set_value_expire( RedisKeyCtx &ctx,  int n,  uint64_t ns,
+                                  int flags );
   /* TRANSACTION */
   ExecStatus exec_discard( RedisKeyCtx &ctx );
   ExecStatus exec_exec( RedisKeyCtx &ctx );
@@ -425,7 +449,8 @@ struct RedisExec {
   void send_err_key_doesnt_exist( void );
 
   bool save_string_result( RedisKeyCtx &ctx,  const void *data,  size_t size );
-  bool save_data( RedisKeyCtx &ctx,  const void *data,  size_t size );
+  bool save_data( RedisKeyCtx &ctx,  const void *data,  size_t size,
+                  uint8_t type );
   void array_string_result( void );
 };
 
