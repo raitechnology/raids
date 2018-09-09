@@ -134,7 +134,7 @@ struct SetStorage : public HashStorage<UIntSig, UIntType> {
     sz = this->get_size( hdr, 0, start, end );
     if ( this->count > sz )
       return -30;
-    len = min<size_t>( this->count, sz );
+    len = kv::min<size_t>( this->count, sz );
     for ( size_t i = 1; i < len; i++ ) {
       SetStatus sstat = (SetStatus) this->lindex( hdr, i, lv );
       if ( sstat == SET_NOT_FOUND )

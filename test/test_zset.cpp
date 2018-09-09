@@ -119,7 +119,7 @@ static ZScore
 str_to_score( const char *score,  size_t scorelen )
 {
   char scbuf[ 32 ];;
-  scorelen = min<size_t>( scorelen, sizeof( scbuf ) - 1 );
+  scorelen = kv::min<size_t>( scorelen, sizeof( scbuf ) - 1 );
   ::memcpy( scbuf, score, scorelen );
   scbuf[ scorelen ] = '\0';
   return ::strtod64( scbuf, NULL );
@@ -284,8 +284,8 @@ main( int, char ** )
           ival = count + ival;
         if ( jval < 0 )
           jval = count + jval;
-        ival = min<int64_t>( count, max<int64_t>( 0, ival ) );
-        jval = min<int64_t>( count, max<int64_t>( 0, jval + 1 ) );
+        ival = kv::min<int64_t>( count, kv::max<int64_t>( 0, ival ) );
+        jval = kv::min<int64_t>( count, kv::max<int64_t>( 0, jval + 1 ) );
         if ( cmd == ZREMRANGEBYRANK_CMD )
           goto do_rem_range;
       do_range:;
@@ -325,9 +325,9 @@ main( int, char ** )
         for (;;) {
           zstat = sk->zset->zindex( i, zv );
           if ( zstat == ZSET_OK ) {
-            keylen = min<size_t>( zv.sz, sizeof( key ) );
+            keylen = kv::min<size_t>( zv.sz, sizeof( key ) );
             ::memcpy( key, zv.data, keylen );
-            sz = min<size_t>( sizeof( key ) - keylen, zv.sz2 );
+            sz = kv::min<size_t>( sizeof( key ) - keylen, zv.sz2 );
             ::memcpy( &key[ keylen ], zv.data2, sz );
             keylen += sz;
             pos.init( key, keylen );

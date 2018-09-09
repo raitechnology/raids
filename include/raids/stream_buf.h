@@ -65,7 +65,7 @@ struct StreamBuf {
   bool   alloc_fail;  /* if alloc send buffers below failed */
 
   //static const size_t vlen = 4096;
-  kv::WorkAllocT< 4096 > tmp;
+  kv::WorkAllocT< 64 * 1024 > tmp;
   struct iovec iovbuf[ 2 * 1024 ], /* vec of send buffers */
              * iov;
   size_t       vlen;
@@ -91,13 +91,8 @@ struct StreamBuf {
     this->alloc_fail = false;
     this->tmp.reset();
   }
-  void expand_iov( void ) {
-    void *p;
-    p = this->alloc_temp( sizeof( struct iovec ) * this->vlen * 2 );
-    ::memcpy( p, this->iov, sizeof( struct iovec ) * this->vlen );
-    this->iov   = (struct iovec *) p;
-    this->vlen *= 2;
-  }
+  void expand_iov( void );
+
   void flush( void ) { /* move work buffer to send iov */
     if ( this->idx == this->vlen )
       this->expand_iov();
@@ -133,14 +128,8 @@ struct StreamBuf {
       }
     }
   }
-  char *alloc_temp( size_t amt ) {
-    char *spc = (char *) this->tmp.alloc( amt );
-    if ( spc == NULL ) {
-      this->alloc_fail = true;
-      return NULL;
-    }
-    return spc;
-  }
+  char *alloc_temp( size_t amt );
+
   char *alloc( size_t amt ) {
     if ( this->out_buf != NULL && this->sz + amt > BUFSIZE )
       this->flush();

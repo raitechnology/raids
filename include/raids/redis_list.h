@@ -1,6 +1,8 @@
 #ifndef __rai_raids__redis_list_h__
 #define __rai_raids__redis_list_h__
 
+#include <raikv/util.h>
+
 namespace rai {
 namespace ds {
 
@@ -81,13 +83,13 @@ struct ListVal {
   }
   /* concatenate data and data2 */
   size_t concat( void *out,  size_t out_sz ) const {
-    size_t y, x = min<size_t>( this->sz, out_sz );
+    size_t y, x = kv::min<size_t>( this->sz, out_sz );
     if ( x != 0 ) {
       ::memcpy( out, this->data, x );
       if ( x == out_sz )
         return out_sz;
     }
-    y = min<size_t>( this->sz2, out_sz - x );
+    y = kv::min<size_t>( this->sz2, out_sz - x );
     if ( y != 0 ) {
       ::memcpy( &((char *) out)[ x ], this->data2, y );
     }
@@ -116,7 +118,7 @@ struct ListVal {
   }
   /* does memcmp:  key - lv == lv.cmp_key( key, keylen ) */
   int cmp_key( const void *key,  size_t keylen ) const {
-    size_t len = min<size_t>( keylen, this->sz );
+    size_t len = kv::min<size_t>( keylen, this->sz );
     int    cmp = ::memcmp( key, this->data, len );
     if ( cmp == 0 ) {
       if ( keylen < this->sz )
@@ -128,7 +130,7 @@ struct ListVal {
       else {
         key     = &((const char *) key)[ this->sz ];
         keylen -= this->sz;
-        len     = min<size_t>( keylen, this->sz2 );
+        len     = kv::min<size_t>( keylen, this->sz2 );
         cmp     = ::memcmp( key, this->data2, len );
         if ( cmp == 0 ) {
           if ( keylen < this->sz2 )

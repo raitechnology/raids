@@ -18,7 +18,7 @@ EvClient::process( void )
       break;
     }
     if ( this->idx + this->vlen / 4 >= this->vlen ) {
-      if ( ! this->try_write() || this->idx + 8 >= this->vlen )
+      if ( this->try_write() == 0 || this->idx + 8 >= this->vlen )
         break;
     }
     switch ( this->recv[ this->off ] ) {

@@ -247,40 +247,40 @@ RedisMsg::string_array( ScratchMem &wrk,  int64_t sz,  ... )
 RedisMsgStatus
 RedisMsg::split( ScratchMem &wrk )
 {
-  char * ptr = this->strval,
-       * end = &this->strval[ this->len ];
-  size_t cnt = 1;
+  RedisMsg * tmp = (RedisMsg *) wrk.alloc( sizeof( RedisMsg ) * 4 );
+  char     * ptr = this->strval,
+           * end = &ptr[ this->len ];
+  size_t     cnt = 0;
 
-  while ( (ptr = (char *) ::memchr( ptr, ' ', end - ptr )) != NULL ) {
-    ptr++;
-    cnt++;
-  }
-  RedisMsg *tmp = (RedisMsg *) wrk.alloc( sizeof( RedisMsg ) * cnt );
   if ( tmp == NULL )
     return REDIS_MSG_ALLOC_FAIL;
-  if ( cnt > 1 )
-    ptr = (char *) ::memchr( this->strval, ' ', end - this->strval );
-  else
-    ptr = end;
-  tmp[ 0 ].type   = BULK_STRING;
-  tmp[ 0 ].len    = ptr - this->strval;
-  tmp[ 0 ].strval = this->strval;
-  if ( cnt > 1 ) {
-    cnt = 1;
-    for (;;) {
-      while ( ptr < end && *ptr == ' ' )
-        ptr++;
-      if ( ptr == end )
-        break;
-      tmp[ cnt ].type   = BULK_STRING;
-      tmp[ cnt ].strval = ptr;
-      ptr = (char *) ::memchr( ptr, ' ', end - ptr );
-      if ( ptr == NULL )
-        ptr = end;
-      tmp[ cnt ].len = ptr - tmp[ cnt ].strval;
-      cnt++;
-    }
+  for ( ; ; ptr++ ) {
+    if ( ptr >= end )
+      goto finished;
+    if ( *ptr > ' ' )
+      break;
   }
+  tmp[ 0 ].strval = ptr;
+  for (;;) {
+    if ( ++ptr == end || *ptr <= ' ' ) {
+      tmp[ cnt ].type = BULK_STRING;
+      tmp[ cnt ].len  = ptr - tmp[ cnt ].strval;
+      cnt++;
+      while ( ptr < end && *ptr <= ' ' )
+        ptr++; 
+      if ( ptr == end )
+        goto finished;
+      if ( cnt % 4 == 0 ) {
+        RedisMsg * tmp2 = (RedisMsg *) wrk.alloc( sizeof( RedisMsg ) * ( cnt + 4 ) );
+        if ( tmp2 == NULL )
+          return REDIS_MSG_ALLOC_FAIL;
+        ::memcpy( tmp2, tmp, sizeof( RedisMsg ) * cnt );
+        tmp = tmp2;
+      }
+      tmp[ cnt ].strval = ptr;
+    } 
+  }   
+finished:;
   this->type  = BULK_ARRAY;
   this->len   = cnt;
   this->array = tmp;

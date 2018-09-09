@@ -498,9 +498,6 @@ get_upper_cmd( const char *name,  size_t len )
   return NO_CMD;
 }
 
-template <class Int> static inline Int max( Int i,  Int j ) { return i>j?i:j; }
-template <class Int> static inline Int min( Int i,  Int j ) { return i<j?i:j; }
-
 static inline size_t
 crlf( char *b,  size_t i ) {
   b[ i ] = '\r'; b[ i + 1 ] = '\n'; return i + 2;

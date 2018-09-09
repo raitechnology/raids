@@ -20,7 +20,7 @@ using namespace ds;
 void
 EvHttpListen::accept( void )
 {
-  static int on = 1, off = 0;
+  static int on = 1;
   struct sockaddr_storage addr;
   socklen_t addrlen = sizeof( addr );
   int sock = ::accept( this->fd, (struct sockaddr *) &addr, &addrlen );
@@ -51,8 +51,6 @@ EvHttpListen::accept( void )
   struct linger lin;
   lin.l_onoff  = 1;
   lin.l_linger = 10; /* 10 secs */
-  if ( ::setsockopt( sock, IPPROTO_TCP, TCP_NODELAY, &off, sizeof( off ) ) != 0)
-    perror( "warning: TCP_NODELAY" );
   if ( ::setsockopt( sock, SOL_SOCKET, SO_KEEPALIVE, &on, sizeof( on ) ) != 0 )
     perror( "warning: SO_KEEPALIVE" );
   if ( ::setsockopt( sock, SOL_SOCKET, SO_LINGER, &lin, sizeof( lin ) ) != 0 )
@@ -91,7 +89,7 @@ EvHttpService::process( bool /*use_prefetch*/ )
       goto break_loop;
 
     if ( strm.idx + strm.vlen / 4 >= strm.vlen ) {
-      if ( ! this->try_write() || strm.idx + 8 >= strm.vlen )
+      if ( this->try_write() == 0 || strm.idx + 8 >= strm.vlen )
         goto need_write;
     }
     start = &this->recv[ this->off ];
@@ -291,23 +289,23 @@ need_write:;
   return;
 }
 
-bool
+size_t
 EvHttpService::try_write( void )
 {
   if ( this->websock_off != 0 &&
        this->websock_off < this->nbytes_sent + this->pending() )
     if ( ! this->frame_websock() )
-      return false;
+      return 0;
   return this->EvConnection::try_write();
 }
 
-bool
+size_t
 EvHttpService::write( void )
 {
   if ( this->websock_off != 0 &&
        this->websock_off < this->nbytes_sent + this->pending() )
     if ( ! this->frame_websock() )
-      return false;
+      return 0;
   return this->EvConnection::write();
 }
 

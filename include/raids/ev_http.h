@@ -25,8 +25,8 @@ struct EvHttpService : public EvConnection, public RedisExec {
   void process_close( void ) {
     this->RedisExec::release();
   }
-  bool write( void ); /* override write() in EvConnection */
-  bool try_write( void );
+  size_t write( void ); /* override write() in EvConnection */
+  size_t try_write( void );
   bool frame_websock( void );
   bool send_file( const char *get,  size_t hdrlen );
   bool send_ws_upgrade( const char *wsver, const char *wskey,

@@ -26,7 +26,7 @@ struct HashVal : public ListVal {
 struct HashPos {
   size_t   i;
   uint32_t h;
-  HashPos() : i( 0 ), h( 0 ) {}
+  HashPos( uint32_t hash = 0 ) : i( 0 ), h( hash ) {}
   void init( const void *key,  size_t keylen ) {
     this->i = 0;
     this->h = kv_crc_c( key, keylen, 0 );
@@ -50,8 +50,8 @@ struct MergeCtx {
   void start( size_t start,  size_t sz,  size_t count,  size_t data_size,
               const void *m,  const void *m2,  bool rev ) {
     this->i          = 1; /* start index, 0 is the map element */
-    this->len        = min<size_t>( sz, count ); /* count of hash elems */
-    this->left       = min<size_t>( data_size - start, this->len );
+    this->len        = kv::min<size_t>( sz, count ); /* count of hash elems */
+    this->left       = kv::min<size_t>( data_size - start, this->len );
     this->map        = (const uint8_t *) m;
     this->map2       = (const uint8_t *) m2;
     this->is_started = true;
@@ -91,7 +91,7 @@ struct HashStorage : public ListStorage<UIntSig, UIntType> {
     cur_size  = this->get_size( hdr, 0, start, end );
     if ( (pad = cur_size / 4) < 2 )
       pad = 2;
-    new_size  = max<size_t>( cur_size, this->count + pad );
+    new_size  = kv::max<size_t>( cur_size, this->count + pad );
     new_size  = ( new_size + 7 ) & ~(size_t) 7;
     need      = new_size - cur_size;
     new_start = hdr.data_offset( start, -need );
@@ -124,7 +124,7 @@ struct HashStorage : public ListStorage<UIntSig, UIntType> {
                   * el;
     uint8_t         k = (uint8_t) pos.h;
     sz    = this->get_size( hdr, 0, start, end );
-    len   = min<size_t>( this->count, sz );
+    len   = kv::min<size_t>( this->count, sz );
     end   = hdr.data_offset( start, len );
     start = hdr.data_offset( start, pos.i );
     if ( pos.i >= len )
@@ -179,7 +179,7 @@ struct HashStorage : public ListStorage<UIntSig, UIntType> {
     if ( pos == this->count ) /* delete the last item */
       return;
     sz    = this->get_size( hdr, 0, start, end );
-    len   = min<size_t>( this->count + 1, sz ); /* already deleted list item */
+    len   = kv::min<size_t>( this->count + 1, sz ); /* already deleted list item */
     end   = hdr.data_offset( start, len );
     start = hdr.data_offset( start, pos );
     len  -= pos;
@@ -213,7 +213,7 @@ struct HashStorage : public ListStorage<UIntSig, UIntType> {
         return HASH_FULL;
       sz = this->get_size( hdr, 0, start, end );
     }
-    len   = min<size_t>( this->count, sz );
+    len   = kv::min<size_t>( this->count, sz );
     end   = hdr.data_offset( start, len+1 );
     start = hdr.data_offset( start, pos.i );
     len  -= pos.i;
@@ -237,7 +237,7 @@ struct HashStorage : public ListStorage<UIntSig, UIntType> {
     size_t          start, end, len, sz, off;
     const uint8_t * map;
     sz  = this->get_size( hdr, 0, start, end );
-    len = min<size_t>( this->count, sz );
+    len = kv::min<size_t>( this->count, sz );
     off = hdr.data_offset( start, len );
     map = (const uint8_t *) hdr.blob( 0 );
     printf( "sz:%ld,len:%ld -- ", sz, len );
@@ -260,14 +260,14 @@ struct HashStorage : public ListStorage<UIntSig, UIntType> {
     const uint8_t * map;
     /* set hash bits for each element */
     sz  = this->get_size( hdr, 0, start, end );
-    len = min<size_t>( this->count, sz );
+    len = kv::min<size_t>( this->count, sz );
     for ( j = 0; j < 4; j++ )
       bits[ j ] = 0;
     map = (const uint8_t *) hdr.blob( start );
     if ( end >= start )
       j = len;
     else
-      j = min<size_t>( hdr.data_size() - start, len );
+      j = kv::min<size_t>( hdr.data_size() - start, len );
     for ( i = 1; i < j; i++ )
       bits[ map[ i ] >> 6 ] |= (uint64_t) 1U << ( map[ i ] & 63 );
     if ( j != len ) {
@@ -477,6 +477,11 @@ struct HashStorage : public ListStorage<UIntSig, UIntType> {
       this->hash_delete( hdr, pos );
     return hstat;
   }
+  HashStatus hremall( const ListHeader & ) {
+    if ( this->count > 1 )
+      this->count = 1;
+    return HASH_OK;
+  }
   /* find key and delete it */
   HashStatus hdel( const ListHeader &hdr,  const void *key,  size_t keylen,
                    HashPos &pos ) {
@@ -500,7 +505,7 @@ struct HashStorage : public ListStorage<UIntSig, UIntType> {
     sz = this->get_size( hdr, 0, start, end );
     if ( this->count > sz )
       return -20;
-    len = min<size_t>( this->count, sz );
+    len = kv::min<size_t>( this->count, sz );
     for ( size_t i = 1; i < len; i++ ) {
       HashStatus hstat = (HashStatus) this->lindex( hdr, i, kv );
       if ( hstat == HASH_NOT_FOUND )
@@ -659,6 +664,12 @@ struct HashData : public ListData {
   }
   HashStatus hdel( const void *key,  size_t keylen,  HashPos &pos ) {
     return HASH_CALL( hdel( *this, key, keylen, pos ) );
+  }
+  HashStatus hrem( size_t pos ) {
+    return HASH_CALL( hrem( *this, pos ) );
+  }
+  HashStatus hremall( void ) {
+    return HASH_CALL( hremall( *this ) );
   }
   void print_hashes( void ) {
     return HASH_CALL( print_hashes( *this ) );

@@ -8,6 +8,27 @@
 using namespace rai;
 using namespace ds;
 
+char *
+StreamBuf::alloc_temp( size_t amt )
+{
+  char *spc = (char *) this->tmp.alloc( amt );
+  if ( spc == NULL ) {
+    this->alloc_fail = true;
+    return NULL;
+  }
+  return spc;
+}
+
+void
+StreamBuf::expand_iov( void )
+{
+  void *p;
+  p = this->alloc_temp( sizeof( struct iovec ) * this->vlen * 2 );
+  ::memcpy( p, this->iov, sizeof( struct iovec ) * this->vlen );
+  this->iov   = (struct iovec *) p;
+  this->vlen *= 2;
+}
+
 static inline size_t
 crlf( char *b,  size_t i ) {
   b[ i ] = '\r'; b[ i + 1 ] = '\n'; return i + 2;

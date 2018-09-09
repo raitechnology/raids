@@ -13,6 +13,8 @@
 #include <raids/ev_service.h>
 #include <raids/ev_client.h>
 #include <raids/ev_http.h>
+#include <raids/ev_nats.h>
+#include <raids/ev_publish.h>
 
 using namespace rai;
 using namespace ds;
@@ -81,6 +83,7 @@ EvPoll::dispatch( void )
 	case EV_LISTEN_SOCK:  break;
         case EV_CLIENT_SOCK:  ((EvClient *) s)->process(); break;
         case EV_TERMINAL:     ((EvTerminal *) s)->process(); break;
+        case EV_NATS_SOCK:    ((EvNatsService *) s)->process( use_pref ); break;
       }
       cnt++;
     }
@@ -91,9 +94,10 @@ EvPoll::dispatch( void )
       switch ( s->type ) {
         case EV_SERVICE_SOCK: ((EvService *) s)->write(); break;
         case EV_HTTP_SOCK:    ((EvHttpService *) s)->write(); break;
-	case EV_LISTEN_SOCK:  break;
+        case EV_LISTEN_SOCK:  break;
         case EV_CLIENT_SOCK:  ((EvClient *) s)->write(); break;
         case EV_TERMINAL:     ((EvTerminal *) s)->write(); break;
+        case EV_NATS_SOCK:    ((EvNatsService *) s)->write(); break;
       }
       cnt++;
     }
@@ -105,14 +109,53 @@ EvPoll::dispatch( void )
 	case EV_LISTEN_SOCK:  ((EvListen *) s)->accept(); break;
         case EV_CLIENT_SOCK:  ((EvClient *) s)->read(); break;
         case EV_TERMINAL:     ((EvTerminal *) s)->read(); break;
+        case EV_NATS_SOCK:    ((EvNatsService *) s)->read(); break;
       }
       cnt++;
     }
-    if ( cnt == 0 )
+    if ( cnt == 0 || this->quit || this->queue[ EV_CLOSE ].hd != NULL )
       break;
   }
   if ( this->quit || this->queue[ EV_CLOSE ].hd != NULL )
     this->process_close();
+}
+
+bool
+EvPoll::publish( EvPublish &pub )
+{
+  EvSocket *s;
+  bool flow_good = true;
+  for ( uint32_t i = 0; i < pub.rcount; i++ ) {
+    if ( pub.routes[ i ] <= (uint32_t) this->maxfd &&
+         (s = this->sock[ pub.routes[ i ] ]) != NULL ) {
+      switch ( s->type ) {
+        case EV_SERVICE_SOCK:
+          flow_good &= ((EvService *) s)->publish( pub );
+          break;
+        case EV_HTTP_SOCK:
+          flow_good &= ((EvHttpService *) s)->publish( pub );
+          break;
+	case EV_LISTEN_SOCK:  break;
+        case EV_CLIENT_SOCK:
+          flow_good &= ((EvClient *) s)->publish( pub );
+          break;
+        case EV_TERMINAL:
+          flow_good &= ((EvTerminal *) s)->publish( pub );
+          break;
+        case EV_NATS_SOCK:
+          flow_good &= ((EvNatsService *) s)->publish( pub );
+          break;
+      }
+    }
+  }
+  return flow_good;
+}
+
+bool
+EvSocket::publish( EvPublish & )
+{
+  fprintf( stderr, "no publish defined for type %d\n", this->type );
+  return false;
 }
 
 void
@@ -141,6 +184,7 @@ EvPoll::drain_prefetch( EvPrefetchQueue &q )
           case EV_LISTEN_SOCK: break;
           case EV_CLIENT_SOCK: break;
           case EV_TERMINAL:    break;
+          case EV_NATS_SOCK:   ((EvNatsService *) svc)->process( true ); break;
         }
         break;
       case EXEC_DEPENDS:   /* incomplete, depends on another key */
@@ -192,6 +236,7 @@ EvPoll::process_close( void )
       case EV_LISTEN_SOCK:  break;
       case EV_CLIENT_SOCK:  ((EvClient *) s)->process_close(); break;
       case EV_TERMINAL:     ((EvTerminal *) s)->process_close(); break;
+      case EV_NATS_SOCK:    ((EvNatsService *) s)->process_close(); break;
     }
   }
 }
@@ -200,7 +245,7 @@ int
 EvSocket::add_poll( void )
 {
   if ( this->fd > this->poll.maxfd ) {
-    int xfd = this->fd + EvPoll::ALLOC_INCR;
+    int xfd = align<int>( this->fd + 1, EvPoll::ALLOC_INCR );
     EvSocket **tmp;
     if ( xfd < this->poll.nfds )
       xfd = this->poll.nfds;
@@ -316,11 +361,12 @@ EvConnection::try_read( void )
   return this->read();
 }
 
-bool
+size_t
 EvConnection::write( void )
 {
   struct msghdr h;
   ssize_t nbytes;
+  size_t nb = 0;
   StreamBuf & strm = *this;
   if ( strm.sz > 0 )
     strm.flush();
@@ -342,6 +388,7 @@ EvConnection::write( void )
   if ( nbytes > 0 ) {
     strm.wr_pending -= nbytes;
     this->nbytes_sent += nbytes;
+    nb += nbytes;
     if ( strm.wr_pending == 0 ) {
       strm.reset();
       this->pop( EV_WRITE );
@@ -362,7 +409,7 @@ EvConnection::write( void )
 	}
       }
     }
-    return true;
+    return nb;
   }
   if ( errno != EAGAIN && errno != EINTR ) {
     this->popall();
@@ -370,16 +417,16 @@ EvConnection::write( void )
     if ( errno != ECONNRESET )
       perror( "sendmsg" );
   }
-  return false;
+  return 0;
 }
 
-bool
+size_t
 EvConnection::try_write( void )
 {
   StreamBuf & strm = *this;
+  size_t nb = 0;
   if ( strm.woff < strm.idx )
-    if ( ! this->write() )
-      return false;
+    nb = this->write();
   if ( strm.woff > strm.vlen / 2 ) {
     uint32_t i = 0;
     while ( strm.woff < strm.vlen )
@@ -387,7 +434,7 @@ EvConnection::try_write( void )
     strm.woff = 0;
     strm.idx  = i;
   }
-  return true;
+  return nb;
 }
 
 void

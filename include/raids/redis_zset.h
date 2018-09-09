@@ -454,7 +454,7 @@ struct ZSetStorage : public HashStorage<UIntSig, UIntType> {
     sz = this->get_size( hdr, 0, start, end );
     if ( this->count > sz )
       return -30;
-    len = min<size_t>( this->count, sz );
+    len = kv::min<size_t>( this->count, sz );
     for ( size_t i = 1; i < len; i++ ) {
       ZSetStatus zstat = this->zindex( hdr, i, zv );
       if ( zstat != ZSET_OK )
@@ -480,7 +480,7 @@ struct ZSetStorage : public HashStorage<UIntSig, UIntType> {
     ZSetStatus zstat;
 
     sz  = this->get_size( hdr, 0 );
-    len = min<size_t>( this->count, sz );
+    len = kv::min<size_t>( this->count, sz );
     for ( size_t i = 1; i < len; i++ ) {
       if ( (zstat = this->zscore( hdr, i, score )) != ZSET_OK )
         break;

@@ -75,7 +75,7 @@ break_loop:;
     status = -1;
     goto fail;
   }
-  status = ::listen( sock, 128 );
+  status = ::listen( sock, 256 );
   if ( status != 0 ) {
     perror( "error: listen" );
     goto fail;
@@ -99,7 +99,7 @@ fail:;
 void
 EvTcpListen::accept( void )
 {
-  static int on = 1, off = 0;
+  static int on = 1;
   struct sockaddr_storage addr;
   socklen_t addrlen = sizeof( addr );
   int sock = ::accept( this->fd, (struct sockaddr *) &addr, &addrlen );
@@ -131,8 +131,6 @@ EvTcpListen::accept( void )
   struct linger lin;
   lin.l_onoff  = 1;
   lin.l_linger = 10; /* 10 secs */
-  if ( ::setsockopt( sock, IPPROTO_TCP, TCP_NODELAY, &off, sizeof( off ) ) != 0)
-    perror( "warning: TCP_NODELAY" );
   if ( ::setsockopt( sock, SOL_SOCKET, SO_KEEPALIVE, &on, sizeof( on ) ) != 0 )
     perror( "warning: SO_KEEPALIVE" );
   if ( ::setsockopt( sock, SOL_SOCKET, SO_LINGER, &lin, sizeof( lin ) ) != 0 )

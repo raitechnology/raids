@@ -30,7 +30,7 @@ EvService::process( bool use_prefetch )
      * Currently called only after each request is finished, which means it is
      * safe to release */
     if ( strm.idx + strm.vlen / 4 >= strm.vlen ) {
-      if ( ! this->try_write() || strm.idx + 8 >= strm.vlen )
+      if ( this->try_write() == 0 || strm.idx + 8 >= strm.vlen )
         break;
     }
     mstatus = this->msg.unpack( &this->recv[ this->off ], buflen, strm.tmp );

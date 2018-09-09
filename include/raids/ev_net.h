@@ -3,6 +3,7 @@
 
 #include <raikv/shm_ht.h>
 #include <raids/stream_buf.h>
+#include <raids/route_db.h>
 
 namespace rai {
 namespace ds {
@@ -12,7 +13,8 @@ enum EvSockType {
   EV_HTTP_SOCK    = 1,
   EV_LISTEN_SOCK  = 2,
   EV_CLIENT_SOCK  = 3,
-  EV_TERMINAL     = 4
+  EV_TERMINAL     = 4,
+  EV_NATS_SOCK    = 5
 };
 
 enum EvState {
@@ -44,11 +46,13 @@ struct EvQueue {
 };
 
 struct EvPrefetchQueue;
+struct EvPublish;
 
 struct EvPoll {
   EvQueue              queue[ EV_MAX ]; /* EvState queues */
   EvSocket           * free_svc,        /* EvService free */
-                     * free_http;       /* EvHttpService free */
+                     * free_http,       /* EvHttpService free */
+                     * free_nats;       /* EvNatsService free */
   EvSocket          ** sock;            /* sock array indexed by fd */
   struct epoll_event * ev;              /* event array used by epoll() */
   kv::HashTab        * map;             /* the data store */
@@ -61,12 +65,13 @@ struct EvPoll {
   static const size_t  ALLOC_INCR    = 64;
   static const size_t  PREFETCH_SIZE = 8;
   size_t               prefetch_cnt[ PREFETCH_SIZE + 1 ];
+  RouteDB              sub_route;       /* subscriptions */
   bool                 single_thread;
 
   EvPoll( kv::HashTab *m,  uint32_t id )
-    : free_svc( 0 ), free_http( 0 ), sock( 0 ), ev( 0 ), map( m ),
-      prefetch_queue( 0 ), ctx_id( id ), efd( -1 ), nfds( -1 ), maxfd( -1 ),
-      quit( 0 ), single_thread( false ) {
+    : free_svc( 0 ), free_http( 0 ), free_nats( 0 ), sock( 0 ), ev( 0 ),
+      map( m ), prefetch_queue( 0 ), ctx_id( id ), efd( -1 ), nfds( -1 ),
+      maxfd( -1 ), quit( 0 ), single_thread( false ) {
     for ( int i = EV_WAIT; i < EV_MAX; i++ )
       this->queue[ i ].init( (EvState) i );
     ::memset( this->prefetch_cnt, 0, sizeof( this->prefetch_cnt ) );
@@ -77,6 +82,7 @@ struct EvPoll {
   void dispatch( void );         /* process any sock in the queues */
   void drain_prefetch( EvPrefetchQueue &q ); /* process prefetches */
   void process_close( void );    /* close socks or quit state */
+  bool publish( EvPublish &pub );
 };
 
 struct EvSocket {
@@ -118,6 +124,7 @@ struct EvSocket {
       }
     }
   }
+  bool publish( EvPublish &pub );
 };
 
 struct EvListen : public EvSocket {
@@ -144,7 +151,7 @@ struct EvConnection : public EvSocket, public StreamBuf {
            len;         /* length of data in recv_buf */
   uint64_t nbytes_recv,
            nbytes_sent;
-  char     recv_buf[ 8192 ] __attribute__((__aligned__( 64 )));
+  char     recv_buf[ 4 * 4096 ] __attribute__((__aligned__( 64 )));
 
   EvConnection( EvPoll &p, EvSockType t ) : EvSocket( p, t ) {
     this->recv        = this->recv_buf;
@@ -179,8 +186,8 @@ struct EvConnection : public EvSocket, public StreamBuf {
   }
   bool read( void );
   bool try_read( void );
-  bool write( void );
-  bool try_write( void );
+  size_t write( void );
+  size_t try_write( void );
   void close_alloc_error( void );
 };
 

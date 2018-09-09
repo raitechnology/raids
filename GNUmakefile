@@ -72,11 +72,11 @@ defines     := -DDS_VER=$(ver_build)
 .PHONY: everything
 everything: all
 
-libraids_files := ev_net ev_service ev_http ev_client ev_tcp ev_unix stream_buf \
-                  redis_msg redis_cmd_db redis_exec redis_geo redis_hash \
-		  redis_hyperloglog redis_key redis_list redis_pubsub \
-		  redis_script redis_set redis_sortedset redis_stream \
-		  redis_string redis_transaction
+libraids_files := ev_net ev_service ev_http ev_client ev_tcp ev_unix ev_nats \
+                  stream_buf route_db redis_msg redis_cmd_db redis_exec \
+		  redis_geo redis_hash redis_hyperloglog redis_key redis_list \
+		  redis_pubsub redis_script redis_set redis_sortedset \
+		  redis_stream redis_string redis_transaction
 libraids_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(libraids_files)))
 libraids_dbjs  := $(addprefix $(objd)/, $(addsuffix .fpic.o, $(libraids_files)))
 libraids_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(libraids_files))) \
@@ -192,16 +192,32 @@ test_geo_lnk   := $(test_geo_libs) $(dep_lib)
 
 $(bind)/test_geo: $(test_geo_objs) $(test_geo_libs)
 
+test_routes_files := test_routes
+test_routes_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(test_routes_files)))
+test_routes_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(test_routes_files)))
+test_routes_libs  := $(libd)/libraids.a
+test_routes_lnk   := $(test_routes_libs) $(dep_lib)
+
+$(bind)/test_routes: $(test_routes_objs) $(test_routes_libs)
+
+test_delta_files := test_delta
+test_delta_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(test_delta_files)))
+test_delta_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(test_delta_files)))
+test_delta_libs  := $(libd)/libraids.a
+test_delta_lnk   := $(test_delta_libs) $(dep_lib)
+
+$(bind)/test_delta: $(test_delta_objs) $(test_delta_libs)
+
 all_exes    += $(bind)/server $(bind)/client $(bind)/test_msg \
                $(bind)/redis_cmd $(bind)/test_cmd $(bind)/test_list \
 	       $(bind)/test_hash $(bind)/test_set $(bind)/test_zset \
 	       $(bind)/test_hllnum $(bind)/test_hllw $(bind)/test_hllsub \
-	       $(bind)/test_geo
+	       $(bind)/test_geo $(bind)/test_routes $(bind)/test_delta
 all_depends += $(server_deps) $(client_deps) $(test_msg_deps) \
                $(redis_cmd_deps) $(test_cmd_deps) $(test_list_deps) \
 	       $(test_hash_deps) $(test_set_deps) $(test_zset_deps) \
 	       $(test_hllnum_deps) $(test_hllw_deps) $(test_hllsub_deps) \
-	       $(test_geo_deps)
+	       $(test_geo_deps) $(test_routes_deps) $(test_delta_deps)
 
 all_dirs := $(bind) $(libd) $(objd) $(dependd)
 
