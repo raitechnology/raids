@@ -20,9 +20,6 @@ using namespace rai;
 using namespace ds;
 using namespace kv;
 
-/* this is virtual */
-void EvListen::accept( void ) {}
-
 int
 EvPoll::init( int numfds,  bool prefetch,  bool single )
 {
@@ -56,68 +53,85 @@ EvPoll::wait( int ms )
     return -1;
   }
   for ( int i = 0; i < n; i++ ) {
-    int fd = this->ev[ i ].data.fd;
+    EvSocket *s = this->sock[ this->ev[ i ].data.fd ];
     if ( ( this->ev[ i ].events & ( EPOLLIN | EPOLLRDHUP ) ) != 0 )
-      this->sock[ fd ]->push( EV_READ );
+      s->idle_push( s->type != EV_LISTEN_SOCK ? EV_READ : EV_READ_HI );
     if ( ( this->ev[ i ].events & ( EPOLLOUT ) ) != 0 )
-      this->sock[ fd ]->push( EV_WRITE );
+      s->idle_push( EV_WRITE );
   }
   return n;
 }
 
-void
+bool
 EvPoll::dispatch( void )
 {
-  EvSocket *s, *next;
-  bool use_pref;
-  int cnt;
-  for (;;) {
-    cnt = 0;
+  EvSocket *s;
+  for ( uint64_t start = this->prio_tick++; start + 1000 > this->prio_tick;
+        this->prio_tick++ ) {
+    if ( this->quit )
+      this->process_quit();
+    if ( this->queue.is_empty() )
+      return true;
+    s = this->queue.pop();
+    switch ( __builtin_ffs( s->state ) - 1 ) {
+      case EV_READ:
+      case EV_READ_LO:
+      case EV_READ_HI:
+        switch ( s->type ) {
+          case EV_REDIS_SOCK:  ((EvRedisService *) s)->read(); break;
+          case EV_HTTP_SOCK:   ((EvHttpService *) s)->read(); break;
+          case EV_LISTEN_SOCK: ((EvListen *) s)->accept(); break;
+          case EV_CLIENT_SOCK: ((EvClient *) s)->read(); break;
+          case EV_TERMINAL:    ((EvTerminal *) s)->read(); break;
+          case EV_NATS_SOCK:   ((EvNatsService *) s)->read(); break;
+        }
+        break;
+      case EV_PROCESS:
+        switch ( s->type ) {
+          case EV_REDIS_SOCK:  ((EvRedisService *) s)->process( false ); break;
+          case EV_HTTP_SOCK:   ((EvHttpService *) s)->process( false ); break;
+          case EV_LISTEN_SOCK: break;
+          case EV_CLIENT_SOCK: ((EvClient *) s)->process(); break;
+          case EV_TERMINAL:    ((EvTerminal *) s)->process(); break;
+          case EV_NATS_SOCK:   ((EvNatsService *) s)->process( false ); break;
+        }
+        break;
+      case EV_WRITE:
+      case EV_WRITE_HI:
+        switch ( s->type ) {
+          case EV_REDIS_SOCK:  ((EvRedisService *) s)->write(); break;
+          case EV_HTTP_SOCK:   ((EvHttpService *) s)->write(); break;
+          case EV_LISTEN_SOCK: break;
+          case EV_CLIENT_SOCK: ((EvClient *) s)->write(); break;
+          case EV_TERMINAL:    ((EvTerminal *) s)->write(); break;
+          case EV_NATS_SOCK:   ((EvNatsService *) s)->write(); break;
+        }
+        break;
+      case EV_CLOSE:
+        s->popall();
+        this->remove_sock( s );
+        switch ( s->type ) {
+          case EV_REDIS_SOCK:  ((EvRedisService *) s)->process_close(); break;
+          case EV_HTTP_SOCK:   ((EvHttpService *) s)->process_close(); break;
+          case EV_LISTEN_SOCK: break;
+          case EV_CLIENT_SOCK: ((EvClient *) s)->process_close(); break;
+          case EV_TERMINAL:    ((EvTerminal *) s)->process_close(); break;
+          case EV_NATS_SOCK:   ((EvNatsService *) s)->process_close(); break;
+        }
+        break;
+    }
+    if ( s->state != 0 ) {
+      s->prio_cnt = this->prio_tick;
+      this->queue.push( s );
+    }
+  }
+  return false;
+#if 0
     use_pref = ( this->prefetch_queue != NULL &&
                  this->queue[ EV_PROCESS ].cnt > 1 );
-    for ( s = this->queue[ EV_PROCESS ].hd; s != NULL; s = next ) {
-      next = s->next[ EV_PROCESS ];
-      switch ( s->type ) {
-        case EV_SERVICE_SOCK: ((EvService *) s)->process( use_pref ); break;
-        case EV_HTTP_SOCK:    ((EvHttpService *) s)->process( use_pref ); break;
-	case EV_LISTEN_SOCK:  break;
-        case EV_CLIENT_SOCK:  ((EvClient *) s)->process(); break;
-        case EV_TERMINAL:     ((EvTerminal *) s)->process(); break;
-        case EV_NATS_SOCK:    ((EvNatsService *) s)->process( use_pref ); break;
-      }
-      cnt++;
-    }
     if ( this->prefetch_queue != NULL && ! this->prefetch_queue->is_empty() )
       this->drain_prefetch( *this->prefetch_queue );
-    for ( s = this->queue[ EV_WRITE ].hd; s != NULL; s = next ) {
-      next = s->next[ EV_WRITE ];
-      switch ( s->type ) {
-        case EV_SERVICE_SOCK: ((EvService *) s)->write(); break;
-        case EV_HTTP_SOCK:    ((EvHttpService *) s)->write(); break;
-        case EV_LISTEN_SOCK:  break;
-        case EV_CLIENT_SOCK:  ((EvClient *) s)->write(); break;
-        case EV_TERMINAL:     ((EvTerminal *) s)->write(); break;
-        case EV_NATS_SOCK:    ((EvNatsService *) s)->write(); break;
-      }
-      cnt++;
-    }
-    for ( s = this->queue[ EV_READ ].hd; s != NULL; s = next ) {
-      next = s->next[ EV_READ ];
-      switch ( s->type ) {
-        case EV_SERVICE_SOCK: ((EvService *) s)->read(); break;
-        case EV_HTTP_SOCK:    ((EvHttpService *) s)->read(); break;
-	case EV_LISTEN_SOCK:  ((EvListen *) s)->accept(); break;
-        case EV_CLIENT_SOCK:  ((EvClient *) s)->read(); break;
-        case EV_TERMINAL:     ((EvTerminal *) s)->read(); break;
-        case EV_NATS_SOCK:    ((EvNatsService *) s)->read(); break;
-      }
-      cnt++;
-    }
-    if ( cnt == 0 || this->quit || this->queue[ EV_CLOSE ].hd != NULL )
-      break;
-  }
-  if ( this->quit || this->queue[ EV_CLOSE ].hd != NULL )
-    this->process_close();
+#endif
 }
 
 bool
@@ -129,8 +143,8 @@ EvPoll::publish( EvPublish &pub )
     if ( pub.routes[ i ] <= (uint32_t) this->maxfd &&
          (s = this->sock[ pub.routes[ i ] ]) != NULL ) {
       switch ( s->type ) {
-        case EV_SERVICE_SOCK:
-          flow_good &= ((EvService *) s)->publish( pub );
+        case EV_REDIS_SOCK:
+          flow_good &= ((EvRedisService *) s)->publish( pub );
           break;
         case EV_HTTP_SOCK:
           flow_good &= ((EvHttpService *) s)->publish( pub );
@@ -179,8 +193,8 @@ EvPoll::drain_prefetch( EvPrefetchQueue &q )
       default:
       case EXEC_SUCCESS:  /* transaction complete, all keys done */
         switch ( svc->type ) {
-          case EV_SERVICE_SOCK: ((EvService *) svc)->process( true ); break;
-          case EV_HTTP_SOCK:    ((EvHttpService *) svc)->process( true ); break;
+          case EV_REDIS_SOCK:  ((EvRedisService *) svc)->process( true ); break;
+          case EV_HTTP_SOCK:   ((EvHttpService *) svc)->process( true ); break;
           case EV_LISTEN_SOCK: break;
           case EV_CLIENT_SOCK: break;
           case EV_TERMINAL:    break;
@@ -210,136 +224,171 @@ EvPoll::drain_prefetch( EvPrefetchQueue &q )
 }
 
 void
-EvPoll::process_close( void )
+EvPoll::process_quit( void )
 {
-  EvSocket *s, *next;
   if ( this->quit ) {
-    if ( this->queue[ EV_WAIT ].hd == NULL )
+    EvSocket *s = this->active_list.hd;
+    if ( s == NULL ) { /* no more sockets open */
       this->quit = 5;
-    else {
-      for ( s = this->queue[ EV_WAIT ].hd; s != NULL; s = next ) {
-        next = s->next[ EV_WAIT ];
-        if ( ! s->test( EV_WRITE ) || this->quit >= 5 ) {
+      return;
+    }
+    /* wait for socks to flush data for up to 5 interations */
+    do {
+      if ( ! s->test( EV_WRITE ) || this->quit >= 5 ) {
+        if ( s->state != 0 ) {
+          this->queue.remove( s ); /* close state */
           s->popall();
           s->push( EV_CLOSE );
+          this->queue.push( s );
         }
       }
-      this->quit++;
-    }
-  }
-  for ( s = this->queue[ EV_CLOSE ].hd; s != NULL; s = next ) {
-    next = s->next[ EV_CLOSE ];
-    s->close();
-    switch ( s->type ) {
-      case EV_SERVICE_SOCK: ((EvService *) s)->process_close(); break;
-      case EV_HTTP_SOCK:    ((EvHttpService *) s)->process_close(); break;
-      case EV_LISTEN_SOCK:  break;
-      case EV_CLIENT_SOCK:  ((EvClient *) s)->process_close(); break;
-      case EV_TERMINAL:     ((EvTerminal *) s)->process_close(); break;
-      case EV_NATS_SOCK:    ((EvNatsService *) s)->process_close(); break;
-    }
+    } while ( (s = s->next) != NULL );
+    this->quit++;
   }
 }
 
 int
-EvSocket::add_poll( void )
+EvPoll::add_sock( EvSocket *s )
 {
-  if ( this->fd > this->poll.maxfd ) {
-    int xfd = align<int>( this->fd + 1, EvPoll::ALLOC_INCR );
+  /* make enough space for fd */
+  if ( s->fd > this->maxfd ) {
+    int xfd = align<int>( s->fd + 1, EvPoll::ALLOC_INCR );
     EvSocket **tmp;
-    if ( xfd < this->poll.nfds )
-      xfd = this->poll.nfds;
+    if ( xfd < this->nfds )
+      xfd = this->nfds;
   try_again:;
-    tmp = (EvSocket **) ::realloc( this->poll.sock,
-                                   xfd * sizeof( this->poll.sock[ 0 ] ) );
+    tmp = (EvSocket **)
+          ::realloc( this->sock, xfd * sizeof( this->sock[ 0 ] ) );
     if ( tmp == NULL ) {
       perror( "realloc" );
       xfd /= 2;
-      if ( xfd > this->fd )
+      if ( xfd > s->fd )
         goto try_again;
       return -1;
     }
-    for ( int i = this->poll.maxfd + 1; i < xfd; i++ )
+    for ( int i = this->maxfd + 1; i < xfd; i++ )
       tmp[ i ] = NULL;
-    this->poll.sock  = tmp;
-    this->poll.maxfd = xfd - 1;
+    this->sock  = tmp;
+    this->maxfd = xfd - 1;
   }
+  /* add to poll set */
   struct epoll_event event;
   ::memset( &event, 0, sizeof( struct epoll_event ) );
-  event.data.fd = this->fd;
+  event.data.fd = s->fd;
   event.events  = EPOLLIN | EPOLLRDHUP | EPOLLET;
-  if ( ::epoll_ctl( this->poll.efd, EPOLL_CTL_ADD, this->fd, &event ) < 0 ) {
+  if ( ::epoll_ctl( this->efd, EPOLL_CTL_ADD, s->fd, &event ) < 0 ) {
     perror( "epoll_ctl" );
     return -1;
   }
-  this->poll.sock[ this->fd ] = this;
-  this->push( EV_WAIT );
+  this->sock[ s->fd ] = s;
+  this->fdcnt++;
+  /* add to active list */
+  s->listfl = IN_ACTIVE_LIST;
+  this->active_list.push_tl( s );
+  /* if sock starts in write mode, add it to the queue */
+  s->prio_cnt = this->prio_tick;
+  if ( s->state != 0 )
+    this->queue.push( s );
   return 0;
 }
 
 void
-EvSocket::remove_poll( void )
+EvPoll::remove_sock( EvSocket *s )
 {
   struct epoll_event event;
-  if ( this->fd >= this->poll.maxfd &&
-       this->poll.sock[ this->fd ] == this ) {
+  /* remove poll set */
+  if ( s->fd <= this->maxfd && this->sock[ s->fd ] == s ) {
     ::memset( &event, 0, sizeof( struct epoll_event ) );
-    event.data.fd = this->fd;
+    event.data.fd = s->fd;
     event.events  = 0;
-    if ( ::epoll_ctl( this->poll.efd, EPOLL_CTL_DEL, this->fd, &event ) < 0 )
+    if ( ::epoll_ctl( this->efd, EPOLL_CTL_DEL, s->fd, &event ) < 0 )
       perror( "epoll_ctl" );
-    this->poll.sock[ this->fd ] = NULL;
+    this->sock[ s->fd ] = NULL;
+    this->fdcnt--;
   }
-  this->popall();
-  if ( this->type != EV_LISTEN_SOCK )
-    ((EvConnection *) this)->release();
-}
-
-void
-EvSocket::close( void )
-{
-  this->remove_poll();
-  ::close( this->fd );
+  ::close( s->fd );
+  if ( s->listfl == IN_ACTIVE_LIST ) {
+    s->listfl = IN_NO_LIST;
+    this->active_list.pop( s );
+  }
+  /* release memory buffers */
+  if ( s->type != EV_LISTEN_SOCK )
+    ((EvConnection *) s)->release();
 }
 
 int
 EvTerminal::start( int sock )
 {
-  this->fd = sock;
+  this->fd = sock; /* usually stdin fd */
   ::fcntl( sock, F_SETFL, O_NONBLOCK | ::fcntl( sock, F_GETFL ) );
-  return this->add_poll();
+  return this->poll.add_sock( this );
 }
 
 bool
 EvConnection::read( void )
 {
   this->adjust_recv();
-  if ( &this->recv[ this->len ] < this->recv_end ) {
-    ssize_t nbytes = ::read( this->fd, &this->recv[ this->len ],
-                             this->recv_end - &this->recv[ this->len ] );
-    if ( nbytes > 0 ) {
-      this->len += nbytes;
-      this->nbytes_recv += nbytes;
-      this->push( EV_PROCESS );
-      return true;
-    }
-    else {
-      this->pop( EV_READ );
-      if ( nbytes < 0 ) {
-        if ( errno != EINTR ) {
-          if ( errno != EAGAIN ) {
-            if ( errno != ECONNRESET )
-              perror( "read" );
-            this->popall();
-            this->push( EV_CLOSE );
+  for (;;) {
+    if ( this->len < this->recv_size ) {
+      ssize_t nbytes = ::read( this->fd, &this->recv[ this->len ],
+                               this->recv_size - this->len );
+      if ( nbytes > 0 ) {
+        this->len += nbytes;
+        this->nbytes_recv += nbytes;
+        this->push( EV_PROCESS );
+        /* if buf almost full, switch to low priority read */
+        if ( this->len >= this->recv_highwater )
+          this->pushpop( EV_READ_LO, EV_READ );
+        else
+          this->pushpop( EV_READ, EV_READ_LO );
+        return true;
+      }
+      else { /* wait for epoll() to set EV_READ again */
+        this->pop3( EV_READ, EV_READ_LO, EV_READ_HI );
+        if ( nbytes < 0 ) {
+          if ( errno != EINTR ) {
+            if ( errno != EAGAIN ) {
+              if ( errno != ECONNRESET )
+                perror( "read" );
+              this->popall();
+              this->push( EV_CLOSE );
+            }
           }
         }
+        else if ( nbytes == 0 )
+          this->push( EV_CLOSE );
+        else if ( this->test( EV_WRITE ) )
+          this->pushpop( EV_WRITE_HI, EV_WRITE );
       }
-      else if ( nbytes == 0 )
-        this->push( EV_CLOSE );
+      return false;
     }
+    /* allow draining of existing buf before resizing */
+    if ( this->test( EV_READ ) ) {
+      this->pushpop( EV_READ_LO, EV_READ );
+      return false;
+    }
+    if ( ! this->resize_recv_buf() )
+      return false;
   }
-  return false;
+}
+
+bool
+EvConnection::resize_recv_buf( void )
+{
+  size_t newsz = this->recv_size * 2;
+  if ( newsz != (size_t) (uint32_t) newsz )
+    return false;
+  void * ex_recv_buf = aligned_malloc( newsz );
+  if ( ex_recv_buf == NULL )
+    return false;
+  ::memcpy( ex_recv_buf, &this->recv[ this->off ], this->len );
+  this->len -= this->off;
+  this->off  = 0;
+  if ( this->recv != this->recv_buf )
+    ::free( this->recv );
+  this->recv = (char *) ex_recv_buf;
+  this->recv_size = newsz;
+  return true;
 }
 
 bool
@@ -347,17 +396,8 @@ EvConnection::try_read( void )
 {
   /* XXX: check of write side is full and return false */
   this->adjust_recv();
-  if ( &this->recv[ this->len + 1024 ] >= this->recv_end ) {
-    size_t newsz = ( this->recv_end - this->recv ) * 2;
-    void * ex_recv_buf = aligned_malloc( newsz );
-    if ( ex_recv_buf == NULL )
-      return false;
-    ::memcpy( ex_recv_buf, this->recv, this->len );
-    if ( this->recv != this->recv_buf )
-      ::free( this->recv );
-    this->recv = (char *) ex_recv_buf;
-    this->recv_end = &this->recv[ newsz ];
-  }
+  if ( this->len + 1024 >= this->recv_size )
+    this->resize_recv_buf();
   return this->read();
 }
 
@@ -391,7 +431,7 @@ EvConnection::write( void )
     nb += nbytes;
     if ( strm.wr_pending == 0 ) {
       strm.reset();
-      this->pop( EV_WRITE );
+      this->pop2( EV_WRITE, EV_WRITE_HI );
     }
     else {
       for (;;) {

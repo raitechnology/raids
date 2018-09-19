@@ -9,10 +9,10 @@ namespace ds {
 
 struct EvPrefetchQueue;
 
-struct EvService : public EvConnection, public RedisExec {
+struct EvRedisService : public EvConnection, public RedisExec {
   void * operator new( size_t, void *ptr ) { return ptr; }
 
-  EvService( EvPoll &p ) : EvConnection( p, EV_SERVICE_SOCK ),
+  EvRedisService( EvPoll &p ) : EvConnection( p, EV_REDIS_SOCK ),
       RedisExec( *p.map, p.ctx_id, *this, p.single_thread ) {}
   void process( bool use_prefetch );
   void process_close( void ) {

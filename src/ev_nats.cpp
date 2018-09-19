@@ -16,7 +16,6 @@
 #include <raids/redis_msg.h>
 #include <raikv/key_hash.h>
 #include <raikv/util.h>
-#include <raids/redis_hash.h>
 #include <raids/ev_publish.h>
 
 using namespace rai;
@@ -91,12 +90,12 @@ EvNatsListen::accept( void )
     if ( errno != EINTR ) {
       if ( errno != EAGAIN )
         perror( "accept" );
-      this->pop( EV_READ );
+      this->pop3( EV_READ, EV_READ_LO, EV_READ_HI );
     }
     return;
   }
-  EvNatsService * c;
-  if ( (c = (EvNatsService *) this->poll.free_nats) != NULL )
+  EvNatsService * c = this->poll.free_nats.hd;
+  if ( c != NULL )
     c->pop_free_list();
   else {
     void * m = aligned_malloc( sizeof( EvNatsService ) * EvPoll::ALLOC_INCR );
@@ -121,7 +120,6 @@ EvNatsListen::accept( void )
   if ( ::setsockopt( sock, SOL_TCP, TCP_NODELAY, &on, sizeof( on ) ) != 0 )
     perror( "warning: TCP_NODELAY" );
   ::fcntl( sock, F_SETFL, O_NONBLOCK | ::fcntl( sock, F_GETFL ) );
-  c->fd = sock;
 
   if ( ! is_server_info_init ) {
     uint16_t port = 42222;
@@ -133,14 +131,16 @@ EvNatsListen::accept( void )
     this->poll.map->hdr.get_hash_seed( KV_DB_COUNT-1, h1, h2 );
     init_server_info( h1, h2, port );
   }
-  if ( c->add_poll() < 0 ) {
+  c->fd = sock;
+  c->initialize_state();
+  c->idle_push( EV_WRITE_HI );
+  if ( this->poll.add_sock( c ) < 0 ) {
+    printf( "failed to add sock %d\n", sock );
     ::close( sock );
     c->push_free_list();
+    return;
   }
-  c->initialize_state();
   c->append_iov( nats_server_info, sizeof( nats_server_info ) );
-  c->push( EV_WRITE );
-  printf( "nats accept fd=%d\n", c->fd );
 }
 
 static char *
@@ -208,11 +208,12 @@ parse_args( char *start,  char *end,  char **args,  size_t *len )
 void
 EvNatsService::process( bool /*use_prefetch*/ )
 {
-  enum { DO_OK = 1, DO_ERR = 2, NEED_MORE = 4, FLOW_BACKPRESSURE = 8 };
+  enum { DO_OK = 1, DO_ERR = 2, NEED_MORE = 4, FLOW_BACKPRESSURE = 8,
+         HAS_PING = 16 };
   static const char ok[]   = "+OK\r\n",
                     err[]  = "-ERR\r\n",
                     pong[] = "PONG\r\n";
-  size_t            buflen, used, sz, nargs, size_len;
+  size_t            buflen, used, sz, nargs, size_len, max_msgs;
   char            * p, * eol, * start, * end, * size_start;
   char            * args[ MAX_NATS_ARGS ];
   size_t            argslen[ MAX_NATS_ARGS ];
@@ -223,10 +224,6 @@ EvNatsService::process( bool /*use_prefetch*/ )
     if ( buflen == 0 )
       goto break_loop;
 
-    if ( this->idx + this->vlen / 4 >= this->vlen ) {
-      if ( this->try_write() == 0 || this->idx + 8 >= this->vlen )
-        goto need_write;
-    }
     start = &this->recv[ this->off ];
     end   = &start[ buflen ];
 
@@ -302,18 +299,28 @@ EvNatsService::process( bool /*use_prefetch*/ )
                 break;
               case NATS_KW_PING:
                 this->append( pong, sizeof( pong ) - 1 );
+                fl |= HAS_PING;
                 break;
             /*case NATS_KW_PONG:    break;
               case NATS_KW_INFO:    break;*/
               case NATS_KW_UNSUB: /* UNSUB <sid> [max-msgs] */
                 nargs = parse_args( &p[ 6 ], eol, args, argslen );
                 if ( nargs != 1 ) {
-                  fl |= DO_ERR;
-                  break;
+                  if ( nargs != 2 ) {
+                    fl |= DO_ERR;
+                    break;
+                  }
+                  parse_end_size( args[ 1 ], &args[ 1 ][ argslen[ 1 ] ],
+                                  max_msgs, size_len );
                 }
-                this->sid     = args[ 0 ];
-                this->sid_len = argslen[ 0 ];
-                this->rem_sub();
+                else {
+                  max_msgs = 0;
+                }
+                this->sid         = args[ 0 ];
+                this->sid_len     = argslen[ 0 ];
+                this->subject     = NULL;
+                this->subject_len = 0;
+                this->rem_sid( max_msgs );
                 fl |= verb_ok;
                 break;
               case NATS_KW_CONNECT:
@@ -351,143 +358,120 @@ EvNatsService::process( bool /*use_prefetch*/ )
           fl |= NEED_MORE;
         }
       }
-      if ( ( fl & NEED_MORE ) != 0 )
+      if ( ( fl & NEED_MORE ) != 0 ) {
+        this->pushpop( EV_READ, EV_READ_LO );
         break;
+      }
       if ( ( fl & DO_OK ) != 0 )
         this->append( ok, sizeof( ok ) - 1 );
       if ( ( fl & DO_ERR ) != 0 )
         this->append( err, sizeof( err ) - 1 );
-      if ( ( fl & FLOW_BACKPRESSURE ) != 0 ) {
+      if ( ( fl & ( FLOW_BACKPRESSURE | HAS_PING ) ) != 0 ) {
         this->off += used;
-        goto back_pressure;
+        if ( this->pending() > 0 )
+          this->push( EV_WRITE_HI );
+        if ( this->test( EV_READ ) )
+          this->pushpop( EV_READ_LO, EV_READ );
+        return;
       }
       fl = 0;
     }
     this->off += used;
-    if ( ( fl & NEED_MORE ) != 0 ) {
-      if ( cmd_cnt + msg_cnt != 0 || ! this->try_read() )
-        goto break_loop;
-    }
-    else if ( used == 0 )
+    if ( used == 0 || ( fl & NEED_MORE ) != 0 )
       goto break_loop;
   }
 break_loop:;
   this->pop( EV_PROCESS );
-back_pressure:;
-  if ( this->pending() > 0 ) {
-need_write:;
+  if ( this->pending() > 0 )
     this->push( EV_WRITE );
-  }
   return;
-}
-
-HashData *
-EvNatsService::resize_tab( HashData *curr,  size_t add_len )
-{
-  size_t count    = ( add_len >> 3 ) | 1,
-         data_len = add_len + 1;
-  if ( curr != NULL ) {
-    data_len  = add_len + curr->data_len();
-    data_len += data_len / 2 + 2;
-    count     = curr->count();
-    count    += count / 2 + 2;
-  }
-  size_t asize = HashData::alloc_size( count, data_len );
-  void * m     = ::malloc( sizeof( HashData ) + asize );
-  void * p     = &((char *) m)[ sizeof( HashData ) ];
-  HashData *newbe = new ( m ) HashData( p, asize );
-  newbe->init( count, data_len );
-  if ( curr != NULL ) {
-    curr->copy( *newbe );
-    delete curr;
-  }
-  return newbe;
 }
 
 void
 EvNatsService::add_sub( void )
 {
-  HashPos    sub_pos, sid_pos;
-  size_t     sz    = this->sid_len + this->subject_len,
-             retry = 1;
-  HashStatus hstat = HASH_OK;
-  /* SUB <subject> [queue group] <sid> */
-  sid_pos.init( this->sid, this->sid_len );
-  for (;;) {
-    if ( this->sid_tab != NULL ) {
-      hstat = this->sid_tab->hset( this->sid, this->sid_len,
-                                   this->subject, this->subject_len, sid_pos );
-      if ( hstat != HASH_FULL )
-        break;
-    }
-    if ( this->sid_tab == NULL || hstat == HASH_FULL ) {
-      this->sid_tab = this->resize_tab( this->sid_tab, sz + retry );
-      retry += 9;
-    }
-  }
+  /* case1:  sid doesn't exist, add sid to sid tab & sid to subject tab
+   *   sid -> null / sid -> sid tab [ sid ],
+   *                        sid -> subj tab [ subj ] */
+  StrHashRec & sidrec = StrHashRec::make_rec( this->sid, this->sid_len ),
+             & subrec = StrHashRec::make_rec( this->subject, this->subject_len);
+  StrHashKey   sidkey( sidrec ),
+               subkey( subrec );
+  SidMsgCount  cnt( 0 );
 
-  sub_pos.init( this->subject, this->subject_len );
-  for (;;) {
-    if ( this->sub_tab != NULL ) {
-      hstat = this->sub_tab->hset( this->subject, this->subject_len,
-                                   this->sid, this->sid_len, sub_pos );
-      if ( hstat != HASH_FULL )
-        break;
-    }
-    if ( this->sub_tab == NULL || hstat == HASH_FULL ) {
-      this->sub_tab = this->resize_tab( this->sub_tab, sz + retry );
-      retry += 9;
-    }
-  }
-  this->poll.sub_route.add_route( sub_pos.h, this->fd );
+  this->sid_tab.put( sidkey, cnt, subrec, true );
+  if ( this->sub_tab.put( subkey, cnt, sidrec ) == NATS_IS_NEW )
+    this->poll.sub_route.add_route( subkey.pos.h, this->fd );
+#if 0
+  printf( "add_sub:\n" );
+  this->sid_tab.print();
+  this->sub_tab.print();
+#endif
 }
 
 void
-EvNatsService::rem_sub( void )
+EvNatsService::rem_sid( uint32_t max_msgs )
 {
-  HashPos    sub_pos, sid_pos;
-  ListVal    lv;
-  char       buf[ 256 ];
-  void     * subj;
-  size_t     subj_len;
-  HashStatus hstat;
-  bool       is_alloced = false;
-  /* UNSUB <sid> [max-msgs] */
-  if ( this->sid_tab != NULL ) {
-    sid_pos.init( this->sid, this->sid_len );
-    hstat = this->sid_tab->hget( this->sid, this->sid_len, lv, sid_pos );
-    if ( hstat == HASH_OK ) {
-      if ( this->sub_tab != NULL ) {
-        subj_len = lv.unitary( subj, buf, sizeof( buf ), is_alloced );
-        sub_pos.init( subj, subj_len );
-        this->sub_tab->hdel( subj, subj_len, sub_pos );
-        if ( is_alloced )
-          ::free( subj );
-        this->poll.sub_route.del_route( sub_pos.h, this->fd );
+  StrHashRec & sidrec = StrHashRec::make_rec( this->sid, this->sid_len );
+  StrHashKey   sidkey( sidrec );
+
+  if ( max_msgs != 0 ) {
+    SidMsgCount cnt( max_msgs );
+    SidList     sub_list;
+    /* update the max_msgs foreach sid -> subj */
+    if ( this->sid_tab.updcnt( sidkey, cnt, NULL ) != NATS_IS_NEW ) {
+      if ( this->sid_tab.lookup( sidkey, sub_list ) ) {
+        if ( sub_list.first() ) {
+          do {
+            StrHashKey subkey( sub_list.sid );
+            if ( this->sub_tab.updcnt( subkey, cnt,
+                                       &sidrec ) == NATS_IS_EXPIRED ) {
+              this->rem_sid_key( sidkey );
+              break;
+            }
+          } while ( sub_list.next() );
+        }
       }
-      this->sid_tab->hrem( sid_pos.i );
     }
+  }
+  else {
+    this->rem_sid_key( sidkey );
+  }
+#if 0
+  printf( "rem_sid(%u):\n", max_msgs );
+  this->sid_tab.print();
+  this->sub_tab.print();
+#endif
+}
+
+void
+EvNatsService::rem_sid_key( StrHashKey &sidkey )
+{
+  SidList sub_list;
+  /*printf( "rem_sid_key(%.*s)\n", (int) sidkey.rec.len, sidkey.rec.str );*/
+  if ( this->sid_tab.lookup( sidkey, sub_list ) ) {
+    if ( sub_list.first() ) {
+      do {
+        StrHashKey subkey( sub_list.sid );
+        if ( this->sub_tab.deref( subkey, sidkey.rec ) ) {
+        /*printf( "rem_route(%.*s)\n", (int) subkey.rec.len, subkey.rec.str );*/
+          this->poll.sub_route.del_route( subkey.pos.h, this->fd );
+        }
+      } while ( sub_list.next() );
+    }
+    this->sid_tab.rem( sidkey );
   }
 }
 
 void
 EvNatsService::rem_all_sub( void )
 {
-  if ( this->sub_tab != NULL ) {
-    HashVal kv;
-    HashPos sub_pos;
-    size_t count = this->sub_tab->hcount();
-    for ( size_t i = 1; i <= count; i++ ) {
-      HashStatus hstat = this->sub_tab->hindex( i, kv );
-      if ( hstat == HASH_OK ) {
-        sub_pos.init( kv.key, kv.keylen );
-        this->poll.sub_route.del_route( sub_pos.h, this->fd );
-      }
-    }
-    this->sub_tab->hremall();
+  HashPos pos;
+  if ( this->sub_tab.first( pos ) ) {
+    do {
+      this->poll.sub_route.del_route( pos.h, this->fd );
+    } while ( this->sub_tab.next( pos ) );
   }
-  if ( this->sid_tab != NULL )
-    this->sid_tab->hremall();
 }
 
 bool
@@ -511,25 +495,38 @@ EvNatsService::fwd_pub( void )
 bool
 EvNatsService::publish( EvPublish &pub )
 {
-  ListVal    lv;
-  char       buf[ 256 ];
-  void     * sid;
-  size_t     sid_len;
-  HashStatus hstat;
-  bool       is_alloced = false,
-             flow_good = true;
+  bool flow_good   = true;
+  int  sub_expired = 0;
 
-  if ( ( this->echo || (uint32_t) this->fd != pub.src_route ) &&
-       this->sub_tab != NULL ) {
+  if ( this->echo || (uint32_t) this->fd != pub.src_route ) {
+    SidList sid_list;
     HashPos sub_pos( pub.subj_hash );
-    hstat = this->sub_tab->hget( pub.subject, pub.subject_len, lv, sub_pos );
-    if ( hstat == HASH_OK ) {
-      sid_len = lv.unitary( sid, buf, sizeof( buf ), is_alloced );
-      flow_good = this->fwd_msg( pub, sid, sid_len );
-      if ( is_alloced )
-        ::free( sid );
+    if ( this->sub_tab.lookup( pub.subject, pub.subject_len, sub_pos,
+                               sid_list ) ) {
+      if ( sid_list.first() ) {
+        do {
+          flow_good &= this->fwd_msg( pub, sid_list.sid.str, sid_list.sid.len );
+          if ( ! sid_list.incr_msg_count() )
+            sub_expired++;
+        } while ( sid_list.next() );
+      }
+      if ( sub_expired > 0 ) {
+        StrHashRec sidrec;
+        for ( ; sub_expired > 0; sub_expired-- ) {
+          if ( this->sub_tab.get_expired( pub.subject, pub.subject_len, sub_pos,
+                                          sidrec ) ) {
+            StrHashKey sidkey( sidrec );
+            this->rem_sid_key( sidkey );
+          }
+        }
+      }
     }
   }
+#if 0
+  printf( "publish:\n" );
+  this->sid_tab.print();
+  this->sub_tab.print();
+#endif
   return flow_good;
 }
 
@@ -568,8 +565,9 @@ EvNatsService::fwd_msg( EvPublish &pub,  const void *sid,  size_t sid_len )
   *p++ = '\r'; *p++ = '\n';
 
   this->sz += len;
-  this->push( EV_WRITE );
-  return this->pending() < 80 * 1024;
+  bool flow_good = ( this->pending() <= this->send_highwater );
+  this->idle_push( flow_good ? EV_WRITE : EV_WRITE_HI );
+  return flow_good;
 }
 
 #if 0
@@ -687,25 +685,19 @@ EvNatsService::parse_connect( const char *buf,  size_t sz )
     }
   }
 finished:; /* update amount of buffer available */
-  printf( "verbose %s pedantic %s echo %s\n",
+  /*printf( "verbose %s pedantic %s echo %s\n",
            this->verbose ? "t" : "f", this->pedantic ? "t" : "f",
-           this->echo ? "t" : "f" );
+           this->echo ? "t" : "f" );*/
   this->tmp_size = buflen;
 }
 
 void
 EvNatsService::release( void )
 {
-  printf( "nats release fd=%d\n", this->fd );
+  //printf( "nats release fd=%d\n", this->fd );
   this->rem_all_sub();
-  if ( this->sub_tab != NULL ) {
-    ::free( this->sub_tab );
-    this->sub_tab = NULL;
-  }
-  if ( this->sid_tab != NULL ) {
-    ::free( this->sid_tab );
-    this->sid_tab = NULL;
-  }
+  this->sub_tab.release();
+  this->sid_tab.release();
   this->EvConnection::release();
   this->push_free_list();
 }
@@ -713,17 +705,21 @@ EvNatsService::release( void )
 void
 EvNatsService::push_free_list( void )
 {
-  if ( this->state != 0 )
-    this->popall();
-  this->next[ 0 ] = this->poll.free_nats;
-  this->poll.free_nats = this;
+  if ( this->listfl == IN_ACTIVE_LIST )
+    fprintf( stderr, "nats sock should not be in active list\n" );
+  else if ( this->listfl != IN_FREE_LIST ) {
+    this->listfl = IN_FREE_LIST;
+    this->poll.free_nats.push_hd( this );
+  }
 }
 
 void
 EvNatsService::pop_free_list( void )
 {
-  this->poll.free_nats = this->next[ 0 ];
-  this->next[ 0 ] = NULL;
+  if ( this->listfl == IN_FREE_LIST ) {
+    this->listfl = IN_NO_LIST;
+    this->poll.free_nats.pop( this );
+  }
 }
 
 

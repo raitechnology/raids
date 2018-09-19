@@ -12,7 +12,7 @@ using namespace ds;
 using namespace kv;
 
 void
-EvService::process( bool use_prefetch )
+EvRedisService::process( bool use_prefetch )
 {
   StreamBuf       & strm = *this;
   EvPrefetchQueue * q    = ( use_prefetch ? this->poll.prefetch_queue : NULL );
@@ -26,13 +26,6 @@ EvService::process( bool use_prefetch )
       this->pop( EV_PROCESS );
       break;
     }
-    /* XXX need to keep stream buffers around longer?  write() will release them.
-     * Currently called only after each request is finished, which means it is
-     * safe to release */
-    if ( strm.idx + strm.vlen / 4 >= strm.vlen ) {
-      if ( this->try_write() == 0 || strm.idx + 8 >= strm.vlen )
-        break;
-    }
     mstatus = this->msg.unpack( &this->recv[ this->off ], buflen, strm.tmp );
     if ( mstatus != REDIS_MSG_OK ) {
       if ( mstatus != REDIS_MSG_PARTIAL ) {
@@ -41,9 +34,9 @@ EvService::process( bool use_prefetch )
         this->off = this->len;
         break;
       }
-      if ( ! this->try_read() )
-        break;
-      continue;
+      /* need more data, switch to read */
+      this->pushpop( EV_READ, EV_READ_LO );
+      break;
     }
     this->off += buflen;
 
@@ -75,7 +68,7 @@ EvService::process( bool use_prefetch )
 }
 
 void
-EvService::release( void )
+EvRedisService::release( void )
 {
   this->RedisExec::release();
   this->EvConnection::release();
@@ -83,68 +76,55 @@ EvService::release( void )
 }
 
 void
-EvService::push_free_list( void )
+EvRedisService::push_free_list( void )
 {
-  if ( this->state != 0 )
-    this->popall();
-  this->next[ 0 ] = this->poll.free_svc;
-  this->poll.free_svc = this;
+  if ( this->listfl == IN_ACTIVE_LIST )
+    fprintf( stderr, "redis sock should not be in active list\n" );
+  else if ( this->listfl != IN_FREE_LIST ) {
+    this->listfl = IN_FREE_LIST;
+    this->poll.free_redis.push_hd( this );
+  }
 }
 
 void
-EvService::pop_free_list( void )
+EvRedisService::pop_free_list( void )
 {
-  this->poll.free_svc = this->next[ 0 ];
-  this->next[ 0 ] = NULL;
+  if ( this->listfl == IN_FREE_LIST ) {
+    this->listfl = IN_NO_LIST;
+    this->poll.free_redis.pop( this );
+  }
 }
 
 void
-EvService::debug( void )
+EvRedisService::debug( void )
 {
-  const char *name[] = { 0, "wait", "read", "process", "write", "close" };
   struct sockaddr_storage addr;
   socklen_t addrlen;
   char buf[ 128 ], svc[ 32 ];
-  EvSocket *s, *next;
-  int i;
-  for ( i = 0; i < (int) EvPoll::PREFETCH_SIZE; i++ ) {
+  EvSocket *s;
+  size_t i;
+  for ( i = 0; i < EvPoll::PREFETCH_SIZE; i++ ) {
     if ( this->poll.prefetch_cnt[ i ] != 0 )
-      printf( "[%d]: %lu\n", i, this->poll.prefetch_cnt[ i ] );
+      printf( "[%ld]: %lu\n", i, this->poll.prefetch_cnt[ i ] );
   }
-  for ( i = EV_WAIT; i < EV_MAX; i++ ) {
-    printf( "%s: ", name[ i ] );
-    for ( s = this->poll.queue[ i ].hd; s != NULL; s = next ) {
-      next = s->next[ i ];
-      if ( s->type == EV_SERVICE_SOCK ) {
-	addrlen = sizeof( addr );
-	getpeername( s->fd, (struct sockaddr*) &addr, &addrlen );
-	getnameinfo( (struct sockaddr*) &addr, addrlen, buf, sizeof( buf ),
-                     svc, sizeof( svc ), NI_NUMERICHOST | NI_NUMERICSERV );
-      }
-      else {
-        buf[ 0 ] = 'L'; buf[ 1 ] = '\0';
-        svc[ 0 ] = 0;
-      }
-      printf( "%d/%s:%s ", s->fd, buf, svc );
-    } 
-    printf( "\n" );
+  printf( "heap: " );
+  for ( i = 0; i < this->poll.queue.num_elems; i++ ) {
+    s = this->poll.queue.heap[ i ];
+    if ( s->type != EV_LISTEN_SOCK ) {
+      addrlen = sizeof( addr );
+      getpeername( s->fd, (struct sockaddr*) &addr, &addrlen );
+      getnameinfo( (struct sockaddr*) &addr, addrlen, buf, sizeof( buf ),
+                   svc, sizeof( svc ), NI_NUMERICHOST | NI_NUMERICSERV );
+    }
+    else {
+      buf[ 0 ] = 'L'; buf[ 1 ] = '\0';
+      svc[ 0 ] = 0;
+    }
+    printf( "%d/%s:%s ", s->fd, buf, svc );
   }
-  for ( i = EV_WAIT; i < EV_MAX; i++ ) {
-    for ( s = this->poll.queue[ i ].hd; s != NULL; s = next ) {
-      next = s->next[ i ];
-      if ( s->type == EV_SERVICE_SOCK ) {
-	if ( ((EvService *) s)->off != ((EvService *) s)->len ) {
-	  printf( "%p: (%d) has buf(%u)\n", (void *) s, s->fd,
-		  ((EvService *) s)->len - ((EvService *) s)->off );
-	}
-	if ( ((EvService *) s)->wr_pending + ((EvService *) s)->sz != 0 ) {
-	  printf( "%p: (%d) has pend(%lu)\n", (void *) s, s->fd,
-	         ((EvService *) s)->wr_pending + ((EvService *) s)->sz );
-	}
-      }
-    } 
-  }
-  if ( this->poll.prefetch_queue->is_empty() )
+  printf( "\n" );
+  if ( this->poll.prefetch_queue == NULL ||
+       this->poll.prefetch_queue->is_empty() )
     printf( "prefetch empty\n" );
   else
     printf( "prefetch count %lu\n",

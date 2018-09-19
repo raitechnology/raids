@@ -47,7 +47,7 @@ EvUnixListen::listen( const char *path )
   }
   this->fd = sock;
   ::fcntl( sock, F_SETFL, O_NONBLOCK | ::fcntl( sock, F_GETFL ) );
-  if ( this->add_poll() < 0 )
+  if ( this->poll.add_sock( this ) < 0 )
     goto fail;
   return 0;
 fail:;
@@ -57,7 +57,7 @@ fail:;
 }
 
 void
-EvUnixListen::accept( void )
+EvRedisUnixListen::accept( void )
 {
   struct sockaddr_un sunaddr;
   socklen_t addrlen = sizeof( sunaddr );
@@ -66,29 +66,29 @@ EvUnixListen::accept( void )
     if ( errno != EINTR ) {
       if ( errno != EAGAIN )
 	perror( "accept" );
-      this->pop( EV_READ );
+      this->pop3( EV_READ, EV_READ_LO, EV_READ_HI );
     }
     return;
   }
-  EvService * c;
-  if ( (c = (EvService *) this->poll.free_svc) != NULL )
+  EvRedisService * c = this->poll.free_redis.hd;
+  if ( c != NULL )
     c->pop_free_list();
   else {
-    void * m = aligned_malloc( sizeof( EvService ) * EvPoll::ALLOC_INCR );
+    void * m = aligned_malloc( sizeof( EvRedisService ) * EvPoll::ALLOC_INCR );
     if ( m == NULL ) {
       perror( "accept: no memory" );
       ::close( sock );
       return;
     }
-    c = new ( m ) EvService( this->poll );
+    c = new ( m ) EvRedisService( this->poll );
     for ( int i = EvPoll::ALLOC_INCR - 1; i >= 1; i-- ) {
-      new ( (void *) &c[ i ] ) EvService( this->poll );
+      new ( (void *) &c[ i ] ) EvRedisService( this->poll );
       c[ i ].push_free_list();
     }
   }
   ::fcntl( sock, F_SETFL, O_NONBLOCK | ::fcntl( sock, F_GETFL ) );
   c->fd = sock;
-  if ( c->add_poll() < 0 ) {
+  if ( this->poll.add_sock( c ) < 0 ) {
     ::close( sock );
     c->push_free_list();
   }
@@ -114,12 +114,12 @@ EvUnixClient::connect( const char *path )
   }
   this->fd = sock;
   ::fcntl( sock, F_SETFL, O_NONBLOCK | ::fcntl( sock, F_GETFL ) );
-  if ( this->add_poll() < 0 )
-    goto fail;
+  if ( this->poll.add_sock( this ) < 0 ) {
+  fail:;
+    this->fd = -1;
+    ::close( sock );
+    return -1;
+  }
   return 0;
-fail:;
-  this->fd = -1;
-  ::close( sock );
-  return -1;
 }
 

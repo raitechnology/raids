@@ -10,6 +10,11 @@ namespace ds {
 struct EvUnixListen : public EvListen {
   EvUnixListen( EvPoll &p ) : EvListen( p ) {}
   int listen( const char *sock );
+  virtual void accept( void ) {}
+};
+
+struct EvRedisUnixListen : public EvUnixListen {
+  EvRedisUnixListen( EvPoll &p ) : EvUnixListen( p ) {}
   virtual void accept( void );
 };
 

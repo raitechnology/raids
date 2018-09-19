@@ -32,8 +32,52 @@ enum {
   DO_HINCRBYFLOAT = 1<<10,
   DO_HMSET        = 1<<11,
   DO_HSET         = 1<<12,
-  DO_HSETNX       = 1<<13
+  DO_HSETNX       = 1<<13,
+  DO_HAPPEND      = 1<<14
 };
+
+ExecStatus
+RedisExec::exec_happend( RedisKeyCtx &ctx )
+{
+  /* HAPPEND key field val [val ...] */
+  return this->do_hwrite( ctx, DO_HAPPEND );
+}
+
+ExecStatus
+RedisExec::exec_hdiff( RedisKeyCtx & )
+{
+  return ERR_BAD_CMD;
+}
+
+ExecStatus
+RedisExec::exec_hdiffstore( RedisKeyCtx & )
+{
+  return ERR_BAD_CMD;
+}
+
+ExecStatus
+RedisExec::exec_hinter( RedisKeyCtx & )
+{
+  return ERR_BAD_CMD;
+}
+
+ExecStatus
+RedisExec::exec_hinterstore( RedisKeyCtx & )
+{
+  return ERR_BAD_CMD;
+}
+
+ExecStatus
+RedisExec::exec_hunion( RedisKeyCtx & )
+{
+  return ERR_BAD_CMD;
+}
+
+ExecStatus
+RedisExec::exec_hunionstore( RedisKeyCtx & )
+{
+  return ERR_BAD_CMD;
+}
 
 ExecStatus
 RedisExec::exec_hdel( RedisKeyCtx &ctx )
@@ -356,6 +400,8 @@ RedisExec::do_hwrite( RedisKeyCtx &ctx,  int flags )
   size_t       arglen  = 0;
   const char * val     = NULL;
   size_t       vallen  = 0;
+  const char * val2    = NULL;
+  size_t       vallen2 = 0;
   HashPos      pos;
   size_t       count,
                ndata,
@@ -367,13 +413,22 @@ RedisExec::do_hwrite( RedisKeyCtx &ctx,  int flags )
   size_t       sz      = 0;
   int64_t      ival    = 0;
   HashStatus   hstatus = HASH_OK;
+  bool         is_new  = false;
 
-  if ( ( flags & ( DO_HSET | DO_HSETNX | DO_HMSET | DO_HINCRBYFLOAT ) ) != 0 ) {
+  if ( ( flags & ( DO_HSET | DO_HSETNX | DO_HMSET | DO_HINCRBYFLOAT |
+                   DO_HAPPEND ) ) != 0 ) {
     /* HSET/HSETNX/HMSET/HINCRBYFLOAT key field value */
     if ( ! this->msg.get_arg( 2, arg, arglen ) ||
          ! this->msg.get_arg( 3, val, vallen ) )
       return ERR_BAD_ARGS;
     pos.init( arg, arglen );
+    if ( ( flags & DO_HAPPEND ) != 0 ) {
+      if ( this->argc > 4 ) {
+        if ( ! this->msg.get_arg( 4, val2, vallen2 ) )
+          return ERR_BAD_ARGS;
+        argi = 5;
+      }
+    }
   }
   else if ( ( flags & DO_HINCRBY ) != 0 ) {
     /* HINCRBY key field ival */
@@ -390,14 +445,23 @@ RedisExec::do_hwrite( RedisKeyCtx &ctx,  int flags )
     case KEY_IS_NEW:
       count = 2;
       ndata = arglen + vallen + 3;
-      for ( size_t j = argi; j < this->argc; j += 2 ) {
+      for ( size_t j = argi; j < this->argc; ) {
         const char * tmparg, * tmpval;
         size_t       tmplen, tmplen2;
-        if ( ! this->msg.get_arg( j, tmparg, tmplen ) ||
-             ! this->msg.get_arg( j+1, tmpval, tmplen2 ) )
-          return ERR_BAD_ARGS;
-        count++;
-        ndata += tmplen + tmplen2 + 3;
+        if ( ( flags & DO_HAPPEND ) != 0 ) {
+          if ( ! this->msg.get_arg( j, tmpval, tmplen2 ) )
+            return ERR_BAD_ARGS;
+          j++;
+          ndata += tmplen2;
+        }
+        else {
+          if ( ! this->msg.get_arg( j, tmparg, tmplen ) ||
+               ! this->msg.get_arg( j+1, tmpval, tmplen2 ) )
+            return ERR_BAD_ARGS;
+          j += 2;
+          count++;
+          ndata += tmplen + tmplen2 + 3;
+        }
       }
       if ( ! hash.create( count, ndata ) )
         return ERR_KV_STATUS;
@@ -408,14 +472,22 @@ RedisExec::do_hwrite( RedisKeyCtx &ctx,  int flags )
       break;
   }
   for (;;) {
+    /* could just switch( flags ) */
     switch ( flags & ( DO_HSET | DO_HSETNX | DO_HMSET |
-                       DO_HINCRBYFLOAT | DO_HINCRBY ) ) {
+                       DO_HINCRBYFLOAT | DO_HINCRBY | DO_HAPPEND ) ) {
       case DO_HSET:
       case DO_HMSET:
         hstatus = hash.x->hset( arg, arglen, val, vallen, pos );
         break;
       case DO_HSETNX:
         hstatus = hash.x->hsetnx( arg, arglen, val, vallen, pos );
+        break;
+      case DO_HAPPEND:
+        lv.data  = val;
+        lv.sz    = vallen;
+        lv.data2 = val2;
+        lv.sz2   = vallen2;
+        hstatus  = hash.x->happend( arg, arglen, lv, pos );
         break;
       case DO_HINCRBY:
         hstatus = hash.x->hget( arg, arglen, lv, pos );
@@ -473,7 +545,7 @@ RedisExec::do_hwrite( RedisKeyCtx &ctx,  int flags )
       continue;
     }
     switch ( flags & ( DO_HSET | DO_HSETNX | DO_HMSET |
-                       DO_HINCRBYFLOAT | DO_HINCRBY ) ) {
+                       DO_HINCRBYFLOAT | DO_HINCRBY | DO_HAPPEND ) ) {
       case DO_HSET:
         if ( hstatus == HASH_OK )
           return EXEC_SEND_ONE; /* new item indicated with 1 */
@@ -492,6 +564,27 @@ RedisExec::do_hwrite( RedisKeyCtx &ctx,  int flags )
           break;
         }
         return EXEC_SEND_OK; /* send OK status */
+      case DO_HAPPEND:
+        if ( hstatus == HASH_OK )
+          is_new = true;
+        if ( this->argc > argi ) {
+          if ( ! this->msg.get_arg( argi, val, vallen ) )
+            return ERR_BAD_ARGS;
+          argi++;
+          if ( this->argc > argi ) {
+            if ( ! this->msg.get_arg( argi, val2, vallen2 ) )
+              return ERR_BAD_ARGS;
+            argi++;
+          }
+          else {
+            val2    = NULL;
+            vallen2 = 0;
+          }
+          break;
+        }
+        if ( is_new )
+          return EXEC_SEND_ONE; /* new item indicated with 1 */
+        return EXEC_SEND_ZERO; /* HASH_UPDATED, appended existing item */
       case DO_HINCRBYFLOAT:
       case DO_HINCRBY:
         this->strm.sz += sz;

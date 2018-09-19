@@ -16,11 +16,16 @@ struct EvPrefetchQueue;
 
 struct EvHttpService : public EvConnection, public RedisExec {
   uint64_t websock_off;
+  bool is_not_found;
   void * operator new( size_t, void *ptr ) { return ptr; }
 
   EvHttpService( EvPoll &p ) : EvConnection( p, EV_HTTP_SOCK ),
     RedisExec( *p.map, p.ctx_id, *this, p.single_thread ),
-    websock_off( 0 ) {}
+    websock_off( 0 ), is_not_found( false ) {}
+  void initialize_state( void ) {
+    this->websock_off = 0;
+    this->is_not_found = false;
+  }
   void process( bool use_prefetch );
   void process_close( void ) {
     this->RedisExec::release();

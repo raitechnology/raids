@@ -10,6 +10,11 @@ namespace ds {
 struct EvTcpListen : public EvListen {
   EvTcpListen( EvPoll &p ) : EvListen( p ) {}
   int listen( const char *ip,  int port );
+  virtual void accept( void ) {}
+};
+
+struct EvRedisListen : public EvTcpListen {
+  EvRedisListen( EvPoll &p ) : EvTcpListen( p ) {}
   virtual void accept( void );
 };
 

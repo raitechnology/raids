@@ -58,21 +58,32 @@ CommandDB cmd_db[] = {
  * [\"georadiusbymember_ro\",-5,['readonly','movablekeys'],1,1,1]
  * [\"georadius_ro\",-6,['readonly','movablekeys'],1,1,1]
  */
-#define HASH_CNT 15
+#define HASH_CNT 22
   /* hashes */
+{ "HAPPEND", "key field val [val ...]; Append value to a field",
+  "[\"happend\",-4,['write','denyoom','fast'],1,1,1]" },
 { "HDEL", "key field [field ...] ; Delete fields",
   "[\"hdel\",-3,['write','fast'],1,1,1]" },
+{ "HDIFF", "key [key ...] ; Subtract hashes",
+  "[\"hdiff\",-2,['readonly','sort_for_script'],1,-1,1]" },
+{ "HDIFFSTORE", "dest key [key ...] ; Subtract hashes and store",
+  "[\"hdiffstore\",-3,['write','denyoom'],1,-1,1]" },
 { "HEXISTS", "key field ; Test if field exists",
   "[\"hexists\",3,['readonly','fast'],1,1,1]" },
+
 { "HGET", "key field ; Get value of field",
   "[\"hget\",3,['readonly','fast'],1,1,1]" },
 { "HGETALL", "key ; Get all the fields and values",
   "[\"hgetall\",2,['readonly'],1,1,1]" },
 { "HINCRBY", "key field int ; Incr field",
   "[\"hincrby\",4,['write','denyoom','fast'],1,1,1]" },
-
 { "HINCRBYFLOAT", "key field float ; Incr field by float",
   "[\"hincrbyfloat\",4,['write','denyoom','fast'],1,1,1]" },
+{ "HINTER", "key [key ...] ; Intersect hashes",
+  "[\"hinter\",-2,['readonly','sort_for_script'],1,-1,1]" },
+
+{ "HINTERSTORE", "key [key ...] ; Intersect hashes and store",
+  "[\"hinterstore\",-3,['write','denyoom'],1,-1,1]" },
 { "HKEYS", "key ; Get all the fields",
   "[\"hkeys\",2,['readonly','sort_for_script'],1,1,1]" },
 { "HLEN", "key ; Get number of fields",
@@ -92,6 +103,11 @@ CommandDB cmd_db[] = {
   "[\"hvals\",2,['readonly','sort_for_script'],1,1,1]" },
 { "HSCAN", "key cursor [MATCH pat]; Iterate fields",
   "[\"hscan\",-3,['readonly','random'],1,1,1]" },
+
+{ "HUNION", "key [key ...] ; Union hashes",
+  "[\"hunion\",-2,['readonly','sort_for_script'],1,-1,1]" },
+{ "HUNIONSTORE", "dest key [key ...] ; Union hashes and store",
+  "[\"hunionstore\",-3,['write','denyoom'],1,-1,1]" },
 
 #define HYPERLOGLOG_CNT 3
   /* hyperloglog */

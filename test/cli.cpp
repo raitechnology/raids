@@ -78,7 +78,7 @@ StdinCallback::onMsg( RedisMsg &msg )
   void *tmp = this->me.client->tmp.alloc( msg.pack_size() );
   if ( tmp != NULL ) {
     this->me.client->append_iov( tmp, msg.pack( tmp ) );
-    this->me.client->push( EV_WRITE );
+    this->me.client->idle_push( EV_WRITE );
   }
   else
     printf( "pack allocation failed\n" );
@@ -198,11 +198,13 @@ main( int argc, char *argv[] )
     printf( "? " ); fflush( stdout );
     my.term.start( 0 );
     sighndl.install();
-    while ( poll.quit < 5 ) {
-      poll.wait( 100 );
+    for (;;) {
+      if ( poll.quit >= 5 )
+        break;
+      bool idle = poll.dispatch(); /* true if idle, false if busy */
+      poll.wait( idle ? 100 : 0 );
       if ( sighndl.signaled )
-	poll.quit++;
-      poll.dispatch();
+        poll.quit++;
     }
   }
 

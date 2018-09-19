@@ -91,11 +91,11 @@ main( int argc, char *argv[] )
   if ( map == NULL ) /* bad map name, doesn't exist */
     status = 1;
   else {
-    EvPoll       poll( map, ctx_id );
-    EvTcpListen  redis_sv( poll );
-    EvUnixListen redis_un( poll );
-    EvHttpListen http_sv( poll );
-    EvNatsListen nats_sv( poll );
+    EvPoll            poll( map, ctx_id );
+    EvRedisListen     redis_sv( poll );
+    EvRedisUnixListen redis_un( poll );
+    EvHttpListen      http_sv( poll );
+    EvNatsListen      nats_sv( poll );
     int maxfd = atoi( fd );
     if ( maxfd == 0 ) maxfd = 4096;
     poll.init( maxfd, fe[ 0 ] == '1', si[ 0 ] == '1' );
@@ -123,11 +123,13 @@ main( int argc, char *argv[] )
       printf( "nats:                 %s\n", np );
       fflush( stdout );
       sighndl.install();
-      while ( poll.quit < 5 ) {
-	poll.wait( 100 );
+      for (;;) {
+        if ( poll.quit >= 5 )
+          break;
+        bool idle = poll.dispatch(); /* true if idle, false if busy */
+        poll.wait( idle ? 100 : 0 );
         if ( sighndl.signaled )
           poll.quit++;
-	poll.dispatch();
       }
       if ( fe[ 0 ] == '1' )
         for ( size_t i = 0; i < EvPoll::PREFETCH_SIZE; i++ ) {

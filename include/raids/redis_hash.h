@@ -381,12 +381,12 @@ struct HashStorage : public ListStorage<UIntSig, UIntType> {
     hdr.copy2( hdr.data_offset( start, keylen + 1 ), val, vallen );
   }
   /* append a new kv, list val style */
-  HashStatus happend( const ListHeader &hdr,  const void *key,  size_t keylen,
-                      const ListVal &lv,  const HashPos &pos ) {
+  HashStatus hnew( const ListHeader &hdr,  const void *key,  size_t keylen,
+                   const ListVal &lv,  const HashPos &pos ) {
     size_t     start;
     HashStatus hstat = this->hash_append( hdr, pos );
     if ( hstat == HASH_OK ) {
-      hstat = (HashStatus) this->rpush_size( hdr, keylen + lv.sz + lv.sz2 + 1,
+      hstat = (HashStatus) this->rpush_size( hdr, keylen + lv.length() + 1,
                                              start );
       if ( hstat == HASH_OK )
         this->copy_item( hdr, key, keylen, lv, start );
@@ -394,8 +394,8 @@ struct HashStorage : public ListStorage<UIntSig, UIntType> {
     return hstat;
   }
   /* append a new kv */
-  HashStatus happend( const ListHeader &hdr,  const void *key,  size_t keylen,
-                      const void *val,  size_t vallen,  const HashPos &pos ) {
+  HashStatus hnew( const ListHeader &hdr,  const void *key,  size_t keylen,
+                   const void *val,  size_t vallen,  const HashPos &pos ) {
     size_t     start;
     HashStatus hstat = this->hash_append( hdr, pos );
     if ( hstat == HASH_OK ) {
@@ -409,27 +409,25 @@ struct HashStorage : public ListStorage<UIntSig, UIntType> {
   HashStatus hupdate( const ListHeader &hdr,  const void *key,  size_t keylen,
                       const void *val,  size_t vallen,  const HashPos &pos ) {
     if ( pos.i >= this->count )
-      return this->happend( hdr, key, keylen, val, vallen, pos );
+      return this->hnew( hdr, key, keylen, val, vallen, pos );
 
     size_t old_size = this->get_size( hdr, pos.i ),
            new_size = keylen + vallen + 1;
-    if ( old_size != new_size ) {
-      ssize_t amt = (ssize_t) new_size - (ssize_t) old_size;
+    ssize_t amt = (ssize_t) new_size - (ssize_t) old_size;
+    if ( amt != 0 ) {
       if ( amt > 0 ) { /* expand nth data item */
         if ( this->data_full( hdr, amt ) )
           return HASH_FULL;
       }
-      if ( amt != 0 ) {
-        if ( pos.i < this->count / 2 ) {
-          this->move_head( hdr, pos.i, amt );
-          this->adjust_head( hdr, pos.i, amt );
-        }
-        else {
-          this->move_tail( hdr, pos.i, amt );
-          this->adjust_tail( hdr, pos.i, amt );
-        }
-        this->data_len += amt;
+      if ( pos.i < this->count / 2 ) {
+        this->move_head( hdr, pos.i, amt );
+        this->adjust_head( hdr, pos.i, amt );
       }
+      else {
+        this->move_tail( hdr, pos.i, amt );
+        this->adjust_tail( hdr, pos.i, amt );
+      }
+      this->data_len += amt;
       /* replace nth item */
       this->copy_item( hdr, key, keylen, val, vallen,
                        this->get_offset( hdr, pos.i ) );
@@ -438,6 +436,96 @@ struct HashStorage : public ListStorage<UIntSig, UIntType> {
       this->copy_value( hdr, keylen, val, vallen,
                         this->get_offset( hdr, pos.i ) );
     }
+    return HASH_UPDATED;
+  }
+  /* allocate a key and value */
+  HashStatus halloc( const ListHeader &hdr,  const void *key,  size_t keylen,
+                     size_t vallen,  ListVal &lv,  HashPos &pos ) {
+    size_t     start = 0;
+    HashStatus hstat;
+    for ( ; ; pos.i++ ) {
+      if ( ! this->hash_find( hdr, pos ) ||
+           this->match_key( hdr, key, keylen, pos.i ) )
+        break;
+    }
+    /* if new key */
+    if ( pos.i >= this->count ) {
+      hstat = this->hash_append( hdr, pos );
+      if ( hstat == HASH_OK ) {
+        hstat = (HashStatus) this->rpush_size( hdr, keylen + vallen + 1, start);
+        if ( hstat == HASH_OK ) {
+          *(uint8_t *) hdr.blob( start ) = (uint8_t) keylen;
+          start = hdr.data_offset( start, 1 );
+          hdr.copy2( start, key, keylen );
+          start = hdr.data_offset( start, keylen );
+        }
+      }
+      if ( hstat != HASH_OK )
+        return hstat;
+    }
+    /* update existing key */
+    else {
+      size_t old_size = this->get_size( hdr, pos.i ),
+             new_size = keylen + 1 + vallen;
+      ssize_t amt = (ssize_t) new_size - (ssize_t) old_size;
+      if ( amt != 0 ) {
+        if ( amt > 0 ) { /* expand nth data item */
+          if ( this->data_full( hdr, amt ) )
+            return HASH_FULL;
+        }
+        /* adjust the hash entry */
+        this->move_tail( hdr, pos.i, amt );
+        this->adjust_tail( hdr, pos.i, amt );
+        this->data_len += amt;
+      }
+      start = hdr.data_offset( this->get_offset( hdr, pos.i ), keylen + 1 );
+    }
+    /* setup list val to point to new blob */
+    lv.zero();
+    lv.data = hdr.blob( start );
+    size_t end = hdr.data_offset( start, vallen );
+    if ( end >= start ) /* not wrapped */
+      lv.sz = end - start;
+    else {
+      /* wrapped, head is at data end, tail is at data start */
+      size_t len = hdr.data_size() - start;
+      lv.sz    = len;
+      lv.data2 = hdr.blob( 0 );
+      lv.sz2   = end;
+    }
+    return HASH_OK;
+  }
+  /* append a value to a key */
+  HashStatus happend( const ListHeader &hdr,  const void *key,  size_t keylen,
+                      const ListVal &lv,  HashPos &pos ) {
+    for ( ; ; pos.i++ ) {
+      if ( ! this->hash_find( hdr, pos ) ||
+           this->match_key( hdr, key, keylen, pos.i ) )
+        break;
+    }
+    if ( pos.i >= this->count )
+      return this->hnew( hdr, key, keylen, lv, pos );
+
+    size_t old_size = this->get_size( hdr, pos.i ),
+           new_size = old_size + lv.length();
+    if ( old_size == new_size )
+      return HASH_UPDATED; /* zero length lv */
+    /* adjust the hash entry */
+    size_t amt = new_size - old_size;
+    if ( this->data_full( hdr, amt ) )
+      return HASH_FULL;
+    this->move_tail( hdr, pos.i, amt );
+    this->adjust_tail( hdr, pos.i, amt );
+    this->data_len += amt;
+    /* append the data */
+    size_t start = this->get_offset( hdr, pos.i );
+    start = hdr.data_offset( start, old_size );
+    if ( lv.sz > 0 ) {
+      hdr.copy2( start, lv.data, lv.sz );
+      start = hdr.data_offset( start, lv.sz );
+    }
+    if ( lv.sz2 > 0 )
+      hdr.copy2( start, lv.data2, lv.sz2 );
     return HASH_UPDATED;
   }
   /* set a kv, update or append */
@@ -455,7 +543,7 @@ struct HashStorage : public ListStorage<UIntSig, UIntType> {
                      const void *val,  size_t vallen,  HashPos &pos ) {
     for ( ; ; pos.i++ ) {
       if ( ! this->hash_find( hdr, pos ) )
-        return this->happend( hdr, key, keylen, val, vallen, pos );
+        return this->hnew( hdr, key, keylen, val, vallen, pos );
       if ( this->match_key( hdr, key, keylen, pos.i ) )
         return HASH_EXISTS;
     }
@@ -465,7 +553,7 @@ struct HashStorage : public ListStorage<UIntSig, UIntType> {
                      const ListVal &lv,  HashPos &pos ) {
     for ( ; ; pos.i++ ) {
       if ( ! this->hash_find( hdr, pos ) )
-        return this->happend( hdr, key, keylen, lv, pos );
+        return this->hnew( hdr, key, keylen, lv, pos );
       if ( this->match_key( hdr, key, keylen, pos.i ) )
         return HASH_EXISTS;
     }
@@ -654,6 +742,14 @@ struct HashData : public ListData {
   HashStatus hupdate( const void *key,  size_t keylen,
                       const void *val,  size_t vallen,  HashPos &pos ) {
     return HASH_CALL( hupdate( *this, key, keylen, val, vallen, pos ) );
+  }
+  HashStatus halloc( const void *key,  size_t keylen,  size_t vallen,
+                     ListVal &lv,  HashPos &pos ) {
+    return HASH_CALL( halloc( *this, key, keylen, vallen, lv, pos ) );
+  }
+  HashStatus happend( const void *key,  size_t keylen,
+                      const ListVal &lv,  HashPos &pos ) {
+    return HASH_CALL( happend( *this, key, keylen, lv, pos ) );
   }
   HashStatus hsetnx( const void *key,  size_t keylen,
                      const void *val,  size_t vallen,  HashPos &pos ) {

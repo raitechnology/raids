@@ -2,6 +2,7 @@
 #define __rai_raids__ev_nats_h__
 
 #include <raids/ev_tcp.h>
+#include <raids/nats_map.h>
 
 namespace rai {
 namespace ds {
@@ -18,11 +19,10 @@ enum NatsState {
   NATS_PUB_STATE = 1  /* parsing PUB message bytes */
 };
 
-struct HashData;
 struct EvNatsService : public EvConnection {
   void * operator new( size_t, void *ptr ) { return ptr; }
-  HashData * sub_tab,     /* subscriptions open by client */
-           * sid_tab;     /* sub ids for the subs (sid -> sub, sub -> sid) */
+  NatsMap    sub_tab,     /* subscriptions open by client */
+             sid_tab;     /* sub ids for the subs (sid -> sub, sub -> sid) */
 
   char     * msg_ptr;     /* ptr to the msg blob */
   size_t     msg_len;     /* size of the current message blob */
@@ -53,8 +53,6 @@ struct EvNatsService : public EvConnection {
 
   EvNatsService( EvPoll &p ) : EvConnection( p, EV_NATS_SOCK ) {}
   void initialize_state( void ) {
-    this->sub_tab   = NULL;
-    this->sid_tab   = NULL;
     this->msg_ptr   = NULL;
     this->msg_len   = 0;
     this->msg_state = NATS_HDR_STATE;
@@ -73,9 +71,10 @@ struct EvNatsService : public EvConnection {
     this->user = this->pass = this->auth_token = NULL;
   }
   void process( bool use_prefetch );
-  HashData * resize_tab( HashData *curr,  size_t add_len );
+  /*HashData * resize_tab( HashData *curr,  size_t add_len );*/
   void add_sub( void );
-  void rem_sub( void );
+  void rem_sid( uint32_t max_msgs );
+  void rem_sid_key( StrHashKey &sidkey );
   void rem_all_sub( void );
   bool fwd_pub( void );
   bool publish( EvPublish &pub );

@@ -81,6 +81,9 @@ struct ListVal {
     this->data = this->data2 = NULL;
     this->sz = this->sz2 = 0;
   }
+  size_t length( void ) const {
+    return this->sz + this->sz2;
+  }
   /* concatenate data and data2 */
   size_t concat( void *out,  size_t out_sz ) const {
     size_t y, x = kv::min<size_t>( this->sz, out_sz );
@@ -97,9 +100,9 @@ struct ListVal {
   }
   /* get data pointer, with copy or malloc if region is split into data/data2 */
   size_t unitary( void *&out,  void *buf,  size_t buf_sz,  bool &is_a ) const {
-    if ( this->sz + this->sz2 != this->sz ) { /* if sz != 0 and sz2 != 0 */
-      if ( buf_sz < this->sz + this->sz2 ) {
-        buf = ::malloc( this->sz + this->sz2 );
+    if ( this->length() != this->sz ) { /* if sz != 0 and sz2 != 0 */
+      if ( buf_sz < this->length() ) {
+        buf = ::malloc( this->length() );
         if ( buf == NULL ) {
           out = NULL;
           return 0;
@@ -114,7 +117,7 @@ struct ListVal {
       out = (void *) this->data;
     else
       out = (void *) this->data2;
-    return this->sz + this->sz2;
+    return this->length();
   }
   /* does memcmp:  key - lv == lv.cmp_key( key, keylen ) */
   int cmp_key( const void *key,  size_t keylen ) const {
@@ -141,6 +144,64 @@ struct ListVal {
       }
     }
     return cmp;
+  }
+  size_t copy_out( void *dest,  size_t off,  size_t len ) const {
+    size_t i = 0;
+    while ( off < this->sz ) {
+      ((uint8_t *) dest)[ i++ ] = ((const uint8_t *) this->data)[ off++ ];
+      if ( --len == 0 )
+        return i;
+    }
+    off -= this->sz;
+    while ( off < this->sz2 ) {
+      ((uint8_t *) dest)[ i++ ] = ((const uint8_t *) this->data2)[ off++ ];
+      if ( --len == 0 )
+        break;
+    }
+    return i;
+  }
+  size_t copy_in( const void *src,  size_t off,  size_t len ) {
+    size_t i = 0;
+    while ( off < this->sz ) {
+      ((uint8_t *) this->data)[ off++ ] = ((const uint8_t *) src)[ i++ ];
+      if ( --len == 0 )
+        return i;
+    }
+    off -= this->sz;
+    while ( off < this->sz2 ) {
+      ((uint8_t *) this->data)[ off++ ] = ((const uint8_t *) src)[ i++ ];
+      if ( --len == 0 )
+        break;
+    }
+    return i;
+  }
+  uint8_t get_byte( size_t off ) const {
+    if ( off < this->sz )
+      return ((const uint8_t *) this->data)[ off ];
+    return ((const uint8_t *) this->data2)[ off - this->sz ];
+  }
+  void put_byte( size_t off,  uint8_t b ) {
+    if ( off < this->sz )
+      ((uint8_t *) this->data)[ off ] = b;
+    else
+      ((uint8_t *) this->data2)[ off - this->sz ] = b;
+  }
+  int cmp( const void *blob,  size_t off,  size_t len ) const {
+    size_t i = 0;
+    while ( off < this->sz ) {
+      int8_t j = ((const int8_t *) blob)[ i++ ] -
+                 ((const int8_t *) this->data)[ off++ ];
+      if ( j != 0 || --len == 0 )
+        return j;
+    }
+    off -= this->sz;
+    while ( off < this->sz2 ) {
+      int8_t j = ((const int8_t *) blob)[ i++ ] -
+                 ((const int8_t *) this->data)[ off++ ];
+      if ( j != 0 || --len == 0 )
+        return j;
+    }
+    return 1; /* len > sz + sz2 */
   }
 };
 
@@ -239,7 +300,7 @@ struct ListStorage {
   /* push data/size at tail */
   ListStatus rpush( const ListHeader &hdr,  const ListVal &lv ) {
     size_t start;
-    ListStatus lstat = this->rpush_size( hdr, lv.sz + lv.sz2, start );
+    ListStatus lstat = this->rpush_size( hdr, lv.length(), start );
     if ( lstat == LIST_OK ) {
       if ( lv.sz > 0 )
         this->copy_into( hdr, lv.data, lv.sz, start );
@@ -399,7 +460,7 @@ struct ListStorage {
     if ( n != LIST_NOT_FOUND ) {
       this->first = ( this->first + 1 ) & hdr.index_mask;
       this->count -= 1;
-      this->data_len -= ( lv.sz + lv.sz2 );
+      this->data_len -= ( lv.length() );
     }
     return n;
   }
@@ -409,7 +470,7 @@ struct ListStorage {
     n = this->lindex( hdr, this->count - 1, lv );
     if ( n != LIST_NOT_FOUND ) {
       this->count -= 1;
-      this->data_len -= ( lv.sz + lv.sz2 );
+      this->data_len -= ( lv.length() );
     }
     return n;
   }

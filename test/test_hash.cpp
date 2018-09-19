@@ -178,6 +178,33 @@ main( int, char ** )
     }
 
     switch ( cmd ) {
+      case HAPPEND_CMD: /* HAPPEND key field [field ...] */
+        if ( ! msg.get_arg( 2, arg, arglen ) )
+          goto bad_args;
+        pos.init( arg, arglen );
+        for ( i = 3; i < argcount; i += 2 ) {
+          if ( ! msg.get_arg( i, val, vallen ) )
+            goto bad_args;
+          lv.data  = val;
+          lv.sz    = vallen;
+          if ( i + 1 < argcount ) {
+            if ( ! msg.get_arg( i+1, val, vallen ) )
+              goto bad_args;
+            lv.data2 = val;
+            lv.sz2   = vallen;
+          }
+          else {
+            lv.data2 = NULL;
+            lv.sz2   = 0;
+          }
+          for (;;) {
+            hstat = hk->ht->happend( arg, arglen, lv, pos );
+            printf( "%s\n", hash_status_string[ hstat ] );
+            if ( hstat != HASH_FULL ) break;
+            hk->ht = resize_hash( hk->ht, arglen + 1 + lv.sz + lv.sz2 );
+          }
+        }
+        break;
       case HDEL_CMD:    /* HDEL key field [field ...] */
         sz = 0;
         for ( i = 2; i < argcount; i++ ) {

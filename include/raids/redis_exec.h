@@ -74,7 +74,7 @@ struct RedisKeyTempResult {
 
 struct RedisKeyCtx {
   void * operator new( size_t, void *ptr ) { return ptr; }
-  bool operator>( const RedisKeyCtx *ctx2 ) const;
+  static bool is_greater( RedisKeyCtx *ctx,  RedisKeyCtx *ctx2 );
   uint64_t             hash1,  /* 128 bit hash of key */
                        hash2;
   RedisExec          & exec;   /* parent context */
@@ -113,7 +113,8 @@ struct RedisKeyCtx {
   const char *get_type_str( void ) const;
 };
 
-struct EvPrefetchQueue : public kv::PrioQueue<RedisKeyCtx *> {
+struct EvPrefetchQueue :
+    public kv::PrioQueue<RedisKeyCtx *, RedisKeyCtx::is_greater> {
   void * operator new( size_t, void *ptr ) { return ptr; }
   void operator delete( void *ptr ) { ::free( ptr ); }
 
@@ -221,12 +222,17 @@ struct RedisExec {
   ExecStatus do_gradius( RedisKeyCtx &ctx,  int flags );
   ExecStatus do_gradius_store( RedisKeyCtx &ctx );
   /* HASH */
+  ExecStatus exec_happend( RedisKeyCtx &ctx );
   ExecStatus exec_hdel( RedisKeyCtx &ctx );
+  ExecStatus exec_hdiff( RedisKeyCtx &ctx );
+  ExecStatus exec_hdiffstore( RedisKeyCtx &ctx );
   ExecStatus exec_hexists( RedisKeyCtx &ctx );
   ExecStatus exec_hget( RedisKeyCtx &ctx );
   ExecStatus exec_hgetall( RedisKeyCtx &ctx );
   ExecStatus exec_hincrby( RedisKeyCtx &ctx );
   ExecStatus exec_hincrbyfloat( RedisKeyCtx &ctx );
+  ExecStatus exec_hinter( RedisKeyCtx &ctx );
+  ExecStatus exec_hinterstore( RedisKeyCtx &ctx );
   ExecStatus exec_hkeys( RedisKeyCtx &ctx );
   ExecStatus exec_hlen( RedisKeyCtx &ctx );
   ExecStatus exec_hmget( RedisKeyCtx &ctx );
@@ -236,6 +242,8 @@ struct RedisExec {
   ExecStatus exec_hstrlen( RedisKeyCtx &ctx );
   ExecStatus exec_hvals( RedisKeyCtx &ctx );
   ExecStatus exec_hscan( RedisKeyCtx &ctx );
+  ExecStatus exec_hunion( RedisKeyCtx &ctx );
+  ExecStatus exec_hunionstore( RedisKeyCtx &ctx );
   ExecStatus do_hmultiscan( RedisKeyCtx &ctx,  int flags,  ScanArgs *hs );
   ExecStatus do_hread( RedisKeyCtx &ctx,  int flags );
   ExecStatus do_hwrite( RedisKeyCtx &ctx,  int flags );
@@ -468,13 +476,13 @@ RedisKeyCtx::run( EvSocket *&svc )
 }
 
 inline bool
-RedisKeyCtx::operator>( const RedisKeyCtx *ctx2 ) const
+RedisKeyCtx::is_greater( RedisKeyCtx *ctx,  RedisKeyCtx *ctx2 )
 {
-  if ( this->dep > ctx2->dep )
+  if ( ctx->dep > ctx2->dep )
     return true;
-  if ( this->dep == ctx2->dep ) {
-    kv::HashTab &ht = this->exec.kctx.ht;
-    return ht.hdr.ht_mod( this->hash1 ) > ht.hdr.ht_mod( ctx2->hash1 );
+  if ( ctx->dep == ctx2->dep ) {
+    kv::HashTab &ht = ctx->exec.kctx.ht;
+    return ht.hdr.ht_mod( ctx->hash1 ) > ht.hdr.ht_mod( ctx2->hash1 );
   }
   return false;
 }

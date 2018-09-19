@@ -429,12 +429,17 @@ RedisExec::exec_key_continue( RedisKeyCtx &ctx )
       case GEORADIUSBYMEMBER_CMD:
                         ctx.status = this->exec_georadiusbymember( ctx ); break;
       /* HASH */
+      case HAPPEND_CMD:   ctx.status = this->exec_happend( ctx ); break;
       case HDEL_CMD:      ctx.status = this->exec_hdel( ctx ); break;
+      case HDIFF_CMD:     ctx.status = this->exec_hdiff( ctx ); break;
+      case HDIFFSTORE_CMD: ctx.status = this->exec_hdiffstore( ctx ); break;
       case HEXISTS_CMD:   ctx.status = this->exec_hexists( ctx ); break;
       case HGET_CMD:      ctx.status = this->exec_hget( ctx ); break;
       case HGETALL_CMD:   ctx.status = this->exec_hgetall( ctx ); break;
       case HINCRBY_CMD:   ctx.status = this->exec_hincrby( ctx ); break;
       case HINCRBYFLOAT_CMD: ctx.status = this->exec_hincrbyfloat( ctx ); break;
+      case HINTER_CMD:    ctx.status = this->exec_hinter( ctx ); break;
+      case HINTERSTORE_CMD: ctx.status = this->exec_hinterstore( ctx ); break;
       case HKEYS_CMD:     ctx.status = this->exec_hkeys( ctx ); break;
       case HLEN_CMD:      ctx.status = this->exec_hlen( ctx ); break;
       case HMGET_CMD:     ctx.status = this->exec_hmget( ctx ); break;
@@ -444,6 +449,8 @@ RedisExec::exec_key_continue( RedisKeyCtx &ctx )
       case HSTRLEN_CMD:   ctx.status = this->exec_hstrlen( ctx ); break;
       case HVALS_CMD:     ctx.status = this->exec_hvals( ctx ); break;
       case HSCAN_CMD:     ctx.status = this->exec_hscan( ctx ); break;
+      case HUNION_CMD:    ctx.status = this->exec_hunion( ctx ); break;
+      case HUNIONSTORE_CMD: ctx.status = this->exec_hunionstore( ctx ); break;
       /* HYPERLOGLOG */
       case PFADD_CMD:     ctx.status = this->exec_pfadd( ctx ); break;
       case PFCOUNT_CMD:   ctx.status = this->exec_pfcount( ctx ); break;

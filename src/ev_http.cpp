@@ -28,12 +28,12 @@ EvHttpListen::accept( void )
     if ( errno != EINTR ) {
       if ( errno != EAGAIN )
         perror( "accept" );
-      this->pop( EV_READ );
+      this->pop3( EV_READ, EV_READ_LO, EV_READ_HI );
     }
     return;
   }
-  EvHttpService * c;
-  if ( (c = (EvHttpService *) this->poll.free_http) != NULL )
+  EvHttpService * c = this->poll.free_http.hd;
+  if ( c != NULL )
     c->pop_free_list();
   else {
     void * m = aligned_malloc( sizeof( EvHttpService ) * EvPoll::ALLOC_INCR );
@@ -59,7 +59,8 @@ EvHttpListen::accept( void )
     perror( "warning: TCP_NODELAY" );
   ::fcntl( sock, F_SETFL, O_NONBLOCK | ::fcntl( sock, F_GETFL ) );
   c->fd = sock;
-  if ( c->add_poll() < 0 ) {
+  c->initialize_state();
+  if ( this->poll.add_sock( c ) < 0 ) {
     ::close( sock );
     c->push_free_list();
   }
@@ -83,15 +84,13 @@ EvHttpService::process( bool /*use_prefetch*/ )
   char            * line[ 64 ];
   size_t            llen[ 64 ];
 
+  if ( this->is_not_found )
+    goto is_closed;
   for (;;) { 
     buflen = this->len - this->off;
     if ( buflen == 0 )
       goto break_loop;
 
-    if ( strm.idx + strm.vlen / 4 >= strm.vlen ) {
-      if ( this->try_write() == 0 || strm.idx + 8 >= strm.vlen )
-        goto need_write;
-    }
     start = &this->recv[ this->off ];
     end   = &start[ buflen ];
 
@@ -181,28 +180,23 @@ EvHttpService::process( bool /*use_prefetch*/ )
     /* decode http hdrs */
     for ( p = start; p < end; ) {
       eol = (char *) ::memchr( &p[ 1 ], '\n', end - &p[ 1 ] );
-      if ( eol != NULL ) {
-        sz = &eol[ 1 ] - p;
-        if ( sz <= 2 ) {
-          used = &eol[ 1 ] - start;
-          break;
-        }
-        line[ i ] = p;
-        llen[ i ] = sz;
-        p = &eol[ 1 ];
-        i++;
-        if ( i == 64 ) {
-          fprintf( stderr, "http header has too many lines (%ld)\n", i );
-          goto not_found;
-        }
-      }
-      else {
-        if ( ! this->try_read() )
-          goto break_loop;
+      if ( eol == NULL )
+        break;
+      sz = &eol[ 1 ] - p;
+      if ( sz <= 2 ) {
+        used = &eol[ 1 ] - start;
         break;
       }
+      line[ i ] = p;
+      llen[ i ] = sz;
+      p = &eol[ 1 ];
+      i++;
+      if ( i == 64 ) {
+        fprintf( stderr, "http header has too many lines (%ld)\n", i );
+        goto not_found;
+      }
     }
-    if ( used == 0 )
+    if ( used == 0 ) /* if didn't find line break which terminates hdrs */
       goto break_loop;
     this->off += used;
 
@@ -267,26 +261,31 @@ EvHttpService::process( bool /*use_prefetch*/ )
         else
           goto not_found;
       }
-      else if ( ! this->send_file( line[ 0 ], llen[ 0 ] ) )
-        goto not_found;
-      //printf( "-> ok\n" );
+      else {
+        printf( "-> %.*s\n", (int) llen[ 0 ], line[ 0 ] );
+        if ( ! this->send_file( line[ 0 ], llen[ 0 ] ) )
+          goto not_found;
+      }
     }
     else
       goto not_found;
     //strm.append( indexhtml, sizeof( indexhtml ) - 1 );
   }
+break_loop:;
+  this->pop( EV_PROCESS );
+  if ( strm.pending() > 0 )
+    this->push( EV_WRITE );
+  return;
+
+is_closed:;
+  this->pushpop( EV_CLOSE, EV_PROCESS );
+  return;
+
 not_found:;
   printf( "-> not found\n" );
   strm.append( page404, sizeof( page404 ) - 1 );
-is_closed:;
-  this->push( EV_CLOSE );
-break_loop:;
-  this->pop( EV_PROCESS );
-  if ( strm.pending() > 0 ) {
-need_write:;
-    this->push( EV_WRITE );
-  }
-  return;
+  this->push( EV_WRITE_HI );
+  this->is_not_found = true;
 }
 
 size_t
@@ -567,7 +566,6 @@ EvHttpService::send_ws_pong( const char *payload,  size_t len )
 void
 EvHttpService::release( void )
 {
-  this->websock_off = 0; /* this structure will be reused w/different fd */
   this->RedisExec::release();
   this->EvConnection::release();
   this->push_free_list();
@@ -576,17 +574,21 @@ EvHttpService::release( void )
 void
 EvHttpService::push_free_list( void )
 {
-  if ( this->state != 0 )
-    this->popall();
-  this->next[ 0 ] = this->poll.free_http;
-  this->poll.free_http = this;
+  if ( this->listfl == IN_ACTIVE_LIST )
+    fprintf( stderr, "redis sock should not be in active list\n" );
+  else if ( this->listfl != IN_FREE_LIST ) {
+    this->listfl = IN_FREE_LIST;
+    this->poll.free_http.push_hd( this );
+  }
 }
 
 void
 EvHttpService::pop_free_list( void )
 {
-  this->poll.free_http = this->next[ 0 ];
-  this->next[ 0 ] = NULL;
+  if ( this->listfl == IN_FREE_LIST ) {
+    this->listfl = IN_NO_LIST;
+    this->poll.free_http.pop( this );
+  }
 }
 
 
