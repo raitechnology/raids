@@ -61,7 +61,7 @@ init_server_info( uint64_t h1,  uint64_t h2,  uint16_t port )
       if ( p->ai_family == AF_INET && p->ai_addr != NULL ) {
         char *ip = ::inet_ntoa( ((struct sockaddr_in *) p->ai_addr)->sin_addr );
         size_t len = ::strlen( ip );
-        ::strncpy( &nats_server_info[ 84 ], ip, len );
+        ::memcpy( &nats_server_info[ 84 ], ip, len );
         nats_server_info[ 84 + len++ ] = '\"';
         nats_server_info[ 84 + len++ ] = ',';
         while ( len < 17 )

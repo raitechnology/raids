@@ -44,15 +44,20 @@ CFLAGS ?= $(default_cflags)
 cflags := $(gcc_wflags) $(CFLAGS) $(arch_cflags)
 
 # where to find the raids/xyz.h files
-INCLUDES    ?= -I/usr/local/include/dfp -Iinclude
+#INCLUDES    ?= -I/usr/local/include/dfp -Iinclude
+INCLUDES    ?= -Iinclude -Iraikv/include -Ih3/src/h3lib/include -Ilibdfp
 includes    := $(INCLUDES)
 DEFINES     ?=
 defines     := $(DEFINES)
 cpp_lnk     :=
 sock_lib    :=
-math_lib    := -L/usr/local/lib -ldfp -lh3 -lm
+#math_lib    := -L/usr/local/lib -ldfp -lh3 -lm
+math_lib    := -lm
 thread_lib  := -pthread -lrt
-dep_lib     := -lraikv -lpcre2-8 -lcrypto
+h3_lib      := h3/lib/libh3.a
+dfp_lib     := libdfp/libdecnumber/libdecnumber.a
+kv_lib      := raikv/$(libd)/libraikv.a
+dep_lib     := $(dfp_lib) $(h3_lib) $(kv_lib) -lpcre2-8 -lcrypto
 malloc_lib  :=
 
 # targets filled in below
@@ -70,13 +75,13 @@ ver_build   := $(version)-$(build_num)
 defines     := -DDS_VER=$(ver_build)
 
 .PHONY: everything
-everything: all
+everything: $(kv_lib) $(h3_lib) $(dfp_lib) all
 
 libraids_files := ev_net ev_service ev_http ev_client ev_tcp ev_unix ev_nats \
                   stream_buf route_db redis_msg redis_cmd_db redis_exec \
 		  redis_geo redis_hash redis_hyperloglog redis_key redis_list \
 		  redis_pubsub redis_script redis_set redis_sortedset \
-		  redis_stream redis_string redis_transaction
+		  redis_stream redis_string redis_transaction decimal
 libraids_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(libraids_files)))
 libraids_dbjs  := $(addprefix $(objd)/, $(addsuffix .fpic.o, $(libraids_files)))
 libraids_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(libraids_files))) \
@@ -208,22 +213,41 @@ test_delta_lnk   := $(test_delta_libs) $(dep_lib)
 
 $(bind)/test_delta: $(test_delta_objs) $(test_delta_libs)
 
+test_decimal_files := test_decimal
+test_decimal_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(test_decimal_files)))
+test_decimal_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(test_decimal_files)))
+test_decimal_libs  := $(libd)/libraids.a
+test_decimal_lnk   := $(test_decimal_libs) $(dep_lib)
+
+$(bind)/test_decimal: $(test_decimal_objs) $(test_decimal_libs)
+
 all_exes    += $(bind)/server $(bind)/client $(bind)/test_msg \
                $(bind)/redis_cmd $(bind)/test_cmd $(bind)/test_list \
 	       $(bind)/test_hash $(bind)/test_set $(bind)/test_zset \
 	       $(bind)/test_hllnum $(bind)/test_hllw $(bind)/test_hllsub \
-	       $(bind)/test_geo $(bind)/test_routes $(bind)/test_delta
+	       $(bind)/test_geo $(bind)/test_routes $(bind)/test_delta \
+	       $(bind)/test_decimal
 all_depends += $(server_deps) $(client_deps) $(test_msg_deps) \
                $(redis_cmd_deps) $(test_cmd_deps) $(test_list_deps) \
 	       $(test_hash_deps) $(test_set_deps) $(test_zset_deps) \
 	       $(test_hllnum_deps) $(test_hllw_deps) $(test_hllsub_deps) \
-	       $(test_geo_deps) $(test_routes_deps) $(test_delta_deps)
+	       $(test_geo_deps) $(test_routes_deps) $(test_delta_deps) \
+	       $(test_decimal_deps)
 
 all_dirs := $(bind) $(libd) $(objd) $(dependd)
 
 include/raids/redis_cmd.h: $(bind)/redis_cmd
 	$(bind)/redis_cmd > include/raids/redis_cmd.h
 gen_files += include/raids/redis_cmd.h
+
+$(kv_lib):
+	(cd raikv ; make)
+
+$(h3_lib):
+	(cd h3 ; cmake . ; make)
+
+$(dfp_lib):
+	(cd libdfp ; configure ; make)
 
 # the default targets
 .PHONY: all
@@ -256,11 +280,20 @@ dist_bins: $(all_libs) $(bind)/server
 $(objd)/%.o: src/%.cpp
 	$(cpp) $(cflags) $(cppflags) $(includes) $(defines) $($(notdir $*)_includes) $($(notdir $*)_defines) -c $< -o $@
 
+$(objd)/%.o: src/%.c
+	$(cc) $(cflags) $(includes) $(defines) $($(notdir $*)_includes) $($(notdir $*)_defines) -c $< -o $@
+
 $(objd)/%.fpic.o: src/%.cpp
 	$(cpp) $(cflags) $(fpicflags) $(cppflags) $(includes) $(defines) $($(notdir $*)_includes) $($(notdir $*)_defines) -c $< -o $@
 
+$(objd)/%.fpic.o: src/%.c
+	$(cc) $(cflags) $(fpicflags) $(includes) $(defines) $($(notdir $*)_includes) $($(notdir $*)_defines) -c $< -o $@
+
 $(objd)/%.o: test/%.cpp
 	$(cpp) $(cflags) $(cppflags) $(includes) $(defines) $($(notdir $*)_includes) $($(notdir $*)_defines) -c $< -o $@
+
+$(objd)/%.o: test/%.c
+	$(cc) $(cflags) $(includes) $(defines) $($(notdir $*)_includes) $($(notdir $*)_defines) -c $< -o $@
 
 $(libd)/%.a:
 	ar rc $@ $($(*)_objs)
@@ -275,8 +308,18 @@ $(bind)/%:
 $(dependd)/%.d: src/%.cpp
 	gcc -x c++ $(arch_cflags) $(defines) $(includes) $($(notdir $*)_includes) $($(notdir $*)_defines) -MM $< -MT $(objd)/$(*).o -MF $@
 
+$(dependd)/%.d: src/%.c
+	gcc $(arch_cflags) $(defines) $(includes) $($(notdir $*)_includes) $($(notdir $*)_defines) -MM $< -MT $(objd)/$(*).o -MF $@
+
 $(dependd)/%.fpic.d: src/%.cpp
 	gcc -x c++ $(arch_cflags) $(defines) $(includes) $($(notdir $*)_includes) $($(notdir $*)_defines) -MM $< -MT $(objd)/$(*).fpic.o -MF $@
 
+$(dependd)/%.fpic.d: src/%.c
+	gcc $(arch_cflags) $(defines) $(includes) $($(notdir $*)_includes) $($(notdir $*)_defines) -MM $< -MT $(objd)/$(*).fpic.o -MF $@
+
 $(dependd)/%.d: test/%.cpp
 	gcc -x c++ $(arch_cflags) $(defines) $(includes) $($(notdir $*)_includes) $($(notdir $*)_defines) -MM $< -MT $(objd)/$(*).o -MF $@
+
+$(dependd)/%.d: test/%.c
+	gcc $(arch_cflags) $(defines) $(includes) $($(notdir $*)_includes) $($(notdir $*)_defines) -MM $< -MT $(objd)/$(*).o -MF $@
+

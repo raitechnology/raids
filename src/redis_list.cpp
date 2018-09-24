@@ -359,7 +359,7 @@ RedisExec::do_pop( RedisKeyCtx &ctx,  int flags )
     if ( ! this->msg.get_arg( 2, start ) || ! this->msg.get_arg( 3, stop ) )
       return ERR_BAD_ARGS;
   }
-
+  lv.zero();
   switch ( list.get_key_write() ) {
     default:           return ERR_KV_STATUS;
     case KEY_NO_VALUE: return ERR_BAD_TYPE;

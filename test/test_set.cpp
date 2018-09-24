@@ -1,6 +1,4 @@
-#define __STDC_WANT_DEC_FP__ 1
 #include <stdio.h>
-#include <float.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>

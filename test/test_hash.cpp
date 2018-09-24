@@ -1,6 +1,4 @@
-#define __STDC_WANT_DEC_FP__ 1
 #include <stdio.h>
-#include <float.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
@@ -10,6 +8,7 @@
 #include <raikv/work.h>
 #include <raikv/key_hash.h>
 #include <raids/redis_hash.h>
+#include <raids/decimal.h>
 
 static const char *
 hash_status_string[]= { "ok", "not found", "full", "updated", "exists", "bad" };
@@ -124,14 +123,14 @@ main( int, char ** )
   RedisMsg msg;
   kv::WorkAllocT< 4096 > tmp;
   char upper_cmd[ 32 ], ibuf[ 64 ];
-  size_t sz, i, count;
+  size_t sz, i, count, retry;
   size_t cmdlen, arglen, vallen, fvallen, argcount, namelen;
   const char *cmdbuf, *arg, *val, *fval, *name;
   ListVal lv;
   HashVal kv;
   HashPos pos;
   int64_t ival, jval;
-  _Decimal128 fp;
+  Decimal128 fp;
   RedisMsgStatus mstatus;
   RedisCmd cmd;
   HashStatus hstat;
@@ -176,6 +175,7 @@ main( int, char ** )
       printf( "out of mem\n" );
       return 1;
     }
+    retry = 0;
 
     switch ( cmd ) {
       case HAPPEND_CMD: /* HAPPEND key field [field ...] */
@@ -201,7 +201,8 @@ main( int, char ** )
             hstat = hk->ht->happend( arg, arglen, lv, pos );
             printf( "%s\n", hash_status_string[ hstat ] );
             if ( hstat != HASH_FULL ) break;
-            hk->ht = resize_hash( hk->ht, arglen + 1 + lv.sz + lv.sz2 );
+            hk->ht = resize_hash( hk->ht,
+                                  arglen + 1 + lv.sz + lv.sz2 + retry++ );
           }
         }
         break;
@@ -290,7 +291,7 @@ main( int, char ** )
             break;
           }
           printf( "%s\n", hash_status_string[ hstat ] );
-          hk->ht = resize_hash( hk->ht, arglen + vallen + 1 );
+          hk->ht = resize_hash( hk->ht, arglen + vallen + 1 + retry++ );
         }
         break;
       case HINCRBYFLOAT_CMD: /* HINCRBYFLOAT key field float */
@@ -303,15 +304,13 @@ main( int, char ** )
         if ( ! is_new ) {
           sz = lv.concat( ibuf, sizeof( ibuf ) - 1 );
           ibuf[ sz ] = '\0';
-          fp = ::strtod128( ibuf, NULL );
+          fp = Decimal128::parse( ibuf );
         }
         else {
-          fp = 0.0DL;
+          fp.zero();
         }
-        fp += ::strtod128( fval, NULL );
-        static char DDfmt[5] = { '%', 'D', 'D', 'a', 0 };
-        sz  = ::snprintf( ibuf, sizeof( ibuf ), DDfmt, fp );
-        if ( sz == 0 ) sz = ::strlen( ibuf );
+        fp += Decimal128::parse_len( fval, fvallen );
+        sz  = fp.to_string( ibuf );
         for (;;) {
           hstat = hk->ht->hupdate( arg, arglen, ibuf, sz, pos );
           if ( hstat != HASH_FULL ) {
@@ -319,7 +318,7 @@ main( int, char ** )
             break;
           }
           printf( "%s\n", hash_status_string[ hstat ] );
-          hk->ht = resize_hash( hk->ht, arglen + vallen + 1 );
+          hk->ht = resize_hash( hk->ht, arglen + vallen + 1 + retry++ );
         }
         break;
       case HKEYS_CMD:   /* HKEYS key */
@@ -364,7 +363,7 @@ main( int, char ** )
             hstat = hk->ht->hset( arg, arglen, val, vallen, pos );
             printf( "%s\n", hash_status_string[ hstat ] );
             if ( hstat != HASH_FULL ) break;
-            hk->ht = resize_hash( hk->ht, arglen + vallen + 1 );
+            hk->ht = resize_hash( hk->ht, arglen + vallen + 1 + retry++ );
           }
         }
         break;
@@ -377,7 +376,7 @@ main( int, char ** )
           hstat = hk->ht->hsetnx( arg, arglen, val, vallen, pos );
           printf( "%s\n", hash_status_string[ hstat ] );
           if ( hstat != HASH_FULL ) break;
-          hk->ht = resize_hash( hk->ht, arglen + vallen + 1 );
+          hk->ht = resize_hash( hk->ht, arglen + vallen + 1 + retry++ );
         }
         break;
       case HSTRLEN_CMD: /* HSTRLEN key field */

@@ -1,6 +1,4 @@
-#define __STDC_WANT_DEC_FP__ 1
 #include <stdio.h>
-#include <float.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
@@ -770,10 +768,11 @@ RedisExec::do_gradius_store( RedisKeyCtx &ctx )
         stp.par[ i ]->dist /= units; /* m -> km */
     }
     for ( i = 0; i < stp.listcnt; i++ ) {
-      double       dist    = stp.par[ i ]->dist;
+      ZScore       dist;
       const char * name    = stp.par[ i ]->name;
       size_t       namelen = ::strlen( name );
 
+      dist = stp.par[ i ]->dist;
       pos.init( name, namelen );
       while ( zset.x->zadd( name, namelen, dist, pos, 0, NULL ) == ZSET_FULL )
         if ( ! zset.realloc( namelen + 1 + sizeof( ZScore ) ) )

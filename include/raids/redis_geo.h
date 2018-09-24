@@ -2,7 +2,7 @@
 #define __rai_raids__redis_geo_h__
 
 #include <raids/redis_zset.h>
-#include <h3/h3api.h>
+#include <h3api.h>
 
 namespace rai {
 namespace ds {

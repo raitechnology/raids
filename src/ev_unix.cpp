@@ -28,12 +28,13 @@ EvUnixListen::listen( const char *path )
     perror( "error: socket" );
     return -1;
   }
+  ::memset( &sunaddr, 0, sizeof( sunaddr ) );
   sunaddr.sun_family = AF_LOCAL;
   if ( ::stat( path, &statbuf ) == 0 &&
        statbuf.st_size == 0 ) { /* make sure it's empty */
     ::unlink( path );
   }
-  ::strncpy( sunaddr.sun_path, path, sizeof( sunaddr.sun_path ) );
+  ::strncpy( sunaddr.sun_path, path, sizeof( sunaddr.sun_path ) - 1 );
 
   if ( ::setsockopt( sock, SOL_SOCKET, SO_REUSEADDR, &on, sizeof( on ) ) != 0 )
     perror( "warning: SO_REUSEADDR" );
@@ -105,8 +106,9 @@ EvUnixClient::connect( const char *path )
     perror( "error: socket" );
     return -1;
   }
+  ::memset( &sunaddr, 0, sizeof( sunaddr ) );
   sunaddr.sun_family = AF_LOCAL;
-  ::strncpy( sunaddr.sun_path, path, sizeof( sunaddr.sun_path ) );
+  ::strncpy( sunaddr.sun_path, path, sizeof( sunaddr.sun_path ) - 1 );
   if ( ::connect( sock, (struct sockaddr *) &sunaddr,
                   sizeof( sunaddr ) ) != 0 ) {
     perror( "error: connect" );

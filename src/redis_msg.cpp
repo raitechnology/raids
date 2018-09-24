@@ -483,7 +483,7 @@ RedisMsg::str_to_dbl( const char *str,  size_t sz,  double &fval )
     sz = sizeof( buf ) - 1;
   ::memcpy( buf, str, sz );
   buf[ sz ] = '\0';
-  fval = strtod( buf, &endptr );
+  fval = ::strtod( buf, &endptr );
   if ( endptr == buf )
     return REDIS_MSG_BAD_FLOAT;
   if ( fval == 0 && errno == ERANGE )

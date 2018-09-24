@@ -1,0 +1,9 @@
+[submodule "raikv"]
+	path = raikv
+	url = git@github.com:raitechnology/raikv.git
+[submodule "h3"]
+	path = h3
+	url = git@github.com:raitechnology/h3.git
+[submodule "libdfp"]
+	path = libdfp
+	url = git@github.com:raitechnology/libdfp.git

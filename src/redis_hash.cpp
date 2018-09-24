@@ -1,6 +1,4 @@
-#define __STDC_WANT_DEC_FP__ 1
 #include <stdio.h>
-#include <float.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
@@ -10,6 +8,7 @@
 #include <raids/md_type.h>
 #include <raids/redis_hash.h>
 #include <raids/exec_list_ctx.h>
+#include <raids/decimal.h>
 #define PCRE2_CODE_UNIT_WIDTH 8
 #include <pcre2.h>
 
@@ -394,7 +393,6 @@ RedisExec::do_hread( RedisKeyCtx &ctx,  int flags )
 ExecStatus
 RedisExec::do_hwrite( RedisKeyCtx &ctx,  int flags )
 {
-  static char  DDfmt[5] = { '%', 'D', 'D', 'a', 0 };
   ExecListCtx<HashData, MD_HASH> hash( *this, ctx );
   const char * arg     = NULL;
   size_t       arglen  = 0;
@@ -513,21 +511,16 @@ RedisExec::do_hwrite( RedisKeyCtx &ctx,  int flags )
         hstatus = hash.x->hupdate( arg, arglen, &str[ 1 ], sz - 3, pos );
         break;
       case DO_HINCRBYFLOAT: {
-        _Decimal128 fp;
+        Decimal128 fp;
         int fvallen;
+        fp.from_string( val, vallen );
         hstatus = hash.x->hget( arg, arglen, lv, pos );
         if ( hstatus == HASH_OK ) { /* exists */
           sz = lv.concat( ibuf, sizeof( ibuf ) - 1 );
           ibuf[ sz ] = '\0';
-          fp = ::strtod128( ibuf, NULL );
+          fp += Decimal128::parse( ibuf );
         }
-        else {
-          fp = 0.0DL;
-        }
-        sz = min<size_t>( vallen, sizeof( ibuf ) - 1 );
-        ::memcpy( ibuf, val, sz ); ibuf[ sz ] = '\0';
-        fp += ::strtod128( ibuf, NULL );
-        fvallen = ::snprintf( ibuf, sizeof( ibuf ), DDfmt, fp );
+        fvallen = fp.to_string( ibuf );
         sz = 32 + fvallen * 2;
         str = this->strm.alloc( sz );
         str[ 0 ] = '$';

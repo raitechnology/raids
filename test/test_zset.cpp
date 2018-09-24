@@ -1,6 +1,4 @@
-#define __STDC_WANT_DEC_FP__ 1
 #include <stdio.h>
-#include <float.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
@@ -118,11 +116,7 @@ struct ZSetDB {
 static ZScore
 str_to_score( const char *score,  size_t scorelen )
 {
-  char scbuf[ 32 ];;
-  scorelen = kv::min<size_t>( scorelen, sizeof( scbuf ) - 1 );
-  ::memcpy( scbuf, score, scorelen );
-  scbuf[ scorelen ] = '\0';
-  return ::strtod64( scbuf, NULL );
+  return ZScore::parse_len( score, scorelen );
 }
 
 static bool
@@ -148,12 +142,12 @@ swap( size_t &i,  size_t &j )
 int
 main( int, char ** )
 {
-  static char Dfmt[4] = { '%', 'D', 'a', 0 };
   ZSetKey *sk, *sk2;
   char buf[ 1024 ], buf2[ 1024 ];
   RedisMsg msg;
   kv::WorkAllocT< 4096 > tmp;
   char upper_cmd[ 32 ], key[ 256 ], thelimit[ 64 ] = { 0 };
+  char fpbuf[ 64 ];
   size_t i, j, sz, count, namelen, num_keys;
   size_t cmdlen, argcount, scorelen, scorelen2, arglen, keylen;
   const char *cmdbuf, *name, *score, *score2, *arg;
@@ -168,7 +162,7 @@ main( int, char ** )
   ZSetStatus zstat;
   RedisCmd cmd;
   ZAggregateType agg_type;
-  bool withscores = false, limit = false, aggregate, weights;
+  bool withscores = false, limit = false, aggregate, has_weights;
 
   printf( "> " ); fflush( stdout );
   for (;;) {
@@ -302,7 +296,8 @@ main( int, char ** )
           if ( zstat == ZSET_OK ) {
             printf( "%ld. off(%ld) %sscore(", i, sk->zset->offset( i ),
                     withscores ? "*" : "" );
-            printf( Dfmt, zv.score );
+            zv.score.to_string( fpbuf );
+            printf( "%s", fpbuf );
             printf( ") %.*s", (int) zv.sz, (const char *) zv.data );
             if ( zv.sz2 > 0 )
               printf( "%.*s", (int) zv.sz2, (const char *) zv.data2 );
@@ -398,14 +393,14 @@ main( int, char ** )
              ! msg.get_arg( 3, score2, scorelen2 ) )
           goto bad_args;
         r = str_to_score( score, scorelen );
-        printf( "range " ); printf( Dfmt, r );
+        printf( "range " ); r.to_string( fpbuf ); printf( "%s", fpbuf );
         r2 = str_to_score( score2, scorelen2 );
-        printf( " -> " ); printf( Dfmt, r2 ); printf( "\n" );
+        printf( " -> " ); r2.to_string( fpbuf ); printf( "%s", fpbuf );
         sk->zset->zbsearch( r, i, false, r3 );
         ival = i - 1;
         sk->zset->zbsearch( r2, i, true, r3 );
         jval = i - 1; /* if inclusive */
-        printf( "posit %ld -> %ld\n", ival+1, jval+1 );
+        printf( " posit %ld -> %ld\n", ival+1, jval+1 );
         if ( cmd == ZCOUNT_CMD ) {
           printf( "%ld\n", jval - ival );
         }
@@ -462,7 +457,7 @@ main( int, char ** )
         zstat = sk->zset->zget( arg, arglen, zv, pos );
         if ( zstat == ZSET_OK ) {
           printf( "%ld. off(%ld) score(", pos.i, sk->zset->offset( pos.i ) );
-          printf( Dfmt, zv.score );
+          zv.score.to_string( fpbuf ); printf( "%s", fpbuf );
           printf( ") %.*s", (int) zv.sz, (const char *) zv.data );
           if ( zv.sz2 > 0 )
             printf( "%.*s", (int) zv.sz2, (const char *) zv.data2 );
@@ -480,8 +475,8 @@ main( int, char ** )
           goto bad_args;
         num_keys = ival;
         i = num_keys + 3;
-        weights = ( msg.match_arg( i, "weights", 7, NULL ) == 1 );
-        if ( weights ) {
+        has_weights = ( msg.match_arg( i, "weights", 7, NULL ) == 1 );
+        if ( has_weights ) {
           i += 1;
           j  = i;
           for ( ; i < j + num_keys; i++ ) {
@@ -515,7 +510,7 @@ main( int, char ** )
           printf( "out of memory\n" );
           return 1;
         }
-        if ( weights && weight[ 0 ] != 1 ) {
+        if ( has_weights && weight[ 0 ] != ZScore::itod( 1 ) ) {
           sk->zset->zscale( weight[ 0 ] );
         }
         for ( i = 4; i < num_keys + 3; i++ ) {
@@ -523,7 +518,7 @@ main( int, char ** )
           if ( ! msg.get_arg( i, arg, arglen ) )
             goto bad_args;
           sk2 = zsetdb.fetch( arg, arglen );
-          ctx.init( weight[ i - 3 ], agg_type );
+          ctx.init( weight[ i - 3 ], agg_type, has_weights );
           for (;;) {
             if ( cmd == ZUNIONSTORE_CMD )
               zstat = sk->zset->zunion( *sk2->zset, ctx );

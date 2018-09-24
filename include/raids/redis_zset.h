@@ -2,6 +2,7 @@
 #define __rai_raids__redis_zset_h__
 
 #include <raids/redis_hash.h>
+#include <raids/decimal.h>
 
 namespace rai {
 namespace ds {
@@ -30,7 +31,7 @@ enum ZAggregateType {
   ZAGGREGATE_MAX  = 3
 };
 
-typedef _Decimal64 ZScore;
+typedef Decimal64 ZScore;
 
 template <class ScoreType>
 struct ZSetValT : public ListVal {
@@ -65,11 +66,11 @@ struct ZMergeCtxT : public MergeCtx {
   ZAggregateType type;   /* aggregate by sum, min, max */
   bool           weighted;   /* if weight > 1 */
 
-  void init( ScoreType w,  ZAggregateType t ) {
+  void init( ScoreType w,  ZAggregateType t,  bool hasw ) {
     this->MergeCtx::init();
     this->weight   = w;
     this->type     = t;
-    this->weighted = ( w != 1 );
+    this->weighted = hasw;
   }
 };
 

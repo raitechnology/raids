@@ -1,6 +1,4 @@
-#define __STDC_WANT_DEC_FP__ 1
 #include <stdio.h>
-#include <float.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
@@ -199,17 +197,12 @@ RedisExec::exec_zscan( RedisKeyCtx &ctx )
 static ZScore
 str_to_score( const char *score,  size_t scorelen )
 {
-  char scbuf[ 64 ];
-  scorelen = min<size_t>( scorelen, sizeof( scbuf ) - 1 );
-  ::memcpy( scbuf, score, scorelen );
-  scbuf[ scorelen ] = '\0';
-  return ::strtod64( scbuf, NULL );
+  return ZScore::parse_len( score, scorelen );
 }
 
 ExecStatus
 RedisExec::do_zread( RedisKeyCtx &ctx,  int flags )
 {
-  static char Dfmt[4] = { '%', 'D', 'a', 0 };
   const char * arg    = NULL;
   size_t       arglen = 0;
   const char * lo     = NULL,
@@ -268,7 +261,7 @@ RedisExec::do_zread( RedisKeyCtx &ctx,  int flags )
         if ( zset.x->zexists( arg, arglen, pos, score ) == ZSET_OK ) {
           /* return the score */
           if ( ( flags & DO_ZSCORE ) != 0 ) {
-            fvallen = ::snprintf( fpdata, sizeof( fpdata ), Dfmt, score );
+            fvallen = score.to_string( fpdata );
             sz      = this->send_string( fpdata, fvallen );
             status  = EXEC_OK;
           }
@@ -388,7 +381,6 @@ RedisExec::do_zread( RedisKeyCtx &ctx,  int flags )
 ExecStatus
 RedisExec::do_zwrite( RedisKeyCtx &ctx,  int flags )
 {
-  static char Dfmt[4] = { '%', 'D', 'a', 0 };
   const char * arg    = NULL;
   size_t       arglen = 0,
                argi;
@@ -526,7 +518,7 @@ RedisExec::do_zwrite( RedisKeyCtx &ctx,  int flags )
     if ( ( add_fl & ZADD_INCR ) != 0 ) {
       char   fpdata[ 64 ];
       size_t fvallen;
-      fvallen = ::snprintf( fpdata, sizeof( fpdata ), Dfmt, score );
+      fvallen = score.to_string( fpdata );
       this->strm.sz += this->send_string( fpdata, fvallen );
       return EXEC_OK;
     }
@@ -538,7 +530,6 @@ RedisExec::do_zwrite( RedisKeyCtx &ctx,  int flags )
 ExecStatus
 RedisExec::do_zmultiscan( RedisKeyCtx &ctx,  int flags,  ScanArgs *sa )
 {
-  static char Dfmt[4] = { '%', 'D', 'a', 0 };
   const char * lo         = NULL,
              * hi         = NULL;
   size_t       lolen      = 0,
@@ -713,7 +704,7 @@ RedisExec::do_zmultiscan( RedisKeyCtx &ctx,  int flags,  ScanArgs *sa )
         return ERR_ALLOC_FAIL;
       itemcnt++;
       if ( withscores ) {
-        fvallen = ::snprintf( fpdata, sizeof( fpdata ), Dfmt, zv.score );
+        fvallen = zv.score.to_string( fpdata );
         if ( q.append_string( fpdata, fvallen ) == 0 )
           return ERR_ALLOC_FAIL;
         itemcnt++;
@@ -1085,9 +1076,10 @@ RedisExec::do_zsetop_store( RedisKeyCtx &ctx,  int flags )
     zset = new ( (void *) &tmp[ n++%2 ] ) ZSetData( data, datalen );
     zset->open();
     /* if first set is weighted, scale it */
-    if ( has_weights && weight[ 0 ] != 0 )
-      zset->zscale( weight[ 0 ] );
-
+    if ( has_weights ) {
+      if ( weight[ 0 ] != ZScore::itod( 0 ) )
+        zset->zscale( weight[ 0 ] );
+    }
     /* merge the source keys together */
     for ( i = 2; i < this->key_cnt; i++ ) {
       ZSetData set2( this->keys[ i ]->part->data( 0 ),
@@ -1097,7 +1089,8 @@ RedisExec::do_zsetop_store( RedisKeyCtx &ctx,  int flags )
         return ERR_BAD_TYPE; /* prevent mixing sortedset with geo */
       ZMergeCtx  ctx;
       ZSetStatus zstat = ZSET_OK;
-      ctx.init( has_weights ? weight[ i - 1 ] : 1, aggregate_type );
+      ctx.init( has_weights ? weight[ i - 1 ] : ZScore::itod( 1 ),
+                aggregate_type, has_weights );
       set2.open();
       for (;;) {
         switch ( flags & ( DO_ZUNIONSTORE | DO_ZINTERSTORE ) ) {
@@ -1146,7 +1139,7 @@ RedisExec::do_zsetop_store( RedisKeyCtx &ctx,  int flags )
         return ERR_BAD_TYPE; /* prevent mixing sortedset with geo */
       GeoMergeCtx ctx;
       GeoStatus gstat = GEO_OK;
-      ctx.init( 1, ZAGGREGATE_NONE );
+      ctx.init( 1, ZAGGREGATE_NONE, false );
       set2.open();
       for (;;) {
         switch ( flags & ( DO_ZUNIONSTORE | DO_ZINTERSTORE ) ) {

@@ -1,6 +1,4 @@
-#define __STDC_WANT_DEC_FP__ 1
 #include <stdio.h>
-#include <float.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
@@ -8,6 +6,7 @@
 #include <raikv/util.h>
 #include <raids/redis_exec.h>
 #include <raids/redis_bitfield.h>
+#include <raids/decimal.h>
 #include <raids/md_type.h>
 
 using namespace rai;
@@ -802,9 +801,8 @@ RedisExec::do_add( RedisKeyCtx &ctx,  int64_t incr ) /* incr/decr value */
 ExecStatus
 RedisExec::exec_incrbyfloat( RedisKeyCtx &ctx )
 {
-  static char  DDfmt[5] = { '%', 'D', 'D', 'a', 0 };
   char         fpdata[ 64 ];
-  _Decimal128  fp;
+  Decimal128   fp;
   const char * fval;
   size_t       fvallen;
   void       * data;
@@ -821,22 +819,15 @@ RedisExec::exec_incrbyfloat( RedisKeyCtx &ctx )
       if ( ctx.kstatus != KEY_OK )
         return ERR_KV_STATUS;
       if ( size > 0 ) {
-        size = min<size_t>( size, sizeof( fpdata ) - 1 );
-        ::memcpy( fpdata, data, size ); fpdata[ size ] = '\0';
-        fp = ::strtod128( fpdata, NULL );
-        //this->mstatus = RedisMsg::str_to_int( (char *) data, size, ctx.ival );
-        /*if ( this->mstatus != REDIS_MSG_OK )
-          return ERR_MSG_STATUS;*/
+        fp = Decimal128::parse_len( (const char *) data, size );
       }
       else {
         fallthrough;
     case KEY_IS_NEW:
-        fp = 0.0DL;
+        fp.zero();
       }
-      size = min<size_t>( fvallen, sizeof( fpdata ) - 1 );
-      ::memcpy( fpdata, fval, size ); fpdata[ size ] = '\0';
-      fp += ::strtod128( fpdata, NULL );
-      fvallen = ::snprintf( fpdata, sizeof( fpdata ), DDfmt, fp );
+      fp += Decimal128::parse_len( fval, fvallen );
+      fvallen = fp.to_string( fpdata );
       sz = 32 + fvallen * 2;
       str = this->strm.alloc( sz );
       str[ 0 ] = '$';
