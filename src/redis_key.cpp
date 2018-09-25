@@ -11,7 +11,6 @@
 using namespace rai;
 using namespace ds;
 using namespace kv;
-#define fallthrough __attribute__ ((fallthrough))
 
 ExecStatus
 RedisExec::exec_del( RedisKeyCtx &ctx )
@@ -59,8 +58,8 @@ RedisExec::exec_dump( RedisKeyCtx &ctx )
           return EXEC_OK;
         }
       }
-      fallthrough;
     }
+    /* FALLTHRU */
     default:            return ERR_KV_STATUS;
     case KEY_NOT_FOUND: return EXEC_SEND_NIL;
   }

@@ -14,7 +14,6 @@
 using namespace rai;
 using namespace ds;
 using namespace kv;
-#define fallthrough __attribute__ ((fallthrough))
 
 enum {
   DO_SCARD       = 1<<0,
@@ -259,7 +258,7 @@ RedisExec::do_swrite( RedisKeyCtx &ctx,  int flags )
           return EXEC_ABORT_SEND_ZERO;
         }
         /* dest */
-        fallthrough;
+        /* FALLTHRU */
       case DO_SADD:
         sstatus = set.x->sadd( arg, arglen, pos );
         if ( sstatus == SET_UPDATED )
@@ -469,7 +468,7 @@ RedisExec::do_ssetop( RedisKeyCtx &ctx,  int flags )
         ctx.kstatus = this->kctx.value( &data, datalen );
         if ( ctx.kstatus != KEY_OK )
           return ERR_KV_STATUS;
-      fallthrough;
+      /* FALLTHRU */
       case KEY_NOT_FOUND:
         if ( datalen == 0 ) {
           data    = (void *) mt_list; /* empty */
@@ -482,7 +481,7 @@ RedisExec::do_ssetop( RedisKeyCtx &ctx,  int flags )
             break;
           return EXEC_OK;
         }
-      fallthrough;
+      /* FALLTHRU */
       default: return ERR_KV_STATUS;
     }
   }
@@ -576,7 +575,7 @@ RedisExec::do_ssetop( RedisKeyCtx &ctx,  int flags )
     case KEY_NO_VALUE: /* overwrite key */
       ctx.is_new = true;
       ctx.type   = MD_SET;
-      fallthrough;
+      /* FALLTHRU */
     case KEY_IS_NEW:
     case KEY_OK:
       ctx.kstatus = this->kctx.resize( &data, set->size );
@@ -587,7 +586,7 @@ RedisExec::do_ssetop( RedisKeyCtx &ctx,  int flags )
         ctx.is_new = true;
         return EXEC_SEND_INT;
       }
-    fallthrough;
+    /* FALLTHRU */
     default: return ERR_KV_STATUS;
   }
 }

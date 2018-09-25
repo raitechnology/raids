@@ -12,7 +12,6 @@
 
 using namespace rai;
 using namespace ds;
-#define fallthrough __attribute__ ((fallthrough))
 
 namespace rai {
 namespace ds {
@@ -188,7 +187,7 @@ RedisExec::exec_pfmerge( RedisKeyCtx &ctx )
         ctx.kstatus = this->kctx.value( &data, datalen );
         if ( ctx.kstatus != KEY_OK )
           return ERR_KV_STATUS;
-        fallthrough;
+        /* FALLTHRU */
 
       case KEY_NOT_FOUND:
         if ( datalen == 0 )
@@ -197,7 +196,7 @@ RedisExec::exec_pfmerge( RedisKeyCtx &ctx )
           return ERR_ALLOC_FAIL;
         if ( (ctx.kstatus = this->kctx.validate_value()) == KEY_OK )
           return EXEC_OK;
-        fallthrough;
+        /* FALLTHRU */
 
       default:           return ERR_KV_STATUS;
       case KEY_NO_VALUE: return ERR_BAD_TYPE;
@@ -229,7 +228,7 @@ RedisExec::exec_pfmerge( RedisKeyCtx &ctx )
         ::memcpy( data, &six, sizeof( HLLSix ) );
         return EXEC_SEND_OK;
       }
-      fallthrough;
+      /* FALLTHRU */
     default:           return ERR_KV_STATUS;
     case KEY_NO_VALUE: return ERR_BAD_TYPE;
   }

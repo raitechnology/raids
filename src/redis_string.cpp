@@ -12,7 +12,6 @@
 using namespace rai;
 using namespace ds;
 using namespace kv;
-#define fallthrough __attribute__ ((fallthrough))
 
 enum {
   HAS_EXPIRE_NS    = 1, /* SET flags: EX expire, NX not exist, XX must exist */
@@ -42,7 +41,7 @@ RedisExec::exec_append( RedisKeyCtx &ctx )
           ::memcpy( &((uint8_t *) data)[ data_sz ], value, valuelen );
         return EXEC_SEND_INT;
       }
-    fallthrough;
+    /* FALLTHRU */
     default:           return ERR_KV_STATUS;
     case KEY_NO_VALUE: return ERR_BAD_TYPE;
   }
@@ -102,7 +101,7 @@ RedisExec::exec_bitcount( RedisKeyCtx &ctx )
         if ( ctx.kstatus == KEY_OK )
           return EXEC_SEND_INT;
       }
-      fallthrough;
+      /* FALLTHRU */
     }
     /* fall through */
     default:            return ERR_KV_STATUS;
@@ -248,7 +247,7 @@ RedisExec::exec_bitfield( RedisKeyCtx &ctx )
           if ( ctx.kstatus == KEY_OK )
 	    break;
         }
-        fallthrough;
+        /* FALLTHRU */
       default:            return ERR_KV_STATUS;
       case KEY_NO_VALUE:  return ERR_BAD_TYPE;
     }
@@ -259,7 +258,7 @@ RedisExec::exec_bitfield( RedisKeyCtx &ctx )
         ctx.kstatus = this->kctx.value( &data, size );
         if ( ctx.kstatus == KEY_OK )
           break;
-        fallthrough;
+        /* FALLTHRU */
       default:            return ERR_KV_STATUS;
       case KEY_NOT_FOUND: data = NULL; size = 0; break;
       case KEY_NO_VALUE:  return ERR_BAD_TYPE;
@@ -495,7 +494,7 @@ RedisExec::exec_bitop( RedisKeyCtx &ctx )
           }
           return EXEC_SEND_INT;
         }
-        fallthrough;
+        /* FALLTHRU */
       default:           return ERR_KV_STATUS;
       case KEY_NO_VALUE: return ERR_BAD_TYPE;
     }
@@ -511,7 +510,7 @@ RedisExec::exec_bitop( RedisKeyCtx &ctx )
         if ( ctx.kstatus == KEY_OK )
           return EXEC_OK;
       }
-      fallthrough;
+      /* FALLTHRU */
     default:           return ERR_KV_STATUS;
     case KEY_NO_VALUE: return ERR_BAD_TYPE;
   }
@@ -584,7 +583,7 @@ RedisExec::exec_bitpos( RedisKeyCtx &ctx )
         if ( (ctx.kstatus = this->kctx.validate_value()) == KEY_OK )
           return EXEC_SEND_INT;
       }
-      fallthrough;
+      /* FALLTHRU */
     default:            return ERR_KV_STATUS;
     case KEY_NOT_FOUND: return EXEC_SEND_ZERO;
     case KEY_NO_VALUE:  return ERR_BAD_TYPE;
@@ -623,7 +622,7 @@ RedisExec::exec_get( RedisKeyCtx &ctx )
           return EXEC_OK;
         }
       }
-      fallthrough;
+      /* FALLTHRU */
     default:            return ERR_KV_STATUS;
     case KEY_NOT_FOUND: return EXEC_SEND_NIL;
     case KEY_NO_VALUE:  return ERR_BAD_TYPE;
@@ -658,7 +657,7 @@ RedisExec::exec_getbit( RedisKeyCtx &ctx )
         if ( ctx.kstatus == KEY_OK )
           return is_one ? EXEC_SEND_ONE : EXEC_SEND_ZERO;
       }
-      fallthrough;
+      /* FALLTHRU */
     default:            return ERR_KV_STATUS;
     case KEY_NOT_FOUND: return EXEC_SEND_ZERO;
     case KEY_NO_VALUE:  return ERR_BAD_TYPE;
@@ -703,7 +702,7 @@ RedisExec::exec_getrange( RedisKeyCtx &ctx )
           return EXEC_OK;
         }
       }
-      fallthrough;
+      /* FALLTHRU */
     default:            return ERR_KV_STATUS;
     case KEY_NOT_FOUND: return EXEC_SEND_ZERO_STRING;
     case KEY_NO_VALUE:  return ERR_BAD_TYPE;
@@ -728,7 +727,7 @@ RedisExec::exec_getset( RedisKeyCtx &ctx )
       if ( ctx.kstatus != KEY_OK )
         return ERR_KV_STATUS;
       sz = this->send_string( data, size );
-      fallthrough;
+      /* FALLTHRU */
     case KEY_IS_NEW:
       this->kctx.clear_stamps( true, false );
       ctx.kstatus = this->kctx.resize( &data, valuelen );
@@ -739,7 +738,7 @@ RedisExec::exec_getset( RedisKeyCtx &ctx )
         this->strm.sz += sz;
         return EXEC_OK;
       }
-      fallthrough;
+      /* FALLTHRU */
     default:           return ERR_KV_STATUS;
     case KEY_NO_VALUE: return ERR_BAD_TYPE;
   }
@@ -779,7 +778,7 @@ RedisExec::do_add( RedisKeyCtx &ctx,  int64_t incr ) /* incr/decr value */
         /*if ( this->mstatus != REDIS_MSG_OK )
           return ERR_MSG_STATUS;*/
       }
-      fallthrough;
+      /* FALLTHRU */
     case KEY_IS_NEW:
       ctx.ival += incr;
       str = this->strm.alloc( 32 );
@@ -792,7 +791,7 @@ RedisExec::do_add( RedisKeyCtx &ctx,  int64_t incr ) /* incr/decr value */
         this->strm.sz += sz;
         return EXEC_OK;
       }
-      fallthrough;
+      /* FALLTHRU */
     default:           return ERR_KV_STATUS;
     case KEY_NO_VALUE: return ERR_BAD_TYPE;
   }
@@ -822,7 +821,7 @@ RedisExec::exec_incrbyfloat( RedisKeyCtx &ctx )
         fp = Decimal128::parse_len( (const char *) data, size );
       }
       else {
-        fallthrough;
+        /* FALLTHRU */
     case KEY_IS_NEW:
         fp.zero();
       }
@@ -841,7 +840,7 @@ RedisExec::exec_incrbyfloat( RedisKeyCtx &ctx )
         this->strm.sz += sz;
         return EXEC_OK;
       }
-      fallthrough;
+      /* FALLTHRU */
     default:           return ERR_KV_STATUS;
     case KEY_NO_VALUE: return ERR_BAD_TYPE;
   }
@@ -863,7 +862,7 @@ RedisExec::exec_mget( RedisKeyCtx &ctx )
         if ( ctx.kstatus == KEY_OK )
           return EXEC_OK;
       }
-      fallthrough;
+      /* FALLTHRU */
     default:            return ERR_KV_STATUS;
     case KEY_NOT_FOUND: return EXEC_SEND_NIL;
     case KEY_NO_VALUE:  return ERR_BAD_TYPE;
@@ -972,7 +971,7 @@ RedisExec::do_set_value_expire( RedisKeyCtx &ctx,  int n,  uint64_t ns,
     case KEY_NO_VALUE: /* overwrite key */
       ctx.is_new = true;
       ctx.type   = MD_STRING;
-      fallthrough;
+      /* FALLTHRU */
     case KEY_OK:
     case KEY_IS_NEW:
       if ( ( flags & ( K_MUST_NOT_EXIST | K_MUST_EXIST ) ) != 0 ) {
@@ -987,7 +986,7 @@ RedisExec::do_set_value_expire( RedisKeyCtx &ctx,  int n,  uint64_t ns,
         ::memcpy( data, value, valuelen );
         return EXEC_SEND_OK;
       }
-      fallthrough;
+      /* FALLTHRU */
     default: return ERR_KV_STATUS;
   }
 }
@@ -1006,7 +1005,7 @@ RedisExec::do_set_value( RedisKeyCtx &ctx,  int n,  int flags )
     case KEY_NO_VALUE: /* overwrite key */
       ctx.is_new = true;
       ctx.type   = MD_STRING;
-      fallthrough;
+      /* FALLTHRU */
     case KEY_OK:
     case KEY_IS_NEW:
       if ( ( flags & ( K_MUST_NOT_EXIST | K_MUST_EXIST ) ) != 0 ) {
@@ -1021,7 +1020,7 @@ RedisExec::do_set_value( RedisKeyCtx &ctx,  int n,  int flags )
         ::memcpy( data, value, valuelen );
         return EXEC_SEND_OK;
       }
-      fallthrough;
+      /* FALLTHRU */
     default: return ERR_KV_STATUS;
   }
 }
@@ -1063,7 +1062,7 @@ RedisExec::exec_setbit( RedisKeyCtx &ctx )
           return EXEC_SEND_INT;
         }
       }
-      fallthrough;
+      /* FALLTHRU */
     default:           return ERR_KV_STATUS;
     case KEY_NO_VALUE: return ERR_BAD_TYPE;
   }
@@ -1119,7 +1118,7 @@ RedisExec::exec_setrange( RedisKeyCtx &ctx )
           return EXEC_SEND_INT;
         }
       }
-      fallthrough;
+      /* FALLTHRU */
     default:           return ERR_KV_STATUS;
     case KEY_NO_VALUE: return ERR_BAD_TYPE;
   }
@@ -1138,7 +1137,7 @@ RedisExec::exec_strlen( RedisKeyCtx &ctx )
         ctx.ival = data_sz;
         return EXEC_SEND_INT;
       }
-      fallthrough;
+      /* FALLTHRU */
     default:           return ERR_KV_STATUS;
     case KEY_NO_VALUE: return ERR_BAD_TYPE;
   }

@@ -15,7 +15,6 @@
 using namespace rai;
 using namespace ds;
 using namespace kv;
-#define fallthrough __attribute__ ((fallthrough))
 
 enum {
   DO_ZADD             = 1<<0,
@@ -431,7 +430,7 @@ RedisExec::do_zwrite( RedisKeyCtx &ctx,  int flags )
     case KEY_OK:
       if ( ctx.type != MD_NODATA )
         break;
-      fallthrough;
+      /* FALLTHRU */
     case KEY_IS_NEW:
       if ( ( flags & DO_ZREM ) != 0 ) /* no data to move or remove */
         return EXEC_SEND_ZERO;
@@ -981,7 +980,7 @@ RedisExec::do_zsetop( RedisKeyCtx &ctx,  int flags )
         }
         else if ( ctx.type != MD_NODATA )
           return ERR_BAD_TYPE;
-      fallthrough;
+      /* FALLTHRU */
       case KEY_NOT_FOUND:
         if ( datalen == 0 ) {
           data    = (void *) mt_list; /* empty */
@@ -991,7 +990,7 @@ RedisExec::do_zsetop( RedisKeyCtx &ctx,  int flags )
           return ERR_ALLOC_FAIL;
         if ( (ctx.kstatus = this->kctx.validate_value()) == KEY_OK )
           return EXEC_OK;
-      fallthrough;
+      /* FALLTHRU */
       default: return ERR_KV_STATUS;
     }
   }
@@ -1183,7 +1182,7 @@ RedisExec::do_zsetop_store( RedisKeyCtx &ctx,  int flags )
         ctx.is_new = true;
         return EXEC_SEND_INT;
       }
-    fallthrough;
+    /* FALLTHRU */
     default: return ERR_KV_STATUS;
   }
 }

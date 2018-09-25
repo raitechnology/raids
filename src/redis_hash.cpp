@@ -15,7 +15,6 @@
 using namespace rai;
 using namespace ds;
 using namespace kv;
-#define fallthrough __attribute__ ((fallthrough))
 
 enum {
   DO_HEXISTS      = 1<<0,
@@ -337,8 +336,8 @@ RedisExec::do_hread( RedisKeyCtx &ctx,  int flags )
     case KEY_NOT_FOUND:
       switch ( flags & ( DO_HEXISTS | DO_HGET | DO_HLEN | DO_HSTRLEN ) ) {
         default:
-        case DO_HEXISTS: fallthrough;
-        case DO_HLEN:    fallthrough;
+        case DO_HEXISTS: /* FALLTHRU */
+        case DO_HLEN:    /* FALLTHRU */
         case DO_HSTRLEN: return EXEC_SEND_ZERO;
         case DO_HGET:    return EXEC_SEND_NIL;
       }

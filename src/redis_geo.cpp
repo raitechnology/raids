@@ -12,7 +12,6 @@
 using namespace rai;
 using namespace ds;
 using namespace kv;
-#define fallthrough __attribute__ ((fallthrough))
 
 enum {
   DO_GEOHASH           = 1<<0,

@@ -10,7 +10,6 @@
 using namespace rai;
 using namespace ds;
 using namespace kv;
-#define fallthrough __attribute__ ((fallthrough))
 
 const char *
 rai::ds::redis_msg_status_string( RedisMsgStatus status ) {
@@ -516,7 +515,7 @@ json_escape_strlen( const char *str,  size_t len )
     if ( (uint8_t) str[ i ] >= ' ' && (uint8_t) str[ i ] <= 126 ) {
       switch ( str[ i ] ) {
         case '\'':
-        case '"': sz++; fallthrough;
+        case '"': sz++; /* FALLTHRU */
         default:  sz++; break;
       }
     }
@@ -542,7 +541,7 @@ json_escape_string( const char *str,  size_t len,  char *out )
     if ( (uint8_t) str[ i ] >= ' ' && (uint8_t) str[ i ] <= 126 ) {
       switch ( str[ i ] ) {
         case '\'':
-        case '"': out[ sz++ ] = '\\'; fallthrough;
+        case '"': out[ sz++ ] = '\\'; /* FALLTHRU */
         default:  out[ sz++ ] = str[ i ]; break;
       }
     }
@@ -815,7 +814,7 @@ RedisMsg::parse_json( JsonInput &input )
                 return REDIS_MSG_OK;
               }
               } } } }
-              fallthrough;
+              /* FALLTHRU */
     default:
       return REDIS_MSG_BAD_JSON;
   }

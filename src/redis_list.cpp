@@ -12,7 +12,6 @@
 using namespace rai;
 using namespace ds;
 using namespace kv;
-#define fallthrough __attribute__ ((fallthrough))
 
 enum {
   DO_LPUSH     = 1<<0,
@@ -320,7 +319,7 @@ RedisExec::do_push( RedisKeyCtx &ctx,  int flags )
             return ERR_BAD_ARGS;
           break;
         }
-        fallthrough;
+        /* FALLTHRU */
       case DO_LINSERT:
         if ( lstatus == LIST_OK ) {
           ctx.ival = list.x->count();

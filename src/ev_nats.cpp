@@ -21,7 +21,6 @@
 using namespace rai;
 using namespace ds;
 using namespace kv;
-#define fallthrough __attribute__ ((fallthrough))
 
 /* ID = 22*base62, 12 chars random prefix, 10 chars incrementing ID */
 static char nats_server_info[] =
