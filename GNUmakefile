@@ -52,7 +52,7 @@ cpp_lnk     :=
 sock_lib    :=
 math_lib    := -lm
 thread_lib  := -pthread -lrt
-h3_lib      := h3/lib/libh3.a
+h3_lib      := h3/libh3.a
 dec_lib     := libdecnumber/libdecnumber.a
 kv_lib      := raikv/$(libd)/libraikv.a
 lnk_lib     := $(dec_lib) $(h3_lib) $(kv_lib) -lpcre2-8 -lcrypto
@@ -239,13 +239,13 @@ include/raids/redis_cmd.h: $(bind)/redis_cmd
 gen_files += include/raids/redis_cmd.h
 
 $(kv_lib):
-	(cd raikv ; make)
+	$(MAKE) -C raikv
 
 $(h3_lib):
-	(cd h3 ; cmake . ; make)
+	$(MAKE) -C h3
 
 $(dec_lib):
-	(cd libdecnumber ; make)
+	$(MAKE) -C libdecnumber
 
 # the default targets
 .PHONY: all
