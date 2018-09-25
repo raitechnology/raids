@@ -12,11 +12,16 @@ static int
 test_gcc_libdecnumber_endian( void )
 {
   _Decimal64 a = 0, b;
+  uint64_t aa, bb;
   decNumber n;
   decContext ctx64;
   decContextDefault( &ctx64, DEC_INIT_DECIMAL64 );
   decNumberFromUInt32( &n, 0 );
   decimal64FromNumber( (decimal64 *) &b, &n, &ctx64 );
+
+  memcpy( &aa, &a, sizeof( aa ) );
+  memcpy( &bb, &b, sizeof( bb ) );
+  printf( "gcc: %lx, libdecnumber %lx\n", aa, bb );
   return a != b;
 }
 
