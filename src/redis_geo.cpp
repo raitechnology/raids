@@ -461,8 +461,9 @@ RedisExec::do_gradius( RedisKeyCtx &ctx,  int flags )
   double       radius,
                dist,
                units;
+  static const size_t MAX_H3K = 8;
   H3Index      h3i,
-               h3k[ 8 ], start[ 8 ];
+               h3k[ MAX_H3K ], start[ MAX_H3K ];
   size_t       length[ 8 ],
                nitems = 0,
                count  = 0,
@@ -564,9 +565,9 @@ RedisExec::do_gradius( RedisKeyCtx &ctx,  int flags )
   ::memset( h3k, 0, sizeof( h3k ) );
   hexRange( h3i, 1, h3k );
   /* order h3 indexes low to high, as that is the search order */
-  for ( i = 0; h3k[ i ] != 0; i++ ) {
+  for ( i = 0; i < MAX_H3K && h3k[ i ] != 0; i++ ) {
     size_t m = i;
-    for ( k = i + 1; h3k[ k ] != 0; k++ ) {
+    for ( k = i + 1; k < MAX_H3K && h3k[ k ] != 0; k++ ) {
       if ( h3k[ k ] < h3k[ m ] )
         m = k;
     }
@@ -579,7 +580,7 @@ RedisExec::do_gradius( RedisKeyCtx &ctx,  int flags )
   /* toss h3 indexes which are too far away by comparing hexigon
    * vert distances with the origin */
   hcnt = 0;
-  for ( i = 0; h3k[ i ] != 0; i++ ) {
+  for ( i = 0; i < MAX_H3K && h3k[ i ] != 0; i++ ) {
     if ( h3k[ i ] != h3i ) { /* include the hexigon surrounding origin */
       h3ToGeoBoundary( h3k[ i ], &bound ); /* check if overlap */
       for ( int n = 0; n < bound.numVerts; n++ ) {
