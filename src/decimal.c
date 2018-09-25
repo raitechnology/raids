@@ -4,9 +4,10 @@
 #include <stdint.h>
 #include <raids/decimal.h>
 #define DECNUMDIGITS 34
-#include <libdecnumber/decimal64.h>
-#include <libdecnumber/decimal128.h>
+#include <bid/decimal64.h>
+#include <bid/decimal128.h>
 
+#if 0
 static int endian_mismatch = 2;
 static int
 test_gcc_libdecnumber_endian( void )
@@ -53,6 +54,7 @@ gcc_decimal128( Decimal128Storage *fp )
     }
   }
 }
+#endif
 
 void
 dec64_itod( Decimal64Storage *fp,  int i )
@@ -72,7 +74,7 @@ dec64_from_string( Decimal64Storage *fp,  const char *str )
   decContext ctx64;
   decContextDefault( &ctx64, DEC_INIT_DECIMAL64 );
   decimal64FromString( (decimal64 *) fp, str, &ctx64 );
-  gcc_decimal64( fp );
+  /*gcc_decimal64( fp );*/
 }
 
 void
@@ -85,7 +87,7 @@ size_t
 dec64_to_string( const Decimal64Storage *fp,  char *str )
 {
   Decimal64Storage fp2 = *fp;
-  gcc_decimal64( &fp2 );
+  /*gcc_decimal64( &fp2 );*/
   /* this adds garbage at the end of NaN (as far as I can tell) */
   decimal64ToString( (const decimal64 *) &fp2, str );
   if ( str[ 0 ] == '-' ) {
@@ -165,7 +167,7 @@ dec128_from_string( Decimal128Storage *fp,  const char *str )
   decContext ctx128;
   decContextDefault( &ctx128, DEC_INIT_DECIMAL128 );
   decimal128FromString( (decimal128 *) fp, str, &ctx128 );
-  gcc_decimal128( fp );
+  /*gcc_decimal128( fp );*/
 }
 
 void
@@ -178,7 +180,7 @@ size_t
 dec128_to_string( const Decimal128Storage *fp,  char *str )
 {
   Decimal128Storage fp2 = *fp;
-  gcc_decimal128( &fp2 );
+  /*gcc_decimal128( &fp2 );*/
   /* this adds garbage at the end of NaN (as far as I can tell) */
   decimal128ToString( (const decimal128 *) &fp2, str );
   if ( str[ 0 ] == '-' ) {

@@ -44,20 +44,18 @@ CFLAGS ?= $(default_cflags)
 cflags := $(gcc_wflags) $(CFLAGS) $(arch_cflags)
 
 # where to find the raids/xyz.h files
-#INCLUDES    ?= -I/usr/local/include/dfp -Iinclude
-INCLUDES    ?= -Iinclude -Iraikv/include -Ih3/src/h3lib/include -Ilibdfp
+INCLUDES    ?= -Iinclude -Iraikv/include -Ih3/src/h3lib/include -Ilibdecnumber
 includes    := $(INCLUDES)
 DEFINES     ?=
 defines     := $(DEFINES)
 cpp_lnk     :=
 sock_lib    :=
-#math_lib    := -L/usr/local/lib -ldfp -lh3 -lm
 math_lib    := -lm
 thread_lib  := -pthread -lrt
 h3_lib      := h3/lib/libh3.a
-dfp_lib     := libdfp/libdecnumber/libdecnumber.a
+dec_lib     := libdecnumber/libdecnumber.a
 kv_lib      := raikv/$(libd)/libraikv.a
-dep_lib     := $(dfp_lib) $(h3_lib) $(kv_lib) -lpcre2-8 -lcrypto
+lnk_lib     := $(dec_lib) $(h3_lib) $(kv_lib) -lpcre2-8 -lcrypto
 malloc_lib  :=
 
 # targets filled in below
@@ -75,7 +73,7 @@ ver_build   := $(version)-$(build_num)
 defines     := -DDS_VER=$(ver_build)
 
 .PHONY: everything
-everything: $(kv_lib) $(h3_lib) $(dfp_lib) all
+everything: $(kv_lib) $(h3_lib) $(dec_lib) all
 
 libraids_files := ev_net ev_service ev_http ev_client ev_tcp ev_unix ev_nats \
                   stream_buf route_db redis_msg redis_cmd_db redis_exec \
@@ -86,7 +84,7 @@ libraids_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(libraids_files)))
 libraids_dbjs  := $(addprefix $(objd)/, $(addsuffix .fpic.o, $(libraids_files)))
 libraids_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(libraids_files))) \
                   $(addprefix $(dependd)/, $(addsuffix .fpic.d, $(libraids_files)))
-libraids_dlnk  := $(dep_lib)
+libraids_dlnk  := $(lnk_lib)
 libraids_spec  := $(version)-$(build_num)
 libraids_ver   := $(major_num).$(minor_num)
 
@@ -101,7 +99,7 @@ server_files := emain
 server_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(server_files)))
 server_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(server_files)))
 server_libs  := $(libd)/libraids.a
-server_lnk   := $(server_libs) $(dep_lib)
+server_lnk   := $(server_libs) $(lnk_lib)
 
 $(bind)/server: $(server_objs) $(server_libs)
 
@@ -109,7 +107,7 @@ client_files := cli
 client_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(client_files)))
 client_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(client_files)))
 client_libs  := $(libd)/libraids.a
-client_lnk   := $(client_libs) $(dep_lib)
+client_lnk   := $(client_libs) $(lnk_lib)
 
 $(bind)/client: $(client_objs) $(client_libs)
 
@@ -117,7 +115,7 @@ test_msg_files := test_msg
 test_msg_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(test_msg_files)))
 test_msg_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(test_msg_files)))
 test_msg_libs  := $(libd)/libraids.a
-test_msg_lnk   := $(test_msg_libs) $(dep_lib)
+test_msg_lnk   := $(test_msg_libs) $(lnk_lib)
 
 $(bind)/test_msg: $(test_msg_objs) $(test_msg_libs)
 
@@ -125,14 +123,14 @@ test_cmd_files := test_cmd
 test_cmd_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(test_cmd_files)))
 test_cmd_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(test_cmd_files)))
 test_cmd_libs  := $(libd)/libraids.a
-test_cmd_lnk   := $(test_cmd_libs) $(dep_lib)
+test_cmd_lnk   := $(test_cmd_libs) $(lnk_lib)
 
 $(bind)/test_cmd: $(test_cmd_objs) $(test_cmd_libs)
 
 redis_cmd_files := redis_cmd redis_msg
 redis_cmd_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(redis_cmd_files)))
 redis_cmd_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(redis_cmd_files)))
-redis_cmd_lnk   := $(dep_lib)
+redis_cmd_lnk   := $(lnk_lib)
 
 $(bind)/redis_cmd: $(redis_cmd_objs) $(redis_cmd_libs)
 
@@ -140,7 +138,7 @@ test_list_files := test_list
 test_list_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(test_list_files)))
 test_list_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(test_list_files)))
 test_list_libs  := $(libd)/libraids.a
-test_list_lnk   := $(test_list_libs) $(dep_lib)
+test_list_lnk   := $(test_list_libs) $(lnk_lib)
 
 $(bind)/test_list: $(test_list_objs) $(test_list_libs)
 
@@ -148,7 +146,7 @@ test_hash_files := test_hash
 test_hash_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(test_hash_files)))
 test_hash_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(test_hash_files)))
 test_hash_libs  := $(libd)/libraids.a
-test_hash_lnk   := $(test_hash_libs) $(dep_lib)
+test_hash_lnk   := $(test_hash_libs) $(lnk_lib)
 
 $(bind)/test_hash: $(test_hash_objs) $(test_hash_libs)
 
@@ -156,7 +154,7 @@ test_set_files := test_set
 test_set_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(test_set_files)))
 test_set_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(test_set_files)))
 test_set_libs  := $(libd)/libraids.a
-test_set_lnk   := $(test_set_libs) $(dep_lib)
+test_set_lnk   := $(test_set_libs) $(lnk_lib)
 
 $(bind)/test_set: $(test_set_objs) $(test_set_libs)
 
@@ -164,28 +162,28 @@ test_zset_files := test_zset
 test_zset_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(test_zset_files)))
 test_zset_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(test_zset_files)))
 test_zset_libs  := $(libd)/libraids.a
-test_zset_lnk   := $(test_zset_libs) $(dep_lib)
+test_zset_lnk   := $(test_zset_libs) $(lnk_lib)
 
 $(bind)/test_zset: $(test_zset_objs) $(test_zset_libs)
 
 test_hllnum_files := test_hllnum
 test_hllnum_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(test_hllnum_files)))
 test_hllnum_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(test_hllnum_files)))
-test_hllnum_lnk   := $(test_hllnum_libs) $(dep_lib)
+test_hllnum_lnk   := $(test_hllnum_libs) $(lnk_lib)
 
 $(bind)/test_hllnum: $(test_hllnum_objs) $(test_hllnum_libs)
 
 test_hllw_files := test_hllw
 test_hllw_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(test_hllw_files)))
 test_hllw_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(test_hllw_files)))
-test_hllw_lnk   := $(test_hllw_libs) $(dep_lib)
+test_hllw_lnk   := $(test_hllw_libs) $(lnk_lib)
 
 $(bind)/test_hllw: $(test_hllw_objs) $(test_hllw_libs)
 
 test_hllsub_files := test_hllsub
 test_hllsub_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(test_hllsub_files)))
 test_hllsub_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(test_hllsub_files)))
-test_hllsub_lnk   := $(test_hllsub_libs) $(dep_lib)
+test_hllsub_lnk   := $(test_hllsub_libs) $(lnk_lib)
 
 $(bind)/test_hllsub: $(test_hllsub_objs) $(test_hllsub_libs)
 
@@ -193,7 +191,7 @@ test_geo_files := test_geo
 test_geo_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(test_geo_files)))
 test_geo_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(test_geo_files)))
 test_geo_libs  := $(libd)/libraids.a
-test_geo_lnk   := $(test_geo_libs) $(dep_lib)
+test_geo_lnk   := $(test_geo_libs) $(lnk_lib)
 
 $(bind)/test_geo: $(test_geo_objs) $(test_geo_libs)
 
@@ -201,7 +199,7 @@ test_routes_files := test_routes
 test_routes_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(test_routes_files)))
 test_routes_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(test_routes_files)))
 test_routes_libs  := $(libd)/libraids.a
-test_routes_lnk   := $(test_routes_libs) $(dep_lib)
+test_routes_lnk   := $(test_routes_libs) $(lnk_lib)
 
 $(bind)/test_routes: $(test_routes_objs) $(test_routes_libs)
 
@@ -209,7 +207,7 @@ test_delta_files := test_delta
 test_delta_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(test_delta_files)))
 test_delta_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(test_delta_files)))
 test_delta_libs  := $(libd)/libraids.a
-test_delta_lnk   := $(test_delta_libs) $(dep_lib)
+test_delta_lnk   := $(test_delta_libs) $(lnk_lib)
 
 $(bind)/test_delta: $(test_delta_objs) $(test_delta_libs)
 
@@ -217,7 +215,7 @@ test_decimal_files := test_decimal
 test_decimal_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(test_decimal_files)))
 test_decimal_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(test_decimal_files)))
 test_decimal_libs  := $(libd)/libraids.a
-test_decimal_lnk   := $(test_decimal_libs) $(dep_lib)
+test_decimal_lnk   := $(test_decimal_libs) $(lnk_lib)
 
 $(bind)/test_decimal: $(test_decimal_objs) $(test_decimal_libs)
 
@@ -246,8 +244,8 @@ $(kv_lib):
 $(h3_lib):
 	(cd h3 ; cmake . ; make)
 
-$(dfp_lib):
-	(cd libdfp ; configure ; make)
+$(dec_lib):
+	(cd libdecnumber ; make)
 
 # the default targets
 .PHONY: all
