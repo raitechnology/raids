@@ -70,16 +70,22 @@ struct HyperLogLog {
         ht_beta[ i ] = beta( (double) i );
     }
   }
+  static inline uint16_t get_u16( const void *p ) {
+    uint16_t i; ::memcpy( &i, p, sizeof( i ) ); return i;
+  }
+  static inline void put_u16( uint16_t i,  void *p ) {
+    ::memcpy( p, &i, sizeof( i ) );
+  }
   /* return 1 if added, 0 if not added */
   int add( uint64_t h ) {
     uint64_t lzwd = ( h & HASH_MASK ) >> HT_BITS; /* the upper bits of hash */
     uint32_t reg  = ( h & HT_MASK ) * LZ_BITS, /* register bit position */
              off  = reg / 8,                   /* 8 bit address and shift */
              shft = reg % 8;
-    uint16_t & hv = *(uint16_t *) (void *) &this->ht[ off ];
+    uint16_t hv = get_u16( &this->ht[ off ] );
     uint16_t v, w, m, lz;
 
-    v  = hv;                       /* the 6 bit reg val plus surrounding bits */
+    v  = hv;                      /* the 6 bit reg val plus surrounding bits */
     m  = ~( LZ_MASK << shft ) & v; /* m = surrounding bits, reg masked to 0 */
     v  = ( v >> shft ) & LZ_MASK;  /* extract the value from surrounding */
     lz = __builtin_clzl( lzwd ) + 1; /* the new value */
@@ -88,6 +94,7 @@ struct HyperLogLog {
     if ( v == w )                  /* no change */
       return 0;
     hv = m | ( w << shft );        /* put the value back into bits blob */
+    put_u16( hv, &this->ht[ off ] );
     if ( v == 0 )                  /* new entry */
       this->popcnt++;
     this->sum += lz_sum[ w ] - lz_sum[ v ]; /* remove old and add new */
@@ -99,7 +106,7 @@ struct HyperLogLog {
     uint32_t reg  = ( h & HT_MASK ) * LZ_BITS, /* register bit position */
              off  = reg / 8,                   /* 8 bit address and shift */
              shft = reg % 8;
-    uint16_t & hv = *(uint16_t *) (void *) &this->ht[ off ];
+    uint16_t hv   = get_u16( &this->ht[ off ] );
     uint16_t v, lz;
 
     v  = ( hv >> shft ) & LZ_MASK; /* extract the value from surrounding */
@@ -121,6 +128,9 @@ struct HyperLogLog {
     return alpha() * (double) HTSZ * (double) this->popcnt /
            ( ht_beta[ empty ] + sum2 );
   }
+  static inline uint64_t get_u64( const void *p ) {
+    uint64_t i; ::memcpy( &i, p, sizeof( i ) ); return i;
+  }
   /* merge hll into this */
   void merge( const HyperLogLog &hll ) {
     uint32_t bitsleft = 0;
@@ -131,8 +141,8 @@ struct HyperLogLog {
       const uint32_t off  = reg / 8,
                      shft = reg % 8;
       if ( bitsleft < LZ_BITS ) {  /* 64 bit shift words, little endian style */
-        hbits = *(uint64_t *) (void *) &hll.ht[ off ];
-        mbits = *(uint64_t *) (void *) &this->ht[ off ];
+        hbits = get_u64( &hll.ht[ off ] );
+        mbits = get_u64( &this->ht[ off ] );
         hbits >>= shft;
         mbits >>= shft;
         bitsleft = 64 - shft;
@@ -144,8 +154,9 @@ struct HyperLogLog {
           this->popcnt++;
         this->sum += lz_sum[ x ] - lz_sum[ y ]; /* update sum */
         /* splice in the new bits */
-        uint16_t & hv = *(uint16_t *) (void *) &this->ht[ off ];
+        uint16_t hv = get_u16( &this->ht[ off ] );
         hv = ( ~( LZ_MASK << shft ) & hv ) | (uint16_t) ( x << shft );
+        put_u16( hv, &this->ht[ off ] );
       }
       hbits >>= LZ_BITS; /* next register */
       mbits >>= LZ_BITS;
