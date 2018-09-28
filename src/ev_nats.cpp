@@ -22,7 +22,32 @@ using namespace rai;
 using namespace ds;
 using namespace kv;
 
-/* ID = 22*base62, 12 chars random prefix, 10 chars incrementing ID */
+/*
+ * NATS protocol:
+ *
+ * 1. session init
+ * server -> INFO { (below) } \r\n
+ * (optional)
+ * client -> CONNECT { verbose, pedantic, tls_required, auth_token, user,
+ *                     pass, name, lang, protocol, echo } \r\n
+ * 2. subscribe
+ * client -> SUB <subject> [queue group] <sid> \r\n
+ *        -> UNSUB <sid> [max-msgs] \r\n
+ *
+ * ping/pong, pong responds to ping, used for keepalive:
+ * client/server -> PING \r\n
+ *               -> PONG \r\n
+ *
+ * 3. publish
+ * client -> PUB <subject> [reply-to] <#bytes> \r\n [payload] \r\n
+ * server -> MSG <subject> <sid> [reply-to] <#bytes> \r\n [payload] \r\n
+ *
+ * 4. error / ok status (ok turned off by verbose=false)
+ * server -> +OK \r\n
+ * server -> -ERR (opt msg) \r\n
+ */
+
+/* ID = 22 chars base62 string dependent on the hash of the database = 255 */
 static char nats_server_info[] =
 "INFO {\"server_id\":\"______________________\","
       "\"version\":\"1.1.1\",\"go\":\"go1.5.0\","
@@ -476,8 +501,9 @@ EvNatsService::rem_all_sub( void )
 bool
 EvNatsService::fwd_pub( void )
 {
-  HashPos sub_pos;
-  uint32_t * routes, rcnt;
+  HashPos    sub_pos;
+  uint32_t * routes,
+             rcnt;
   sub_pos.init( this->subject, this->subject_len );
   rcnt = this->poll.sub_route.get_route( sub_pos.h, routes );
   if ( rcnt > 0 ) {
@@ -527,6 +553,27 @@ EvNatsService::publish( EvPublish &pub )
   this->sub_tab.print();
 #endif
   return flow_good;
+}
+
+bool
+EvNatsService::hash_to_sub( uint32_t h,  char *key,  size_t &keylen )
+{
+  HashPos pos( h );
+  HashVal kv;
+  if ( this->sub_tab.h == NULL )
+    return false;
+  if ( this->sub_tab.h->hscan( pos, kv ) != HASH_OK )
+    return false;
+  for ( ; ; pos.i++ ) {
+    uint32_t h2 = kv_crc_c( kv.key, kv.keylen, 0 );
+    if ( ( h | UIntHashTab::SLOT_USED ) == ( h2 | UIntHashTab::SLOT_USED ) ) {
+      ::memcpy( key, kv.key, kv.keylen );
+      keylen = kv.keylen;
+      return true;
+    }
+    if ( this->sub_tab.h->hscan( pos, kv ) != HASH_OK )
+      return false;
+  }
 }
 
 static inline char *

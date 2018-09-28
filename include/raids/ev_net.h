@@ -68,6 +68,7 @@ struct EvSocket {
   void idle_push( EvState s );
 
   bool publish( EvPublish &pub );
+  bool hash_to_sub( uint32_t h,  char *key,  size_t &keylen );
   /* priority queue test, ordered by first bit set (EV_WRITE > EV_READ).
    * a sock with EV_READ bit set will have a higher priority than one with
    * EV_WRITE */
@@ -120,6 +121,7 @@ struct EvPoll {
   void remove_sock( EvSocket *s );
   void process_quit( void );     /* quit state close socks */
   bool publish( EvPublish &pub );
+  bool hash_to_sub( uint32_t r,  uint32_t h,  char *key,  size_t &keylen );
 };
 
 inline void

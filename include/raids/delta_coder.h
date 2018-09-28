@@ -39,7 +39,8 @@ static struct DeltaTable {
            { 0, 0, 0, 0, 0 }
 };
 
-static const uint32_t MAX_DELTA_CODE_LENGTH = 15; /* no more than 15 per code */
+static const uint32_t MAX_DELTA_CODE_LENGTH = 15, /* no more than 15 per code */
+                      DELTA_START_PREFIX_MASK = 0xc0000000; /* first prefix */
 
 #if 0
 void gen_table( void ) {
@@ -68,7 +69,7 @@ void gen_table( void ) {
 #endif
 
 struct DeltaCoder {
-  
+  /* bit must be set, otherwise not encoded */
   static bool is_not_encoded( uint32_t code ) {
     static const uint32_t IS_ENCODED_MASK = 0x80000000U;
     return ( code & IS_ENCODED_MASK ) == 0;
@@ -152,13 +153,17 @@ struct DeltaCoder {
   }
   /* calculate length of decoded code by examining the prefix */
   static uint32_t decode_length( uint32_t code ) {
-    for ( uint32_t nvals = 1; ; nvals++ ) {
-      uint32_t mask = delta_tab[ nvals - 1 ].prefix_mask;
+    uint32_t mask = DELTA_START_PREFIX_MASK;
+    uint32_t nvals = 1;
+    for (;;) {
       if ( ( mask & code ) != mask ) {
         if ( ( mask & code ) != ( mask << 1 ) )
           return 0; /* prefix doesn't match */
         return nvals;
       }
+      if ( ++nvals > MAX_DELTA_CODE_LENGTH )
+        return 0;
+      mask |= ( mask >> 1 );
     }
   }
   /* decode the set encoded above */
@@ -188,6 +193,15 @@ struct DeltaCoder {
       values[ i ] = last;
     }
     return nvals;
+  }
+  /* decode the set encoded above */
+  static uint32_t decode_one( uint32_t code,  uint32_t base ) {
+    uint32_t nvals = decode_length( code );
+    if ( nvals == 0 )
+      return 0;
+    DeltaTable & p = delta_tab[ nvals - 1 ];
+    uint8_t  shift = p.first_shift;
+    return ( ( code >> shift ) & p.first_mask ) + base;
   }
   /* decode a stream of codes into values */
   static uint32_t decode_stream( uint32_t ncodes,  const uint32_t *code,  

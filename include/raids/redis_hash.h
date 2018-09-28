@@ -1,7 +1,7 @@
 #ifndef __rai_raids__redis_hash_h__
 #define __rai_raids__redis_hash_h__
 
-#include "redis_list.h"
+#include <raids/redis_list.h>
 
 namespace rai {
 namespace ds {
@@ -26,7 +26,11 @@ struct HashVal : public ListVal {
 struct HashPos {
   size_t   i;
   uint32_t h;
+  HashPos( const void *key,  uint32_t keylen ) {
+    this->init( key, keylen );
+  }
   HashPos( uint32_t hash = 0 ) : i( 0 ), h( hash ) {}
+
   void init( const void *key,  size_t keylen ) {
     this->i = 0;
     this->h = kv_crc_c( key, keylen, 0 );
@@ -305,6 +309,12 @@ struct HashStorage : public ListStorage<UIntSig, UIntType> {
       if ( this->match_key( hdr, key, keylen, pos.i ) )
         return HASH_OK;
     }
+  }
+  /* scan keys on the same hash chain */
+  HashStatus hscan( const ListHeader &hdr,  HashPos &pos,  HashVal &kv ) const {
+    if ( ! this->hash_find( hdr, pos ) )
+      return HASH_NOT_FOUND;
+    return this->hindex( hdr, pos.i, kv );
   }
   /* get the key + value at table[ n ] */
   HashStatus hindex( const ListHeader &hdr,  size_t n,  HashVal &kv ) const {
@@ -730,6 +740,9 @@ struct HashData : public ListData {
   }
   HashStatus hexists( const void *key,  size_t keylen,  HashPos &pos ) {
     return HASH_CALL( hexists( *this, key, keylen, pos ) );
+  }
+  HashStatus hscan( HashPos &pos,  HashVal &kv ) const {
+    return HASH_CALL( hscan( *this, pos, kv ) );
   }
   HashStatus hget( const void *key,  size_t keylen,  ListVal &kv,
                    HashPos &pos ) const {

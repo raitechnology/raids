@@ -74,6 +74,24 @@ struct UIntHashTab {
       }
     }
   }
+  bool first( uint32_t &pos ) const {
+    pos = 0;
+    return this->scan( pos );
+  }
+  bool next( uint32_t &pos ) const {
+    pos++;
+    return this->scan( pos );
+  }
+  bool scan( uint32_t &pos ) const {
+    for ( ; pos < this->tab_size(); pos++ )
+      if ( this->tab[ pos ].is_used() )
+        return true;
+    return false;
+  }
+  void get( uint32_t pos,  uint32_t &h,  uint32_t &v ) const {
+    h = this->tab[ pos ].hash & ~SLOT_USED;
+    v = this->tab[ pos ].val;
+  }
   /* find hash, return it's position and the value if found */
   bool find( uint32_t h,  uint32_t &pos,  uint32_t &val ) const {
     for ( pos = h & this->tab_mask; ; pos = ( pos + 1 ) & this->tab_mask ) {

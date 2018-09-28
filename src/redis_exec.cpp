@@ -33,6 +33,15 @@ void RedisExec::send_one( void ) { this->strm.append( one, one_sz ); }
 void RedisExec::send_neg_one( void ) { this->strm.append( neg_one, neg_one_sz);}
 void RedisExec::send_zero_string( void ) { this->strm.append( mt, mt_sz ); }
 
+void
+RedisExec::release( void )
+{
+  this->rem_all_sub();
+  this->sub_tab.release();
+  this->wrk.reset();
+  this->wrk.release_all();
+}
+
 size_t
 RedisExec::send_string( const void *data,  size_t size )
 {
@@ -373,6 +382,13 @@ RedisExec::exec( EvSocket *svc,  EvPrefetchQueue *q )
     case RANDOMKEY_CMD:    return this->exec_randomkey();
     case WAIT_CMD:         return this->exec_wait();
     case SCAN_CMD:         return this->exec_scan();
+    /* PUBSUB */
+    case PSUBSCRIBE_CMD:   return this->exec_psubscribe();
+    case PUBSUB_CMD:       return this->exec_pubsub();
+    case PUBLISH_CMD:      return this->exec_publish();
+    case PUNSUBSCRIBE_CMD: return this->exec_punsubscribe();
+    case SUBSCRIBE_CMD:    return this->exec_subscribe();
+    case UNSUBSCRIBE_CMD:  return this->exec_unsubscribe();
     default:               return ERR_BAD_CMD;
   }
 }
@@ -499,23 +515,21 @@ RedisExec::exec_key_continue( RedisKeyCtx &ctx )
       case RPUSH_CMD:     ctx.status = this->exec_rpush( ctx ); break;
       case RPUSHX_CMD:    ctx.status = this->exec_rpushx( ctx ); break;
       /* PUBSUB */
-      case PSUBSCRIBE_CMD: ctx.status = this->exec_psubscribe( ctx ); break;
-      case PUBSUB_CMD:    ctx.status = this->exec_pubsub( ctx ); break;
-      case PUBLISH_CMD:   ctx.status = this->exec_publish( ctx ); break;
-      case PUNSUBSCRIBE_CMD: ctx.status = this->exec_punsubscribe( ctx ); break;
-      case SUBSCRIBE_CMD: ctx.status = this->exec_subscribe( ctx ); break;
-      case UNSUBSCRIBE_CMD: ctx.status = this->exec_unsubscribe( ctx ); break;
+      case PSUBSCRIBE_CMD:   case PUBSUB_CMD:    case PUBLISH_CMD:
+      case PUNSUBSCRIBE_CMD: case SUBSCRIBE_CMD:
+      case UNSUBSCRIBE_CMD:  ctx.status = ERR_BAD_CMD; break; /* in exec() */
       /* SCRIPT */
       case EVAL_CMD:      ctx.status = this->exec_eval( ctx ); break;
       case EVALSHA_CMD:   ctx.status = this->exec_evalsha( ctx ); break;
       case SCRIPT_CMD:    ctx.status = this->exec_script( ctx ); break;
       /* SERVER */
-      case BGREWRITEAOF_CMD: case BGSAVE_CMD: case CLIENT_CMD: case COMMAND_CMD:
-      case CONFIG_CMD: case DBSIZE_CMD: case DEBUG_CMD: case FLUSHALL_CMD:
-      case FLUSHDB_CMD: case INFO_CMD: case LASTSAVE_CMD: case MEMORY_CMD:
-      case MONITOR_CMD: case ROLE_CMD: case SAVE_CMD: case SHUTDOWN_CMD:
-      case SLAVEOF_CMD: case SLOWLOG_CMD: case SYNC_CMD:
-      case TIME_CMD:      ctx.status = ERR_BAD_CMD; break; /* in exec() */
+      case BGREWRITEAOF_CMD: case BGSAVE_CMD: case CLIENT_CMD:
+      case COMMAND_CMD:   case CONFIG_CMD:    case DBSIZE_CMD:
+      case DEBUG_CMD:     case FLUSHALL_CMD:  case FLUSHDB_CMD:
+      case INFO_CMD:      case LASTSAVE_CMD:  case MEMORY_CMD:
+      case MONITOR_CMD:   case ROLE_CMD:      case SAVE_CMD:
+      case SHUTDOWN_CMD:  case SLAVEOF_CMD:   case SLOWLOG_CMD:
+      case SYNC_CMD:      case TIME_CMD:      ctx.status = ERR_BAD_CMD; break;
       /* SET */
       case SADD_CMD:      ctx.status = this->exec_sadd( ctx ); break;
       case SCARD_CMD:     ctx.status = this->exec_scard( ctx ); break;

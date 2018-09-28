@@ -33,6 +33,11 @@ main( int, char ** )
     for ( j = 0; j < cnt; j++ ) {
       printf( "%x ", code[ j ] );
     }
+    printf( " .. " );
+    cnt = dc.decode_stream( cnt, code, 0, values2 );
+    for ( j = 0; j < cnt; j++ ) {
+      printf( "%u ", values2[ j ] );
+    }
     printf( "\n" );
   }
 

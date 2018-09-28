@@ -173,6 +173,41 @@ RouteDB::decompress_routes( uint32_t r,  uint32_t *&routes,  bool deref )
   return rcnt;
 }
 
+uint32_t
+RouteDB::decompress_one( uint32_t r )
+{
+  if ( this->dc.is_not_encoded( r ) ) { /* if is a multi value code */
+    CodeRef * p;
+    uint32_t  pos, val;
+    if ( this->zht != NULL && this->zht->find( r, pos, val ) ) {
+      p = (CodeRef *) (void *) &this->code_buf[ val ];
+      r = p->code;
+    }
+    else { /* no route exists */
+      return 0;
+    }
+  }
+  return this->dc.decode_one( r, 0 );
+}
+
+uint32_t
+RouteDB::get_route_count( uint32_t hash )
+{
+  if ( this->xht != NULL ) {
+    uint32_t pos, val, off;
+    if ( this->xht->find( hash, pos, val ) ) {
+      if ( this->dc.is_not_encoded( val ) ) {
+        if ( this->zht != NULL && this->zht->find( val, pos, off ) ) {
+          CodeRef *p = (CodeRef *) (void *) &this->code_buf[ off ];
+          return p->rcnt;
+        }
+      }
+      return this->dc.decode_length( val );
+    }
+  }
+  return 0;
+}
+
 void
 RouteDB::add_route( uint32_t hash,  uint32_t r )
 {

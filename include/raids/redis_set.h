@@ -1,7 +1,7 @@
 #ifndef __rai_raids__redis_set_h__
 #define __rai_raids__redis_set_h__
 
-#include "redis_hash.h"
+#include <raids/redis_hash.h>
 
 namespace rai {
 namespace ds {

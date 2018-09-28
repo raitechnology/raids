@@ -166,9 +166,38 @@ EvPoll::publish( EvPublish &pub )
 }
 
 bool
+EvPoll::hash_to_sub( uint32_t r,  uint32_t h,  char *key,  size_t &keylen )
+{
+  EvSocket *s;
+  if ( r <= (uint32_t) this->maxfd && (s = this->sock[ r ]) != NULL ) {
+    switch ( s->type ) {
+      case EV_REDIS_SOCK:
+        return ((EvRedisService *) s)->hash_to_sub( h, key, keylen );
+      case EV_HTTP_SOCK:
+        return ((EvHttpService *) s)->hash_to_sub( h, key, keylen );
+      case EV_LISTEN_SOCK:  break;
+      case EV_CLIENT_SOCK:
+        return ((EvClient *) s)->hash_to_sub( h, key, keylen );
+      case EV_TERMINAL:
+        return ((EvTerminal *) s)->hash_to_sub( h, key, keylen );
+      case EV_NATS_SOCK:
+        return ((EvNatsService *) s)->hash_to_sub( h, key, keylen );
+    }
+  }
+  return false;
+}
+
+bool
 EvSocket::publish( EvPublish & )
 {
   fprintf( stderr, "no publish defined for type %d\n", this->type );
+  return false;
+}
+
+bool
+EvSocket::hash_to_sub( uint32_t,  char *,  size_t & )
+{
+  fprintf( stderr, "no hash_to_sub defined for type %d\n", this->type );
   return false;
 }
 

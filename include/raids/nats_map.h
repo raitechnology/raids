@@ -7,12 +7,19 @@ namespace rai {
 namespace ds {
 
 /*
- * sid can have only one subject
+ * Sid can have only one subject in NATS, but can have multiple subs here
  * a subject may have multipe sids
  *
- *   sub_tab [ 'subject' ] => SidMsgCount+'SID', SidMsgCount+'SID', ...
+ *   sub_tab [ subject ] => SidMsgCount+SID, SidMsgCount+SID, ...
  *
- *   sid_tab [ 'SID' ] => 'subject'
+ *   sid_tab [ SID ] => SidMsgCount+subject, SidMsgCount+subject, ...
+ *
+ * The sid_tab contains both max_msgs and msg_cnt, but only max_msgs is used,
+ * to initialize the sub_tab subject max_msgs.  The max_msgs refers to msgs on
+ * a single subject, not the sum of all subjects msgs attached to a sid.
+ *
+ * The sub_tab sid tracks both msg counts and triggers the unsubscribe when
+ * msg_cnt expires at msg_cnt >= max_msgs in incr_msg_cnt().
  */
 struct SidMsgCount {
   uint32_t max_msgs, /* if unsubscribe sid max_msgs */
@@ -140,32 +147,13 @@ struct NatsMap {
       printf( "\n" );
     }
   }
-#if 0
-  /* put in first elem
-   * tab[ sid ] => {cnt, subject} */
-  void put_first( StrHashKey &key,  SidMsgCount &cnt,  StrHashRec &rec ) {
-    ListVal    lv;
-    size_t     sz    = sizeof( SidMsgCount ) + rec.length(),
-               asize = sz + key.rec.length();
-    HashStatus hstat = HASH_OK;
-    do {
-      if ( hstat == HASH_FULL || this->h == NULL )
-        this->resize( asize++ );
-      hstat = this->h->halloc( key.rec.str, key.rec.len, sz, lv, key.pos );
-      if ( hstat == HASH_OK ) {
-        lv.copy_in( &cnt, 0, sizeof( SidMsgCount ) );
-        lv.copy_in( &rec, sizeof( SidMsgCount ), rec.length() );
-      }
-    } while ( hstat == HASH_FULL );
-  }
-#endif
   /* put in any elem, search for it and append if not found
    * tab[ sub ] => {cnt, sid}, {cnt, sid} */
   NatsSubStatus put( StrHashKey &key,  SidMsgCount &cnt,  StrHashRec &rec,
                      bool copy_max_msgs = false ) {
     SidIter       lv;
     size_t        sz    = sizeof( SidMsgCount ) + rec.length(),
-                  asize = sz + key.rec.length();
+                  asize = sz + key.rec.length() + 3;
     HashStatus    hstat = HASH_OK;
     NatsSubStatus nstat = NATS_OK;
     do {
@@ -227,7 +215,7 @@ struct NatsMap {
                         StrHashRec *match ) {
     SidIter       lv;
     size_t        sz    = sizeof( SidMsgCount ) + 1,
-                  asize = sz;
+                  asize = sz + 3;
     HashStatus    hstat = HASH_OK;
     NatsSubStatus nstat = NATS_OK;
     do {

@@ -7,6 +7,7 @@
 #include <raids/redis_cmd.h>
 #include <raids/redis_msg.h>
 #include <raids/stream_buf.h>
+#include <raids/redis_pubsub.h>
 
 extern "C" {
   struct pcre2_real_code_8;
@@ -143,6 +144,7 @@ struct RedisExec {
                  step;        /* incr between keys */
   uint64_t       step_mask;   /* step key mask */
   size_t         argc;        /* count of args in cmd msg */
+  SubMap         sub_tab;     /* pub/sub subscription table */
 
   RedisExec( kv::HashTab &map,  uint32_t ctx_id,  StreamBuf &s,  bool single ) :
       kctx( map, ctx_id, NULL ), strm( s ),
@@ -152,11 +154,10 @@ struct RedisExec {
                                      this->seed2 );
     this->kctx.set( kv::KEYCTX_NO_COPY_ON_READ );
   }
-
-  void release( void ) {
-    this->wrk.reset();
-    this->wrk.release_all();
-  }
+  /* release anything allocated */
+  void release( void );
+  /* unsubscribe anything subscribed */
+  void rem_all_sub( void );
   /* handle the keys are cmd specific */
   bool locate_movablekeys( void );
   /* fetch next key arg[ i ] after current i, return false if none */
@@ -303,12 +304,13 @@ struct RedisExec {
   ExecStatus do_push( RedisKeyCtx &ctx,  int flags );
   ExecStatus do_pop( RedisKeyCtx &ctx,  int flags );
   /* PUBSUB */
-  ExecStatus exec_psubscribe( RedisKeyCtx &ctx );
-  ExecStatus exec_pubsub( RedisKeyCtx &ctx );
-  ExecStatus exec_publish( RedisKeyCtx &ctx );
-  ExecStatus exec_punsubscribe( RedisKeyCtx &ctx );
-  ExecStatus exec_subscribe( RedisKeyCtx &ctx );
-  ExecStatus exec_unsubscribe( RedisKeyCtx &ctx );
+  ExecStatus exec_psubscribe( void );
+  ExecStatus exec_pubsub( void );
+  ExecStatus exec_publish( void );
+  ExecStatus exec_punsubscribe( void );
+  ExecStatus exec_subscribe( void );
+  ExecStatus exec_unsubscribe( void );
+  ExecStatus do_sub( int flags );
   /* SCRIPT */
   ExecStatus exec_eval( RedisKeyCtx &ctx );
   ExecStatus exec_evalsha( RedisKeyCtx &ctx );

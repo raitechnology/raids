@@ -66,6 +66,20 @@ struct RouteDB {
     this->route_spc_ptr = this->route_spc;
   }
 
+  bool first_hash( uint32_t &pos,  uint32_t &h,  uint32_t &v ) {
+    if ( this->xht != NULL && this->xht->first( pos ) ) {
+      this->xht->get( pos, h, v );
+      return true;
+    }
+    return false;
+  }
+  bool next_hash( uint32_t &pos,  uint32_t &h,  uint32_t &v ) {
+    if ( this->xht->next( pos ) ) {
+      this->xht->get( pos, h, v );
+      return true;
+    }
+    return false;
+  }
   uint32_t *make_route_space( uint32_t i );
 
   uint32_t *make_code_space( uint32_t i );
@@ -78,6 +92,8 @@ struct RouteDB {
 
   uint32_t decompress_routes( uint32_t r,  uint32_t *&routes,  bool deref );
 
+  uint32_t decompress_one( uint32_t r );
+
   void add_route( uint32_t hash,  uint32_t r );
 
   void del_route( uint32_t hash,  uint32_t r );
@@ -88,6 +104,7 @@ struct RouteDB {
       return this->decompress_routes( val, routes, false );
     return 0;
   }
+  uint32_t get_route_count( uint32_t hash );
 };
 
 }
