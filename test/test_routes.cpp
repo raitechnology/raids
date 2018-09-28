@@ -78,10 +78,18 @@ split_args( char *start,  char *end,  char **args,  size_t *len,
   return n;
 }
 
+struct MyPub : public RoutePublish {
+  bool publish( EvPublish & ) { return false; }
+  bool hash_to_sub( uint32_t,  uint32_t,  char *,  size_t & ) {
+    return false;
+  }
+};
+
 int
 main( int, char ** )
 {
-  RouteDB rte;
+  MyPub   mpub;
+  RouteDB rte( mpub );
   char  * args[ 30 ];
   size_t  arglen[ 30 ];
   char    buf[ 1024 ];

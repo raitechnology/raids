@@ -58,6 +58,7 @@ EvHttpListen::accept( void )
     perror( "warning: TCP_NODELAY" );
   ::fcntl( sock, F_SETFL, O_NONBLOCK | ::fcntl( sock, F_GETFL ) );
   c->fd = sock;
+  c->sub_id = sock;
   c->initialize_state();
   if ( this->poll.add_sock( c ) < 0 ) {
     ::close( sock );
@@ -250,9 +251,9 @@ EvHttpService::process( bool /*use_prefetch*/ )
             }
             break;
           default:
-            //printf( "[%.*s]\n", (int) llen[ j ] - 2, line[ j ] );
             break;
         }
+        /*printf( "[%.*s]\n", (int) llen[ j ] - 2, line[ j ] );*/
       }
       if ( upgrade && websock && wsver[ 0 ] && wskey[ 0 ] && wspro[ 0 ] ) {
         if ( this->send_ws_upgrade( wsver, wskey, wskeylen, wspro ) )
@@ -504,7 +505,7 @@ EvHttpService::send_ws_upgrade( const char *wsver, const char *wskey,
                                 size_t wskeylen,  const char *wspro )
 {
   static const char b64[] =
-  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
   uint8_t digest[ 160 / 8 ];
   uint32_t val, i, j = 0;
   char out[ 32 ];
@@ -538,6 +539,7 @@ EvHttpService::send_ws_upgrade( const char *wsver, const char *wskey,
       "Sec-WebSocket-Protocol: %s\r\n"
       "Sec-WebSocket-Accept: %s\r\n"
       "\r\n", wsver, wspro, out );
+   /* printf( "%.*s", n, p );*/
     if ( n > 0 && n < 256 ) {
       this->strm.sz += n;
       res = true;

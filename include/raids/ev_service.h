@@ -13,7 +13,7 @@ struct EvRedisService : public EvConnection, public RedisExec {
   void * operator new( size_t, void *ptr ) { return ptr; }
 
   EvRedisService( EvPoll &p ) : EvConnection( p, EV_REDIS_SOCK ),
-      RedisExec( *p.map, p.ctx_id, *this, p.single_thread ) {}
+      RedisExec( *p.map, p.ctx_id, *this, p.sub_route, p.single_thread ) {}
   void process( bool use_prefetch );
   void process_close( void ) {
     this->RedisExec::release();

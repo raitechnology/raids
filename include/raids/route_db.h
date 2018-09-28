@@ -41,25 +41,32 @@ struct CodeRef {
   }
 };
 
+struct EvPublish;
+struct RoutePublish {
+  bool publish( EvPublish &pub );
+  bool hash_to_sub( uint32_t r,  uint32_t h,  char *key,  size_t &keylen );
+};
+
 struct RouteDB {
   static const uint32_t INI_SPC = 16;
-  DeltaCoder    dc;             /* code          -> route list */
-  UIntHashTab * xht,            /* route hash    -> code | code ref hash */
-              * zht;            /* code ref hash -> code buf offset */
-  uint32_t    * code_buf,       /* list of code ref, which is array of code */
-              * code_spc_ptr,   /* temporary code space */
-              * route_spc_ptr,  /* temporary route space */
-                code_end,       /* end of code_buf[] list */
-                code_size,      /* size of code_buf[] */
-                code_free,      /* amount free between 0 -> code_end */
-                code_spc_size,  /* size of code_spc_ptr */
-                route_spc_size, /* size of route_spc_ptr */
-                code_buf_spc[ INI_SPC * 4 ], /* initial code_buf[] */
-                code_spc[ INI_SPC ],         /* initial code_spc_ptr[] */
-                route_spc[ INI_SPC ];        /* initial code_route_ptr[] */
+  RoutePublish & rte;
+  DeltaCoder     dc;             /* code          -> route list */
+  UIntHashTab  * xht,            /* route hash    -> code | code ref hash */
+               * zht;            /* code ref hash -> code buf offset */
+  uint32_t     * code_buf,       /* list of code ref, which is array of code */
+               * code_spc_ptr,   /* temporary code space */
+               * route_spc_ptr,  /* temporary route space */
+                 code_end,       /* end of code_buf[] list */
+                 code_size,      /* size of code_buf[] */
+                 code_free,      /* amount free between 0 -> code_end */
+                 code_spc_size,  /* size of code_spc_ptr */
+                 route_spc_size, /* size of route_spc_ptr */
+                 code_buf_spc[ INI_SPC * 4 ], /* initial code_buf[] */
+                 code_spc[ INI_SPC ],         /* initial code_spc_ptr[] */
+                 route_spc[ INI_SPC ];        /* initial code_route_ptr[] */
 
-  RouteDB() : xht( 0 ), zht( 0 ), code_buf( 0 ), code_end( 0 ),
-              code_size( INI_SPC * 4 ), code_free( 0 ),
+  RouteDB( RoutePublish &rp ) : rte( rp ), xht( 0 ), zht( 0 ), code_buf( 0 ),
+              code_end( 0 ), code_size( INI_SPC * 4 ), code_free( 0 ),
               code_spc_size( INI_SPC ), route_spc_size( INI_SPC ) {
     this->code_buf      = this->code_buf_spc;
     this->code_spc_ptr  = this->code_spc;

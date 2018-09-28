@@ -135,13 +135,14 @@ EvPoll::dispatch( void )
 }
 
 bool
-EvPoll::publish( EvPublish &pub )
+RoutePublish::publish( EvPublish &pub )
 {
+  EvPoll & poll = static_cast<EvPoll &>( *this );
   EvSocket *s;
   bool flow_good = true;
   for ( uint32_t i = 0; i < pub.rcount; i++ ) {
-    if ( pub.routes[ i ] <= (uint32_t) this->maxfd &&
-         (s = this->sock[ pub.routes[ i ] ]) != NULL ) {
+    if ( pub.routes[ i ] <= (uint32_t) poll.maxfd &&
+         (s = poll.sock[ pub.routes[ i ] ]) != NULL ) {
       switch ( s->type ) {
         case EV_REDIS_SOCK:
           flow_good &= ((EvRedisService *) s)->publish( pub );
@@ -166,10 +167,12 @@ EvPoll::publish( EvPublish &pub )
 }
 
 bool
-EvPoll::hash_to_sub( uint32_t r,  uint32_t h,  char *key,  size_t &keylen )
+RoutePublish::hash_to_sub( uint32_t r,  uint32_t h,  char *key,
+                           size_t &keylen )
 {
+  EvPoll & poll = static_cast<EvPoll &>( *this );
   EvSocket *s;
-  if ( r <= (uint32_t) this->maxfd && (s = this->sock[ r ]) != NULL ) {
+  if ( r <= (uint32_t) poll.maxfd && (s = poll.sock[ r ]) != NULL ) {
     switch ( s->type ) {
       case EV_REDIS_SOCK:
         return ((EvRedisService *) s)->hash_to_sub( h, key, keylen );

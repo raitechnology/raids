@@ -20,7 +20,7 @@ struct EvHttpService : public EvConnection, public RedisExec {
   void * operator new( size_t, void *ptr ) { return ptr; }
 
   EvHttpService( EvPoll &p ) : EvConnection( p, EV_HTTP_SOCK ),
-    RedisExec( *p.map, p.ctx_id, *this, p.single_thread ),
+    RedisExec( *p.map, p.ctx_id, *this, p.sub_route, p.single_thread ),
     websock_off( 0 ), is_not_found( false ) {}
   void initialize_state( void ) {
     this->websock_off = 0;

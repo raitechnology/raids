@@ -5,8 +5,8 @@
 #include <raikv/util.h>
 #include <raids/redis_exec.h>
 #include <raids/md_type.h>
-#include <raids/ev_service.h>
 #include <raids/ev_publish.h>
+#include <raids/ev_service.h>
 #define PCRE2_CODE_UNIT_WIDTH 8
 #include <pcre2.h>
 
@@ -23,11 +23,10 @@ enum {
 void
 RedisExec::rem_all_sub( void )
 {
-  EvRedisService & svc = static_cast<EvRedisService &>( *this );
   HashPos pos;
   if ( this->sub_tab.first( pos ) ) {
     do {
-      svc.poll.sub_route.del_route( pos.h, svc.fd );
+      this->sub_route.del_route( pos.h, this->sub_id );
     } while ( this->sub_tab.next( pos ) );
   }
 }
@@ -36,7 +35,7 @@ bool
 EvRedisService::publish( EvPublish &pub )
 {
   /* don't publish to self ?? */
-  if ( (uint32_t) this->fd != pub.src_route ) {
+  if ( (uint32_t) this->RedisExec::sub_id != pub.src_route ) {
     HashPos sub_pos( pub.subj_hash );
     if ( this->RedisExec::sub_tab.updcnt( pub.subject, pub.subject_len,
                                           sub_pos ) == SUB_OK ) {
@@ -108,7 +107,6 @@ EvRedisService::hash_to_sub( uint32_t h,  char *key,  size_t &keylen )
 ExecStatus
 RedisExec::exec_pubsub( void )
 {
-  EvRedisService & svc = static_cast<EvRedisService &>( *this );
   StreamBuf::BufQueue q( this->strm );
   size_t cnt = 0;
 
@@ -146,13 +144,13 @@ RedisExec::exec_pubsub( void )
           return ERR_BAD_ARGS;
         }
       }
-      if ( svc.poll.sub_route.first_hash( pos, h, v ) ) {
+      if ( this->sub_route.first_hash( pos, h, v ) ) {
         rc = 1;
         do {
-          uint32_t id = svc.poll.sub_route.decompress_one( v );
+          uint32_t id = this->sub_route.decompress_one( v );
           char   key[ 256 ];
           size_t keylen;
-          if ( svc.poll.hash_to_sub( id, h, key, keylen ) ) {
+          if ( this->sub_route.rte.hash_to_sub( id, h, key, keylen ) ) {
             if ( re != NULL )
               rc = pcre2_match( re, (PCRE2_SPTR8) key, keylen, 0, 0, md, 0 );
             if ( rc > 0 ) {
@@ -160,7 +158,7 @@ RedisExec::exec_pubsub( void )
               cnt++;
             }
           }
-        } while ( svc.poll.sub_route.next_hash( pos, h, v ) );
+        } while ( this->sub_route.next_hash( pos, h, v ) );
       }
       if ( re != NULL ) {
         pcre2_match_data_free( md );
@@ -174,7 +172,7 @@ RedisExec::exec_pubsub( void )
         size_t vallen;
         if ( this->msg.get_arg( i, val, vallen ) ) {
           HashPos pos( val, vallen );
-          uint32_t rcnt = svc.poll.sub_route.get_route_count( pos.h );
+          uint32_t rcnt = this->sub_route.get_route_count( pos.h );
           q.append_string( val, vallen );
           q.append_uint( rcnt );
         }
@@ -201,7 +199,6 @@ RedisExec::exec_pubsub( void )
 ExecStatus
 RedisExec::exec_publish( void )
 {
-  EvRedisService & svc = static_cast<EvRedisService &>( *this );
   const char * subj;
   size_t       subj_len;
   const char * msg;
@@ -217,7 +214,7 @@ RedisExec::exec_publish( void )
     return ERR_BAD_ARGS;
 
   sub_pos.init( subj, subj_len ); 
-  rcnt = svc.poll.sub_route.get_route( sub_pos.h, routes );
+  rcnt = this->sub_route.get_route( sub_pos.h, routes );
   if ( rcnt > 0 ) {
     char   msg_len_buf[ 24 ];
     size_t msg_len_digits = RedisMsg::uint_digits( msg_len );
@@ -225,9 +222,9 @@ RedisExec::exec_publish( void )
     EvPublish pub( subj, subj_len,
                    NULL, 0,
                    msg, msg_len,
-                   routes, rcnt, svc.fd, sub_pos.h,
+                   routes, rcnt, this->sub_id, sub_pos.h,
                    msg_len_buf, msg_len_digits  );
-    svc.poll.publish( pub );
+    this->sub_route.rte.publish( pub );
   }
   rte_digits = RedisMsg::uint_digits( rcnt );
   buf = this->strm.alloc( rte_digits + 3 ); 
@@ -264,7 +261,6 @@ RedisExec::exec_unsubscribe( void )
 ExecStatus
 RedisExec::do_sub( int flags )
 {
-  EvRedisService & svc = static_cast<EvRedisService &>( *this );
   const char * hdr;
   size_t       hdr_sz;
   size_t       cnt = this->sub_tab.sub_count(),
@@ -306,13 +302,13 @@ RedisExec::do_sub( int flags )
     HashPos pos( sub[ j ], len[ j ] );
     if ( ( flags & ( DO_SUBSCRIBE | DO_PSUBSCRIBE ) ) != 0 ) {
       if ( this->sub_tab.put( sub[ j ], len[ j ], pos ) == SUB_OK ) {
-        svc.poll.sub_route.add_route( pos.h, svc.fd );
+        this->sub_route.add_route( pos.h, this->sub_id );
         cnt++;
       }
     }
     else {
       if ( this->sub_tab.rem( sub[ j ], len[ j ], pos ) == SUB_OK ) {
-        svc.poll.sub_route.del_route( pos.h, svc.fd );
+        this->sub_route.del_route( pos.h, this->sub_id );
         cnt--;
       }
     }

@@ -55,6 +55,7 @@ inline static bool exec_status_fail( ExecStatus status ) {
 
 struct EvSocket;
 struct RedisExec;
+struct RouteDB;
 
 struct ScanArgs {
   int64_t pos,    /* position argument, the position where scan starts */
@@ -145,10 +146,14 @@ struct RedisExec {
   uint64_t       step_mask;   /* step key mask */
   size_t         argc;        /* count of args in cmd msg */
   SubMap         sub_tab;     /* pub/sub subscription table */
+  RouteDB      & sub_route;   /* map subject to sub_id */
+  uint32_t       sub_id;      /* fd, set this after accept() */
 
-  RedisExec( kv::HashTab &map,  uint32_t ctx_id,  StreamBuf &s,  bool single ) :
+  RedisExec( kv::HashTab &map,  uint32_t ctx_id,  StreamBuf &s,
+             RouteDB &rdb,  bool single ) :
       kctx( map, ctx_id, NULL ), strm( s ),
-      key( 0 ), keys( 0 ), key_cnt( 0 ), key_done( 0 ) {
+      key( 0 ), keys( 0 ), key_cnt( 0 ), key_done( 0 ),
+      sub_route( rdb ), sub_id( ~0U ) {
     if ( single ) this->kctx.set( kv::KEYCTX_IS_SINGLE_THREAD );
     this->kctx.ht.hdr.get_hash_seed( this->kctx.db_num, this->seed,
                                      this->seed2 );

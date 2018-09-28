@@ -66,7 +66,7 @@ struct EvSocket {
   void pushpop( int s, int t ) {
     this->state = ( this->state | ( 1U << s ) ) & ~( 1U << t ); }
   void idle_push( EvState s );
-
+  /* these should be overridden by subclass */
   bool publish( EvPublish &pub );
   bool hash_to_sub( uint32_t h,  char *key,  size_t &keylen );
   /* priority queue test, ordered by first bit set (EV_WRITE > EV_READ).
@@ -83,7 +83,7 @@ struct EvRedisService;
 struct EvHttpService;
 struct EvNatsService;
 
-struct EvPoll {
+struct EvPoll : public RoutePublish {
   kv::PrioQueue<EvSocket *, EvSocket::is_greater> queue;
   EvSocket             ** sock;            /* sock array indexed by fd */
   struct epoll_event    * ev;              /* event array used by epoll() */
@@ -109,7 +109,7 @@ struct EvPoll {
   EvPoll( kv::HashTab *m,  uint32_t id )
     : sock( 0 ), ev( 0 ), map( m ), prefetch_queue( 0 ), prio_tick( 0 ),
       ctx_id( id ), fdcnt( 0 ), efd( -1 ), nfds( -1 ), maxfd( -1 ), quit( 0 ),
-      single_thread( false ) {
+      sub_route( *this ), single_thread( false ) {
     ::memset( this->prefetch_cnt, 0, sizeof( this->prefetch_cnt ) );
   }
 
@@ -120,8 +120,6 @@ struct EvPoll {
   int add_sock( EvSocket *s );
   void remove_sock( EvSocket *s );
   void process_quit( void );     /* quit state close socks */
-  bool publish( EvPublish &pub );
-  bool hash_to_sub( uint32_t r,  uint32_t h,  char *key,  size_t &keylen );
 };
 
 inline void

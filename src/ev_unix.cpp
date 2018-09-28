@@ -89,6 +89,7 @@ EvRedisUnixListen::accept( void )
   }
   ::fcntl( sock, F_SETFL, O_NONBLOCK | ::fcntl( sock, F_GETFL ) );
   c->fd = sock;
+  c->sub_id = sock;
   if ( this->poll.add_sock( c ) < 0 ) {
     ::close( sock );
     c->push_free_list();
