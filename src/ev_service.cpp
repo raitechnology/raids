@@ -67,6 +67,23 @@ EvRedisService::process( bool use_prefetch )
     this->push( EV_WRITE );
 }
 
+bool
+EvRedisService::publish( EvPublish &pub )
+{
+  bool flow_good = true;
+  if ( this->RedisExec::do_pub( pub ) ) {
+    flow_good = ( this->strm.pending() <= this->send_highwater );
+    this->idle_push( flow_good ? EV_WRITE : EV_WRITE_HI );
+  }
+  return flow_good;
+}
+
+bool
+EvRedisService::hash_to_sub( uint32_t h,  char *key,  size_t &keylen )
+{
+  return this->RedisExec::do_hash_to_sub( h, key, keylen );
+}
+
 void
 EvRedisService::release( void )
 {

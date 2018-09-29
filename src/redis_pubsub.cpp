@@ -6,7 +6,7 @@
 #include <raids/redis_exec.h>
 #include <raids/md_type.h>
 #include <raids/ev_publish.h>
-#include <raids/ev_service.h>
+#include <raids/route_db.h>
 #define PCRE2_CODE_UNIT_WIDTH 8
 #include <pcre2.h>
 
@@ -32,13 +32,13 @@ RedisExec::rem_all_sub( void )
 }
 
 bool
-EvRedisService::publish( EvPublish &pub )
+RedisExec::do_pub( EvPublish &pub )
 {
   /* don't publish to self ?? */
-  if ( (uint32_t) this->RedisExec::sub_id != pub.src_route ) {
+  if ( (uint32_t) this->sub_id != pub.src_route ) {
     HashPos sub_pos( pub.subj_hash );
-    if ( this->RedisExec::sub_tab.updcnt( pub.subject, pub.subject_len,
-                                          sub_pos ) == SUB_OK ) {
+    if ( this->sub_tab.updcnt( pub.subject, pub.subject_len,
+                               sub_pos ) == SUB_OK ) {
       static const char   hdr[]  = "*3\r\n$7\r\nmessage\r\n";
       static const size_t hdr_sz = sizeof( hdr ) - 1;
       size_t sz,
@@ -68,12 +68,10 @@ EvRedisService::publish( EvPublish &pub )
       crlf( msg, off + pub.msg_len );
 
       this->strm.sz += sz;
-      bool flow_good = ( this->strm.pending() <= this->send_highwater );
-      this->idle_push( flow_good ? EV_WRITE : EV_WRITE_HI );
-      return flow_good;
+      return true;
     }
   }
-  return true;
+  return false;
 }
 
 ExecStatus
@@ -84,13 +82,13 @@ RedisExec::exec_psubscribe( void )
 }
 
 bool
-EvRedisService::hash_to_sub( uint32_t h,  char *key,  size_t &keylen )
+RedisExec::do_hash_to_sub( uint32_t h,  char *key,  size_t &keylen )
 {
   HashPos pos( h );
   HashVal kv;
-  if ( this->RedisExec::sub_tab.h == NULL )
+  if ( this->sub_tab.h == NULL )
     return false;
-  if ( this->RedisExec::sub_tab.h->hscan( pos, kv ) != HASH_OK )
+  if ( this->sub_tab.h->hscan( pos, kv ) != HASH_OK )
     return false;
   for ( ; ; pos.i++ ) {
     uint32_t h2 = kv_crc_c( kv.key, kv.keylen, 0 );
@@ -99,7 +97,7 @@ EvRedisService::hash_to_sub( uint32_t h,  char *key,  size_t &keylen )
       keylen = kv.keylen;
       return true;
     }
-    if ( this->RedisExec::sub_tab.h->hscan( pos, kv ) != HASH_OK )
+    if ( this->sub_tab.h->hscan( pos, kv ) != HASH_OK )
       return false;
   }
 }

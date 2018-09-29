@@ -54,6 +54,7 @@ inline static bool exec_status_fail( ExecStatus status ) {
 }
 
 struct EvSocket;
+struct EvPublish;
 struct RedisExec;
 struct RouteDB;
 
@@ -316,6 +317,8 @@ struct RedisExec {
   ExecStatus exec_subscribe( void );
   ExecStatus exec_unsubscribe( void );
   ExecStatus do_sub( int flags );
+  bool do_pub( EvPublish &pub );
+  bool do_hash_to_sub( uint32_t h,  char *key,  size_t &keylen );
   /* SCRIPT */
   ExecStatus exec_eval( RedisKeyCtx &ctx );
   ExecStatus exec_evalsha( RedisKeyCtx &ctx );

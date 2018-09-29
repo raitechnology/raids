@@ -15,21 +15,37 @@ struct EvHttpListen : public EvTcpListen {
 struct EvPrefetchQueue;
 
 struct EvHttpService : public EvConnection, public RedisExec {
-  uint64_t websock_off;
-  bool is_not_found;
+  char   * wsbuf;   /* decoded websocket frames */
+  size_t   wsoff,   /* start offset of wsbuf */
+           wslen,   /* length of wsbuf used */
+           wsalloc, /* sizeof wsbuf alloc */
+           wsecho;  /* offset echoed in cooked mode */
+  uint64_t websock_off;  /* on output pointer that frames msgs with ws */
+  bool     term_cooked,  /* terminal mode, ws read data is echoed */
+           is_not_found; /* a 404 page closes socket */
   void * operator new( size_t, void *ptr ) { return ptr; }
 
   EvHttpService( EvPoll &p ) : EvConnection( p, EV_HTTP_SOCK ),
     RedisExec( *p.map, p.ctx_id, *this, p.sub_route, p.single_thread ),
-    websock_off( 0 ), is_not_found( false ) {}
+    wsbuf( 0 ), wsoff( 0 ), wslen( 0 ), websock_off( 0 ),
+    term_cooked( false ), is_not_found( false ) {}
   void initialize_state( void ) {
-    this->websock_off = 0;
+    this->wsbuf   = NULL;
+    this->wsoff   = 0;
+    this->wslen   = 0;
+    this->wsalloc = 0;
+    this->wsecho  = 0;
+    this->websock_off  = 0;
+    this->term_cooked  = false;
     this->is_not_found = false;
   }
   void process( bool use_prefetch );
   void process_close( void ) {
     this->RedisExec::release();
   }
+  bool publish( EvPublish &pub );
+  bool hash_to_sub( uint32_t h,  char *key,  size_t &keylen );
+  void cook_string( char *s,  size_t len ); /* expand '\r' to '\r\n' */
   size_t write( void ); /* override write() in EvConnection */
   size_t try_write( void );
   bool frame_websock( void );
@@ -37,6 +53,7 @@ struct EvHttpService : public EvConnection, public RedisExec {
   bool send_ws_upgrade( const char *wsver, const char *wskey,
                         size_t wskeylen,  const char *wspro );
   bool send_ws_pong( const char *payload,  size_t len );
+  size_t recv_wsframe( char *start,  char *end );
   virtual void release( void );
   void push_free_list( void );
   void pop_free_list( void );
@@ -137,6 +154,21 @@ struct WebSocketFrame {
       i += 4;
     }
     return i;
+  }
+  /* xor mask bits */
+  void apply_mask( void *p ) {
+    uint32_t bits[ 64 / 4 ];
+    size_t j;
+    for ( size_t i = 0; i < this->payload_len; i += j ) {
+      if ( i + sizeof( bits ) > this->payload_len )
+        j = this->payload_len - i;
+      else
+        j = sizeof( bits );
+      ::memcpy( bits, &((uint8_t *) p)[ i ], j );
+      for ( size_t k = 0; k * sizeof( bits[ 0 ] ) < j; k++ )
+        bits[ k ] ^= this->mask;
+      ::memcpy( &((uint8_t *) p)[ i ], bits, j );
+    }
   }
   /* encode header and return size */
   uint64_t encode( void *p ) const {

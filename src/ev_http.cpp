@@ -96,82 +96,61 @@ EvHttpService::process( bool /*use_prefetch*/ )
 
     /* decode websock frame */
     if ( this->websock_off > 0 ) {
-      WebSocketFrame ws;
-      used = ws.decode( start, buflen );
+      used = this->recv_wsframe( start, end );
       if ( used <= 1 ) { /* 0 == not enough data for hdr, 1 == closed */
         if ( used == 0 )
           goto break_loop;
         goto is_closed;
       }
-      p = &start[ used ];
-      if ( ws.payload_len > (uint64_t) 10 * 1024 * 1024 ) {
-        fprintf( stderr, "Websocket payload too large: %lu\n", ws.payload_len );
-        goto is_closed;
-      }
-      if ( &p[ ws.payload_len ] > end ) { /* if still need more data */
-        printf( "need more data\n" );
-        goto break_loop;
-      }
-      if ( ws.mask != 0 ) {
-        for ( i = 0; i < ws.payload_len; i += j ) {
-          uint32_t bits[ 64 / 4 ];
-          j = sizeof( bits );
-          if ( i + j > ws.payload_len )
-            j = ws.payload_len - i;
-          ::memcpy( bits, &p[ i ], j );
-          for ( k = 0; k * sizeof( bits[ 0 ] ) < j; k++ )
-            bits[ k ] ^= ws.mask;
-          ::memcpy( &p[ i ], bits, j );
+      this->off += used;
+      if ( this->term_cooked ) {
+        if ( this->wsecho < this->wslen ) {
+          sz = this->wslen - this->wsecho;
+          p  = &this->wsbuf[ this->wsecho ];
+          this->wsecho += sz;
+          this->cook_string( p, sz );
         }
       }
-      //printf( "ws opcode %x\n", ws.opcode );
-      switch ( ws.opcode ) {
-        case WebSocketFrame::WS_PING: this->send_ws_pong( p, ws.payload_len );
-        case WebSocketFrame::WS_PONG: break;
-        default: { /* WS_TEXT, WS_BINARY */
-          printf( "ws%s%s[%.*s]\n",
-                  ( ws.opcode & WebSocketFrame::WS_TEXT ) ? "text" : "",
-                  ( ws.opcode & WebSocketFrame::WS_BINARY ) ? "bin" : "",
-                  (int) ws.payload_len, p );
-          for ( size_t poff = 0; poff < ws.payload_len; ) {
-            sz = ws.payload_len - poff;
-            RedisMsgStatus mstatus = this->msg.unpack( p, sz, strm.tmp );
-            if ( mstatus != REDIS_MSG_OK ) {
-              fprintf( stderr, "protocol error(%d/%s), ignoring %lu bytes\n",
-                       mstatus, redis_msg_status_string( mstatus ),
-                       ws.payload_len - poff );
-              poff = ws.payload_len;
-              break;
-            }
-            poff += sz;
-            ExecStatus status;
-            if ( (status = this->exec( this, NULL )) == EXEC_OK )
-              if ( strm.alloc_fail )
-                status = ERR_ALLOC_FAIL;
-            switch ( status ) {
-              case EXEC_SETUP_OK:
-                /*if ( q != NULL )
-                  return;*/
-                this->exec_run_to_completion();
-                if ( ! strm.alloc_fail )
-                  break;
-                status = ERR_ALLOC_FAIL;
-                /* fall through */
-              default:
-                this->send_err( status );
-                break;
-              case EXEC_QUIT:
-                this->poll.quit++;
-                break;
-              case EXEC_DEBUG:
-                break;
-            }
+      while ( this->wsoff < this->wslen ) {
+        sz = this->wslen - this->wsoff;
+        p  = &this->wsbuf[ this->wsoff ];
+        RedisMsgStatus mstatus = this->msg.unpack( p, sz, strm.tmp );
+        if ( mstatus != REDIS_MSG_OK ) {
+          if ( mstatus == REDIS_MSG_PARTIAL ) {
+            /*printf( "partial [%.*s]\n", (int)sz, p );*/
+            break;
           }
+          fprintf( stderr, "protocol error(%d/%s), ignoring %lu bytes\n",
+                   mstatus, redis_msg_status_string( mstatus ),
+                   this->wslen - this->wsoff );
+          this->wsoff = this->wslen;
           break;
+        }
+        this->wsoff += sz;
+        ExecStatus status;
+        if ( (status = this->exec( this, NULL )) == EXEC_OK )
+          if ( strm.alloc_fail )
+            status = ERR_ALLOC_FAIL;
+        switch ( status ) {
+          case EXEC_SETUP_OK:
+            /*if ( q != NULL )
+              return;*/
+            this->exec_run_to_completion();
+            if ( ! strm.alloc_fail )
+              break;
+            status = ERR_ALLOC_FAIL;
+            /* FALLTHRU */
+          default:
+            this->send_err( status );
+            break;
+          case EXEC_QUIT:
+            this->poll.quit++;
+            break;
+          case EXEC_DEBUG:
+            break;
         }
       }
       //printf( "wspayload: %ld\n", ws.payload_len );
-      this->off += used + ws.payload_len;
       continue;
     }
 
@@ -255,14 +234,25 @@ EvHttpService::process( bool /*use_prefetch*/ )
         }
         /*printf( "[%.*s]\n", (int) llen[ j ] - 2, line[ j ] );*/
       }
-      if ( upgrade && websock && wsver[ 0 ] && wskey[ 0 ] && wspro[ 0 ] ) {
-        if ( this->send_ws_upgrade( wsver, wskey, wskeylen, wspro ) )
+      if ( upgrade && websock && wsver[ 0 ] && wskey[ 0 ] /*&& wspro[ 0 ]*/ ) {
+        if ( this->send_ws_upgrade( wsver, wskey, wskeylen, wspro ) ) {
           this->websock_off = this->nbytes_sent + this->strm.pending();
-        else
+          if ( ::strncmp( wspro, "term", 4 ) == 0 ) {
+            char buf[ 40 ];
+            this->flush();
+            if ( this->try_write() > 0 ) {
+              this->term_cooked = true;
+              ::strcpy( buf, "Hello! Welcome to Rai DS.\r\n" );
+              this->cook_string( buf, ::strlen( buf ) );
+            }
+          }
+        }
+        else {
           goto not_found;
+        }
       }
       else {
-        printf( "-> %.*s\n", (int) llen[ 0 ], line[ 0 ] );
+        /*printf( "-> %.*s\n", (int) llen[ 0 ], line[ 0 ] );*/
         if ( ! this->send_file( line[ 0 ], llen[ 0 ] ) )
           goto not_found;
       }
@@ -288,6 +278,60 @@ not_found:;
   this->is_not_found = true;
 }
 
+bool
+EvHttpService::publish( EvPublish &pub )
+{
+  bool flow_good = true;
+  if ( this->RedisExec::do_pub( pub ) ) {
+    flow_good = ( this->strm.pending() <= this->send_highwater );
+    this->idle_push( flow_good ? EV_WRITE : EV_WRITE_HI );
+  }
+  return flow_good;
+}
+
+bool
+EvHttpService::hash_to_sub( uint32_t h,  char *key,  size_t &keylen )
+{
+  return this->RedisExec::do_hash_to_sub( h, key, keylen );
+}
+
+void
+EvHttpService::cook_string( char *s,  size_t len )
+{
+  StreamBuf & strm = *this;
+  char  * end = &s[ len ],
+        * buf;
+  size_t  sz,
+          off;
+  for (;;) {
+    sz = ( end - s ) + 1; /* +1 for '\r' to '\r\n' expansion */
+    if ( sz > 255 ) /* must fit in a byte */
+      sz = 255;
+    buf = strm.alloc( sz + 2 );
+    if ( buf == NULL )
+      return;
+    buf[ 0 ] = '@';
+    for ( off = 0; s < end; s++ ) {
+      if ( *s == '\r' && ( &s[ 1 ] == end || s[ 1 ] != '\n' ) ) {
+        if ( off + 2 > sz )
+          break;
+        *s = '\n'; /* change input '\r' into '\n' so redis msg parses line */
+        buf[ 2 + off++ ] = '\r';
+        buf[ 2 + off++ ] = '\n';
+      }
+      else {
+        if ( off + 1 > sz )
+          break;
+        buf[ 2 + off++ ] = *s;
+      }
+    }
+    buf[ 1 ] = (uint8_t) off;
+    strm.sz += off + 2;
+    if ( s == end )
+      return;
+  }
+}
+
 size_t
 EvHttpService::try_write( void )
 {
@@ -311,6 +355,8 @@ EvHttpService::write( void )
 bool
 EvHttpService::frame_websock( void )
 {
+  static const char eol[]    = "\r\n";
+  static size_t     eol_size = sizeof( eol ) - 1;
   StreamBuf & strm   = *this;
   size_t      nbytes = this->nbytes_sent,
               off    = strm.woff,
@@ -358,13 +404,26 @@ EvHttpService::frame_websock( void )
                  sz,
                  totsz = 0;
   RedisMsgStatus mstatus;
+  bool           is_literal;
   /* determine the size of each framed json msg */
   for ( bufoff = 0; ; ) {
     msgsize = buflen - bufoff;
-    mstatus = msg.unpack( &buf[ bufoff ], msgsize, this->strm.tmp );
-    if ( mstatus != REDIS_MSG_OK )
-      return false;
-    sz = msg.to_almost_json_size( false );
+    /* the '@'[len] is a literal, not a msg, pass through */
+    if ( msgsize > 2 && buf[ bufoff ] == '@' ) {
+      sz = (uint8_t) buf[ bufoff + 1 ];
+      msgsize = sz + 2;
+      if ( bufoff + msgsize > buflen )
+        return false;
+      is_literal = true;
+    }
+    else {
+      mstatus = msg.unpack( &buf[ bufoff ], msgsize, this->strm.tmp );
+      if ( mstatus != REDIS_MSG_OK )
+        return false;
+      sz = msg.to_almost_json_size( false );
+      sz += eol_size;
+      is_literal = false;
+    }
     ws.set( sz, 0, WebSocketFrame::WS_TEXT, true );
     hsz = ws.hdr_size();
     totsz += sz + hsz;
@@ -377,21 +436,38 @@ EvHttpService::frame_websock( void )
     /* if only one msg, then it is already decoded */
     if ( totsz == hsz + sz ) {
       ws.encode( newbuf );
-      msg.to_almost_json( &newbuf[ hsz ], false );
-      printf( "frame: %.*s\n", (int) sz, &newbuf[ hsz ] );
+      if ( is_literal )
+        ::memcpy( &newbuf[ hsz ], &buf[ 2 ], sz );
+      else {
+        msg.to_almost_json( &newbuf[ hsz ], false );
+        ::memcpy( &newbuf[ hsz + sz - eol_size ], eol, eol_size );
+      }
+      /*printf( "frame: %.*s\n", (int) sz, &newbuf[ hsz ] );*/
     }
     else {
       wsmsg = newbuf;
       for ( bufoff = 0; ; ) {
         msgsize = buflen - bufoff;
-        msg.unpack( &buf[ bufoff ], msgsize, this->strm.tmp );
+        if ( msgsize > 2 && buf[ bufoff ] == '@' ) {
+          sz = (uint8_t) buf[ bufoff + 1 ];
+          msgsize = sz + 2;
+          ws.set( sz, 0, WebSocketFrame::WS_TEXT, true );
+          hsz = ws.hdr_size();
+          ws.encode( wsmsg );
+          ::memcpy( &wsmsg[ hsz ], &buf[ bufoff + 2 ], sz );
+        }
+        else {
+          msg.unpack( &buf[ bufoff ], msgsize, this->strm.tmp );
+          sz = msg.to_almost_json_size( false );
+          sz += eol_size;
+          ws.set( sz, 0, WebSocketFrame::WS_TEXT, true );
+          hsz = ws.hdr_size();
+          ws.encode( wsmsg );
+          msg.to_almost_json( &wsmsg[ hsz ], false );
+          ::memcpy( &wsmsg[ hsz + sz - eol_size ], eol, eol_size );
+        }
         bufoff += msgsize;
-        sz = msg.to_almost_json_size( false );
-        ws.set( sz, 0, WebSocketFrame::WS_TEXT, true );
-        hsz = ws.hdr_size();
-        ws.encode( wsmsg );
-        msg.to_almost_json( &wsmsg[ hsz ], false );
-        printf( "frame2: %.*s\n", (int) sz, &wsmsg[ hsz ] );
+        /*printf( "frame2: %.*s\n", (int) sz, &wsmsg[ hsz ] );*/
         wsmsg = &wsmsg[ hsz + sz ];
         if ( wsmsg == &newbuf[ totsz ] )
           break;
@@ -508,7 +584,7 @@ EvHttpService::send_ws_upgrade( const char *wsver, const char *wskey,
   "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
   uint8_t digest[ 160 / 8 ];
   uint32_t val, i, j = 0;
-  char out[ 32 ];
+  char wsacc[ 32 ];
   bool res = false;
   /* websock switch hashes wskey with SHA1 and base64 encodes the result */
   SHA1( (const uint8_t *) wskey, wskeylen, digest );
@@ -516,18 +592,18 @@ EvHttpService::send_ws_upgrade( const char *wsver, const char *wskey,
   for ( i = 0; i < 18; i += 3 ) {
     val = ( (uint32_t) digest[ i ] << 16 ) | ( (uint32_t) digest[ i+1 ] << 8 ) |
           (uint32_t) digest[ i+2 ];
-    out[ j ]     = b64[ ( val >> 18 ) & 63U ];
-    out[ j + 1 ] = b64[ ( val >> 12 ) & 63U ];
-    out[ j + 2 ] = b64[ ( val >> 6 ) & 63U ];
-    out[ j + 3 ] = b64[ val & 63U ];
+    wsacc[ j ]     = b64[ ( val >> 18 ) & 63U ];
+    wsacc[ j + 1 ] = b64[ ( val >> 12 ) & 63U ];
+    wsacc[ j + 2 ] = b64[ ( val >> 6 ) & 63U ];
+    wsacc[ j + 3 ] = b64[ val & 63U ];
     j += 4;
   }
   val = (uint32_t) ( digest[ i ] << 16 ) | (uint32_t) ( digest[ i+1 ] << 8 );
-  out[ j ] = b64[ ( val >> 18 ) & 63U ];
-  out[ j + 1 ] = b64[ ( val >> 12 ) & 63U ];
-  out[ j + 2 ] = b64[ ( val >> 6 ) & 63U ];
-  out[ j + 3 ] = '=';
-  out[ j + 4 ] = '\0';
+  wsacc[ j ] = b64[ ( val >> 18 ) & 63U ];
+  wsacc[ j + 1 ] = b64[ ( val >> 12 ) & 63U ];
+  wsacc[ j + 2 ] = b64[ ( val >> 6 ) & 63U ];
+  wsacc[ j + 3 ] = '=';
+  wsacc[ j + 4 ] = '\0';
 
   char * p = this->strm.alloc( 256 );
   if ( p != NULL ) {
@@ -536,10 +612,14 @@ EvHttpService::send_ws_upgrade( const char *wsver, const char *wskey,
       "Connection: upgrade\r\n"
       "Upgrade: websocket\r\n"
       "Sec-WebSocket-Version: %s\r\n"
-      "Sec-WebSocket-Protocol: %s\r\n"
+      "%s%s%s"
       "Sec-WebSocket-Accept: %s\r\n"
-      "\r\n", wsver, wspro, out );
-   /* printf( "%.*s", n, p );*/
+      "Content-Length: 0\r\n"
+      "\r\n",
+      wsver,
+      wspro[0]?"Sec-WebSocket-Protocol: ":"", wspro, wspro[0]?"\r\n":"",
+      wsacc );
+    /*printf( "%.*s", n, p );*/
     if ( n > 0 && n < 256 ) {
       this->strm.sz += n;
       res = true;
@@ -564,9 +644,75 @@ EvHttpService::send_ws_pong( const char *payload,  size_t len )
   return false;
 }
 
+size_t
+EvHttpService::recv_wsframe( char *start,  char *end )
+{
+  WebSocketFrame ws;
+  size_t hdrsz = ws.decode( start, end - start );
+  if ( hdrsz <= 1 ) /* 0 == not enough data for hdr, 1 == closed */
+    return hdrsz;
+  if ( ws.payload_len > (uint64_t) 10 * 1024 * 1024 ) {
+    fprintf( stderr, "Websocket payload too large: %lu\n", ws.payload_len );
+    return 1; /* close */
+  }
+  char *p = &start[ hdrsz ];
+  if ( &p[ ws.payload_len ] > end ) { /* if still need more data */
+    printf( "need more data\n" );
+    return 0;
+  }
+  //printf( "ws opcode %x\n", ws.opcode );
+  switch ( ws.opcode ) {
+    case WebSocketFrame::WS_PING:
+      if ( ws.mask != 0 )
+        ws.apply_mask( p );
+      this->send_ws_pong( p, ws.payload_len );
+      break;
+    case WebSocketFrame::WS_PONG:
+      break;
+    default: { /* WS_TEXT, WS_BINARY */
+#if 0
+      printf( "ws%s%s[%.*s](len=%d p[0]=%d)\n",
+              ( ws.opcode & WebSocketFrame::WS_TEXT ) ? "text" : "",
+              ( ws.opcode & WebSocketFrame::WS_BINARY ) ? "bin" : "",
+              (int) ws.payload_len, p, (int)ws.payload_len, p[ 0 ] );
+#endif
+      for (;;) {
+        if ( this->wslen + ws.payload_len <= this->wsalloc ) {
+          ::memcpy( &this->wsbuf[ this->wslen ], p, ws.payload_len );
+          if ( ws.mask != 0 )
+            ws.apply_mask( &this->wsbuf[ this->wslen ] );
+          this->wslen += ws.payload_len;
+          break;
+        }
+        if ( this->wsoff > 0 ) {
+          this->wslen -= this->wsoff;
+          if ( this->term_cooked )
+            this->wsecho -= this->wsoff;
+          ::memmove( this->wsbuf, &this->wsbuf[ this->wsoff ],
+                     this->wslen );
+          this->wsoff = 0;
+        }
+        else {
+          size_t sz  = kv::align<size_t>( this->wslen + ws.payload_len, 1024 );
+          char * tmp = (char *) ::realloc( this->wsbuf, sz );
+          if ( tmp == NULL )
+            return 1; /* close */
+          this->wsbuf   = tmp;
+          this->wsalloc = sz;
+        }
+      }
+      break;
+    }
+  }
+  //printf( "wspayload: %ld\n", ws.payload_len );
+  return hdrsz + ws.payload_len;
+}
+
 void
 EvHttpService::release( void )
 {
+  if ( this->wsbuf != NULL )
+    ::free( this->wsbuf );
   this->RedisExec::release();
   this->EvConnection::release();
   this->push_free_list();
