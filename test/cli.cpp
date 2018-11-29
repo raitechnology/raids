@@ -15,17 +15,17 @@ struct MyClient;
 struct StdinCallback : public EvCallback {
   MyClient &me;
   StdinCallback( MyClient &m ) : me( m ) {}
-  virtual void onMsg( RedisMsg &msg );
-  virtual void onErr( char *buf,  size_t buflen,  RedisMsgStatus status );
-  virtual void onClose( void );
+  virtual void on_msg( RedisMsg &msg );
+  virtual void on_err( char *buf,  size_t buflen,  RedisMsgStatus status );
+  virtual void on_close( void );
 };
 
 struct ClientCallback : public EvCallback {
   MyClient &me;
   ClientCallback( MyClient &m ) : me( m ) {}
-  virtual void onMsg( RedisMsg &msg );
-  virtual void onErr( char *buf,  size_t buflen,  RedisMsgStatus status );
-  virtual void onClose( void );
+  virtual void on_msg( RedisMsg &msg );
+  virtual void on_err( char *buf,  size_t buflen,  RedisMsgStatus status );
+  virtual void on_close( void );
 };
 
 struct MyClient {
@@ -53,26 +53,36 @@ struct MyClient {
       this->client = &this->uclient;
     return status;
   }
+  void print_err( const char *w,  RedisMsgStatus status ) {
+    this->term.printf( "%s err: %d+%s;%s\n", w, status,
+            redis_msg_status_string( status ),
+            redis_msg_status_description( status ) );
+  }
 };
 
 void
-StdinCallback::onMsg( RedisMsg &msg )
+StdinCallback::on_msg( RedisMsg &msg )
 {
+  if ( msg.type == RedisMsg::BULK_ARRAY &&
+       msg.len == 1 &&
+       msg.match_arg( 0, "q", 1, NULL ) == 1 ) {
+    this->on_close();
+    return;
+  }
   char buf[ 1024 ], *b = buf;
   size_t sz = msg.to_almost_json_size();
 
   if ( sz > sizeof( buf ) ) {
     b = (char *) ::malloc( sz );
     if ( b == NULL )
-      printf( "msg too large" );
+      this->me.term.printf( "msg too large\n" );
   }
   if ( b != NULL ) {
     msg.to_almost_json( b );
-    printf( "executing: %.*s\n", (int) sz, b );
+    this->me.term.printf( "executing: %.*s\n", (int) sz, b );
     if ( b != buf )
       ::free( b );
   }
-  printf( "> " ); fflush( stdout );
 
   sz = 1024;
   void *tmp = this->me.client->tmp.alloc( msg.pack_size() );
@@ -81,31 +91,24 @@ StdinCallback::onMsg( RedisMsg &msg )
     this->me.client->idle_push( EV_WRITE );
   }
   else
-    printf( "pack allocation failed\n" );
-}
-
-static void
-print_err( const char *w,  RedisMsgStatus status )
-{
-  printf( "%s err: %d+%s;%s\n", w, status, redis_msg_status_string( status ),
-          redis_msg_status_description( status ) );
+    this->me.term.printf( "pack allocation failed\n" );
 }
 
 void
-StdinCallback::onErr( char *,  size_t,  RedisMsgStatus status )
+StdinCallback::on_err( char *,  size_t,  RedisMsgStatus status )
 {
-  print_err( "terminal", status );
-  printf( "? " ); fflush( stdout );
+  this->me.print_err( "terminal", status );
 }
 
 void
-StdinCallback::onClose( void )
+StdinCallback::on_close( void )
 {
-  printf( "bye\n" );
+  this->me.term.printf( "bye\n" );
+  this->me.poll.quit = 1;
 }
 
 void
-ClientCallback::onMsg( RedisMsg &msg )
+ClientCallback::on_msg( RedisMsg &msg )
 {
   char buf[ 64 * 1024 ], *b = buf;
   size_t sz = msg.to_almost_json_size();
@@ -113,33 +116,26 @@ ClientCallback::onMsg( RedisMsg &msg )
   if ( sz > sizeof( buf ) ) {
     b = (char *) ::malloc( sz );
     if ( b == NULL )
-      printf( "msg too large" );
+      this->me.term.printf( "msg too large\n" );
   }
   if ( b != NULL ) {
     msg.to_almost_json( b );
-    fflush( stdout );
-    for ( size_t n = 0; n < sz; ) {
-      ssize_t nb = ::write( 1, &b[ n ], sz - n );
-      if ( nb > 0 )
-        n += nb;
-    }
-    if ( b != buf && b != NULL )
+    this->me.term.printf( "%.*s\n", (int) sz, b );
+    if ( b != buf )
       ::free( b );
   }
-  printf( "\n? " ); fflush( stdout );
 }
 
 void
-ClientCallback::onErr( char *,  size_t,  RedisMsgStatus status )
+ClientCallback::on_err( char *,  size_t,  RedisMsgStatus status )
 {
-  print_err( "client", status );
-  printf( "? " ); fflush( stdout );
+  this->me.print_err( "client", status );
 }
 
 void
-ClientCallback::onClose( void )
+ClientCallback::on_close( void )
 {
-  printf( "client connection closed\n" );
+  this->me.term.printf( "client connection closed\n" );
   this->me.poll.quit = 1;
 }
 
@@ -195,8 +191,8 @@ main( int argc, char *argv[] )
     }
   }
   if ( is_connected ) {
-    printf( "? " ); fflush( stdout );
-    my.term.start( 0 );
+//    printf( "? " ); fflush( stdout );
+    my.term.start();
     sighndl.install();
     for (;;) {
       if ( poll.quit >= 5 )
@@ -206,6 +202,7 @@ main( int argc, char *argv[] )
       if ( sighndl.signaled )
         poll.quit++;
     }
+    my.term.finish();
   }
 
   return status;

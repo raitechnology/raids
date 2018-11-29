@@ -3,6 +3,7 @@
 
 #include <raids/ev_tcp.h>
 #include <raids/redis_exec.h>
+#include <raids/term.h>
 
 namespace rai {
 namespace ds {
@@ -19,25 +20,27 @@ struct EvHttpService : public EvConnection, public RedisExec {
   size_t   wsoff,   /* start offset of wsbuf */
            wslen,   /* length of wsbuf used */
            wsalloc, /* sizeof wsbuf alloc */
-           wsecho;  /* offset echoed in cooked mode */
+           wsmsgcnt;
   uint64_t websock_off;  /* on output pointer that frames msgs with ws */
-  bool     term_cooked,  /* terminal mode, ws read data is echoed */
-           is_not_found; /* a 404 page closes socket */
+  bool     is_not_found, /* a 404 page closes socket */
+           is_using_term;
+  Term     term;
   void * operator new( size_t, void *ptr ) { return ptr; }
 
   EvHttpService( EvPoll &p ) : EvConnection( p, EV_HTTP_SOCK ),
     RedisExec( *p.map, p.ctx_id, *this, p.sub_route, p.single_thread ),
     wsbuf( 0 ), wsoff( 0 ), wslen( 0 ), websock_off( 0 ),
-    term_cooked( false ), is_not_found( false ) {}
+    is_not_found( false ) {}
   void initialize_state( void ) {
-    this->wsbuf   = NULL;
-    this->wsoff   = 0;
-    this->wslen   = 0;
-    this->wsalloc = 0;
-    this->wsecho  = 0;
-    this->websock_off  = 0;
-    this->term_cooked  = false;
-    this->is_not_found = false;
+    this->wsbuf         = NULL;
+    this->wsoff         = 0;
+    this->wslen         = 0;
+    this->wsalloc       = 0;
+    this->wsmsgcnt      = 0;
+    this->websock_off   = 0;
+    this->is_not_found  = false;
+    this->is_using_term = false;
+    this->term.zero();
   }
   void process( bool use_prefetch );
   void process_close( void ) {
@@ -45,10 +48,14 @@ struct EvHttpService : public EvConnection, public RedisExec {
   }
   bool publish( EvPublish &pub );
   bool hash_to_sub( uint32_t h,  char *key,  size_t &keylen );
+#if 0
   void cook_string( char *s,  size_t len ); /* expand '\r' to '\r\n' */
+#endif
+  bool flush_term( void );
   size_t write( void ); /* override write() in EvConnection */
   size_t try_write( void );
   bool frame_websock( void );
+  bool frame_websock2( void );
   bool send_file( const char *get,  size_t hdrlen );
   bool send_ws_upgrade( const char *wsver, const char *wskey,
                         size_t wskeylen,  const char *wspro );

@@ -96,6 +96,9 @@ EvHttpService::process( bool /*use_prefetch*/ )
 
     /* decode websock frame */
     if ( this->websock_off > 0 ) {
+      char * inptr;
+      size_t inoff,
+             inlen;
       used = this->recv_wsframe( start, end );
       if ( used <= 1 ) { /* 0 == not enough data for hdr, 1 == closed */
         if ( used == 0 )
@@ -103,17 +106,23 @@ EvHttpService::process( bool /*use_prefetch*/ )
         goto is_closed;
       }
       this->off += used;
-      if ( this->term_cooked ) {
-        if ( this->wsecho < this->wslen ) {
-          sz = this->wslen - this->wsecho;
-          p  = &this->wsbuf[ this->wsecho ];
-          this->wsecho += sz;
-          this->cook_string( p, sz );
-        }
+      if ( this->is_using_term ) {
+        this->term.tty_input( &this->wsbuf[ this->wsoff ],
+                              this->wslen - this->wsoff );
+        this->wsoff = this->wslen;
+        this->flush_term();
+        inptr = this->term.line_buf;
+        inoff = this->term.line_off;
+        inlen = this->term.line_len;
       }
-      while ( this->wsoff < this->wslen ) {
-        sz = this->wslen - this->wsoff;
-        p  = &this->wsbuf[ this->wsoff ];
+      else {
+        inptr = this->wsbuf;
+        inoff = this->wsoff;
+        inlen = this->wslen;
+      }
+      while ( inoff < inlen ) {
+        sz = inlen - inoff;
+        p  = &inptr[ inoff ];
         RedisMsgStatus mstatus = this->msg.unpack( p, sz, strm.tmp );
         if ( mstatus != REDIS_MSG_OK ) {
           if ( mstatus == REDIS_MSG_PARTIAL ) {
@@ -122,11 +131,11 @@ EvHttpService::process( bool /*use_prefetch*/ )
           }
           fprintf( stderr, "protocol error(%d/%s), ignoring %lu bytes\n",
                    mstatus, redis_msg_status_string( mstatus ),
-                   this->wslen - this->wsoff );
-          this->wsoff = this->wslen;
+                   inlen - inoff );
+          inoff = inlen;
           break;
         }
-        this->wsoff += sz;
+        inoff += sz;
         ExecStatus status;
         if ( (status = this->exec( this, NULL )) == EXEC_OK )
           if ( strm.alloc_fail )
@@ -150,7 +159,10 @@ EvHttpService::process( bool /*use_prefetch*/ )
             break;
         }
       }
-      //printf( "wspayload: %ld\n", ws.payload_len );
+      if ( this->is_using_term )
+        this->term.line_off = inoff;
+      else
+        this->wsoff = inoff;
       continue;
     }
 
@@ -238,13 +250,11 @@ EvHttpService::process( bool /*use_prefetch*/ )
         if ( this->send_ws_upgrade( wsver, wskey, wskeylen, wspro ) ) {
           this->websock_off = this->nbytes_sent + this->strm.pending();
           if ( ::strncmp( wspro, "term", 4 ) == 0 ) {
-            char buf[ 40 ];
             this->flush();
-            if ( this->try_write() > 0 ) {
-              this->term_cooked = true;
-              ::strcpy( buf, "Hello! Welcome to Rai DS.\r\n" );
-              this->cook_string( buf, ::strlen( buf ) );
-            }
+            this->term.tty_init();
+            this->term.tty_prompt();
+            this->is_using_term = true;
+            this->flush_term();
           }
         }
         else {
@@ -259,7 +269,6 @@ EvHttpService::process( bool /*use_prefetch*/ )
     }
     else
       goto not_found;
-    //strm.append( indexhtml, sizeof( indexhtml ) - 1 );
   }
 break_loop:;
   this->pop( EV_PROCESS );
@@ -279,6 +288,26 @@ not_found:;
 }
 
 bool
+EvHttpService::flush_term( void )
+{
+  const char * buf    = this->term.out_buf;
+  size_t       buflen = this->term.out_len;
+  if ( buflen == 0 )
+    return false;
+
+  StreamBuf & strm = *this;
+  uint8_t msg[ 2 + 255 ];
+  for ( size_t i = 0; i < buflen; i += 255 ) {
+    msg[ 0 ] = '@';
+    msg[ 1 ] = (uint8_t) kv::min<size_t>( 255, buflen - i );
+    ::memcpy( &msg[ 2 ], &buf[ i ], msg[ 1 ] );
+    strm.append( msg, (size_t) msg[ 1 ] + 2 );
+  }
+  this->term.tty_out_reset();
+  return true;
+}
+
+bool
 EvHttpService::publish( EvPublish &pub )
 {
   bool flow_good = true;
@@ -294,7 +323,7 @@ EvHttpService::hash_to_sub( uint32_t h,  char *key,  size_t &keylen )
 {
   return this->RedisExec::do_hash_to_sub( h, key, keylen );
 }
-
+#if 0
 void
 EvHttpService::cook_string( char *s,  size_t len )
 {
@@ -331,6 +360,7 @@ EvHttpService::cook_string( char *s,  size_t len )
       return;
   }
 }
+#endif
 
 size_t
 EvHttpService::try_write( void )
@@ -354,6 +384,21 @@ EvHttpService::write( void )
 
 bool
 EvHttpService::frame_websock( void )
+{
+  size_t msgcnt = this->wsmsgcnt;
+  bool b = this->frame_websock2();
+  /* if a message was output, push another prompt out */
+  if ( msgcnt != this->wsmsgcnt && this->is_using_term ) {
+    if ( this->term.tty_prompt() ) {
+      this->flush_term();
+      this->frame_websock2();
+    }
+  }
+  return b;
+}
+
+bool
+EvHttpService::frame_websock2( void )
 {
   static const char eol[]    = "\r\n";
   static size_t     eol_size = sizeof( eol ) - 1;
@@ -423,6 +468,7 @@ EvHttpService::frame_websock( void )
       sz = msg.to_almost_json_size( false );
       sz += eol_size;
       is_literal = false;
+      this->wsmsgcnt++;
     }
     ws.set( sz, 0, WebSocketFrame::WS_TEXT, true );
     hsz = ws.hdr_size();
@@ -686,8 +732,10 @@ EvHttpService::recv_wsframe( char *start,  char *end )
         }
         if ( this->wsoff > 0 ) {
           this->wslen -= this->wsoff;
+#if 0
           if ( this->term_cooked )
             this->wsecho -= this->wsoff;
+#endif
           ::memmove( this->wsbuf, &this->wsbuf[ this->wsoff ],
                      this->wslen );
           this->wsoff = 0;
@@ -711,6 +759,7 @@ EvHttpService::recv_wsframe( char *start,  char *end )
 void
 EvHttpService::release( void )
 {
+  this->term.tty_release();
   if ( this->wsbuf != NULL )
     ::free( this->wsbuf );
   this->RedisExec::release();

@@ -348,14 +348,6 @@ EvPoll::remove_sock( EvSocket *s )
     ((EvConnection *) s)->release();
 }
 
-int
-EvTerminal::start( int sock )
-{
-  this->fd = sock; /* usually stdin fd */
-  ::fcntl( sock, F_SETFL, O_NONBLOCK | ::fcntl( sock, F_GETFL ) );
-  return this->poll.add_sock( this );
-}
-
 bool
 EvConnection::read( void )
 {

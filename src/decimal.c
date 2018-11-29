@@ -4,8 +4,8 @@
 #include <stdint.h>
 #include <raids/decimal.h>
 #define DECNUMDIGITS 34
-#include <bid/decimal64.h>
-#include <bid/decimal128.h>
+#include <libdecnumber/bid/decimal64.h>
+#include <libdecnumber/bid/decimal128.h>
 
 #if 0
 static int endian_mismatch = 2;
