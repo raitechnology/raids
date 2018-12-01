@@ -81,7 +81,7 @@ EvPoll::dispatch( void )
           case EV_REDIS_SOCK:  ((EvRedisService *) s)->read(); break;
           case EV_HTTP_SOCK:   ((EvHttpService *) s)->read(); break;
           case EV_LISTEN_SOCK: ((EvListen *) s)->accept(); break;
-          case EV_CLIENT_SOCK: ((EvClient *) s)->read(); break;
+          case EV_CLIENT_SOCK: ((EvNetClient *) s)->read(); break;
           case EV_TERMINAL:    ((EvTerminal *) s)->read(); break;
           case EV_NATS_SOCK:   ((EvNatsService *) s)->read(); break;
         }
@@ -91,7 +91,7 @@ EvPoll::dispatch( void )
           case EV_REDIS_SOCK:  ((EvRedisService *) s)->process( false ); break;
           case EV_HTTP_SOCK:   ((EvHttpService *) s)->process( false ); break;
           case EV_LISTEN_SOCK: break;
-          case EV_CLIENT_SOCK: ((EvClient *) s)->process(); break;
+          case EV_CLIENT_SOCK: ((EvNetClient *) s)->process(); break;
           case EV_TERMINAL:    ((EvTerminal *) s)->process(); break;
           case EV_NATS_SOCK:   ((EvNatsService *) s)->process( false ); break;
         }
@@ -102,7 +102,7 @@ EvPoll::dispatch( void )
           case EV_REDIS_SOCK:  ((EvRedisService *) s)->write(); break;
           case EV_HTTP_SOCK:   ((EvHttpService *) s)->write(); break;
           case EV_LISTEN_SOCK: break;
-          case EV_CLIENT_SOCK: ((EvClient *) s)->write(); break;
+          case EV_CLIENT_SOCK: ((EvNetClient *) s)->write(); break;
           case EV_TERMINAL:    ((EvTerminal *) s)->write(); break;
           case EV_NATS_SOCK:   ((EvNatsService *) s)->write(); break;
         }
@@ -114,7 +114,7 @@ EvPoll::dispatch( void )
           case EV_REDIS_SOCK:  ((EvRedisService *) s)->process_close(); break;
           case EV_HTTP_SOCK:   ((EvHttpService *) s)->process_close(); break;
           case EV_LISTEN_SOCK: break;
-          case EV_CLIENT_SOCK: ((EvClient *) s)->process_close(); break;
+          case EV_CLIENT_SOCK: ((EvNetClient *) s)->process_close(); break;
           case EV_TERMINAL:    ((EvTerminal *) s)->process_close(); break;
           case EV_NATS_SOCK:   ((EvNatsService *) s)->process_close(); break;
         }
@@ -152,7 +152,7 @@ RoutePublish::publish( EvPublish &pub )
           break;
 	case EV_LISTEN_SOCK:  break;
         case EV_CLIENT_SOCK:
-          flow_good &= ((EvClient *) s)->publish( pub );
+          flow_good &= ((EvNetClient *) s)->publish( pub );
           break;
         case EV_TERMINAL:
           flow_good &= ((EvTerminal *) s)->publish( pub );
@@ -180,7 +180,7 @@ RoutePublish::hash_to_sub( uint32_t r,  uint32_t h,  char *key,
         return ((EvHttpService *) s)->hash_to_sub( h, key, keylen );
       case EV_LISTEN_SOCK:  break;
       case EV_CLIENT_SOCK:
-        return ((EvClient *) s)->hash_to_sub( h, key, keylen );
+        return ((EvNetClient *) s)->hash_to_sub( h, key, keylen );
       case EV_TERMINAL:
         return ((EvTerminal *) s)->hash_to_sub( h, key, keylen );
       case EV_NATS_SOCK:

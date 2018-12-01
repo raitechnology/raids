@@ -34,12 +34,14 @@ struct MyClient {
   StdinCallback  termcb;
   EvTcpClient    tclient;
   EvUnixClient   uclient;
+  EvShmClient    shm;
   EvClient     * client;
   EvTerminal     term;
 
   MyClient( EvPoll &p ) : poll( p ), clicb( *this ),
      termcb( *this ), tclient( p, this->clicb ),
-     uclient( p, this->clicb ), client( 0 ), term( p, this->termcb ) {}
+     uclient( p, this->clicb ), shm( this->clicb ),
+     client( 0 ), term( p, this->termcb ) {}
 
   int connect( const char *h,  int p ) {
     int status;
@@ -51,6 +53,13 @@ struct MyClient {
     int status;
     if ( (status = this->uclient.connect( path )) == 0 )
       this->client = &this->uclient;
+    return status;
+  }
+  int shm_open( const char *map ) {
+    int status;
+    if ( (status = this->shm.open( map )) == 0 &&
+         (status = this->shm.init_exec( this->poll )) == 0 )
+      this->client = &this->shm;
     return status;
   }
   void print_err( const char *w,  RedisMsgStatus status ) {
@@ -84,14 +93,7 @@ StdinCallback::on_msg( RedisMsg &msg )
       ::free( b );
   }
 
-  sz = 1024;
-  void *tmp = this->me.client->tmp.alloc( msg.pack_size() );
-  if ( tmp != NULL ) {
-    this->me.client->append_iov( tmp, msg.pack( tmp ) );
-    this->me.client->idle_push( EV_WRITE );
-  }
-  else
-    this->me.term.printf( "pack allocation failed\n" );
+  this->me.client->send_msg( msg );
 }
 
 void
@@ -163,9 +165,10 @@ main( int argc, char *argv[] )
   const char * ho = get_arg( argc, argv, 1, 1, "-x", NULL ),
              * pt = get_arg( argc, argv, 2, 1, "-p", "8888" ),
              * pa = get_arg( argc, argv, 2, 1, "-a", NULL ),
+             * ma = get_arg( argc, argv, 2, 1, "-m", NULL ),
              * he = get_arg( argc, argv, 0, 0, "-h", 0 );
   if ( he != NULL ) {
-    printf( "%s [-x host] [-p port] [-a /tmp/sock]\n", argv[ 0 ] );
+    printf( "%s [-x host] [-p port] [-a /tmp/sock] [-m map]\n", argv[ 0 ] );
     return 0;
   }
 
@@ -180,7 +183,18 @@ main( int argc, char *argv[] )
       is_connected = true;
     }
   }
-  if ( ! is_connected ) {
+  else if ( ma != NULL ) {
+    if ( my.shm_open( ma ) != 0 ) {
+      fprintf( stderr, "unable to shm open map %s\n", ma );
+      status = 3; /* bad map */
+    }
+    else {
+      printf( "opened: %s\n", ma );
+      is_connected = true;
+    }
+  }
+  /* by default, connects to :8888 */
+  if ( ! is_connected && status == 0 ) {
     if ( my.connect( ho, atoi( pt ) ) != 0 ) {
       fprintf( stderr, "unable to connect tcp socket to %s\n", pt );
       status = 2; /* bad port or network error */
@@ -191,7 +205,6 @@ main( int argc, char *argv[] )
     }
   }
   if ( is_connected ) {
-//    printf( "? " ); fflush( stdout );
     my.term.start();
     sighndl.install();
     for (;;) {

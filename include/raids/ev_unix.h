@@ -18,9 +18,10 @@ struct EvRedisUnixListen : public EvUnixListen {
   virtual void accept( void );
 };
 
-struct EvUnixClient : public EvClient {
-  EvUnixClient( EvPoll &p, EvCallback &callback,  EvSockType t = EV_CLIENT_SOCK )
-    : EvClient( p, callback, t ) {}
+struct EvUnixClient : public EvNetClient {
+  EvUnixClient( EvPoll &p, EvCallback &callback,
+                EvSockType t = EV_CLIENT_SOCK )
+    : EvNetClient( p, callback, t ) {}
   int connect( const char *sock );
 };
 

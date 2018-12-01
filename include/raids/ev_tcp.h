@@ -18,9 +18,9 @@ struct EvRedisListen : public EvTcpListen {
   virtual void accept( void );
 };
 
-struct EvTcpClient : public EvClient {
+struct EvTcpClient : public EvNetClient {
   EvTcpClient( EvPoll &p, EvCallback &callback,  EvSockType t = EV_CLIENT_SOCK )
-    : EvClient( p, callback, t ) {}
+    : EvNetClient( p, callback, t ) {}
   int connect( const char *ip,  int port );
 };
 

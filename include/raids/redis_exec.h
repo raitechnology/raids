@@ -128,6 +128,9 @@ struct EvPrefetchQueue :
 };
 
 struct RedisExec {
+  void * operator new( size_t, void *ptr ) { return ptr; }
+  void operator delete( void *ptr ) { ::free( ptr ); }
+
   uint64_t seed, seed2;       /* kv map hash seeds, different for each db */
   kv::KeyCtx     kctx;        /* key context used for every key in command */
   kv::WorkAllocT< 1024 > wrk; /* kv work buffer, reset before each key lookup */

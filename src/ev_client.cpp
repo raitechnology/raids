@@ -13,8 +13,23 @@
 using namespace rai;
 using namespace ds;
 
+void
+EvClient::send_msg( RedisMsg & )
+{
+}
+
+void
+EvNetClient::send_msg( RedisMsg &msg )
+{
+  void *tmp = this->tmp.alloc( msg.pack_size() );
+  if ( tmp != NULL ) {
+    this->append_iov( tmp, msg.pack( tmp ) );
+    this->idle_push( EV_WRITE );
+  }
+}
+
 RedisMsgStatus
-EvClient::process_msg( char *buf,  size_t &buflen )
+EvNetClient::process_msg( char *buf,  size_t &buflen )
 {
   switch ( buf[ 0 ] ) {
     default:
@@ -40,7 +55,7 @@ EvClient::process_msg( char *buf,  size_t &buflen )
 }
 
 void
-EvClient::process( void )
+EvNetClient::process( void )
 {
   for (;;) {
     char * buf    = &this->recv[ this->off ];
@@ -72,7 +87,7 @@ EvClient::process( void )
 }
 
 void
-EvClient::process_close( void )
+EvNetClient::process_close( void )
 {
   this->cb.on_close();
 }

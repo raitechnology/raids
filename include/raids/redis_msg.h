@@ -51,7 +51,17 @@ struct RedisMsg {
                                        DTBit( BULK_STRING );
     return ( DTBit( this->type ) & valid_bits ) != 0;
   }
-
+  /* copy msg reference */
+  void ref( RedisMsg &m ) {
+    this->type = m.type;
+    this->len  = m.len;
+    if ( m.type == INTEGER_VALUE )
+      this->ival = m.ival;
+    else if ( m.type == BULK_ARRAY )
+      this->array = m.array;
+    else
+      this->strval = m.strval;
+  }
   /* get the first string in an array: ["command"] */
   const char * command( size_t &length,  size_t &argc ) const {
     const RedisMsg *m = this;

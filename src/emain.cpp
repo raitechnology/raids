@@ -12,36 +12,11 @@
 #include <raids/ev_unix.h>
 #include <raids/ev_http.h>
 #include <raids/ev_nats.h>
-#include <raikv/shm_ht.h>
-#include <raikv/util.h>
+#include <raids/ev_client.h>
 
 using namespace rai;
 using namespace ds;
 using namespace kv;
-
-static HashTab *
-shm_attach( const char *mn,  uint32_t &ctx_id )
-{
-  HashTabGeom geom;
-  HashTab *map = HashTab::attach_map( mn, 0, geom );
-  if ( map != NULL ) {
-    ctx_id = map->attach_ctx( ::getpid(), 0 );
-    fputs( print_map_geom( map, ctx_id ), stdout );
-    fflush( stdout );
-  }
-  return map;
-}
-
-static void
-shm_close( HashTab *map,  uint32_t ctx_id )
-{
-  //print_stats();
-  if ( ctx_id != MAX_CTX_ID ) {
-    map->detach_ctx( ctx_id );
-    ctx_id = MAX_CTX_ID;
-  }
-  delete map;
-}
 
 static const char *
 get_arg( int argc, char *argv[], int n, int b, const char *f, const char *def )
@@ -58,10 +33,10 @@ get_arg( int argc, char *argv[], int n, int b, const char *f, const char *def )
 int
 main( int argc, char *argv[] )
 {
-  SignalHandler sighndl;
-  HashTab * map = NULL;
-  uint32_t  ctx_id;
-  int       status = 0;
+  SignalHandler  sighndl;
+  EvCallback     cb;
+  EvShmClient    shm( cb );
+  int            status = 0;
 
   const char * mn = get_arg( argc, argv, 1, 1, "-m", "sysv2m:shm.test" ),
              * pt = get_arg( argc, argv, 2, 1, "-p", "8888" ),
@@ -87,59 +62,61 @@ main( int argc, char *argv[] )
     return 0;
   }
 
-  map = shm_attach( mn, ctx_id );
-  if ( map == NULL ) /* bad map name, doesn't exist */
-    status = 1;
-  else {
-    EvPoll            poll( map, ctx_id );
-    EvRedisListen     redis_sv( poll );
-    EvRedisUnixListen redis_un( poll );
-    EvHttpListen      http_sv( poll );
-    EvNatsListen      nats_sv( poll );
-    int maxfd = atoi( fd );
-    if ( maxfd == 0 ) maxfd = 4096;
-    poll.init( maxfd, fe[ 0 ] == '1', si[ 0 ] == '1' );
-    if ( redis_sv.listen( NULL, atoi( pt ) ) != 0 ) {
-      fprintf( stderr, "unable to open tcp listen socket on %s\n", pt );
-      status = 2; /* bad port or network error */
-    }
-    if ( http_sv.listen( NULL, atoi( hp ) ) != 0 ) {
-      fprintf( stderr, "unable to open http listen socket on %s\n", hp );
-    }
-    if ( redis_un.listen( sn ) != 0 ) {
-      fprintf( stderr, "unable to open unix listen socket on %s\n", sn );
-    }
-    if ( nats_sv.listen( NULL, atoi( np ) ) != 0 ) {
-      fprintf( stderr, "unable to open nats listen socket on %s\n", np );
-    }
-    if ( status == 0 ) {
-      printf( "raids_version:        %s\n", kv_stringify( DS_VER ) );
-      printf( "max_fds:              %d\n", maxfd );
-      printf( "prefetch:             %s\n", fe[ 0 ] == '1' ? "true" : "false" );
-      printf( "single_thread:        %s\n", si[ 0 ] == '1' ? "true" : "false" );
-      printf( "listening:            %s\n", pt );
-      printf( "unix:                 %s\n", sn );
-      printf( "www:                  %s\n", hp );
-      printf( "nats:                 %s\n", np );
-      fflush( stdout );
-      sighndl.install();
-      for (;;) {
-        if ( poll.quit >= 5 )
-          break;
-        bool idle = poll.dispatch(); /* true if idle, false if busy */
-        poll.wait( idle ? 100 : 0 );
-        if ( sighndl.signaled )
-          poll.quit++;
-      }
-      if ( fe[ 0 ] == '1' )
-        for ( size_t i = 0; i < EvPoll::PREFETCH_SIZE; i++ ) {
-          if ( poll.prefetch_cnt[ i ] != 0 )
-            printf( "pre[%lu] = %lu\n", i, poll.prefetch_cnt[ i ] );
-        }
-      printf( "bye\n" );
-    }
-    shm_close( map, ctx_id );
+  if ( shm.open( mn ) != 0 )
+    return 1;
+  shm.print();
+
+  EvPoll            poll( shm.map, shm.ctx_id );
+  EvRedisListen     redis_sv( poll );
+  EvRedisUnixListen redis_un( poll );
+  EvHttpListen      http_sv( poll );
+  EvNatsListen      nats_sv( poll );
+  int               maxfd = atoi( fd );
+
+  if ( maxfd == 0 )
+    maxfd = 4096;
+  poll.init( maxfd, fe[ 0 ] == '1', si[ 0 ] == '1' );
+
+  if ( redis_sv.listen( NULL, atoi( pt ) ) != 0 ) {
+    fprintf( stderr, "unable to open tcp listen socket on %s\n", pt );
+    status = 2; /* bad port or network error */
   }
+  if ( http_sv.listen( NULL, atoi( hp ) ) != 0 ) {
+    fprintf( stderr, "unable to open http listen socket on %s\n", hp );
+  }
+  if ( redis_un.listen( sn ) != 0 ) {
+    fprintf( stderr, "unable to open unix listen socket on %s\n", sn );
+  }
+  if ( nats_sv.listen( NULL, atoi( np ) ) != 0 ) {
+    fprintf( stderr, "unable to open nats listen socket on %s\n", np );
+  }
+  if ( status == 0 ) {
+    printf( "raids_version:        %s\n", kv_stringify( DS_VER ) );
+    printf( "max_fds:              %d\n", maxfd );
+    printf( "prefetch:             %s\n", fe[ 0 ] == '1' ? "true" : "false" );
+    printf( "single_thread:        %s\n", si[ 0 ] == '1' ? "true" : "false" );
+    printf( "listening:            %s\n", pt );
+    printf( "unix:                 %s\n", sn );
+    printf( "www:                  %s\n", hp );
+    printf( "nats:                 %s\n", np );
+    fflush( stdout );
+    sighndl.install();
+    for (;;) {
+      if ( poll.quit >= 5 )
+        break;
+      bool idle = poll.dispatch(); /* true if idle, false if busy */
+      poll.wait( idle ? 100 : 0 );
+      if ( sighndl.signaled )
+        poll.quit++;
+    }
+    if ( fe[ 0 ] == '1' )
+      for ( size_t i = 0; i < EvPoll::PREFETCH_SIZE; i++ ) {
+        if ( poll.prefetch_cnt[ i ] != 0 )
+          printf( "pre[%lu] = %lu\n", i, poll.prefetch_cnt[ i ] );
+      }
+    printf( "bye\n" );
+  }
+  shm.close();
 
   return status;
 }
