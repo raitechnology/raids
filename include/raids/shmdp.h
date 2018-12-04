@@ -1,0 +1,106 @@
+#ifndef __raids__shmdp_h__
+#define __raids__shmdp_h__
+
+#include <raids/ev_client.h>
+
+namespace rai {
+namespace ds {
+
+void shmdp_initialize( const char *mn,  int pt );
+void shmdp_atexit( void );
+
+static const size_t FD_MAP_SZ = 8 * 1024;
+typedef uint64_t fd_map_t[ FD_MAP_SZ / sizeof( uint64_t ) ];
+
+struct FdMap {
+  fd_map_t map;
+  int      max_fd;
+
+  bool fd_add( int fd ) {
+    if ( fd < 0 || (size_t) fd >= FD_MAP_SZ )
+      return false;
+    size_t off  = fd / 64,
+           shft = fd % 64;
+    this->map[ off ] |= (uint64_t) 1 << shft;
+    if ( fd >= this->max_fd )
+      this->max_fd = fd + 1;
+    return true;
+  }
+
+  bool fd_test( int fd ) {
+    if ( fd < 0 || fd >= this->max_fd )
+      return false;
+    size_t off  = fd / 64,
+           shft = fd % 64;
+    return ( this->map[ off ] & ( (uint64_t) 1 << shft ) ) != 0;
+  }
+
+  void fd_clr( int fd ) {
+    if ( fd < 0 || (size_t) fd >= FD_MAP_SZ )
+      return;
+    size_t off  = fd / 64,
+           shft = fd % 64;
+    this->map[ off ] &= ~( (uint64_t) 1 << shft );
+    if ( fd + 1 == this->max_fd ) {
+      while ( fd > 0 ) {
+        if ( this->fd_test( --fd ) ) {
+          this->max_fd = fd + 1;
+          return;
+        }
+      }
+      this->max_fd = 0;
+    }
+  }
+};
+
+struct QueueFd;
+struct QueuePoll : public EvCallback {
+  void * operator new( size_t, void *ptr ) { return ptr; }
+  void operator delete( void *ptr ) { ::free( ptr ); }
+
+  EvPoll      poll;
+  EvShmClient shm;
+  QueueFd  ** fds;
+  FdMap       pending;
+  int         fds_size;
+
+  QueuePoll() : poll( NULL, 0 ), shm( *this ), fds( 0 ), fds_size( 0 ) {
+    ::memset( &this->pending, 0, sizeof( this->pending ) );
+  }
+  void unlink( QueueFd *p );
+  bool push( QueueFd *p );
+  ssize_t read( int fd, char *buf, size_t count );
+  ssize_t write( int fd, const char *buf, size_t count );
+  QueueFd *find( int fd, bool create );
+};
+
+struct QueueFd {
+  void * operator new( size_t, void *ptr ) { return ptr; }
+  void operator delete( void *ptr ) { ::free( ptr ); }
+
+  QueuePoll & queue;
+  int         fd;
+  char      * in_buf;
+  size_t      in_off,
+              in_len,
+              in_buflen;
+  char      * out_buf;
+  size_t      out_off,
+              out_len,
+              out_buflen;
+
+  QueueFd( int fildes,  QueuePoll &q )
+    : queue( q ), fd( fildes ),
+      in_buf( 0 ), in_off( 0 ), in_len( 0 ), in_buflen( 0 ),
+      out_buf( 0 ), out_off( 0 ), out_len( 0 ), out_buflen( 0 ) {}
+  ~QueueFd() {
+    if ( this->in_buf != NULL )
+      ::free( this->in_buf );
+    if ( this->out_buf != NULL )
+      ::free( this->out_buf );
+  }
+};
+
+}
+}
+#endif

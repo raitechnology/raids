@@ -109,6 +109,18 @@ all_depends += $(libraids_deps)
 raids_dlib        := $(libd)/libraids.so
 raids_dlnk        := -L$(libd) -lraids $(dlnk_lib)
 
+libshmdp_files := shmdp
+libshmdp_dbjs  := $(addprefix $(objd)/, $(addsuffix .fpic.o, $(libshmdp_files)))
+libshmdp_deps  := $(addprefix $(dependd)/, $(addsuffix .fpic.d, $(libshmdp_files)))
+libshmdp_dlnk  := $(raids_dlnk)
+libshmdp_spec  := $(version)-$(build_num)
+libshmdp_ver   := $(major_num).$(minor_num)
+
+$(libd)/libshmdp.so: $(libshmdp_dbjs)
+
+all_libs    += $(libd)/libshmdp.so
+all_depends += $(libshmdp_deps)
+
 ds_server_files      := emain
 ds_server_objs       := $(addprefix $(objd)/, $(addsuffix .o, $(ds_server_files)))
 ds_server_deps       := $(addprefix $(dependd)/, $(addsuffix .d, $(ds_server_files)))
@@ -121,6 +133,17 @@ $(bind)/ds_server.static: $(ds_server_objs) $(ds_server_static_lnk)
 
 all_exes    += $(bind)/ds_server $(bind)/ds_server.static
 all_depends += $(ds_server_deps)
+
+shmdp_files := smain
+shmdp_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(shmdp_files)))
+shmdp_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(shmdp_files)))
+shmdp_libs  := $(libd)/libshmdp.so
+shmdp_lnk   := -lshmdp $(raids_dlnk)
+
+$(bind)/shmdp: $(shmdp_objs) $(shmdp_libs)
+
+all_exes    += $(bind)/shmdp
+all_depends += $(shmdp_deps)
 
 client_files := cli
 client_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(client_files)))
