@@ -113,10 +113,11 @@ libshmdp_files := shmdp
 libshmdp_dbjs  := $(addprefix $(objd)/, $(addsuffix .fpic.o, $(libshmdp_files)))
 libshmdp_deps  := $(addprefix $(dependd)/, $(addsuffix .fpic.d, $(libshmdp_files)))
 libshmdp_dlnk  := $(raids_dlnk)
+libshmdp_libs  := $(libd)/libraids.so
 libshmdp_spec  := $(version)-$(build_num)
 libshmdp_ver   := $(major_num).$(minor_num)
 
-$(libd)/libshmdp.so: $(libshmdp_dbjs)
+$(libd)/libshmdp.so: $(libshmdp_dbjs) $(libshmdp_libs)
 
 all_libs    += $(libd)/libshmdp.so
 all_depends += $(libshmdp_deps)
