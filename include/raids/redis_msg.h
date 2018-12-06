@@ -233,6 +233,9 @@ struct RedisMsg {
   RedisMsgStatus split( kv::ScratchMem &wrk ); /* splits cmd line into array */
   /* try to decode one message, length of data decoded is returned in len */
   RedisMsgStatus unpack( void *buf,  size_t &len,  kv::ScratchMem &wrk );
+  /* copy message into scratch mem */
+  RedisMsg *dup( kv::ScratchMem &wrk );
+  RedisMsg *dup2( kv::ScratchMem &wrk,  RedisMsg &cpy );
   /* similar to pack() and pack_size(), except in json format */
   size_t to_almost_json_size( bool be_weird = true ) const;
   size_t to_almost_json( char *buf,  bool be_weird = true ) const;

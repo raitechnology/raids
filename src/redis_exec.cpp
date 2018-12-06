@@ -16,29 +16,38 @@ using namespace kv;
 
 static char ok[]      = "+OK\r\n";
 static char nil[]     = "$-1\r\n";
+static char null[]    = "*-1\r\n";
 static char zero[]    = ":0\r\n";
 static char one[]     = ":1\r\n";
 static char neg_one[] = ":-1\r\n";
 static char mt[]      = "$0\r\n\r\n"; /* zero length string */
+static char queued[]  = "+QUEUED\r\n";
 static const size_t ok_sz      = sizeof( ok ) - 1,
                     nil_sz     = sizeof( nil ) - 1,
+                    null_sz    = sizeof( null ) - 1,
                     zero_sz    = sizeof( zero ) - 1,
                     one_sz     = sizeof( one ) - 1,
                     neg_one_sz = sizeof( neg_one ) - 1,
-                    mt_sz      = sizeof( mt ) - 1;
+                    mt_sz      = sizeof( mt ) - 1,
+                    queued_sz  = sizeof( queued ) - 1;
 void RedisExec::send_ok( void ) { this->strm.append( ok, ok_sz ); }
 void RedisExec::send_nil( void ) { this->strm.append( nil, nil_sz ); }
+void RedisExec::send_null( void ) { this->strm.append( null, null_sz ); }
 void RedisExec::send_zero( void ) { this->strm.append( zero, zero_sz ); }
 void RedisExec::send_one( void ) { this->strm.append( one, one_sz ); }
 void RedisExec::send_neg_one( void ) { this->strm.append( neg_one, neg_one_sz);}
 void RedisExec::send_zero_string( void ) { this->strm.append( mt, mt_sz ); }
+void RedisExec::send_queued( void ) { this->strm.append( queued, queued_sz ); }
 
 void
 RedisExec::release( void )
 {
-  this->rem_all_sub();
-  this->sub_tab.release();
-  this->wrk.reset();
+  if ( this->multi != NULL )
+    this->discard_multi();
+  if ( this->sub_tab.h != NULL ) {
+    this->rem_all_sub();
+    this->sub_tab.release();
+  }
   this->wrk.release_all();
 }
 
@@ -134,22 +143,24 @@ RedisExec::array_string_result( void )
   sz = 1 + RedisMsg::uint_to_str( this->key_cnt, &str[ 1 ] );
   this->strm.sz += crlf( str, sz );
 
-  if ( this->key_cnt == 1 ) /* only one part, no keys[] array */
-    part = this->key->part;
-  else
-    part = this->keys[ 0 ]->part;
-  for ( uint32_t i = 0; ; ) {
-    if ( part != NULL ) {
-      if ( part->size < 256 )
-        this->strm.append( part->data( 0 ), part->size );
-      else
-        this->strm.append_iov( part->data( 0 ), part->size );
-    }
+  if ( this->key_cnt > 0 ) {
+    if ( this->key_cnt == 1 ) /* only one part, no keys[] array */
+      part = this->key->part;
     else
-      this->strm.append( nil, nil_sz );
-    if ( ++i == this->key_cnt )
-      break;
-    part = this->keys[ i ]->part;
+      part = this->keys[ 0 ]->part;
+    for ( uint32_t i = 0; ; ) {
+      if ( part != NULL ) {
+        if ( part->size < 256 )
+          this->strm.append( part->data( 0 ), part->size );
+        else
+          this->strm.append_iov( part->data( 0 ), part->size );
+      }
+      else
+        this->strm.append( nil, nil_sz );
+      if ( ++i == this->key_cnt )
+        break;
+      part = this->keys[ i ]->part;
+    }
   }
 }
 
@@ -310,6 +321,18 @@ RedisExec::exec( EvSocket *svc,  EvPrefetchQueue *q )
   if ( test_cmd_mask( this->flags, CMD_MOVABLEKEYS_FLAG ) )
     if ( ! this->locate_movablekeys() )
       return ERR_BAD_ARGS;
+  if ( this->multi != NULL ) {
+    switch ( this->cmd ) {
+      case EXEC_CMD:
+      case MULTI_CMD:
+      case DISCARD_CMD:
+        break;
+      default:
+        if ( ! this->multi->append_msg( this->msg ) )
+          return ERR_ALLOC_FAIL;
+        return EXEC_QUEUED;
+    }
+  }
   /* if there are keys, setup a keyctx for each one */
   if ( this->first > 0 ) {
     int i = this->first;
@@ -389,6 +412,11 @@ RedisExec::exec( EvSocket *svc,  EvPrefetchQueue *q )
     case PUNSUBSCRIBE_CMD: return this->exec_punsubscribe();
     case SUBSCRIBE_CMD:    return this->exec_subscribe();
     case UNSUBSCRIBE_CMD:  return this->exec_unsubscribe();
+    /* TRANSACTION */
+    case DISCARD_CMD:      return this->exec_discard();
+    case EXEC_CMD:         return this->exec_exec();
+    case MULTI_CMD:        return this->exec_multi();
+    case UNWATCH_CMD:      return this->exec_unwatch();
     default:               return ERR_BAD_CMD;
   }
 }
@@ -600,10 +628,10 @@ RedisExec::exec_key_continue( RedisKeyCtx &ctx )
       case SETRANGE_CMD:  ctx.status = this->exec_setrange( ctx ); break;
       case STRLEN_CMD:    ctx.status = this->exec_strlen( ctx ); break;
       /* TRANSACTION */
-      case DISCARD_CMD:   ctx.status = this->exec_discard( ctx ); break;
-      case EXEC_CMD:      ctx.status = this->exec_exec( ctx ); break;
-      case MULTI_CMD:     ctx.status = this->exec_multi( ctx ); break;
-      case UNWATCH_CMD:   ctx.status = this->exec_unwatch( ctx ); break;
+      case DISCARD_CMD:   
+      case EXEC_CMD:      
+      case MULTI_CMD:     
+      case UNWATCH_CMD:   ctx.status = ERR_BAD_CMD; break; /* no keys */
       case WATCH_CMD:     ctx.status = this->exec_watch( ctx ); break;
       /* STREAM */
       case XADD_CMD:      ctx.status = this->exec_xadd( ctx ); break;
@@ -671,6 +699,7 @@ RedisExec::exec_key_continue( RedisKeyCtx &ctx )
     case EXEC_OK:           break;
     case EXEC_SEND_OK:      this->strm.append( ok, ok_sz );            break;
     case EXEC_SEND_NIL:     this->strm.append( nil, nil_sz );          break;
+    case EXEC_SEND_NULL:    this->strm.append( null, null_sz );        break;
     case EXEC_ABORT_SEND_ZERO:
     case EXEC_SEND_ZERO:    this->strm.append( zero, zero_sz );        break;
     case EXEC_SEND_ONE:     this->strm.append( one, one_sz );          break;
@@ -1097,12 +1126,14 @@ RedisExec::send_err( ExecStatus status,  KeyStatus kstatus )
     case EXEC_SETUP_OK:         break;
     case EXEC_SEND_OK:          this->send_ok(); break;
     case EXEC_SEND_NIL:         this->send_nil(); break;
+    case EXEC_SEND_NULL:        this->send_null(); break;
     case EXEC_SEND_INT:         this->send_int(); break;
     case EXEC_ABORT_SEND_ZERO:
     case EXEC_SEND_ZERO:        this->send_zero(); break;
     case EXEC_SEND_ONE:         this->send_one(); break;
     case EXEC_SEND_NEG_ONE:     this->send_neg_one(); break;
     case EXEC_SEND_ZERO_STRING: this->send_zero_string(); break;
+    case EXEC_QUEUED:           this->send_queued(); break;
     case EXEC_SUCCESS:          break;
     case EXEC_DEPENDS:          break;
     case EXEC_CONTINUE:         break;
@@ -1117,6 +1148,36 @@ RedisExec::send_err( ExecStatus status,  KeyStatus kstatus )
     case ERR_ALLOC_FAIL:        this->send_err_alloc_fail(); break;
     case ERR_KEY_EXISTS:        this->send_err_key_exists(); break;
     case ERR_KEY_DOESNT_EXIST:  this->send_err_key_doesnt_exist(); break;
+    case ERR_BAD_MULTI: {
+      static const char bad_multi[] = "MULTI calls can not be nested";
+      this->send_err_string( bad_multi, sizeof( bad_multi ) - 1 );
+      break;
+    }
+    case ERR_BAD_EXEC: {
+      static const char bad_exec[] = "EXEC without MULTI";
+      this->send_err_string( bad_exec, sizeof( bad_exec ) - 1 );
+      break;
+    }
+    case ERR_BAD_DISCARD: {
+      static const char bad_discard[] = "DISCARD without MULTI";
+      this->send_err_string( bad_discard, sizeof( bad_discard ) - 1 );
+      break;
+    }
+  }
+}
+
+void
+RedisExec::send_err_string( const char *s,  size_t slen )
+{
+  char * buf  = this->strm.alloc( slen + 2 + 5 );
+
+  if ( buf != NULL ) {
+    ::memcpy( buf, "-ERR ", 5 );
+    ::memcpy( &buf[ 5 ], s, slen );
+    slen += 5;
+    buf[ slen ] = '\r';
+    buf[ slen + 1 ] = '\n';
+    strm.sz += slen + 2;
   }
 }
 
@@ -1126,11 +1187,11 @@ RedisExec::send_err_bad_args( void )
   size_t       arg0len;
   const char * arg0 = this->msg.command( arg0len );
   size_t       bsz  = 64 + 24;
-  void       * buf  = this->strm.alloc( bsz );
+  char       * buf  = this->strm.alloc( bsz );
 
   if ( buf != NULL ) {
     arg0len = ( arg0len < 24 ? arg0len : 24 );
-    bsz = ::snprintf( (char *) buf, bsz,
+    bsz = ::snprintf( buf, bsz,
               "-ERR wrong number of arguments for '%.*s' command\r\n",
               (int) arg0len, arg0 );
     strm.sz += bsz;
@@ -1143,11 +1204,11 @@ RedisExec::send_err_kv( KeyStatus kstatus )
   size_t       arg0len;
   const char * arg0 = this->msg.command( arg0len );
   size_t       bsz  = 256;
-  void       * buf  = this->strm.alloc( bsz );
+  char       * buf  = this->strm.alloc( bsz );
 
   if ( buf != NULL ) {
     arg0len = ( arg0len < 24 ? arg0len : 24 );
-    bsz = ::snprintf( (char *) buf, bsz, "-ERR '%.*s': KeyCtx %d/%s %s\r\n",
+    bsz = ::snprintf( buf, bsz, "-ERR '%.*s': KeyCtx %d/%s %s\r\n",
                      (int) arg0len, arg0,
                      kstatus, kv_key_status_string( (KeyStatus) kstatus ),
                      kv_key_status_description( (KeyStatus) kstatus ) );
@@ -1161,11 +1222,11 @@ RedisExec::send_err_msg( RedisMsgStatus mstatus )
   size_t       arg0len;
   const char * arg0 = this->msg.command( arg0len );
   size_t       bsz  = 256;
-  void       * buf  = this->strm.alloc( bsz );
+  char       * buf  = this->strm.alloc( bsz );
 
   if ( buf != NULL ) {
     arg0len = ( arg0len < 24 ? arg0len : 24 );
-    bsz = ::snprintf( (char *) buf, bsz, "-ERR '%.*s': RedisMsg %d/%s %s\r\n",
+    bsz = ::snprintf( buf, bsz, "-ERR '%.*s': RedisMsg %d/%s %s\r\n",
                    (int) arg0len, arg0,
                    mstatus, redis_msg_status_string( (RedisMsgStatus) mstatus ),
                    redis_msg_status_description( (RedisMsgStatus) mstatus ) );
@@ -1179,11 +1240,11 @@ RedisExec::send_err_bad_cmd( void )
   size_t       arg0len;
   const char * arg0 = this->msg.command( arg0len );
   size_t       bsz  = 64 + 24;
-  void       * buf  = this->strm.alloc( bsz );
+  char       * buf  = this->strm.alloc( bsz );
 
   if ( buf != NULL ) {
     arg0len = ( arg0len < 24 ? arg0len : 24 );
-    bsz = ::snprintf( (char *) buf, bsz, "-ERR unknown command: '%.*s'\r\n",
+    bsz = ::snprintf( buf, bsz, "-ERR unknown command: '%.*s'\r\n",
                      (int) arg0len, arg0 );
     strm.sz += bsz;
   }
@@ -1202,12 +1263,11 @@ RedisExec::send_err_bad_type( void )
   size_t       arg0len;
   const char * arg0 = this->msg.command( arg0len );
   size_t       bsz  = 64 + 24;
-  void       * buf  = this->strm.alloc( bsz );
+  char       * buf  = this->strm.alloc( bsz );
 
   if ( buf != NULL ) {
     arg0len = ( arg0len < 24 ? arg0len : 24 );
-    bsz = ::snprintf( (char *) buf, bsz,
-                      "-ERR value type bad for command: '%.*s'\r\n",
+    bsz = ::snprintf( buf, bsz, "-ERR value type bad for command: '%.*s'\r\n",
                      (int) arg0len, arg0 );
     strm.sz += bsz;
   }
@@ -1219,11 +1279,11 @@ RedisExec::send_err_bad_range( void )
   size_t       arg0len;
   const char * arg0 = this->msg.command( arg0len );
   size_t       bsz  = 64 + 24;
-  void       * buf  = this->strm.alloc( bsz );
+  char       * buf  = this->strm.alloc( bsz );
 
   if ( buf != NULL ) {
     arg0len = ( arg0len < 24 ? arg0len : 24 );
-    bsz = ::snprintf( (char *) buf, bsz,
+    bsz = ::snprintf( buf, bsz,
                       "-ERR index out of range for command: '%.*s'\r\n",
                      (int) arg0len, arg0 );
     strm.sz += bsz;
@@ -1236,11 +1296,11 @@ RedisExec::send_err_alloc_fail( void )
   size_t       arg0len;
   const char * arg0 = this->msg.command( arg0len );
   size_t       bsz  = 64 + 24;
-  void       * buf  = this->strm.alloc( bsz );
+  char       * buf  = this->strm.alloc( bsz );
 
   if ( buf != NULL ) {
     arg0len = ( arg0len < 24 ? arg0len : 24 );
-    bsz = ::snprintf( (char *) buf, bsz, "-ERR '%.*s': allocation failure\r\n",
+    bsz = ::snprintf( buf, bsz, "-ERR '%.*s': allocation failure\r\n",
                      (int) arg0len, arg0 );
     strm.sz += bsz;
   }
@@ -1252,11 +1312,11 @@ RedisExec::send_err_key_exists( void )
   size_t       arg0len;
   const char * arg0 = this->msg.command( arg0len );
   size_t       bsz  = 64 + 24;
-  void       * buf  = this->strm.alloc( bsz );
+  char       * buf  = this->strm.alloc( bsz );
 
   if ( buf != NULL ) {
     arg0len = ( arg0len < 24 ? arg0len : 24 );
-    bsz = ::snprintf( (char *) buf, bsz, "-ERR '%.*s': key exists\r\n",
+    bsz = ::snprintf( buf, bsz, "-ERR '%.*s': key exists\r\n",
                      (int) arg0len, arg0 );
     strm.sz += bsz;
   }
@@ -1268,11 +1328,11 @@ RedisExec::send_err_key_doesnt_exist( void )
   size_t       arg0len;
   const char * arg0 = this->msg.command( arg0len );
   size_t       bsz  = 64 + 24;
-  void       * buf  = this->strm.alloc( bsz );
+  char       * buf  = this->strm.alloc( bsz );
 
   if ( buf != NULL ) {
     arg0len = ( arg0len < 24 ? arg0len : 24 );
-    bsz = ::snprintf( (char *) buf, bsz, "-ERR '%.*s': key does not exist\r\n",
+    bsz = ::snprintf( buf, bsz, "-ERR '%.*s': key does not exist\r\n",
                      (int) arg0len, arg0 );
     strm.sz += bsz;
   }

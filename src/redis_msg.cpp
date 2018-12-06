@@ -364,6 +364,49 @@ RedisMsg::unpack( void *buf,  size_t &buflen,  ScratchMem &wrk )
   return REDIS_MSG_OK;
 }
 
+RedisMsg *
+RedisMsg::dup( ScratchMem &wrk )
+{
+  RedisMsg *cpy = (RedisMsg *) wrk.alloc( sizeof( RedisMsg ) );
+  if ( cpy == NULL )
+    return NULL;
+  return this->dup2( wrk, *cpy );
+}
+
+RedisMsg *
+RedisMsg::dup2( ScratchMem &wrk,  RedisMsg &cpy )
+{
+  cpy.type = this->type;
+  cpy.len  = this->len;
+  if ( this->type == INTEGER_VALUE ) {
+    cpy.ival = this->ival;
+  }
+  else if ( this->type != BULK_ARRAY ) {
+    if ( this->len < 0 )
+      cpy.strval = NULL;
+    else {
+      cpy.strval = (char *) wrk.alloc( this->len + 1 );
+      if ( cpy.strval == NULL )
+        return NULL;
+      ::memcpy( cpy.strval, this->strval, this->len );
+      cpy.strval[ this->len ] = '\0';
+    }
+  }
+  else {
+    if ( this->len <= 0 )
+      cpy.array = NULL;
+    else {
+      cpy.array = (RedisMsg *) wrk.alloc( sizeof( RedisMsg ) * this->len );
+      if ( cpy.array == NULL )
+        return NULL;
+      for ( size_t i = 0; i < (size_t) this->len; i++ )
+        if ( this->array[ i ].dup2( wrk, cpy.array[ i ] ) == NULL )
+          return NULL;
+    }
+  }
+  return &cpy;
+}
+
 int
 RedisMsg::match_arg( int n,  const char *str,  size_t sz,  ... )
 {

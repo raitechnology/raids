@@ -439,7 +439,7 @@ CommandDB cmd_db[] = {
 { "UNWATCH", "; Forget watched keys",
   "[\"unwatch\",1,['noscript','fast'],0,0,0]" },
 { "WATCH", "key [key ...] ; Watch keys to determine multi/exec blk",
-  "[\"watch\",-2,['noscript','fast'],1,-1,1]" },
+  "[\"watch\",-2,['readonly','noscript','fast'],1,-1,1]" },
 
 #define STREAM_CNT 12
   /* streams -- https://redis.io/topics/streams-intro */

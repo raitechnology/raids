@@ -22,6 +22,7 @@ enum ExecStatus {
   EXEC_SETUP_OK,         /* key setup */
   EXEC_SEND_OK,          /* send +OK */
   EXEC_SEND_NIL,         /* send $-1 */
+  EXEC_SEND_NULL,        /* send *-1 */
   EXEC_SEND_INT,         /* send :100 */
   EXEC_SEND_ZERO,        /* send :0 */
   EXEC_SEND_ONE,         /* send :1 */
@@ -33,6 +34,7 @@ enum ExecStatus {
   EXEC_QUIT,             /* quit/shutdown command */
   EXEC_DEBUG,            /* debug command */
   EXEC_ABORT_SEND_ZERO,  /* abort multiple key operation and return 0 */
+  EXEC_QUEUED,           /* cmd queued for multi transaction */
   /* errors v v v / ok ^ ^ ^ */
   ERR_KV_STATUS,        /* kstatus != ok */
   ERR_MSG_STATUS,       /* mstatus != ok */
@@ -42,7 +44,10 @@ enum ExecStatus {
   ERR_BAD_RANGE,        /* index out of range */
   ERR_ALLOC_FAIL,       /* alloc returned NULL */
   ERR_KEY_EXISTS,       /* when set with NX operator */
-  ERR_KEY_DOESNT_EXIST  /* when set with XX operator */
+  ERR_KEY_DOESNT_EXIST, /* when set with XX operator */
+  ERR_BAD_MULTI,        /* nested multi transaction */
+  ERR_BAD_EXEC,         /* no transaction active to exec */
+  ERR_BAD_DISCARD       /* no transaction active to discard */
 };
 
 inline static bool exec_status_success( ExecStatus status ) {
@@ -127,31 +132,70 @@ struct EvPrefetchQueue :
   }
 };
 
+struct RedisMsgList {
+  void * operator new( size_t, void *ptr ) { return ptr; }
+  void operator delete( void *ptr ) { ::free( ptr ); }
+  RedisMsgList * next,
+               * back;
+  RedisMsg     * msg;
+
+  RedisMsgList() : next( 0 ), back( 0 ), msg( 0 ) {}
+};
+
+struct RedisWatchList {
+  void * operator new( size_t, void *ptr ) { return ptr; }
+  void operator delete( void *ptr ) { ::free( ptr ); }
+  RedisWatchList * next,
+                 * back;
+  uint64_t hash1, hash2, serial, pos;
+
+  RedisWatchList( uint64_t h1,  uint64_t h2,  uint64_t sn,  uint64_t p )
+    : next( 0 ), back( 0 ), hash1( h1 ), hash2( h2 ), serial( sn ), pos( p ) {}
+};
+
+struct RedisMultiExec {
+  void * operator new( size_t, void *ptr ) { return ptr; }
+  void operator delete( void *ptr ) { ::free( ptr ); }
+  kv::WorkAllocT< 1024 >        wrk;
+  kv::DLinkList<RedisMsgList>   msg_list;
+  kv::DLinkList<RedisWatchList> watch_list;
+  size_t                        msg_count,
+                                watch_count;
+  bool                          multi_start;
+
+  RedisMultiExec() : msg_count( 0 ), watch_count( 0 ), multi_start( false ) {}
+
+  bool append_msg( RedisMsg &msg );
+
+  bool append_watch( uint64_t h1,  uint64_t h2,  uint64_t sn,  uint64_t pos );
+};
+
 struct RedisExec {
   void * operator new( size_t, void *ptr ) { return ptr; }
   void operator delete( void *ptr ) { ::free( ptr ); }
 
-  uint64_t seed, seed2;       /* kv map hash seeds, different for each db */
-  kv::KeyCtx     kctx;        /* key context used for every key in command */
+  uint64_t seed,   seed2;       /* kv map hash seeds, different for each db */
+  kv::KeyCtx       kctx;        /* key context used for every key in command */
   kv::WorkAllocT< 1024 > wrk; /* kv work buffer, reset before each key lookup */
-  StreamBuf    & strm;        /* output buffer, result of command execution */
-  RedisMsg       msg;         /* current command msg */
-  RedisKeyCtx  * key,         /* currently executing key */
-              ** keys;        /* all of the keys in command */
-  uint32_t       key_cnt,     /* total keys[] size */
-                 key_done;    /* number of keys processed */
-  RedisCmd       cmd;         /* current command (GET_CMD) */
-  RedisMsgStatus mstatus;     /* command message parse status */
-  uint16_t       flags;       /* command flags (CMD_READONLY_FLAG) */
-  int            arity,       /* number of command args */
-                 first,       /* first key in args */
-                 last,        /* last key in args */
-                 step;        /* incr between keys */
-  uint64_t       step_mask;   /* step key mask */
-  size_t         argc;        /* count of args in cmd msg */
-  SubMap         sub_tab;     /* pub/sub subscription table */
-  RouteDB      & sub_route;   /* map subject to sub_id */
-  uint32_t       sub_id;      /* fd, set this after accept() */
+  StreamBuf      & strm;        /* output buffer, result of command execution */
+  RedisMsg         msg;         /* current command msg */
+  RedisKeyCtx    * key,         /* currently executing key */
+                ** keys;        /* all of the keys in command */
+  uint32_t         key_cnt,     /* total keys[] size */
+                   key_done;    /* number of keys processed */
+  RedisMultiExec * multi;       /* MULTI .. EXEC block */
+  RedisCmd         cmd;         /* current command (GET_CMD) */
+  RedisMsgStatus   mstatus;     /* command message parse status */
+  uint16_t         flags;       /* command flags (CMD_READONLY_FLAG) */
+  int              arity,       /* number of command args */
+                   first,       /* first key in args */
+                   last,        /* last key in args */
+                   step;        /* incr between keys */
+  uint64_t         step_mask;   /* step key mask */
+  size_t           argc;        /* count of args in cmd msg */
+  SubMap           sub_tab;     /* pub/sub subscription table */
+  RouteDB        & sub_route;   /* map subject to sub_id */
+  uint32_t         sub_id;      /* fd, set this after accept() */
 
   RedisExec( kv::HashTab &map,  uint32_t ctx_id,  StreamBuf &s,
              RouteDB &rdb,  bool single ) :
@@ -426,10 +470,12 @@ struct RedisExec {
   ExecStatus do_set_value_expire( RedisKeyCtx &ctx,  int n,  uint64_t ns,
                                   int flags );
   /* TRANSACTION */
-  ExecStatus exec_discard( RedisKeyCtx &ctx );
-  ExecStatus exec_exec( RedisKeyCtx &ctx );
-  ExecStatus exec_multi( RedisKeyCtx &ctx );
-  ExecStatus exec_unwatch( RedisKeyCtx &ctx );
+  bool make_multi( void );
+  void discard_multi( void );
+  ExecStatus exec_discard( void );
+  ExecStatus exec_exec( void );
+  ExecStatus exec_multi( void );
+  ExecStatus exec_unwatch( void );
   ExecStatus exec_watch( RedisKeyCtx &ctx );
   /* STREAM */
   ExecStatus exec_xadd( RedisKeyCtx &ctx );
@@ -447,8 +493,10 @@ struct RedisExec {
 
   /* result senders */
   void send_err( ExecStatus status,  kv::KeyStatus kstatus = KEY_OK );
+  void send_err_string( const char *s,  size_t slen );
   void send_ok( void );
   void send_nil( void );
+  void send_null( void );
   void send_msg( const RedisMsg &m );
   void send_int( void );
   void send_int( int64_t ival );
@@ -456,6 +504,7 @@ struct RedisExec {
   void send_one( void );
   void send_neg_one( void );
   void send_zero_string( void );
+  void send_queued( void );
   size_t send_string( const void *data,  size_t size );
   size_t send_concat_string( const void *data,  size_t size,
                              const void *data2,  size_t size2 );
