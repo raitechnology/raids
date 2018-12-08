@@ -285,6 +285,64 @@ epoll_ctl( int epfd, int op, int fd, struct epoll_event *event )
 }
 
 int
+select( int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds,
+        struct timeval *timeout )
+{
+  static int ( *select_next )( int, fd_set *, fd_set *, fd_set *,
+                               struct timeval * );
+  int fd, cnt = 0;
+  size_t i;
+  if ( select_next == NULL )
+    select_next = (int (*)(int, fd_set *, fd_set *, fd_set *, struct timeval *))
+                  dlsym( RTLD_NEXT, "select" );
+  if ( conn.fd_first( fd ) ) {
+    int rmap[ FD_MAP_SZ ], wmap[ FD_MAP_SZ ], emap[ FD_MAP_SZ ];
+    size_t rcnt = 0, wcnt = 0, ecnt = 0;
+    do {
+      if ( fd >= nfds )
+        break;
+      if ( readfds != NULL && FD_ISSET( fd, readfds ) != 0 &&
+           qp->pending.fd_test( fd ) )
+        rmap[ rcnt++ ] = fd;
+      if ( writefds != NULL && FD_ISSET( fd, writefds ) != 0 )
+        wmap[ wcnt++ ] = fd;
+      if ( exceptfds != NULL && FD_ISSET( fd, exceptfds ) != 0 )
+        emap[ ecnt++ ] = fd;
+    } while ( conn.fd_next( fd ) );
+
+    if ( ( rcnt | wcnt ) != 0 ) {
+      static const size_t NFB = sizeof( readfds->fds_bits[ 0 ] ) * 8;
+      for ( i = 0; (int) ( i * NFB ) < nfds; i++ ) {
+        if ( readfds != NULL )
+          readfds->fds_bits[ i ] = 0;
+        if ( writefds != NULL )
+          writefds->fds_bits[ i ] = 0;
+        if ( exceptfds != NULL )
+          exceptfds->fds_bits[ i ] = 0;
+      }
+      for ( i = 0; i < rcnt; i++ ) {
+        FD_SET( rmap[ i ], readfds );
+        cnt++;
+      }
+      for ( i = 0; i < wcnt; i++ ) {
+        FD_SET( wmap[ i ], writefds );
+        cnt++;
+      }
+      return cnt;
+    }
+    else {
+      for ( i = 0; i < rcnt; i++ )
+        FD_CLR( rmap[ i ], readfds );
+      for ( i = 0; i < wcnt; i++ )
+        FD_CLR( wmap[ i ], writefds );
+      for ( i = 0; i < ecnt; i++ )
+        FD_CLR( emap[ i ], exceptfds );
+    }
+  }
+  return select_next( nfds, readfds, writefds, exceptfds, timeout );
+}
+
+int
 epoll_wait( int epfd, struct epoll_event *events,
             int maxevents, int timeout )
 {

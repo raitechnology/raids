@@ -51,6 +51,31 @@ struct FdMap {
       this->max_fd = 0;
     }
   }
+
+  bool fd_first( int &fd ) {
+    fd = -1;
+    return this->fd_next( fd );
+  }
+
+  bool fd_next( int &fd ) {
+    if ( ++fd >= this->max_fd )
+      return false;
+    size_t off  = fd / 64,
+           shft = fd % 64;
+    for (;;) {
+      if ( this->map[ off ] != 0 ) {
+        for ( ; shft < 64; shft++ ) {
+          if ( ( this->map[ off ] & ( (uint64_t) 1 << shft ) ) != 0 ) {
+            fd = off * 64 + shft;
+            return fd < this->max_fd;
+          }
+        }
+      }
+      if ( ++off * 64 >= (size_t) this->max_fd )
+        return false;
+      shft = 0;
+    }
+  }
 };
 
 struct QueueFd;
