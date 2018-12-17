@@ -4,7 +4,7 @@ Vendor:	        Rai Technology, Inc
 Release:	99999%{?dist}
 Summary:	Rai distribution services
 
-License:	BSD
+License:	ASL 2.0
 URL:		https://github.com/raitechnology/%{name}
 Source0:	%{name}-%{version}-99999.tar.gz
 BuildRoot:	${_tmppath}
@@ -16,10 +16,14 @@ BuildRequires:  raikv
 BuildRequires:  h3
 BuildRequires:  libdecnumber
 BuildRequires:  linecook
+BuildRequires:  pcre2-devel
+BuildRequires:  openssl-devel
 Requires:       raikv
 Requires:       h3
 Requires:       libdecnumber
 Requires:       linecook
+Requires:       pcre2
+Requires:       openssl
 Requires(post): /sbin/ldconfig
 Requires(postun): /sbin/ldconfig
 

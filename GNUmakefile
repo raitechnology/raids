@@ -3,9 +3,10 @@ lsb_dist     := $(shell if [ -x /usr/bin/lsb_release ] ; then lsb_release -is ; 
 lsb_dist_ver := $(shell if [ -x /usr/bin/lsb_release ] ; then lsb_release -rs | sed 's/[.].*//' ; fi)
 uname_m      := $(shell uname -m)
 
-short_dist_lc := $(patsubst CentOS,rh,$(patsubst RedHat,rh,\
-                   $(patsubst Fedora,fc,$(patsubst Ubuntu,ub,\
-                     $(patsubst Debian,deb,$(patsubst SUSE,ss,$(lsb_dist)))))))
+short_dist_lc := $(patsubst CentOS,rh,$(patsubst RedHatEnterprise,rh,\
+                   $(patsubst RedHat,rh,\
+                     $(patsubst Fedora,fc,$(patsubst Ubuntu,ub,\
+                       $(patsubst Debian,deb,$(patsubst SUSE,ss,$(lsb_dist))))))))
 short_dist    := $(shell echo $(short_dist_lc) | tr a-z A-Z)
 rpm_os        := $(short_dist_lc)$(lsb_dist_ver).$(uname_m)
 
@@ -27,11 +28,10 @@ cc          := $(CC)
 cpp         := $(CXX)
 cppflags    := -fno-rtti -fno-exceptions
 arch_cflags := -march=corei7-avx -fno-omit-frame-pointer
-cpplink     := gcc
+cpplink     := $(CC)
 gcc_wflags  := -Wall -Wextra -Werror
 fpicflags   := -fPIC
 soflag      := -shared
-rpath       := -Wl,-rpath,$(libd),-rpath,libdecnumber/$(libd),-rpath,h3/$(libd),-rpath,raikv/$(libd),-rpath,linecook/$(libd)
 
 ifdef DEBUG
 default_cflags := -ggdb
@@ -39,7 +39,7 @@ else
 default_cflags := -ggdb -O3
 endif
 # rpmbuild uses RPM_OPT_FLAGS
-CFLAGS ?= $(default_cflags)
+CFLAGS := $(default_cflags)
 #RPM_OPT_FLAGS ?= $(default_cflags)
 #CFLAGS ?= $(RPM_OPT_FLAGS)
 cflags := $(gcc_wflags) $(CFLAGS) $(arch_cflags)
@@ -53,24 +53,91 @@ cpp_lnk     :=
 sock_lib    :=
 math_lib    := -lm
 thread_lib  := -pthread -lrt
-h3_lib      := h3/$(libd)/libh3.a
-dec_lib     := libdecnumber/$(libd)/libdecnumber.a
+
+# test submodules exist (they don't exist for dist_rpm, dist_dpkg targets)
+have_lc_submodule  := $(shell if [ -d ./linecook ]; then echo yes; else echo no; fi )
+have_dec_submodule := $(shell if [ -d ./libdecnumber ]; then echo yes; else echo no; fi )
+have_kv_submodule  := $(shell if [ -d ./raikv ]; then echo yes; else echo no; fi )
+have_h3_submodule  := $(shell if [ -d ./h3 ]; then echo yes; else echo no; fi )
+
+lnk_lib     :=
+dlnk_lib    :=
+
+# if building submodules, reference them rather than the libs installed
+ifeq (yes,$(have_kv_submodule))
 kv_lib      := raikv/$(libd)/libraikv.a
+lnk_lib     += $(kv_lib)
+dlnk_lib    += -Lraikv/$(libd) -lraikv
+rpath1       = ,-rpath,raikv/$(libd)
+else
+lnk_lib     += -lraikv
+dlnk_lib    += -lraikv
+endif
+
+ifeq (yes,$(have_lc_submodule))
 lc_lib      := linecook/$(libd)/liblinecook.a
+lnk_lib     += $(lc_lib)
+dlnk_lib    += -Llinecook/$(libd) -llinecook
+rpath2       = ,-rpath,linecook/$(libd)
+else
+lnk_lib     += -llinecook
+dlnk_lib    += -llinecook
+endif
+
+ifeq (yes,$(have_dec_submodule))
+dec_lib     := libdecnumber/$(libd)/libdecnumber.a
+lnk_lib     += $(dec_lib)
+dlnk_lib    += -Llibdecnumber/$(libd) -ldecnumber
+rpath3       = ,-rpath,libdecnumber/$(libd)
+else
+lnk_lib     += -ldecnumber
+dlnk_lib    += -ldecnumber
+endif
+
+ifeq (yes,$(have_h3_submodule))
+h3_lib      := h3/$(libd)/libh3.a
+lnk_lib     += $(h3_lib)
+dlnk_lib    += -Lh3/$(libd) -lh3
+rpath4       = ,-rpath,h3/$(libd)
+else
+lnk_lib     += -lh3
+dlnk_lib    += -lh3
+endif
+
 ds_lib      := $(libd)/libraids.a
-lnk_lib     := $(dec_lib) $(h3_lib) $(kv_lib) $(lc_lib) -lpcre2-8 -lcrypto
-dlnk_lib    := -Lraikv/$(libd) -lraikv \
-               -Llibdecnumber/$(libd) -ldecnumber \
-               -Lh3/$(libd) -lh3 \
-	       -Llinecook/$(libd) -llinecook \
-	       -lpcre2-8 -lcrypto
+rpath       := -Wl,-rpath,$(libd)$(rpath1)$(rpath2)$(rpath3)$(rpath4)
+dlnk_lib    += -lpcre2-8 -lcrypto
+lnk_lib     += -lpcre2-8 -lcrypto
 malloc_lib  :=
 
 .PHONY: everything
 everything: $(kv_lib) $(h3_lib) $(dec_lib) $(lc_lib) all
 
-# version vars
+# build submodules if have them
+ifeq (yes,$(have_kv_submodule))
+$(kv_lib):
+	$(MAKE) -C raikv
+endif
+ifeq (yes,$(have_lc_submodule))
+$(lc_lib):
+	$(MAKE) -C linecook
+endif
+ifeq (yes,$(have_dec_submodule))
+$(dec_lib):
+	$(MAKE) -C libdecnumber
+endif
+ifeq (yes,$(have_h3_submodule))
+$(h3_lib):
+	$(MAKE) -C h3
+endif
+
+# copr/fedora build (with version env vars)
+# copr uses this to generate a source rpm with the srpm target
 -include .copr/Makefile
+
+# debian build (debuild)
+# target for building installable deb: dist_dpkg
+-include deb/Makefile
 
 # targets filled in below
 all_exes    :=
@@ -81,11 +148,11 @@ gen_files   :=
 emain_defines      := -DDS_VER=$(ver_build)
 redis_exec_defines := -DDS_VER=$(ver_build)
 
-redis_geo_includes = -Ih3/src/h3lib/include -I/usr/include/h3lib
-redis_sortedset_includes = -Ih3/src/h3lib/include -I/usr/include/h3lib
-decimal_includes := -Ilibdecnumber/include
-ev_client_includes = -Ilinecook/include
-term_includes = -Ilinecook/include
+redis_geo_includes        = -Ih3/src/h3lib/include -I/usr/include/h3lib
+redis_sortedset_includes  = -Ih3/src/h3lib/include -I/usr/include/h3lib
+decimal_includes         := -Ilibdecnumber/include
+ev_client_includes       := -Ilinecook/include
+term_includes            := -Ilinecook/include
 
 libraids_files := ev_net ev_service ev_http term ev_client ev_tcp ev_unix \
   ev_nats shm_client stream_buf route_db redis_msg redis_cmd_db redis_exec \
@@ -106,8 +173,8 @@ $(libd)/libraids.so: $(libraids_dbjs)
 all_libs    += $(libd)/libraids.a $(libd)/libraids.so
 all_depends += $(libraids_deps)
 
-raids_dlib        := $(libd)/libraids.so
-raids_dlnk        := -L$(libd) -lraids $(dlnk_lib)
+raids_dlib  := $(libd)/libraids.so
+raids_dlnk  := -L$(libd) -lraids $(dlnk_lib)
 
 libshmdp_files := shmdp
 libshmdp_dbjs  := $(addprefix $(objd)/, $(addsuffix .fpic.o, $(libshmdp_files)))
@@ -126,11 +193,11 @@ ds_server_files      := emain
 ds_server_objs       := $(addprefix $(objd)/, $(addsuffix .o, $(ds_server_files)))
 ds_server_deps       := $(addprefix $(dependd)/, $(addsuffix .d, $(ds_server_files)))
 ds_server_libs       := $(libd)/libraids.so
-ds_server_static_lnk := $(ds_lib) $(lnk_lib) 
+ds_server_static_lnk := $(ds_lib) $(lnk_lib) -lpcre-32
 ds_server_lnk        := $(raids_dlnk)
 
 $(bind)/ds_server: $(ds_server_objs) $(ds_server_libs)
-$(bind)/ds_server.static: $(ds_server_objs) $(ds_server_static_lnk)
+$(bind)/ds_server.static: $(ds_server_objs) $(ds_lib) $(lnk_lib)
 
 all_exes    += $(bind)/ds_server $(bind)/ds_server.static
 all_depends += $(ds_server_deps)
@@ -286,40 +353,6 @@ include/raids/redis_cmd.h: $(bind)/redis_cmd
 	$(bind)/redis_cmd > include/raids/redis_cmd.h
 gen_files += include/raids/redis_cmd.h
 
-# if sub modules initialized, use those, otherwise use installed
-# (git submodule update --init --recursive)
-$(kv_lib):
-	if [ -d raikv -a -f raikv/GNUmakefile ] ; then \
-	  $(MAKE) -C raikv ; \
-	else \
-	  mkdir -p `dirname $(kv_lib)` ; \
-	  ln -s /usr/lib64/libraikv.* `dirname $(kv_lib)` ; \
-	fi
-
-$(h3_lib):
-	if [ -d h3 -a -f h3/GNUmakefile ] ; then \
-	  $(MAKE) -C h3 ; \
-	else \
-	  mkdir -p `dirname $(h3_lib)` ; \
-	  ln -s /usr/lib64/libh3.* `dirname $(h3_lib)` ; \
-	fi
-
-$(dec_lib):
-	if [ -d libdecnumber -a -f libdecnumber/GNUmakefile ] ; then \
-	  $(MAKE) -C libdecnumber ; \
-	else \
-	  mkdir -p `dirname $(dec_lib)` ; \
-	  ln -s /usr/lib64/libdecnumber.* `dirname $(dec_lib)` ; \
-	fi
-
-$(lc_lib):
-	if [ -d linecook -a -f linecook/GNUmakefile ] ; then \
-	  $(MAKE) -C linecook ; \
-	else \
-	  mkdir -p `dirname $(lc_lib)` ; \
-	  ln -s /usr/lib64/liblinecook.* `dirname $(lc_lib)` ; \
-	fi
-
 # the default targets
 .PHONY: all
 all: $(gen_files) $(all_libs) $(all_dlls) $(all_exes)
@@ -334,6 +367,13 @@ clean:
 	rm -r -f $(bind) $(libd) $(objd) $(dependd)
 	if [ "$(build_dir)" != "." ] ; then rmdir $(build_dir) ; fi
 
+.PHONY: clean_dist
+clean_dist:
+	rm -rf dpkgbuild rpmbuild
+
+.PHONY: clean_all
+clean_all: clean clean_dist
+
 # force a remake of depend using 'make -B depend'
 .PHONY: depend
 depend: $(dependd)/depend.make
@@ -345,8 +385,9 @@ $(dependd)/depend.make: $(dependd) $(all_depends)
 .PHONY: dist_bins
 dist_bins: $(all_libs) $(bind)/ds_server $(bind)/ds_server.static
 	chrpath -d $(libd)/libraids.so
+	chrpath -d $(libd)/libshmdp.so
+	chrpath -d $(bind)/shmdp
 	chrpath -d $(bind)/ds_server
-	chrpath -d $(bind)/ds_server.static
 
 .PHONY: dist_rpm
 dist_rpm: srpm
@@ -354,6 +395,28 @@ dist_rpm: srpm
 
 # dependencies made by 'make depend'
 -include $(dependd)/depend.make
+
+ifeq ($(DESTDIR),)
+# 'sudo make install' puts things in /usr/local/lib, /usr/local/include
+install_prefix = /usr/local
+else
+# debuild uses DESTDIR to put things into debian/libdecnumber/usr
+install_prefix = $(DESTDIR)/usr
+endif
+
+install: dist_bins
+	install -d $(install_prefix)/lib $(install_prefix)/bin
+	install -d $(install_prefix)/include/raids
+	for f in $(libd)/libraids.* $(libd)/libshmdp.* ; do \
+	if [ -h $$f ] ; then \
+	cp -a $$f $(install_prefix)/lib ; \
+	else \
+	install $$f $(install_prefix)/lib ; \
+	fi ; \
+	done
+	install -m 755 $(bind)/ds_server $(install_prefix)/bin
+	install -m 755 $(bind)/shmdp $(install_prefix)/bin
+	install -m 644 include/raids/*.h $(install_prefix)/include/raids
 
 $(objd)/%.o: src/%.cpp
 	$(cpp) $(cflags) $(cppflags) $(includes) $(defines) $($(notdir $*)_includes) $($(notdir $*)_defines) -c $< -o $@
