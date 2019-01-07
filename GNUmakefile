@@ -8,6 +8,7 @@ short_dist_lc := $(patsubst CentOS,rh,$(patsubst RedHatEnterprise,rh,\
                      $(patsubst Fedora,fc,$(patsubst Ubuntu,ub,\
                        $(patsubst Debian,deb,$(patsubst SUSE,ss,$(lsb_dist))))))))
 short_dist    := $(shell echo $(short_dist_lc) | tr a-z A-Z)
+pwd           := $(shell pwd)
 rpm_os        := $(short_dist_lc)$(lsb_dist_ver).$(uname_m)
 
 # this is where the targets are compiled
@@ -68,7 +69,7 @@ ifeq (yes,$(have_kv_submodule))
 kv_lib      := raikv/$(libd)/libraikv.a
 lnk_lib     += $(kv_lib)
 dlnk_lib    += -Lraikv/$(libd) -lraikv
-rpath1       = ,-rpath,raikv/$(libd)
+rpath1       = ,-rpath,$(pwd)/raikv/$(libd)
 else
 lnk_lib     += -lraikv
 dlnk_lib    += -lraikv
@@ -78,7 +79,7 @@ ifeq (yes,$(have_lc_submodule))
 lc_lib      := linecook/$(libd)/liblinecook.a
 lnk_lib     += $(lc_lib)
 dlnk_lib    += -Llinecook/$(libd) -llinecook
-rpath2       = ,-rpath,linecook/$(libd)
+rpath2       = ,-rpath,$(pwd)/linecook/$(libd)
 else
 lnk_lib     += -llinecook
 dlnk_lib    += -llinecook
@@ -88,7 +89,7 @@ ifeq (yes,$(have_dec_submodule))
 dec_lib     := libdecnumber/$(libd)/libdecnumber.a
 lnk_lib     += $(dec_lib)
 dlnk_lib    += -Llibdecnumber/$(libd) -ldecnumber
-rpath3       = ,-rpath,libdecnumber/$(libd)
+rpath3       = ,-rpath,$(pwd)/libdecnumber/$(libd)
 else
 lnk_lib     += -ldecnumber
 dlnk_lib    += -ldecnumber
@@ -98,14 +99,14 @@ ifeq (yes,$(have_h3_submodule))
 h3_lib      := h3/$(libd)/libh3.a
 lnk_lib     += $(h3_lib)
 dlnk_lib    += -Lh3/$(libd) -lh3
-rpath4       = ,-rpath,h3/$(libd)
+rpath4       = ,-rpath,$(pwd)/h3/$(libd)
 else
 lnk_lib     += -lh3
 dlnk_lib    += -lh3
 endif
 
 ds_lib      := $(libd)/libraids.a
-rpath       := -Wl,-rpath,$(libd)$(rpath1)$(rpath2)$(rpath3)$(rpath4)
+rpath       := -Wl,-rpath,$(pwd)/$(libd)$(rpath1)$(rpath2)$(rpath3)$(rpath4)
 dlnk_lib    += -lpcre2-8 -lcrypto
 lnk_lib     += -lpcre2-8 -lcrypto
 malloc_lib  :=
@@ -193,7 +194,7 @@ ds_server_files      := emain
 ds_server_objs       := $(addprefix $(objd)/, $(addsuffix .o, $(ds_server_files)))
 ds_server_deps       := $(addprefix $(dependd)/, $(addsuffix .d, $(ds_server_files)))
 ds_server_libs       := $(libd)/libraids.so
-ds_server_static_lnk := $(ds_lib) $(lnk_lib) -lpcre-32
+ds_server_static_lnk := $(ds_lib) $(lnk_lib) -lpcre2-32
 ds_server_lnk        := $(raids_dlnk)
 
 $(bind)/ds_server: $(ds_server_objs) $(ds_server_libs)

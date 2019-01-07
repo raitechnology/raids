@@ -1,12 +1,12 @@
 [submodule "raikv"]
 	path = raikv
-	url = git@github.com:raitechnology/raikv.git
+	url = https://github.com/raitechnology/raikv.git
 [submodule "h3"]
 	path = h3
-	url = git@github.com:raitechnology/h3.git
+	url = https://github.com/raitechnology/h3.git
 [submodule "libdecnumber"]
 	path = libdecnumber
-	url = git@github.com:raitechnology/libdecnumber.git
+	url = https://github.com/raitechnology/libdecnumber.git
 [submodule "linecook"]
 	path = linecook
-	url = git@github.com:injinj/linecook.git
+	url = https://github.com/injinj/linecook.git
