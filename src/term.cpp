@@ -27,14 +27,12 @@ do_write( LineCook *state,  const void *buf,  size_t buflen )
 
 static int
 do_complete( LineCook *state,  const char * /*buf*/,  size_t off,
-             size_t /*len*/,  int comp_type )
+             size_t /*len*/ )
 {
-  if ( comp_type == 0 ) {
-    if ( off == 0 ) {
-      for ( size_t i = 0; i < cmd_db_cnt; i++ ) {
-        lc_add_completion( state, 'e', cmd_db[ i ].name,
-                           ::strlen( cmd_db[ i ].name ) );
-      }
+  if ( off == 0 ) {
+    for ( size_t i = 0; i < cmd_db_cnt; i++ ) {
+      lc_add_completion( state, cmd_db[ i ].name,
+                         ::strlen( cmd_db[ i ].name ) );
     }
   }
   return 0;
@@ -117,7 +115,8 @@ Term::tty_input( const void *buf,  size_t buflen )
   this->in_off = 0;
   this->in_len = buflen;
 
-  while ( this->in_off < this->in_len ) {
+  while ( this->in_off < this->in_len ||
+          this->tty->lc_status == LINE_STATUS_COMPLETE ) {
     if ( lc_tty_get_line( this->tty ) > 0 ) {
       if ( this->tty->lc_status == LINE_STATUS_INTERRUPT ) {
         lc_tty_set_continue( tty, 0 ); /* cancel continue */
