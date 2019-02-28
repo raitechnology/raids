@@ -221,6 +221,52 @@ struct DeltaCoder {
       i += decode_length( code[ j ] );
     return i;
   }
+  /* test if x is a member */
+  static bool test( uint32_t code,  uint32_t x,  uint32_t &base ) {
+    uint32_t nvals = decode_length( code );
+    if ( nvals == 0 )
+      return false;
+
+    DeltaTable & p = delta_tab[ nvals - 1 ];
+    uint8_t  shift = p.first_shift;
+    uint32_t last  = ( code >> shift ) & p.first_mask;
+
+    last += base;
+    base  = last;
+    if ( last >= x )
+      return ( last == x );
+
+    if ( nvals > 1 ) {
+      uint32_t i, delta;
+
+      for ( i = 1; i < nvals - 1; i++ ) {
+        shift -= p.next_shift;
+        delta  = ( code >> shift ) & p.next_mask;
+        last  += delta + 1;
+        base   = last;
+        if ( last >= x )
+          return ( last == x );
+      }
+      delta = code & p.next_mask;
+      last += delta + 1;
+      base  = last;
+      if ( last >= x )
+        return ( last == x );
+    }
+    return false;
+  }
+  /* check if x is a member of stream */
+  static bool test_stream( uint32_t ncodes,  const uint32_t *code,  
+                           uint32_t last,  uint32_t x ) {
+    for ( uint32_t j = 0; j < ncodes; j++ ) {
+      if ( test( code[ j ], x, last ) ) {
+        if ( last > x )
+          return false;
+        return true;
+      }
+    }
+    return false;
+  }
 };
 
 }

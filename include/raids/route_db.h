@@ -101,9 +101,11 @@ struct RouteDB {
 
   uint32_t decompress_one( uint32_t r );
 
-  void add_route( uint32_t hash,  uint32_t r );
+  uint32_t add_route( uint32_t hash,  uint32_t r );
 
-  void del_route( uint32_t hash,  uint32_t r );
+  uint32_t del_route( uint32_t hash,  uint32_t r );
+
+  bool is_member( uint32_t hash,  uint32_t x );
 
   uint32_t get_route( uint32_t hash,  uint32_t *&routes ) {
     uint32_t pos, val;

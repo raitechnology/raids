@@ -33,10 +33,9 @@ get_arg( int argc, char *argv[], int n, int b, const char *f, const char *def )
 int
 main( int argc, char *argv[] )
 {
-  SignalHandler  sighndl;
-  EvCallback     cb;
-  EvShmClient    shm( cb );
-  int            status = 0;
+  SignalHandler sighndl;
+  EvShm         shm;
+  int           status = 0;
 
   const char * mn = get_arg( argc, argv, 1, 1, "-m", "sysv2m:shm.test" ),
              * pt = get_arg( argc, argv, 2, 1, "-p", "8888" ),
@@ -45,12 +44,12 @@ main( int argc, char *argv[] )
              * np = get_arg( argc, argv, 5, 1, "-n", "42222" ),
              * fd = get_arg( argc, argv, 6, 1, "-x", "4096" ),
              * fe = get_arg( argc, argv, 7, 1, "-f", "1" ),
-             * si = get_arg( argc, argv, 8, 1, "-s", "0" ),
+             /** si = get_arg( argc, argv, 8, 1, "-s", "0" ),*/
              * he = get_arg( argc, argv, 0, 0, "-h", 0 );
 
   if ( he != NULL ) {
     printf( "%s"
-" [-m map] [-p port] [-u unix] [-w web] [-n nats] [-x mfd] [-f pre] [-s sin]\n"
+" [-m map] [-p port] [-u unix] [-w web] [-n nats] [-x mfd] [-f pre]\n" /*"[-s sin]\n"*/
       "  map  = kv shm map name  (sysv2m:shm.test)\n"
       "  port = listen tcp port  (8888)\n"
       "  unix = listen unix name (/tmp/raids.sock)\n"
@@ -58,7 +57,7 @@ main( int argc, char *argv[] )
       "  nats = listen nats port (42222)\n"
       "  mfd  = max fds          (4096)\n"
       "  pre  = prefetch keys:  0 = no, 1 = yes (1)\n"
-      "  sin  = single thread:  0 = no, 1 = yes (0)\n", argv[ 0 ] );
+      /*"  sin  = single thread:  0 = no, 1 = yes (0)\n"*/, argv[ 0 ] );
     return 0;
   }
 
@@ -66,7 +65,7 @@ main( int argc, char *argv[] )
     return 1;
   shm.print();
 
-  EvPoll            poll( shm.map, shm.ctx_id );
+  EvPoll            poll;
   EvRedisListen     redis_sv( poll );
   EvRedisUnixListen redis_un( poll );
   EvHttpListen      http_sv( poll );
@@ -75,8 +74,11 @@ main( int argc, char *argv[] )
 
   if ( maxfd == 0 )
     maxfd = 4096;
-  poll.init( maxfd, fe[ 0 ] == '1', si[ 0 ] == '1' );
-
+  if ( poll.init( maxfd, fe[ 0 ] == '1'/*, si[ 0 ] == '1'*/ ) != 0 ||
+       poll.init_shm( shm ) != 0 ) {
+    fprintf( stderr, "unable to init shm\n" );
+    status = 3;
+  }
   if ( redis_sv.listen( NULL, atoi( pt ) ) != 0 ) {
     fprintf( stderr, "unable to open tcp listen socket on %s\n", pt );
     status = 2; /* bad port or network error */
@@ -94,7 +96,7 @@ main( int argc, char *argv[] )
     printf( "raids_version:        %s\n", kv_stringify( DS_VER ) );
     printf( "max_fds:              %d\n", maxfd );
     printf( "prefetch:             %s\n", fe[ 0 ] == '1' ? "true" : "false" );
-    printf( "single_thread:        %s\n", si[ 0 ] == '1' ? "true" : "false" );
+    /*printf( "single_thread:        %s\n", si[ 0 ] == '1' ? "true" : "false" );*/
     printf( "listening:            %s\n", pt );
     printf( "unix:                 %s\n", sn );
     printf( "www:                  %s\n", hp );
@@ -106,7 +108,7 @@ main( int argc, char *argv[] )
         break;
       bool idle = poll.dispatch(); /* true if idle, false if busy */
       poll.wait( idle ? 100 : 0 );
-      if ( sighndl.signaled )
+      if ( sighndl.signaled && ! poll.quit )
         poll.quit++;
     }
     if ( fe[ 0 ] == '1' )

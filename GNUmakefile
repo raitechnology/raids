@@ -159,7 +159,7 @@ libraids_files := ev_net ev_service ev_http term ev_client ev_tcp ev_unix \
   ev_nats shm_client stream_buf route_db redis_msg redis_cmd_db redis_exec \
   redis_geo redis_hash redis_hyperloglog redis_key redis_list redis_pubsub \
   redis_script redis_set redis_sortedset redis_stream redis_string \
-  redis_transaction decimal
+  redis_transaction decimal kv_pubsub
 libraids_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(libraids_files)))
 libraids_dbjs  := $(addprefix $(objd)/, $(addsuffix .fpic.o, $(libraids_files)))
 libraids_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(libraids_files))) \

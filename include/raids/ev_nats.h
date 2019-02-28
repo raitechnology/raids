@@ -82,7 +82,7 @@ struct EvNatsService : public EvConnection {
   bool fwd_msg( EvPublish &pub,  const void *sid,  size_t sid_len );
   void parse_connect( const char *buf,  size_t sz );
   void process_close( void ) {}
-  virtual void release( void );
+  void release( void );
   void push_free_list( void );
   void pop_free_list( void );
 };

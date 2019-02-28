@@ -417,7 +417,7 @@ RedisExec::do_zwrite( RedisKeyCtx &ctx,  int flags )
     score = str_to_score( arg, arglen );
   }
   else {
-    score = 0;
+    score.zero();
   }
   if ( ! this->msg.get_arg( argi++, arg, arglen ) )
     return ERR_BAD_ARGS;

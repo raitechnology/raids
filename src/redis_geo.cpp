@@ -772,7 +772,7 @@ RedisExec::do_gradius_store( RedisKeyCtx &ctx )
       const char * name    = stp.par[ i ]->name;
       size_t       namelen = ::strlen( name );
 
-      dist = stp.par[ i ]->dist;
+      dist = ZScore::ftod( stp.par[ i ]->dist );
       pos.init( name, namelen );
       while ( zset.x->zadd( name, namelen, dist, pos, 0, NULL ) == ZSET_FULL )
         if ( ! zset.realloc( namelen + 1 + sizeof( ZScore ) ) )

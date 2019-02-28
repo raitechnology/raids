@@ -21,7 +21,7 @@ int
 main( int, char ** )
 {
   static const uint32_t NVALS = 10000;
-  uint32_t i, j, cnt;
+  uint32_t i, j, cnt, x;
   uint32_t values[ NVALS ], values2[ NVALS ], code[ NVALS ];
   uint64_t t1, t2;
   DeltaCoder dc;
@@ -37,6 +37,11 @@ main( int, char ** )
     cnt = dc.decode_stream( cnt, code, 0, values2 );
     for ( j = 0; j < cnt; j++ ) {
       printf( "%u ", values2[ j ] );
+    }
+    printf( "\n          " );
+    for ( x = 0; x < 45; x += 9 ) {
+      printf( "{%u:%s} ", x,
+              dc.test_stream( cnt, code, 0, x ) ? "t" : "f" );
     }
     printf( "\n" );
   }

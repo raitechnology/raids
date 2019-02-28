@@ -40,7 +40,7 @@ struct MyClient {
 
   MyClient( EvPoll &p ) : poll( p ), clicb( *this ),
      termcb( *this ), tclient( p, this->clicb ),
-     uclient( p, this->clicb ), shm( this->clicb ),
+     uclient( p, this->clicb ), shm( p, this->clicb ),
      client( 0 ), term( p, this->termcb ) {}
 
   int connect( const char *h,  int p ) {
@@ -57,9 +57,14 @@ struct MyClient {
   }
   int shm_open( const char *map ) {
     int status;
-    if ( (status = this->shm.open( map )) == 0 &&
-         (status = this->shm.init_exec( this->poll )) == 0 )
-      this->client = &this->shm;
+    if ( (status = this->shm.open( map )) == 0 ) {
+      if ( this->poll.init_shm( this->shm ) != 0 ) {
+        fprintf( stderr, "unable to init shm\n" );
+        status = 3;
+      }
+      else if ( (status = this->shm.init_exec()) == 0 )
+        this->client = &this->shm;
+    }
     return status;
   }
   void print_err( const char *w,  RedisMsgStatus status ) {
@@ -75,7 +80,8 @@ StdinCallback::on_msg( RedisMsg &msg )
   if ( msg.type == RedisMsg::BULK_ARRAY &&
        msg.len == 1 &&
        msg.match_arg( 0, "q", 1, NULL ) == 1 ) {
-    this->on_close();
+    this->me.poll.quit = 1;
+    /*this->on_close();*/
     return;
   }
   char buf[ 1024 ], *b = buf;
@@ -106,7 +112,6 @@ void
 StdinCallback::on_close( void )
 {
   this->me.term.printf( "bye\n" );
-  this->me.poll.quit = 1;
 }
 
 void
@@ -159,7 +164,7 @@ main( int argc, char *argv[] )
   SignalHandler sighndl;
   int          status = 0;
   bool         is_connected = false;
-  EvPoll       poll( NULL, 0 );
+  EvPoll       poll;
   MyClient     my( poll );
 
   const char * ho = get_arg( argc, argv, 1, 1, "-x", NULL ),
@@ -172,7 +177,7 @@ main( int argc, char *argv[] )
     return 0;
   }
 
-  poll.init( 5, false, false );
+  poll.init( 5, false/*, false*/ );
   if ( pa != NULL ) {
     if ( my.connect( pa ) != 0 ) {
       fprintf( stderr, "unable to connect unix socket to %s\n", pa );

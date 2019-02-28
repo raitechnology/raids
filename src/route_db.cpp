@@ -208,10 +208,10 @@ RouteDB::get_route_count( uint32_t hash )
   return 0;
 }
 
-void
+uint32_t
 RouteDB::add_route( uint32_t hash,  uint32_t r )
 {
-  uint32_t pos, val, rcnt = 0;
+  uint32_t pos, val, rcnt = 0, xcnt = 0;
   uint32_t *routes, tmp_route;
 
   if ( this->xht == NULL )
@@ -220,32 +220,35 @@ RouteDB::add_route( uint32_t hash,  uint32_t r )
   if ( this->xht->find( hash, pos, val ) ) {
     rcnt = this->decompress_routes( val, routes, true );
     if ( rcnt > 0 )
-      rcnt = insert_route( r, routes, rcnt );
+      xcnt = insert_route( r, routes, rcnt );
   }
   if ( rcnt == 0 ) { /* new route */
-    rcnt      = 1;
+    xcnt      = 1;
     tmp_route = r;
     routes    = &tmp_route;
   }
-  val = this->compress_routes( routes, rcnt );
-  this->xht->set( hash, pos, val );
-  if ( this->xht->need_resize() )
-    this->xht = UIntHashTab::resize( this->xht );
+  if ( xcnt != rcnt ) {
+    val = this->compress_routes( routes, xcnt );
+    this->xht->set( hash, pos, val );
+    if ( this->xht->need_resize() )
+      this->xht = UIntHashTab::resize( this->xht );
+  }
   if ( this->code_free * 2 > this->code_end )
     this->gc_code_ref_space();
+  return xcnt;
 }
 
-void
+uint32_t
 RouteDB::del_route( uint32_t hash,  uint32_t r )
 {
-  uint32_t pos, val, rcnt;
+  uint32_t pos, val, rcnt = 0, xcnt = 0;
   uint32_t *routes;
 
   if ( this->xht != NULL && this->xht->find( hash, pos, val ) ) {
     rcnt = this->decompress_routes( val, routes, true );
-    rcnt = delete_route( r, routes, rcnt );
-    if ( rcnt > 0 ) {
-      val = this->compress_routes( routes, rcnt );
+    xcnt = delete_route( r, routes, rcnt );
+    if ( xcnt > 0 ) {
+      val = this->compress_routes( routes, xcnt );
       this->xht->set( hash, pos, val );
     }
     else {
@@ -256,5 +259,27 @@ RouteDB::del_route( uint32_t hash,  uint32_t r )
     if ( this->code_free * 2 > this->code_end )
       this->gc_code_ref_space();
   }
+  return xcnt;
 }
 
+bool
+RouteDB::is_member( uint32_t hash,  uint32_t x )
+{
+  uint32_t pos, r;
+
+  if ( this->xht == NULL || ! this->xht->find( hash, pos, r ) )
+    return false;
+
+  if ( this->dc.is_not_encoded( r ) ) { /* if is a multi value code */
+    CodeRef * p;
+    uint32_t  val;
+    if ( this->zht != NULL && this->zht->find( r, pos, val ) ) {
+      p = (CodeRef *) (void *) &this->code_buf[ val ];
+      return this->dc.test_stream( p->ecnt, &p->code, 0, x );
+    }
+    return false;
+  }
+  /* single value code */
+  uint32_t base = 0;
+  return this->dc.test( r, x, base );
+}

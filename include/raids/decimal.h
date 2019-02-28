@@ -5,35 +5,35 @@
 extern "C" {
 #endif
 
-typedef uint64_t Decimal64Storage;
+typedef uint64_t Dec64Store;
 
-void dec64_itod( Decimal64Storage *fp,  int i );
-void dec64_ftod( Decimal64Storage *fp,  double f );
-void dec64_from_string( Decimal64Storage *fp,  const char *str );
-void dec64_zero( Decimal64Storage *fp );
-size_t dec64_to_string( const Decimal64Storage *fp,  char *str );
-void dec64_sum( Decimal64Storage *out,  const Decimal64Storage *l,
-                const Decimal64Storage *r );
-void dec64_mul( Decimal64Storage *out,  const Decimal64Storage *l,
-                const Decimal64Storage *r );
-int dec64_eq( const Decimal64Storage *l, const Decimal64Storage *r );
-int dec64_lt( const Decimal64Storage *l, const Decimal64Storage *r );
-int dec64_gt( const Decimal64Storage *l, const Decimal64Storage *r );
+void dec64_itod( Dec64Store *fp,  int i );
+void dec64_ftod( Dec64Store *fp,  double f );
+void dec64_from_string( Dec64Store *fp,  const char *str );
+void dec64_zero( Dec64Store *fp );
+size_t dec64_to_string( const Dec64Store *fp,  char *str );
+void dec64_sum( Dec64Store *out,  const Dec64Store *l,
+                const Dec64Store *r );
+void dec64_mul( Dec64Store *out,  const Dec64Store *l,
+                const Dec64Store *r );
+int dec64_eq( const Dec64Store *l, const Dec64Store *r );
+int dec64_lt( const Dec64Store *l, const Dec64Store *r );
+int dec64_gt( const Dec64Store *l, const Dec64Store *r );
 
-typedef struct { uint64_t n[ 2 ]; } Decimal128Storage;
+typedef struct { uint64_t n[ 2 ]; } Dec128Store;
 
-void dec128_itod( Decimal128Storage *fp,  int i );
-void dec128_ftod( Decimal128Storage *fp,  double f );
-void dec128_from_string( Decimal128Storage *fp,  const char *str );
-void dec128_zero( Decimal128Storage *fp );
-size_t dec128_to_string( const Decimal128Storage *fp,  char *str );
-void dec128_mul( Decimal128Storage *out,  const Decimal128Storage *l,
-                 const Decimal128Storage *r );
-void dec128_sum( Decimal128Storage *out,  const Decimal128Storage *l,
-                const Decimal128Storage *r );
-int dec128_eq( const Decimal128Storage *l, const Decimal128Storage *r );
-int dec128_lt( const Decimal128Storage *l, const Decimal128Storage *r );
-int dec128_gt( const Decimal128Storage *l, const Decimal128Storage *r );
+void dec128_itod( Dec128Store *fp,  int i );
+void dec128_ftod( Dec128Store *fp,  double f );
+void dec128_from_string( Dec128Store *fp,  const char *str );
+void dec128_zero( Dec128Store *fp );
+size_t dec128_to_string( const Dec128Store *fp,  char *str );
+void dec128_mul( Dec128Store *out,  const Dec128Store *l,
+                 const Dec128Store *r );
+void dec128_sum( Dec128Store *out,  const Dec128Store *l,
+                const Dec128Store *r );
+int dec128_eq( const Dec128Store *l, const Dec128Store *r );
+int dec128_lt( const Dec128Store *l, const Dec128Store *r );
+int dec128_gt( const Dec128Store *l, const Dec128Store *r );
 
 #ifdef __cplusplus
 }
@@ -50,7 +50,7 @@ null_terminate( char *buf,  size_t buflen,  const char *str,  size_t strlen ) {
 }
 
 struct Decimal64 {
-  Decimal64Storage fp;
+  Dec64Store fp;
 
   static Decimal64 parse( const char *str ) {
     Decimal64 x; dec64_from_string( &x.fp, str ); return x;
@@ -60,8 +60,16 @@ struct Decimal64 {
     return Decimal64::parse( null_terminate( buf, sizeof( buf ), str, len ) );
   }
   static Decimal64 itod( int i ) {
-    Decimal64 x; x = i; return x;
+    Decimal64 x; dec64_itod( &x.fp, i ); return x;
+    /*Decimal64 x; x = i; return x;*/
   }
+  static Decimal64 ftod( double f ) {
+    Decimal64 x; dec64_ftod( &x.fp, f ); return x;
+    /*Decimal64 x; x = i; return x;*/
+  }
+  static void zero( Decimal64 *d ) { d->zero(); }
+  static void zero( double *d )    { *d = 0; }
+  static void zero( uint64_t *d )  { *d = 0; }
   void zero( void ) {
     dec64_zero( &this->fp );
   }
@@ -73,6 +81,7 @@ struct Decimal64 {
     dec64_from_string( &this->fp,
       null_terminate( buf, sizeof( buf ), str, len ) );
   }
+#if 0
   Decimal64& operator =( double f ) {
     dec64_ftod( &this->fp, f );
     return *this;
@@ -81,6 +90,7 @@ struct Decimal64 {
     dec64_itod( &this->fp, i );
     return *this;
   }
+#endif
   Decimal64& operator +=( const Decimal64 &f ) {
     dec64_sum( &this->fp, &this->fp, &f.fp );
     return *this;
@@ -120,7 +130,7 @@ struct Decimal64 {
 };
 
 struct Decimal128 {
-  Decimal128Storage fp;
+  Dec128Store fp;
 
   static Decimal128 parse( const char *str ) {
     Decimal128 x; dec128_from_string( &x.fp, str ); return x;
@@ -140,6 +150,10 @@ struct Decimal128 {
     dec128_from_string( &this->fp,
       null_terminate( buf, sizeof( buf ), str, len ) );
   }
+  static Decimal128 ftod( double f ) {
+    Decimal128 x; dec128_ftod( &x.fp, f ); return x;
+  }
+#if 0
   Decimal128& operator =( int i ) {
     dec128_itod( &this->fp, i );
     return *this;
@@ -148,6 +162,7 @@ struct Decimal128 {
     dec128_itod( &this->fp, f );
     return *this;
   }
+#endif
   Decimal128& operator +=( const Decimal128 &f ) {
     dec128_sum( &this->fp, &this->fp, &f.fp );
     return *this;

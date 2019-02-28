@@ -88,7 +88,7 @@ void
 EvRedisService::release( void )
 {
   this->RedisExec::release();
-  this->EvConnection::release();
+  this->EvConnection::release_buffers();
   this->push_free_list();
 }
 

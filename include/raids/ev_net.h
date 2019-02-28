@@ -11,22 +11,25 @@ namespace rai {
 namespace ds {
 
 enum EvSockType {
-  EV_REDIS_SOCK   = 0, /* redis protocol */
-  EV_HTTP_SOCK    = 1, /* http / websock protocol */
-  EV_LISTEN_SOCK  = 2, /* any type of listener (tcp or unix sock stream) */
-  EV_CLIENT_SOCK  = 3, /* redis client protocol */
-  EV_TERMINAL     = 4, /* redis terminal (converts redis proto to/from json) */
-  EV_NATS_SOCK    = 5  /* nats pub/sub protocol */
+  EV_REDIS_SOCK  = 0, /* redis protocol */
+  EV_HTTP_SOCK   = 1, /* http / websock protocol */
+  EV_LISTEN_SOCK = 2, /* any type of listener (tcp or unix sock stream) */
+  EV_CLIENT_SOCK = 3, /* redis client protocol */
+  EV_TERMINAL    = 4, /* redis terminal (converts redis proto to/from json) */
+  EV_NATS_SOCK   = 5, /* nats pub/sub protocol */
+  EV_KV_PUBSUB   = 6,
+  EV_SHM_SOCK    = 7
 };
 
 enum EvState {
-  EV_READ_HI   = 0, /* listen port accept */
-  EV_CLOSE     = 1, /* if close set, do that before write/read */
-  EV_WRITE_HI  = 2, /* when send buf full at send_highwater or read pressure */
-  EV_READ      = 3, /* use read to fill until no more data or recv_highwater */
-  EV_PROCESS   = 4, /* process read buffers */
-  EV_WRITE     = 5, /* write at low priority, suboptimal send of small buf */
-  EV_READ_LO   = 6  /* read at low priority, back pressure from full write buf*/
+  EV_READ_HI  = 0, /* listen port accept */
+  EV_CLOSE    = 1, /* if close set, do that before write/read */
+  EV_WRITE_HI = 2, /* when send buf full at send_highwater or read pressure */
+  EV_READ     = 3, /* use read to fill until no more data or recv_highwater */
+  EV_PROCESS  = 4, /* process read buffers */
+  EV_WRITE    = 5, /* write at low priority, suboptimal send of small buf */
+  EV_SHUTDOWN = 6, /* showdown after writes */
+  EV_READ_LO  = 7  /* read at low priority, back pressure from full write buf */
 };
 
 enum EvListFlag {
@@ -39,16 +42,17 @@ struct EvSocket;
 struct EvPrefetchQueue; /* queue for prefetching key memory */
 struct EvPublish;
 struct EvPoll;
+struct KvPubSub;
 
 struct EvSocket {
-  EvSocket * next,   /* link for sock lists */
+  EvSocket * next,     /* link for sock lists */
            * back;
-  EvPoll   & poll;   /* the parent container */
-  uint64_t   prio_cnt;
-  int        fd;     /* the socket fd */
-  uint16_t   state;  /* bit mask of states, the queues the sock is in */
-  EvSockType type;   /* listen or cnnection */
-  EvListFlag listfl; /* in active list or free list */
+  EvPoll   & poll;     /* the parent container */
+  uint64_t   prio_cnt; /* timeslice each socket for a slot to run */
+  int        fd;       /* the socket fd */
+  uint16_t   state;    /* bit mask of states, the queues the sock is in */
+  EvSockType type;     /* listen or cnnection */
+  EvListFlag listfl;   /* in active list or free list */
 
   EvSocket( EvPoll &p,  EvSockType t )
     : next( 0 ), back( 0 ), poll( p ), prio_cnt( 0 ), fd( -1 ),
@@ -82,6 +86,8 @@ struct EvSocket {
 struct EvRedisService;
 struct EvHttpService;
 struct EvNatsService;
+struct KvPubSub;
+struct EvShm;
 
 struct EvPoll : public RoutePublish {
   kv::PrioQueue<EvSocket *, EvSocket::is_greater> queue;
@@ -89,9 +95,10 @@ struct EvPoll : public RoutePublish {
   struct epoll_event    * ev;              /* event array used by epoll() */
   kv::HashTab           * map;             /* the data store */
   EvPrefetchQueue       * prefetch_queue;  /* ordering keys */
+  KvPubSub              * pubsub;
   uint64_t                prio_tick;       /* priority queue ticker */
-  const uint32_t          ctx_id;          /* this thread context */
-  uint32_t                fdcnt;           /* num fds in poll set */
+  uint32_t                ctx_id,          /* this thread context */
+                          fdcnt;           /* num fds in poll set */
   int                     efd,             /* epoll fd */
                           nfds,            /* max epoll() fds, array sz this->ev */
                           maxfd,           /* current maximum fd number */
@@ -104,16 +111,17 @@ struct EvPoll : public RoutePublish {
   kv::DLinkList<EvRedisService> free_redis; /* EvRedisService free */
   kv::DLinkList<EvHttpService>  free_http;  /* EvHttpService free */
   kv::DLinkList<EvNatsService>  free_nats;  /* EvNatsService free */
-  bool single_thread;
+  /*bool single_thread;*/
 
-  EvPoll( kv::HashTab *m,  uint32_t id )
-    : sock( 0 ), ev( 0 ), map( m ), prefetch_queue( 0 ), prio_tick( 0 ),
-      ctx_id( id ), fdcnt( 0 ), efd( -1 ), nfds( -1 ), maxfd( -1 ), quit( 0 ),
-      sub_route( *this ), single_thread( false ) {
+  EvPoll()
+    : sock( 0 ), ev( 0 ), map( 0 ), prefetch_queue( 0 ), pubsub( 0 ),
+      prio_tick( 0 ), ctx_id( 0 ), fdcnt( 0 ), efd( -1 ), nfds( -1 ),
+      maxfd( -1 ), quit( 0 ), sub_route( *this )/*, single_thread( false )*/ {
     ::memset( this->prefetch_cnt, 0, sizeof( this->prefetch_cnt ) );
   }
 
-  int init( int numfds,  bool prefetch,  bool single );
+  int init( int numfds,  bool prefetch/*,  bool single*/ );
+  int init_shm( EvShm &shm );    /* open shm pubsub */
   int wait( int ms );            /* call epoll() with ms timeout */
   bool dispatch( void );         /* process any sock in the queues */
   void drain_prefetch( EvPrefetchQueue &q ); /* process prefetches */
@@ -140,6 +148,8 @@ struct EvListen : public EvSocket {
   EvListen( EvPoll &p ) : EvSocket( p, EV_LISTEN_SOCK ) {}
 
   virtual void accept( void ) {}
+  void process_close( void );
+  void process_shutdown( void ) { this->pushpop( EV_CLOSE, EV_SHUTDOWN ); }
 };
 
 static inline void *aligned_malloc( size_t sz ) {
@@ -173,7 +183,7 @@ struct EvConnection : public EvSocket, public StreamBuf {
     this->nbytes_recv    = 0;
     this->nbytes_sent    = 0;
   }
-  virtual void release( void ) {
+  void release_buffers( void ) {
     this->clear_buffers();
     this->StreamBuf::release();
   }
@@ -204,6 +214,7 @@ struct EvConnection : public EvSocket, public StreamBuf {
   size_t write( void );
   size_t try_write( void );
   void close_alloc_error( void );
+  void process_shutdown( void ) { this->pushpop( EV_CLOSE, EV_SHUTDOWN ); }
 };
 
 }

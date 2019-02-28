@@ -14,32 +14,32 @@ using namespace ds;
 using namespace kv;
 
 int
-EvShmClient::open( const char *mn )
+EvShm::open( const char *mn )
 {
   HashTabGeom geom;
   this->map = HashTab::attach_map( mn, 0, geom );
   if ( this->map != NULL ) {
-    this->ctx_id = map->attach_ctx( ::getpid(), 0 );
+    this->ctx_id = map->attach_ctx( ::getpid(), 0, 254 );
     return 0;
   }
   return -1;
 }
 
 void
-EvShmClient::print( void )
+EvShm::print( void )
 {
   fputs( print_map_geom( this->map, this->ctx_id ), stdout );
   fflush( stdout );
 }
 
-EvShmClient::~EvShmClient()
+EvShm::~EvShm()
 {
   if ( this->map != NULL )
     this->close();
 }
 
 void
-EvShmClient::close( void )
+EvShm::close( void )
 {
   if ( this->ctx_id != MAX_CTX_ID ) {
     map->detach_ctx( ctx_id );
@@ -49,15 +49,51 @@ EvShmClient::close( void )
   this->map = NULL;
 }
 
-int
-EvShmClient::init_exec( EvPoll &p )
+EvShmClient::~EvShmClient()
 {
-  void * e = ::malloc( sizeof( RedisExec ) );
+}
+
+void
+EvShmClient::process_shutdown( void )
+{
+  this->exec->rem_all_sub();
+  this->pushpop( EV_CLOSE, EV_SHUTDOWN );
+}
+
+void
+EvShmClient::process_close( void )
+{
+  this->poll.remove_sock( this );
+}
+
+int
+EvShmClient::init_exec( void )
+{
+  void * e = aligned_malloc( sizeof( RedisExec ) );
   if ( e == NULL )
     return -1;
+  if ( ::pipe2( this->pfd, O_NONBLOCK ) < 0 )
+    return -1;
   this->exec = new ( e ) RedisExec( *this->map, this->ctx_id, *this,
-                                    p.sub_route, p.single_thread );
+                                    this->poll.sub_route, *this->poll.pubsub );
+  this->fd = this->pfd[ 0 ];
+  this->exec->sub_id = this->fd;
+  this->poll.add_sock( this );
   return 0;
+}
+
+bool
+EvShmClient::publish( EvPublish &pub )
+{
+  if ( this->exec->do_pub( pub ) )
+    this->stream_to_msg();
+  return true;
+}
+
+bool
+EvShmClient::hash_to_sub( uint32_t h,  char *key,  size_t &keylen )
+{
+  return this->exec->do_hash_to_sub( h, key, keylen );
 }
 
 void
@@ -66,7 +102,6 @@ EvShmClient::send_msg( RedisMsg &msg )
   ExecStatus status;
 
   this->exec->msg.ref( msg );
-
   if ( (status = this->exec->exec( NULL, NULL )) == EXEC_OK )
     if ( this->alloc_fail )
       status = ERR_ALLOC_FAIL;
@@ -84,6 +119,12 @@ EvShmClient::send_msg( RedisMsg &msg )
     case EXEC_DEBUG:
       break;
   }
+  this->stream_to_msg();
+}
+
+void
+EvShmClient::stream_to_msg( void )
+{
   if ( this->sz > 0 )
     this->flush();
   if ( this->idx >= 1 ) {

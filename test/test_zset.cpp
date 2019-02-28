@@ -487,7 +487,7 @@ main( int, char ** )
         }
         else {
           for ( j = 0; j < num_keys; j++ )
-            weight[ j ] = 1;
+            weight[ j ] = ZScore::itod( 1 );
         }
         aggregate = ( msg.match_arg( i, "aggregate", 9, NULL ) == 1 );
         if ( aggregate ) {

@@ -21,21 +21,39 @@ struct EvClient {
   virtual void send_msg( RedisMsg &msg );
 };
 
-struct RedisExec;
-struct EvShmClient : public EvClient, public StreamBuf {
-  RedisExec   * exec;
+struct EvShm {
   kv::HashTab * map;
   uint32_t      ctx_id;
 
-  EvShmClient( EvCallback &callback ) : EvClient( callback ), exec( 0 ),
-    map( 0 ), ctx_id( kv::MAX_CTX_ID ) {}
-  ~EvShmClient();
-
+  EvShm() : map( 0 ), ctx_id( kv::MAX_CTX_ID ) {}
+  ~EvShm();
   int open( const char *mn );
-  int init_exec( EvPoll &p );
   void print( void );
   void close( void );
+};
+
+struct RedisExec;
+struct EvShmClient : public EvShm, public EvClient, public StreamBuf,
+                     public EvSocket {
+  RedisExec * exec;
+  int         pfd[ 2 ];
+
+  EvShmClient( EvPoll &p,  EvCallback &callback )
+    : EvClient( callback ), EvSocket( p, EV_SHM_SOCK ), exec( 0 ) {
+    this->pfd[ 0 ] = this->pfd[ 1 ] = -1;
+  }
+  ~EvShmClient();
+
+  int init_exec( void );
   virtual void send_msg( RedisMsg &msg );
+  bool publish( EvPublish &pub );
+  bool hash_to_sub( uint32_t h,  char *key,  size_t &keylen );
+  void stream_to_msg( void );
+  void process_shutdown( void );
+  void process_close( void );
+  void release( void ) {
+    this->StreamBuf::reset();
+  }
 };
 
 struct EvNetClient : public EvClient, public EvConnection {
@@ -49,6 +67,9 @@ struct EvNetClient : public EvClient, public EvConnection {
   RedisMsgStatus process_msg( char *buf,  size_t &buflen );
   void process( void );
   void process_close( void );
+  void release( void ) {
+    this->EvConnection::release_buffers();
+  }
 };
 
 struct EvTerminal : public EvNetClient {

@@ -17,6 +17,7 @@
 #include <raikv/key_hash.h>
 #include <raikv/util.h>
 #include <raids/ev_publish.h>
+#include <raids/kv_pubsub.h>
 
 using namespace rai;
 using namespace ds;
@@ -424,8 +425,11 @@ EvNatsService::add_sub( void )
   SidMsgCount  cnt( 0 );
 
   this->sid_tab.put( sidkey, cnt, subrec, true );
-  if ( this->sub_tab.put( subkey, cnt, sidrec ) == NATS_IS_NEW )
-    this->poll.sub_route.add_route( subkey.pos.h, this->fd );
+  if ( this->sub_tab.put( subkey, cnt, sidrec ) == NATS_IS_NEW ) {
+    uint32_t rcnt = this->poll.sub_route.add_route( subkey.pos.h, this->fd );
+    this->poll.pubsub->notify_sub( subkey.pos.h, subrec.str, subrec.len,
+                                   this->fd, rcnt, 'N' );
+  }
 #if 0
   printf( "add_sub:\n" );
   this->sid_tab.print();
@@ -479,7 +483,10 @@ EvNatsService::rem_sid_key( StrHashKey &sidkey )
         StrHashKey subkey( sub_list.sid );
         if ( this->sub_tab.deref( subkey, sidkey.rec ) ) {
         /*printf( "rem_route(%.*s)\n", (int) subkey.rec.len, subkey.rec.str );*/
-          this->poll.sub_route.del_route( subkey.pos.h, this->fd );
+          uint32_t rcnt = this->poll.sub_route.del_route( subkey.pos.h,
+                                                          this->fd );
+          this->poll.pubsub->notify_unsub( subkey.pos.h, subkey.rec.str,
+                                          subkey.rec.len, this->fd, rcnt, 'N' );
         }
       } while ( sub_list.next() );
     }
@@ -491,10 +498,13 @@ void
 EvNatsService::rem_all_sub( void )
 {
   HashPos pos;
-  if ( this->sub_tab.first( pos ) ) {
+  HashVal kv;
+  if ( this->sub_tab.first( pos, kv ) ) {
     do {
-      this->poll.sub_route.del_route( pos.h, this->fd );
-    } while ( this->sub_tab.next( pos ) );
+      uint32_t rcnt = this->poll.sub_route.del_route( pos.h, this->fd );
+      this->poll.pubsub->notify_unsub( pos.h, kv.key, kv.keylen, this->fd,
+                                       rcnt, 'N' );
+    } while ( this->sub_tab.next( pos, kv ) );
   }
 }
 
@@ -744,7 +754,7 @@ EvNatsService::release( void )
   this->rem_all_sub();
   this->sub_tab.release();
   this->sid_tab.release();
-  this->EvConnection::release();
+  this->EvConnection::release_buffers();
   this->push_free_list();
 }
 

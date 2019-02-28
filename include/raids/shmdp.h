@@ -88,8 +88,11 @@ struct QueuePoll : public EvCallback {
   QueueFd  ** fds;
   FdMap       pending;
   int         fds_size;
+  bool        idle,
+              inprogress;
 
-  QueuePoll() : poll( NULL, 0 ), shm( *this ), fds( 0 ), fds_size( 0 ) {
+  QueuePoll() : shm( this->poll, *this ), fds( 0 ),
+                fds_size( 0 ), idle( true ), inprogress( false ) {
     ::memset( &this->pending, 0, sizeof( this->pending ) );
   }
   void unlink( QueueFd *p );

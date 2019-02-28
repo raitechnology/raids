@@ -60,17 +60,26 @@ init_port( int pt )
 void
 rai::ds::shmdp_atexit( void )
 {
-  printf( "%lu connect\n"
-          "%lu connect_real\n"
+  if ( qp != NULL ) {
+    qp->poll.quit++;
+    for (;;) {
+      if ( qp->poll.quit >= 5 )
+        break;
+      qp->poll.wait( qp->idle ? 100 : 0 );
+      qp->idle = qp->poll.dispatch();
+    }
+  }
+  printf( "\r\n%lu connect\r\n"
+          "%lu connect_real\r\n"
           "%lu epoll_ctl\n"
-          "%lu epoll_ctl_real\n"
-          "%lu epoll_wait\n"
-          "%lu epoll_wait_real\n"
-          "%lu read\n"
-          "%lu read_real\n"
-          "%lu write\n"
-          "%lu write_real\n"
-          "%lu msg_count\n",
+          "%lu epoll_ctl_real\r\n"
+          "%lu epoll_wait\r\n"
+          "%lu epoll_wait_real\r\n"
+          "%lu read\r\n"
+          "%lu read_real\r\n"
+          "%lu write\r\n"
+          "%lu write_real\r\n"
+          "%lu msg_count\r\n",
    ds_connect,
    ds_connect_real,
    ds_epoll_ctl,
@@ -89,13 +98,13 @@ rai::ds::shmdp_atexit( void )
 void
 rai::ds::shmdp_initialize( const char *mn,  int pt )
 {
-  void * m = ::malloc( sizeof( QueuePoll ) );
+  void * m = aligned_malloc( sizeof( QueuePoll ) );
   if ( m == NULL ) {
     perror( "malloc" );
     exit( 9 );
   }
   qp = new ( m ) QueuePoll();
-  qp->poll.init( 5, false, false );
+  qp->poll.init( 5, false/*, false*/ );
   if ( mn == NULL ) {
     if ( (mn = ::getenv( "RAIDS_SHM" )) == NULL ) {
       fprintf( stderr, "RAIDS_SHM env var not set\n" );
@@ -105,9 +114,11 @@ rai::ds::shmdp_initialize( const char *mn,  int pt )
   if ( ds_port == 0 || pt != 0 )
     init_port( pt );
   if ( qp->shm.open( mn ) == 0 &&
-       qp->shm.init_exec( qp->poll ) == 0 ) {
-    atexit( shmdp_atexit );
-    return;
+       qp->poll.init_shm( qp->shm ) == 0 ) {
+    if ( qp->shm.init_exec() == 0 ) {
+      atexit( shmdp_atexit );
+      return;
+    }
   }
   fprintf( stderr, "Failed to open SHM %s\n", mn );
   exit( 12 );
@@ -295,6 +306,8 @@ select( int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds,
   if ( select_next == NULL )
     select_next = (int (*)(int, fd_set *, fd_set *, fd_set *, struct timeval *))
                   dlsym( RTLD_NEXT, "select" );
+  if ( qp == NULL || qp->inprogress )
+    return select_next( nfds, readfds, writefds, exceptfds, timeout );
   if ( conn.fd_first( fd ) ) {
     int rmap[ FD_MAP_SZ ], wmap[ FD_MAP_SZ ], emap[ FD_MAP_SZ ];
     size_t rcnt = 0, wcnt = 0, ecnt = 0;
@@ -339,6 +352,13 @@ select( int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds,
         FD_CLR( emap[ i ], exceptfds );
     }
   }
+  qp->inprogress = true;
+  if ( qp->idle )
+    qp->poll.wait( 0 );
+  qp->idle = qp->poll.dispatch();
+  qp->inprogress = false;
+  if ( ! qp->idle )
+    return 0;
   return select_next( nfds, readfds, writefds, exceptfds, timeout );
 }
 
@@ -350,7 +370,8 @@ epoll_wait( int epfd, struct epoll_event *events,
   if ( epoll_wait_next == NULL )
     epoll_wait_next = (int (*)(int, struct epoll_event *, int, int))
       dlsym( RTLD_NEXT, "epoll_wait" );
-
+  if ( qp == NULL || qp->inprogress )
+    return epoll_wait_next( epfd, events, maxevents, timeout );
   ds_epoll_wait++;
   int i = 0;
   int fdbase = 0;
@@ -384,6 +405,13 @@ epoll_wait( int epfd, struct epoll_event *events,
       return i;
     }
   }
+  qp->inprogress = true;
+  if ( qp->idle )
+    qp->poll.wait( 0 );
+  qp->idle = qp->poll.dispatch();
+  qp->inprogress = false;
+  if ( ! qp->idle )
+    return 0;
   ds_epoll_wait_real++;
   return epoll_wait_next( epfd, events, maxevents, timeout );
 }
@@ -419,7 +447,7 @@ recv( int sockfd, void *buf, size_t len, int flags )
 
   if ( recv_next == NULL )
     recv_next = (ssize_t (*)(int, void *, size_t, int))
-      dlsym( RTLD_NEXT, "recvrecv" );
+      dlsym( RTLD_NEXT, "recv" );
   if ( qp != NULL && conn.fd_test( sockfd ) ) {
     ds_read++;
     status = qp->read( sockfd, (char *) buf, len );
@@ -753,7 +781,7 @@ QueuePoll::find( int fd,  bool is_write )
   QueueFd *p = NULL;
   if ( fd >= this->fds_size || this->fds[ fd ] == NULL ) {
     if ( is_write ) {
-      void *m = ::malloc( sizeof( QueueFd ) );
+      void *m = aligned_malloc( sizeof( QueueFd ) );
       if ( m == NULL )
         return NULL;
       p = new ( m ) QueueFd( fd, *this );

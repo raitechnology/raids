@@ -7,6 +7,7 @@
 #include <raids/md_type.h>
 #include <raids/ev_publish.h>
 #include <raids/route_db.h>
+#include <raids/kv_pubsub.h>
 #define PCRE2_CODE_UNIT_WIDTH 8
 #include <pcre2.h>
 
@@ -24,10 +25,13 @@ void
 RedisExec::rem_all_sub( void )
 {
   HashPos pos;
-  if ( this->sub_tab.first( pos ) ) {
+  HashVal kv;
+  if ( this->sub_tab.first( pos, kv ) ) {
     do {
-      this->sub_route.del_route( pos.h, this->sub_id );
-    } while ( this->sub_tab.next( pos ) );
+      uint32_t rcnt = this->sub_route.del_route( pos.h, this->sub_id );
+      this->pubsub.notify_unsub( pos.h, kv.key, kv.keylen, this->sub_id,
+                                 rcnt, 'R' );
+    } while ( this->sub_tab.next( pos, kv ) );
   }
 }
 
@@ -68,7 +72,7 @@ RedisExec::do_pub( EvPublish &pub )
       crlf( msg, off + pub.msg_len );
 
       this->strm.sz += sz;
-      return true;
+      return true; /* true if succefully queued */
     }
   }
   return false;
@@ -221,7 +225,7 @@ RedisExec::exec_publish( void )
                    NULL, 0,
                    msg, msg_len,
                    routes, rcnt, this->sub_id, sub_pos.h,
-                   msg_len_buf, msg_len_digits  );
+                   msg_len_buf, msg_len_digits );
     this->sub_route.rte.publish( pub );
   }
   rte_digits = RedisMsg::uint_digits( rcnt );
@@ -300,13 +304,17 @@ RedisExec::do_sub( int flags )
     HashPos pos( sub[ j ], len[ j ] );
     if ( ( flags & ( DO_SUBSCRIBE | DO_PSUBSCRIBE ) ) != 0 ) {
       if ( this->sub_tab.put( sub[ j ], len[ j ], pos ) == SUB_OK ) {
-        this->sub_route.add_route( pos.h, this->sub_id );
+        uint32_t rcnt = this->sub_route.add_route( pos.h, this->sub_id );
+        this->pubsub.notify_sub( pos.h, sub[ j ], len[ j ], this->sub_id,
+                                 rcnt, 'R' );
         cnt++;
       }
     }
     else {
       if ( this->sub_tab.rem( sub[ j ], len[ j ], pos ) == SUB_OK ) {
-        this->sub_route.del_route( pos.h, this->sub_id );
+        uint32_t rcnt = this->sub_route.del_route( pos.h, this->sub_id );
+        this->pubsub.notify_unsub( pos.h, sub[ j ], len[ j ], this->sub_id,
+                                   rcnt, 'R');
         cnt--;
       }
     }

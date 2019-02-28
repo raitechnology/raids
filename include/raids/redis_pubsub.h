@@ -54,10 +54,9 @@ struct SubMap {
   SubStatus updcnt( const char *sub,  size_t len,  HashPos &pos ) const {
     ListVal     lv;
     SubMsgCount rec;
-    HashStatus  hstat;
 
-    hstat = this->h->hget( sub, len, lv, pos );
-    if ( hstat == HASH_NOT_FOUND )
+    if ( this->h == NULL ||
+         this->h->hget( sub, len, lv, pos ) == HASH_NOT_FOUND )
       return SUB_NOT_FOUND;
     lv.copy_out( &rec, 0, sizeof( rec ) );
     rec.msg_cnt++;
@@ -66,7 +65,7 @@ struct SubMap {
   }
   /* remove tab[ sub ] */
   SubStatus rem( const char *sub,  size_t len,  HashPos &pos ) const {
-    if ( this->h->hdel( sub, len, pos ) == HASH_NOT_FOUND )
+    if ( this->h == NULL || this->h->hdel( sub, len, pos ) == HASH_NOT_FOUND )
       return SUB_NOT_FOUND;
     return SUB_OK;
   }
@@ -92,15 +91,14 @@ struct SubMap {
     this->h = newbe;
   }
   /* iterate first tab[ sub ] */
-  bool first( HashPos &pos ) const {
+  bool first( HashPos &pos,  HashVal &kv ) const {
     if ( this->h == NULL || this->h->hcount() == 0 )
       return false;
     pos.i = 0;
-    return this->next( pos );
+    return this->next( pos, kv );
   }
   /* iterate next tab[ sub ] */
-  bool next( HashPos &pos ) const {
-    HashVal kv;
+  bool next( HashPos &pos,  HashVal &kv ) const {
     if ( this->h->hindex( ++pos.i, kv ) == HASH_OK ) {
       pos.h = kv_crc_c( kv.key, kv.keylen, 0 );
       return true;

@@ -38,7 +38,7 @@ struct ZSetValT : public ListVal {
   ScoreType score;
   void zero( void ) {
     this->sz = this->sz2 = 0;
-    this->score = 0;
+    Decimal64::zero( &this->score );
   }
   ZSetStatus split_score( void ) {
     if ( sizeof( ScoreType ) > this->sz + this->sz2 )

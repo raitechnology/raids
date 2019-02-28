@@ -28,7 +28,7 @@ struct EvHttpService : public EvConnection, public RedisExec {
   void * operator new( size_t, void *ptr ) { return ptr; }
 
   EvHttpService( EvPoll &p ) : EvConnection( p, EV_HTTP_SOCK ),
-    RedisExec( *p.map, p.ctx_id, *this, p.sub_route, p.single_thread ),
+    RedisExec( *p.map, p.ctx_id, *this, p.sub_route, *p.pubsub ),
     wsbuf( 0 ), wsoff( 0 ), wslen( 0 ), websock_off( 0 ),
     is_not_found( false ) {}
   void initialize_state( void ) {
@@ -61,7 +61,7 @@ struct EvHttpService : public EvConnection, public RedisExec {
                         size_t wskeylen,  const char *wspro );
   bool send_ws_pong( const char *payload,  size_t len );
   size_t recv_wsframe( char *start,  char *end );
-  virtual void release( void );
+  void release( void );
   void push_free_list( void );
   void pop_free_list( void );
 };

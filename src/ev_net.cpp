@@ -15,19 +15,20 @@
 #include <raids/ev_http.h>
 #include <raids/ev_nats.h>
 #include <raids/ev_publish.h>
+#include <raids/kv_pubsub.h>
 
 using namespace rai;
 using namespace ds;
 using namespace kv;
 
 int
-EvPoll::init( int numfds,  bool prefetch,  bool single )
+EvPoll::init( int numfds,  bool prefetch/*,  bool single*/ )
 {
   size_t sz = sizeof( this->ev[ 0 ] ) * numfds;
 
   if ( prefetch )
     this->prefetch_queue = EvPrefetchQueue::create();
-  this->single_thread = single;
+  /*this->single_thread = single;*/
 
   if ( (this->efd = ::epoll_create( numfds )) < 0 ) {
     perror( "epoll" );
@@ -37,6 +38,18 @@ EvPoll::init( int numfds,  bool prefetch,  bool single )
   this->ev   = (struct epoll_event *) aligned_malloc( sz );
   if ( this->ev == NULL ) {
     perror( "malloc" );
+    return -1;
+  }
+  return 0;
+}
+
+int
+EvPoll::init_shm( EvShm &shm )
+{
+  this->map    = shm.map;
+  this->ctx_id = shm.ctx_id;
+  if ( (this->pubsub = KvPubSub::create( *this )) == NULL ) {
+    fprintf( stderr, "unable to open unix kv dgram socket\n" );
     return -1;
   }
   return 0;
@@ -62,16 +75,36 @@ EvPoll::wait( int ms )
   return n;
 }
 
+const char *
+sock_type_string( EvSockType t )
+{
+  switch ( t ) {
+    case EV_REDIS_SOCK:  return "redis";
+    case EV_HTTP_SOCK:   return "http";
+    case EV_LISTEN_SOCK: return "listen";
+    case EV_CLIENT_SOCK: return "client";
+    case EV_TERMINAL:    return "term";
+    case EV_NATS_SOCK:   return "nats";
+    case EV_KV_PUBSUB:   return "kv_pubsub";
+    case EV_SHM_SOCK:    return "shm";
+  }
+  return "unknown";
+}
+
 bool
 EvPoll::dispatch( void )
 {
   EvSocket *s;
+  if ( this->quit )
+    this->process_quit();
   for ( uint64_t start = this->prio_tick++; start + 1000 > this->prio_tick;
         this->prio_tick++ ) {
-    if ( this->quit )
-      this->process_quit();
-    if ( this->queue.is_empty() )
-      return true;
+    if ( this->queue.is_empty() ) {
+      if ( this->quit )
+        this->process_quit();
+      if ( this->queue.is_empty() )
+        return true;
+    }
     s = this->queue.pop();
     switch ( __builtin_ffs( s->state ) - 1 ) {
       case EV_READ:
@@ -84,6 +117,8 @@ EvPoll::dispatch( void )
           case EV_CLIENT_SOCK: ((EvNetClient *) s)->read(); break;
           case EV_TERMINAL:    ((EvTerminal *) s)->read(); break;
           case EV_NATS_SOCK:   ((EvNatsService *) s)->read(); break;
+          case EV_KV_PUBSUB:   ((KvPubSub *) s)->read(); break;
+          case EV_SHM_SOCK:    break;
         }
         break;
       case EV_PROCESS:
@@ -94,6 +129,8 @@ EvPoll::dispatch( void )
           case EV_CLIENT_SOCK: ((EvNetClient *) s)->process(); break;
           case EV_TERMINAL:    ((EvTerminal *) s)->process(); break;
           case EV_NATS_SOCK:   ((EvNatsService *) s)->process( false ); break;
+          case EV_KV_PUBSUB:   ((KvPubSub *) s)->process( false ); break;
+          case EV_SHM_SOCK:    break;
         }
         break;
       case EV_WRITE:
@@ -105,6 +142,20 @@ EvPoll::dispatch( void )
           case EV_CLIENT_SOCK: ((EvNetClient *) s)->write(); break;
           case EV_TERMINAL:    ((EvTerminal *) s)->write(); break;
           case EV_NATS_SOCK:   ((EvNatsService *) s)->write(); break;
+          case EV_KV_PUBSUB:   ((KvPubSub *) s)->write(); break;
+          case EV_SHM_SOCK:    break;
+        }
+        break;
+      case EV_SHUTDOWN:
+        switch ( s->type ) {
+          case EV_REDIS_SOCK:  ((EvRedisService *) s)->process_shutdown();break;
+          case EV_HTTP_SOCK:   ((EvHttpService *) s)->process_shutdown(); break;
+          case EV_LISTEN_SOCK: ((EvListen *) s)->process_shutdown(); break;
+          case EV_CLIENT_SOCK: ((EvNetClient *) s)->process_shutdown(); break;
+          case EV_TERMINAL:    ((EvTerminal *) s)->process_shutdown(); break;
+          case EV_NATS_SOCK:   ((EvNatsService *) s)->process_shutdown(); break;
+          case EV_KV_PUBSUB:   ((KvPubSub *) s)->process_shutdown(); break;
+          case EV_SHM_SOCK:    ((EvShmClient *) s)->process_shutdown(); break;
         }
         break;
       case EV_CLOSE:
@@ -113,10 +164,12 @@ EvPoll::dispatch( void )
         switch ( s->type ) {
           case EV_REDIS_SOCK:  ((EvRedisService *) s)->process_close(); break;
           case EV_HTTP_SOCK:   ((EvHttpService *) s)->process_close(); break;
-          case EV_LISTEN_SOCK: break;
+          case EV_LISTEN_SOCK: ((EvListen *) s)->process_close(); break;
           case EV_CLIENT_SOCK: ((EvNetClient *) s)->process_close(); break;
           case EV_TERMINAL:    ((EvTerminal *) s)->process_close(); break;
           case EV_NATS_SOCK:   ((EvNatsService *) s)->process_close(); break;
+          case EV_KV_PUBSUB:   ((KvPubSub *) s)->process_close(); break;
+          case EV_SHM_SOCK:    ((EvShmClient *) s)->process_close(); break;
         }
         break;
     }
@@ -160,6 +213,12 @@ RoutePublish::publish( EvPublish &pub )
         case EV_NATS_SOCK:
           flow_good &= ((EvNatsService *) s)->publish( pub );
           break;
+        case EV_KV_PUBSUB:
+          flow_good &= ((KvPubSub *) s)->publish( pub );
+          break;
+        case EV_SHM_SOCK: 
+          flow_good &= ((EvShmClient *) s)->publish( pub );
+          break;
       }
     }
   }
@@ -178,13 +237,17 @@ RoutePublish::hash_to_sub( uint32_t r,  uint32_t h,  char *key,
         return ((EvRedisService *) s)->hash_to_sub( h, key, keylen );
       case EV_HTTP_SOCK:
         return ((EvHttpService *) s)->hash_to_sub( h, key, keylen );
-      case EV_LISTEN_SOCK:  break;
+      case EV_LISTEN_SOCK: break;
       case EV_CLIENT_SOCK:
         return ((EvNetClient *) s)->hash_to_sub( h, key, keylen );
       case EV_TERMINAL:
         return ((EvTerminal *) s)->hash_to_sub( h, key, keylen );
       case EV_NATS_SOCK:
         return ((EvNatsService *) s)->hash_to_sub( h, key, keylen );
+      case EV_KV_PUBSUB:
+        return ((KvPubSub *) s)->hash_to_sub( h, key, keylen );
+      case EV_SHM_SOCK: break;
+        return ((EvShmClient *) s)->hash_to_sub( h, key, keylen );
     }
   }
   return false;
@@ -231,6 +294,8 @@ EvPoll::drain_prefetch( EvPrefetchQueue &q )
           case EV_CLIENT_SOCK: break;
           case EV_TERMINAL:    break;
           case EV_NATS_SOCK:   ((EvNatsService *) svc)->process( true ); break;
+          case EV_KV_PUBSUB:   ((KvPubSub *) svc)->process( true ); break;
+          case EV_SHM_SOCK:    break;
         }
         break;
       case EXEC_DEPENDS:   /* incomplete, depends on another key */
@@ -266,13 +331,16 @@ EvPoll::process_quit( void )
     }
     /* wait for socks to flush data for up to 5 interations */
     do {
-      if ( ! s->test( EV_WRITE ) || this->quit >= 5 ) {
+      if ( this->quit >= 5 ) {
         if ( s->state != 0 ) {
           this->queue.remove( s ); /* close state */
           s->popall();
-          s->push( EV_CLOSE );
-          this->queue.push( s );
         }
+        s->push( EV_CLOSE );
+        this->queue.push( s );
+      }
+      else if ( ! s->test( EV_SHUTDOWN | EV_CLOSE ) ) {
+        s->idle_push( EV_SHUTDOWN );
       }
     } while ( (s = s->next) != NULL );
     this->quit++;
@@ -338,14 +406,32 @@ EvPoll::remove_sock( EvSocket *s )
     this->sock[ s->fd ] = NULL;
     this->fdcnt--;
   }
-  ::close( s->fd );
+  /* terms are stdin, stdout */
+  if ( s->type != EV_TERMINAL )
+    ::close( s->fd );
   if ( s->listfl == IN_ACTIVE_LIST ) {
     s->listfl = IN_NO_LIST;
     this->active_list.pop( s );
   }
   /* release memory buffers */
-  if ( s->type != EV_LISTEN_SOCK )
-    ((EvConnection *) s)->release();
+  switch ( s->type ) {
+    case EV_REDIS_SOCK:  ((EvRedisService *) s)->release(); break;
+    case EV_HTTP_SOCK:   ((EvHttpService *) s)->release();  break;
+    case EV_CLIENT_SOCK: ((EvNetClient *) s)->release();    break;
+    case EV_TERMINAL:    ((EvTerminal *) s)->release();     break;
+    case EV_NATS_SOCK:   ((EvNatsService *) s)->release();  break;
+    case EV_SHM_SOCK:    ((EvShmClient *) s)->release();    break;
+      break;
+    case EV_LISTEN_SOCK:
+    case EV_KV_PUBSUB:
+      break;
+  }
+}
+
+void
+EvListen::process_close( void )
+{
+  this->poll.remove_sock( this );
 }
 
 bool

@@ -90,10 +90,18 @@ watch_failed:;
   return status;
 }
 
+static inline void *aligned_malloc( size_t sz ) {
+#ifdef _ISOC11_SOURCE
+  return ::aligned_alloc( sizeof( kv::BufAlign64 ), sz ); /* >= RH7 */
+#else
+  return ::memalign( sizeof( kv::BufAlign64 ), sz ); /* RH5, RH6.. */
+#endif
+}
+
 bool
 RedisExec::make_multi( void )
 {
-  void * p = ::malloc( sizeof( RedisMultiExec ) );
+  void * p = aligned_malloc( sizeof( RedisMultiExec ) );
   if ( p == NULL )
     return false;
   this->multi = new ( p ) RedisMultiExec();

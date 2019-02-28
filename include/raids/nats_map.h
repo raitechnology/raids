@@ -330,15 +330,14 @@ struct NatsMap {
     return false;
   }
   /* iterate first tab[ sub ] */
-  bool first( HashPos &pos ) const {
+  bool first( HashPos &pos,  HashVal &kv ) const {
     if ( this->h == NULL || this->h->hcount() == 0 )
       return false;
     pos.i = 0;
-    return this->next( pos );
+    return this->next( pos, kv );
   }
   /* iterate next tab[ sub ] */
-  bool next( HashPos &pos ) const {
-    HashVal kv;
+  bool next( HashPos &pos,  HashVal &kv ) const {
     if ( this->h->hindex( ++pos.i, kv ) == HASH_OK ) {
       pos.h = kv_crc_c( kv.key, kv.keylen, 0 );
       return true;

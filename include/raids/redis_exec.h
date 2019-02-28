@@ -62,6 +62,7 @@ struct EvSocket;
 struct EvPublish;
 struct RedisExec;
 struct RouteDB;
+struct KvPubSub;
 
 struct ScanArgs {
   int64_t pos,    /* position argument, the position where scan starts */
@@ -174,35 +175,35 @@ struct RedisExec {
   void * operator new( size_t, void *ptr ) { return ptr; }
   void operator delete( void *ptr ) { ::free( ptr ); }
 
-  uint64_t seed,   seed2;       /* kv map hash seeds, different for each db */
-  kv::KeyCtx       kctx;        /* key context used for every key in command */
+  uint64_t seed,   seed2;     /* kv map hash seeds, different for each db */
+  kv::KeyCtx       kctx;      /* key context used for every key in command */
   kv::WorkAllocT< 1024 > wrk; /* kv work buffer, reset before each key lookup */
-  StreamBuf      & strm;        /* output buffer, result of command execution */
-  RedisMsg         msg;         /* current command msg */
-  RedisKeyCtx    * key,         /* currently executing key */
-                ** keys;        /* all of the keys in command */
-  uint32_t         key_cnt,     /* total keys[] size */
-                   key_done;    /* number of keys processed */
-  RedisMultiExec * multi;       /* MULTI .. EXEC block */
-  RedisCmd         cmd;         /* current command (GET_CMD) */
-  RedisMsgStatus   mstatus;     /* command message parse status */
-  uint16_t         flags;       /* command flags (CMD_READONLY_FLAG) */
-  int              arity,       /* number of command args */
-                   first,       /* first key in args */
-                   last,        /* last key in args */
-                   step;        /* incr between keys */
-  uint64_t         step_mask;   /* step key mask */
-  size_t           argc;        /* count of args in cmd msg */
-  SubMap           sub_tab;     /* pub/sub subscription table */
-  RouteDB        & sub_route;   /* map subject to sub_id */
-  uint32_t         sub_id;      /* fd, set this after accept() */
+  StreamBuf      & strm;      /* output buffer, result of command execution */
+  RedisMsg         msg;       /* current command msg */
+  RedisKeyCtx    * key,       /* currently executing key */
+                ** keys;      /* all of the keys in command */
+  uint32_t         key_cnt,   /* total keys[] size */
+                   key_done;  /* number of keys processed */
+  RedisMultiExec * multi;     /* MULTI .. EXEC block */
+  RedisCmd         cmd;       /* current command (GET_CMD) */
+  RedisMsgStatus   mstatus;   /* command message parse status */
+  uint16_t         flags;     /* command flags (CMD_READONLY_FLAG) */
+  int              arity,     /* number of command args */
+                   first,     /* first key in args */
+                   last,      /* last key in args */
+                   step;      /* incr between keys */
+  uint64_t         step_mask; /* step key mask */
+  size_t           argc;      /* count of args in cmd msg */
+  SubMap           sub_tab;   /* pub/sub subscription table */
+  RouteDB        & sub_route; /* map subject to sub_id */
+  KvPubSub       & pubsub;    /* notify subscribe and unsubscribe */
+  uint32_t         sub_id;    /* fd, set this after accept() */
 
   RedisExec( kv::HashTab &map,  uint32_t ctx_id,  StreamBuf &s,
-             RouteDB &rdb,  bool single ) :
+             RouteDB &rdb,  KvPubSub &ps ) :
       kctx( map, ctx_id, NULL ), strm( s ),
       key( 0 ), keys( 0 ), key_cnt( 0 ), key_done( 0 ),
-      sub_route( rdb ), sub_id( ~0U ) {
-    if ( single ) this->kctx.set( kv::KEYCTX_IS_SINGLE_THREAD );
+      sub_route( rdb ), pubsub( ps ), sub_id( ~0U ) {
     this->kctx.ht.hdr.get_hash_seed( this->kctx.db_num, this->seed,
                                      this->seed2 );
     this->kctx.set( kv::KEYCTX_NO_COPY_ON_READ );
