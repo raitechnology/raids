@@ -5,17 +5,9 @@ namespace rai {
 namespace ds {
 
 struct UIntHashTab {
-  static const uint32_t SLOT_USED = 1U << 31;
-
   struct Elem {
     uint32_t hash;
     uint32_t val;
-    bool is_used( void )      const { return ( this->hash & SLOT_USED ) != 0; }
-    bool equals( uint32_t h ) const { return this->hash == ( h | SLOT_USED ); }
-    void set( uint32_t h,  uint32_t v ) {
-      this->hash = h | SLOT_USED;
-      this->val  = v;
-    }
   };
 
   uint32_t elem_count,  /* num elems used */
@@ -23,15 +15,50 @@ struct UIntHashTab {
   Elem     tab[ 1 ];
 
   UIntHashTab( uint32_t sz ) : elem_count( 0 ), tab_mask( sz - 1 ) {
-    ::memset( this->tab, 0, sizeof( this->tab[ 0 ] ) * sz );
+    uint8_t * u = (uint8_t *) (void *) &this->tab[ this->tab_mask + 1 ];
+    ::memset( u, 0, ( sz + 7 ) / 8 );
   }
   void * operator new( size_t, void *ptr ) { return ptr; }
   void operator delete( void *ptr ) { ::free( ptr ); }
-  bool     is_empty( void ) const { return this->elem_count == 0; }
   uint32_t tab_size( void ) const { return this->tab_mask + 1; }
-
+  bool is_empty( void ) const { return this->elem_count == 0; }
+  bool is_used( uint32_t pos ) const {
+    const uint8_t * u = (uint8_t *) (void *) &this->tab[ this->tab_mask + 1 ];
+    const uint32_t off = pos / 8;
+    const uint8_t  bit = ( 1U << ( pos % 8 ) );
+    return ( u[ off ] & bit ) != 0;
+  }
+  bool test_set( uint32_t pos ) {
+    uint8_t * u = (uint8_t *) (void *) &this->tab[ this->tab_mask + 1 ];
+    const uint32_t off = pos / 8;
+    const uint8_t  bit = ( 1U << ( pos % 8 ) );
+    bool b = ( u[ off ] & bit ) != 0;
+    u[ off ] |= bit;
+    return b;
+  }
+  /* set the hash at pos, which should be located using find() */
+  void set( uint32_t h,  uint32_t pos,  uint32_t v ) {
+    if ( ! this->test_set( pos ) )
+      this->elem_count++;
+    this->tab[ pos ].hash = h;
+    this->tab[ pos ].val  = v;
+  }
+  void get( uint32_t pos,  uint32_t &h,  uint32_t &v ) const {
+    h = this->tab[ pos ].hash;
+    v = this->tab[ pos ].val;
+  }
+  void clear( uint32_t pos ) {
+    uint8_t * u = (uint8_t *) (void *) &this->tab[ this->tab_mask + 1 ];
+    const uint32_t off = pos / 8;
+    const uint8_t  bit = ( 1U << ( pos % 8 ) );
+    u[ off ] &= ~bit;
+    this->elem_count--;
+  }
+  /* room for {h,v} array + used bits */
   static size_t alloc_size( uint32_t sz ) {
-    return sizeof( UIntHashTab ) + ( ( sz - 1 ) * sizeof( Elem ) );
+    return sizeof( UIntHashTab ) +
+           ( ( sz - 1 ) * sizeof( Elem ) ) +
+           ( ( sz + 7 ) / 8 * sizeof( uint8_t ) );
   }
   /* preferred is between load of 33% and 66% */
   size_t preferred_size( void ) const {
@@ -59,13 +86,13 @@ struct UIntHashTab {
     if ( cnt == 0 )
       return;
     for ( uint32_t i = 0; i < sz; i++ ) {
-      if ( cpy.tab[ i ].is_used() ) {
+      if ( cpy.is_used( i ) ) {
         uint32_t h   = cpy.tab[ i ].hash,
                  v   = cpy.tab[ i ].val,
                  pos = h & this->tab_mask;
         for ( ; ; pos = ( pos + 1 ) & this->tab_mask ) {
-          if ( ! this->tab[ pos ].is_used() ) {
-            this->tab[ pos ].set( h, v );
+          if ( ! this->is_used( pos ) ) {
+            this->set( h, pos, v );
             if ( --cnt == 0 )
               return;
             break;
@@ -84,30 +111,20 @@ struct UIntHashTab {
   }
   bool scan( uint32_t &pos ) const {
     for ( ; pos < this->tab_size(); pos++ )
-      if ( this->tab[ pos ].is_used() )
+      if ( this->is_used( pos ) )
         return true;
     return false;
-  }
-  void get( uint32_t pos,  uint32_t &h,  uint32_t &v ) const {
-    h = this->tab[ pos ].hash & ~SLOT_USED;
-    v = this->tab[ pos ].val;
   }
   /* find hash, return it's position and the value if found */
   bool find( uint32_t h,  uint32_t &pos,  uint32_t &val ) const {
     for ( pos = h & this->tab_mask; ; pos = ( pos + 1 ) & this->tab_mask ) {
-      if ( ! this->tab[ pos ].is_used() )
+      if ( ! this->is_used( pos ) )
         return false;
-      if ( this->tab[ pos ].equals( h ) ) {
+      if ( this->tab[ pos ].hash == h ) {
         val = this->tab[ pos ].val;
         return true;
       }
     }
-  }
-  /* set the hash at pos, which should be located using find() */
-  void set( uint32_t h,  uint32_t pos,  uint32_t val ) {
-    if ( ! this->tab[ pos ].is_used() )
-      this->elem_count++;
-    this->tab[ pos ].set( h, val );
   }
   /* udpate or insert hash */
   void upsert( uint32_t h,  uint32_t val ) {
@@ -122,22 +139,20 @@ struct UIntHashTab {
   /* remove by reorganizing table, check the natural position of elems directly
    * following the removed elem, leaving no find() gaps in the table */
   void remove( uint32_t pos ) {
-    this->tab[ pos ].hash = 0;
+    this->clear( pos );
     for (;;) {
       pos = ( pos + 1 ) & this->tab_mask;
-      if ( ! this->tab[ pos ].is_used() )
+      if ( ! this->is_used( pos ) )
         break;
       uint32_t h = this->tab[ pos ].hash,
                j = h & this->tab_mask;
       if ( pos != j ) {
-        this->tab[ pos ].hash = 0;
-        while ( this->tab[ j ].is_used() )
+        this->clear( pos );
+        while ( this->is_used( j ) )
           j = ( j + 1 ) & this->tab_mask;
-        this->tab[ j ].val  = this->tab[ pos ].val;
-        this->tab[ j ].hash = h;
+        this->set( h, j, this->tab[ pos ].val );
       }
     }
-    this->elem_count--;
   }
 };
 

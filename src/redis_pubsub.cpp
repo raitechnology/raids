@@ -24,14 +24,13 @@ enum {
 void
 RedisExec::rem_all_sub( void )
 {
-  HashPos pos;
-  HashVal kv;
-  if ( this->sub_tab.first( pos, kv ) ) {
+  RedisSubRoutePos pos;
+  if ( this->sub_tab.first( pos ) ) {
     do {
-      uint32_t rcnt = this->sub_route.del_route( pos.h, this->sub_id );
-      this->pubsub.notify_unsub( pos.h, kv.key, kv.keylen, this->sub_id,
-                                 rcnt, 'R' );
-    } while ( this->sub_tab.next( pos, kv ) );
+      uint32_t rcnt = this->sub_route.del_route( pos.rt->hash, this->sub_id );
+      this->pubsub.notify_unsub( pos.rt->hash, pos.rt->value, pos.rt->len,
+                                 this->sub_id, rcnt, 'R' );
+    } while ( this->sub_tab.next( pos ) );
   }
 }
 
@@ -40,9 +39,9 @@ RedisExec::do_pub( EvPublish &pub )
 {
   /* don't publish to self ?? */
   if ( (uint32_t) this->sub_id != pub.src_route ) {
-    HashPos sub_pos( pub.subj_hash );
-    if ( this->sub_tab.updcnt( pub.subject, pub.subject_len,
-                               sub_pos ) == SUB_OK ) {
+    RedisSubStatus stat;
+    stat = this->sub_tab.updcnt( pub.subj_hash, pub.subject, pub.subject_len );
+    if ( stat == REDIS_SUB_OK ) {
       static const char   hdr[]  = "*3\r\n$7\r\nmessage\r\n";
       static const size_t hdr_sz = sizeof( hdr ) - 1;
       size_t sz,
@@ -88,22 +87,15 @@ RedisExec::exec_psubscribe( void )
 bool
 RedisExec::do_hash_to_sub( uint32_t h,  char *key,  size_t &keylen )
 {
-  HashPos pos( h );
-  HashVal kv;
-  if ( this->sub_tab.h == NULL )
-    return false;
-  if ( this->sub_tab.h->hscan( pos, kv ) != HASH_OK )
-    return false;
-  for ( ; ; pos.i++ ) {
-    uint32_t h2 = kv_crc_c( kv.key, kv.keylen, 0 );
-    if ( ( h | UIntHashTab::SLOT_USED ) == ( h2 | UIntHashTab::SLOT_USED ) ) {
-      ::memcpy( key, kv.key, kv.keylen );
-      keylen = kv.keylen;
-      return true;
-    }
-    if ( this->sub_tab.h->hscan( pos, kv ) != HASH_OK )
-      return false;
+  RedisSubRoute * rt;
+  if ( (rt = this->sub_tab.tab.find_by_hash( h )) != NULL /*||
+       (rt = this->sub_tab.tab.find_by_hash( h |
+                                         UIntHashTab::SLOT_USED )) != NULL*/ ) {
+    ::memcpy( key, rt->value, rt->len );
+    keylen = rt->len;
+    return true;
   }
+  return false;
 }
 
 ExecStatus
@@ -173,8 +165,8 @@ RedisExec::exec_pubsub( void )
         const char *val;
         size_t vallen;
         if ( this->msg.get_arg( i, val, vallen ) ) {
-          HashPos pos( val, vallen );
-          uint32_t rcnt = this->sub_route.get_route_count( pos.h );
+          uint32_t h = kv_crc_c( val, vallen, 0 );
+          uint32_t rcnt = this->sub_route.get_route_count( h );
           q.append_string( val, vallen );
           q.append_uint( rcnt );
         }
@@ -205,7 +197,7 @@ RedisExec::exec_publish( void )
   size_t       subj_len;
   const char * msg;
   size_t       msg_len;
-  HashPos      sub_pos;
+  uint32_t     h;
   char       * buf;
   uint32_t   * routes,
                rcnt,
@@ -215,8 +207,8 @@ RedisExec::exec_publish( void )
        ! this->msg.get_arg( 2, msg, msg_len ) )
     return ERR_BAD_ARGS;
 
-  sub_pos.init( subj, subj_len ); 
-  rcnt = this->sub_route.get_route( sub_pos.h, routes );
+  h = kv_crc_c( subj, subj_len, 0 );
+  rcnt = this->sub_route.get_route( h, routes );
   if ( rcnt > 0 ) {
     char   msg_len_buf[ 24 ];
     size_t msg_len_digits = RedisMsg::uint_digits( msg_len );
@@ -224,7 +216,7 @@ RedisExec::exec_publish( void )
     EvPublish pub( subj, subj_len,
                    NULL, 0,
                    msg, msg_len,
-                   routes, rcnt, this->sub_id, sub_pos.h,
+                   routes, rcnt, this->sub_id, h,
                    msg_len_buf, msg_len_digits );
     this->sub_route.rte.publish( pub );
   }
@@ -301,20 +293,23 @@ RedisExec::do_sub( int flags )
   for ( size_t i = 1; i < this->argc; i++ ) {
     if ( ! this->msg.get_arg( i, sub[ j ], len[ j ] ) )
       return ERR_BAD_ARGS;
-    HashPos pos( sub[ j ], len[ j ] );
+    uint32_t h = kv_crc_c( sub[ j ], len[ j ], 0 );
     if ( ( flags & ( DO_SUBSCRIBE | DO_PSUBSCRIBE ) ) != 0 ) {
-      if ( this->sub_tab.put( sub[ j ], len[ j ], pos ) == SUB_OK ) {
-        uint32_t rcnt = this->sub_route.add_route( pos.h, this->sub_id );
-        this->pubsub.notify_sub( pos.h, sub[ j ], len[ j ], this->sub_id,
+      if ( this->sub_tab.put( h, sub[ j ], len[ j ] ) == REDIS_SUB_OK ) {
+        uint32_t rcnt = this->sub_route.add_route( h, this->sub_id );
+        this->pubsub.notify_sub( h, sub[ j ], len[ j ], this->sub_id,
                                  rcnt, 'R' );
         cnt++;
       }
     }
     else {
-      if ( this->sub_tab.rem( sub[ j ], len[ j ], pos ) == SUB_OK ) {
-        uint32_t rcnt = this->sub_route.del_route( pos.h, this->sub_id );
-        this->pubsub.notify_unsub( pos.h, sub[ j ], len[ j ], this->sub_id,
-                                   rcnt, 'R');
+      if ( this->sub_tab.rem( h, sub[ j ], len[ j ] ) == REDIS_SUB_OK ) {
+        uint32_t rcnt = 0;
+        /* check for duplicate hashes */
+        if ( this->sub_tab.tab.find_by_hash( h ) == NULL )
+          rcnt = this->sub_route.del_route( h, this->sub_id );
+        this->pubsub.notify_unsub( h, sub[ j ], len[ j ], this->sub_id,
+                                   rcnt, 'R' );
         cnt--;
       }
     }

@@ -1,7 +1,7 @@
 #ifndef __rai_raids__nats_map_h__
 #define __rai_raids__nats_map_h__
 
-#include <raids/redis_hash.h>
+#include <raids/route_ht.h>
 
 namespace rai {
 namespace ds {
@@ -10,16 +10,16 @@ namespace ds {
  * Sid can have only one subject in NATS, but can have multiple subs here
  * a subject may have multipe sids
  *
- *   sub_tab [ subject ] => SidMsgCount+SID, SidMsgCount+SID, ...
+ *   sub_tab [ subject, max_msgs, msg_cnt ] => sid1, [ sid2, ... ]
  *
- *   sid_tab [ SID ] => SidMsgCount+subject, SidMsgCount+subject, ...
+ *   sid_tab [ sid1, max_msgs ] => subject1, [ subject2, ... ]
  *
  * The sid_tab contains both max_msgs and msg_cnt, but only max_msgs is used,
  * to initialize the sub_tab subject max_msgs.  The max_msgs refers to msgs on
  * a single subject, not the sum of all subjects msgs attached to a sid.
  *
  * The sub_tab sid tracks both msg counts and triggers the unsubscribe when
- * msg_cnt expires at msg_cnt >= max_msgs in incr_msg_cnt().
+ * msg_cnt expires at msg_cnt >= max_msgs.
  */
 struct SidMsgCount {
   uint32_t max_msgs, /* if unsubscribe sid max_msgs */
@@ -28,351 +28,401 @@ struct SidMsgCount {
   SidMsgCount( uint32_t maxm ) : max_msgs( maxm ), msg_cnt( 0 ) {}
 };
 
-struct StrHashRec {
-  uint8_t len; /* 0 -> 255 */
-  char    str[ 255 ];
-  StrHashRec() : len( 0 ) {}
+/* a subject or sid string */
+struct NatsStr {
+  const char * str; /* the data */
+  uint16_t     len; /* array len of str[] */
+  uint32_t     h;   /* cached hash value */
 
-  bool empty( void ) const { return this->len == 0; }
-  size_t length( void ) const { return (size_t) this->len + 1; }
-  bool equals( const StrHashRec &sr ) const {
-    return this->len == sr.len && ::memcmp( this->str, sr.str, this->len ) == 0;
+  NatsStr( const char *s = NULL,  uint16_t l = 0,  uint32_t ha = 0 )
+    : str( s ), len( l ), h( ha ) {}
+
+  uint32_t hash( void ) {
+    if ( this->h == 0 )
+      this->h = kv_crc_c( this->str, this->len, 0 );
+    return this->h;
   }
-  uint32_t hash( void ) const {
-    return kv_crc_c( this->str, this->len, 0 );
+
+  size_t copy( char *out ) const {
+    ::memcpy( out, &this->len, sizeof( uint16_t ) );
+    ::memcpy( &out[ sizeof( uint16_t ) ], this->str, this->len );
+    return this->len + sizeof( uint16_t );
   }
-  static StrHashRec &make_rec( char *s,  size_t len ) {
-    *--s = (uint8_t) len;
-    return *(StrHashRec *) (void *) s;
+
+  size_t read( const char *val ) {
+    ::memcpy( &this->len, val, sizeof( uint16_t ) );
+    this->str = &val[ sizeof( uint16_t ) ];
+    this->h   = 0;
+    return this->len + sizeof( uint16_t );
+  }
+
+  bool equals( const char *val ) const {
+    uint16_t vallen;
+    ::memcpy( &vallen, val, sizeof( uint16_t ) );
+    return vallen == this->len &&
+           ::memcmp( &val[ sizeof( uint16_t ) ], this->str, this->len ) == 0;
+  }
+
+  bool equals( const NatsStr &val ) const {
+    return val.len == this->len && ::memcmp( val.str, this->str, val.len ) == 0;
+  }
+
+  size_t length( void ) const {
+    return sizeof( uint16_t ) + this->len;
   }
 };
 
-struct StrHashKey {
-  StrHashRec & rec;
-  HashPos      pos;
-  StrHashKey( StrHashRec &r ) : rec( r ), pos( r.hash() ) {}
-};
+/* a struct used to insert or find a sid/subj */
+struct NatsPair {
+  NatsStr & one, /* the key */
+          * two; /* the value inserted, null on find */
 
-struct SidIter : public ListVal {
-  size_t off, len, end;
-  SidIter() : off( 0 ) {}
+  NatsPair( NatsStr &o,  NatsStr *t = NULL ) : one( o ), two( t ) {}
 
-  void copy( const HashVal &kv ) {
-    *(ListVal *) this = kv;
+  size_t length( void ) const {
+    return this->one.length() + ( this->two ? this->two->length() : 0 );
   }
-  void init_first( void ) {
-    this->end = 0;
-    this->len = 0;
+  bool equals( const char *s ) const {
+    return this->one.equals( s );
   }
-
-  bool first( void ) {
-    this->init_first();
-    return this->next();
-  }
-
-  bool next( void ) {
-    this->off = end;
-    if ( this->off >= this->length() )
-      return false;
-    this->len = this->get_byte( this->off + sizeof( SidMsgCount ) );
-    this->end = this->off + sizeof( SidMsgCount ) + 1 + this->len;
-    return true;
-  }
-  
-  size_t key_off( void ) {
-    return this->off + sizeof( SidMsgCount ) + 1;
+  void copy( char *s ) const { /* init a list, key and data */
+    size_t off = this->one.copy( s );
+    if ( this->two ) this->two->copy( &s[ off ] );
   }
 };
 
-struct SidList {
-  StrHashRec  sid;
-  SidIter     lv;
-  SidMsgCount cnt;
-  SidList() : cnt( 0 ) {}
+/* a record of a subject or sid */
+struct NatsMapRec {
+  uint32_t hash,       /* hash value of the sub/sid */
+           msg_cnt,    /* the current count of msgs published */
+           max_msgs;   /* the maximum msg count, set with unsub sid <max> */
+  uint16_t len;        /* size of list */
+  char     value[ 2 ]; /* first element is the key, the rest are a list */
 
-  bool incr_msg_count( void ) {
-    size_t cnt_off = this->lv.off + sizeof( uint32_t );
-    this->cnt.msg_cnt++;
-    this->lv.copy_in( &this->cnt.msg_cnt, cnt_off, sizeof( uint32_t ) );
-    return this->cnt.max_msgs == 0 || this->cnt.msg_cnt < this->cnt.max_msgs;
+  bool equals( const void *s,  uint16_t ) const {
+    return ((const NatsPair *) s)->equals( this->value );
   }
-  bool first( void ) {
-    this->lv.init_first();
-    return this->next();
-  }
-  bool next( void ) {
-    if ( this->lv.next() ) {
-      this->lv.copy_out( &this->cnt, this->lv.off, sizeof( SidMsgCount ) );
-      this->sid.len = this->lv.len;
-      if ( this->sid.len != 0 ) {
-        this->lv.copy_out( this->sid.str, this->lv.key_off(), this->sid.len );
-        return true;
-      }
-    }
-    return false;
+  void copy( const void *s,  uint16_t ) {
+    return ((const NatsPair *) s)->copy( this->value );
   }
 };
 
 enum NatsSubStatus {
-  NATS_OK         = 0,
-  NATS_IS_NEW     = 1,
-  NATS_IS_EXPIRED = 2
+  NATS_OK        = 0,
+  NATS_IS_NEW    = 1,
+  NATS_EXPIRED   = 2,
+  NATS_NOT_FOUND = 3,
+  NATS_EXISTS    = 4,
+  NATS_TOO_MANY  = 5
 };
 
-struct NatsMap {
-  HashData * h;
-  NatsMap() : h( 0 ) {}
-  void release( void ) {
-    if ( this->h != NULL )
-      delete this->h;
-    this->h = NULL;
+/* the subscription table map hashing methods */
+typedef RouteVec<NatsMapRec> NatsMap;
+
+/* iterate over sid -> subjects or subject -> sids */
+struct NatsIter {
+  char   * buf;
+  uint16_t buflen,
+           off,
+           curlen,
+           rmlen;
+
+  NatsIter() : buf( 0 ), buflen( 0 ), off( 0 ), curlen( 0 ), rmlen( 0 ) {}
+
+  void init( NatsMapRec &rt ) {
+    this->init( rt.value, ((uint16_t *) (void *) rt.value)[ 0 ] + 2, rt.len );
   }
-  /* tab[ sub ] => [{cnt, sid}, ...] */
-  void print( void ) const {
-    size_t cnt = ( this->h == NULL ? 0 : this->h->hcount() );
-    SidList sid_list;
-    HashVal kv;
-    for ( size_t i = 0; i < cnt; i++ ) {
-      this->h->hindex( i+1, kv );
-      printf( "%.*s: ", (int) kv.keylen, kv.key );
-      sid_list.lv.copy( kv );
-      printf( "(sz:%lu) ", kv.sz + kv.sz2 );
-      if ( sid_list.first() ) {
-        do {
-          printf( "{%u/%u} %.*s ",
-                  sid_list.cnt.msg_cnt, sid_list.cnt.max_msgs,
-                  (int) sid_list.sid.len, sid_list.sid.str );
-        } while ( sid_list.next() );
+  void init( char *s,  uint16_t o,  uint16_t l ) {
+    this->buf    = s;
+    this->buflen = l;
+    this->off    = o;
+  }
+  bool get( NatsStr &str ) {
+    if ( this->off >= this->buflen )
+      return false;
+    this->curlen = str.read( &this->buf[ this->off ] );
+    return true;
+  }
+  void incr( void ) {
+    this->off += this->curlen;
+  }
+  void remove( void ) {
+    this->buflen -= this->curlen;
+    this->rmlen  += this->curlen;
+    ::memmove( &this->buf[ this->off ],
+               &this->buf[ this->off + this->curlen ],
+               this->buflen - this->off );
+  }
+  bool is_member( const NatsStr &val ) {
+    NatsStr mem;
+    for ( ; this->get( mem ); this->incr() ) {
+      if ( mem.equals( val ) )
+        return true;
+    }
+    return false;
+  }
+};
+
+/* used for expire contexts after publish or unsub */
+struct NatsLookup {
+  NatsIter     iter; /* list of subs / sids that are published or unsubed */
+  RouteLoc     loc;  /* location of the sid / subject */
+  NatsMapRec * rt;   /* the subject / sid record, containing the list */
+
+  NatsLookup() : rt( 0 ) {
+    this->loc.init();
+  }
+};
+
+/* table of subjects and sids for routing messages */
+struct NatsSubMap {
+  NatsMap sub_map, sid_map;
+
+  void release( void ) {
+    this->sub_map.release();
+    this->sid_map.release();
+  }
+  /* put in any elem, search for it and append if not found
+   * sub_tab[ sub ] => sid, sid2...
+   * sid_tab[ sid ] => subj */
+  NatsSubStatus put( NatsStr &subj,  NatsStr &sid ) {
+    NatsSubStatus status = this->put( this->sub_map, subj, sid );
+    switch ( status ) {
+      case NATS_IS_NEW:
+      case NATS_OK:
+        this->put( this->sid_map, sid, subj );
+        break;
+      default:
+        break;
+    }
+    return status;
+  }
+  /* add sub or sid if it doesn't exist */
+  NatsSubStatus put( NatsMap &map,  NatsStr &one,  NatsStr &two ) {
+    NatsIter     iter;
+    NatsStr      mem;
+    NatsMapRec * rt;
+    RouteLoc     loc;
+    size_t       off, new_len;
+    NatsPair     val( one, &two );
+
+    rt = map.upsert( one.hash(), &val, val.length(), loc );
+    if ( loc.is_new ) {
+      rt->msg_cnt  = 0;
+      rt->max_msgs = 0;
+      return NATS_IS_NEW;
+    }
+    /* check if already added */
+    iter.init( *rt );
+    if ( iter.is_member( two ) )
+      return NATS_EXISTS;
+    off = rt->len;
+    new_len = off + (size_t) two.length();
+    if ( new_len > 0xffffU )
+      return NATS_TOO_MANY;
+    rt = map.resize( one.hash(), &val, off, new_len, loc );
+    two.copy( &rt->value[ off ] );
+    return NATS_OK;
+  }
+  /* for a publish, increment msg count and check max-ed expired sids */
+  NatsSubStatus lookup_publish( NatsStr &subj,  NatsLookup &pub ) {
+    NatsPair val( subj );
+    if ( (pub.rt = this->sub_map.find( subj.hash(), &val, 0,
+                                       pub.loc )) != NULL ) {
+      pub.rt->msg_cnt++;
+      pub.iter.init( *pub.rt );
+      if ( pub.rt->max_msgs == 0 || pub.rt->max_msgs > pub.rt->msg_cnt )
+        return NATS_OK;
+      return NATS_EXPIRED;
+    }
+    return NATS_NOT_FOUND;
+  }
+  /* after publish, remove sids that are dead */
+  NatsSubStatus expire_publish( NatsStr &subj,  NatsLookup &pub ) {
+    RouteLoc     loc;
+    NatsStr      sid;
+    NatsMapRec * rt;
+    uint32_t     max_msgs = pub.rt->max_msgs;
+
+    pub.iter.off = subj.length();
+    for (;;) {
+      if ( ! pub.iter.get( sid ) )
+        break;
+      NatsPair val( sid );
+      rt = this->sid_map.find( sid.hash(), &val, 0, loc );
+      /* if the sid max matches the current minimum max, remove it */
+      if ( rt->max_msgs == pub.rt->max_msgs ) {
+        pub.iter.remove();
+        if ( rt->len == sid.length() + subj.length() )
+          this->sid_map.remove( loc );
+        else {
+          NatsIter iter;
+          iter.init( *rt );
+          /* if sid is a member of subscription */
+          if ( iter.is_member( subj ) ) {
+            iter.remove();
+            uint16_t new_len = rt->len - iter.rmlen;
+            this->sid_map.resize( sid.hash(), &val, rt->len, new_len, loc );
+          }
+        }
+      }
+      /* calculate the new minimum */
+      else {
+        if ( rt->max_msgs > pub.rt->max_msgs ) {
+          if ( max_msgs == pub.rt->max_msgs || rt->max_msgs < max_msgs )
+            max_msgs = rt->max_msgs;
+        }
+        pub.iter.incr();
+      }
+    }
+    /* if a new max, the sub stays alive */
+    if ( max_msgs != pub.rt->max_msgs ) {
+      pub.rt->max_msgs = max_msgs;
+      if ( pub.iter.rmlen > 0 ) {
+        uint16_t new_len = pub.rt->len - pub.iter.rmlen;
+        NatsPair val( subj );
+        this->sub_map.resize( subj.hash(), &val, pub.rt->len, new_len,
+                              pub.loc );
+      }
+      return NATS_OK;
+    }
+    /* all sids are dereferenced, sub is removed */
+    this->sub_map.remove( pub.loc );
+    return NATS_EXPIRED;
+  }
+  /* unsub sid <max-msgs>, remove or mark sid with max-msgs */
+  NatsSubStatus expire_sid( NatsStr &sid,  uint32_t max_msgs ) {
+    RouteLoc     loc;
+    NatsPair     val( sid );
+    NatsMapRec * rt = this->sid_map.find( sid.hash(), &val, 0, loc );
+    /* if sid exists */
+    if ( rt != NULL ) {
+      NatsIter iter;
+      NatsStr  subj;
+      uint32_t exp_cnt = 0,
+               subj_cnt = 0;
+      iter.init( *rt );
+      /* for each sid, deref the subject */
+      while ( iter.get( subj ) ) {
+        if ( this->expire_subj( subj, sid, max_msgs ) != NATS_OK ) {
+          iter.remove();
+          exp_cnt++;
+        }
+        else {
+          iter.incr();
+        }
+        subj_cnt++;
+      }
+      /* if all subjects derefed, remove sid */
+      if ( max_msgs == 0 || exp_cnt == subj_cnt ) {
+        this->sid_map.remove( loc );
+        return NATS_EXPIRED;
+      }
+      /* has a max-msgs that will expire after publishes */
+      else {
+        rt->max_msgs = max_msgs;
+        if ( exp_cnt > 0 ) {
+          uint16_t new_len = rt->len - iter.rmlen;
+          this->sid_map.resize( sid.hash(), &val, rt->len, new_len, loc );
+        }
+        return NATS_OK;
+      }
+    }
+    return NATS_NOT_FOUND;
+  }
+  NatsSubStatus lookup_sid( NatsStr &sid,  NatsLookup &uns ) {
+    NatsPair     val( sid );
+    uns.rt = this->sid_map.find( sid.hash(), &val, 0, uns.loc );
+    /* if sid exists */
+    if ( uns.rt == NULL )
+      return NATS_NOT_FOUND;
+    uns.iter.init( *uns.rt );
+    return NATS_OK;
+  }
+  /* remove subject or mark with max-msgs */
+  NatsSubStatus expire_subj( NatsStr &subj,  NatsStr &sid,
+                             uint32_t max_msgs ) {
+    RouteLoc     loc;
+    NatsPair     val( subj );
+    NatsMapRec * rt = this->sub_map.find( subj.hash(), &val, 0, loc );
+    /* if subject exists */
+    if ( rt != NULL ) {
+      NatsIter iter;
+      iter.init( *rt );
+      /* if sid is a member of subscription */
+      if ( iter.is_member( sid ) ) {
+        /* triggers if max_msgs == 0 (not-defined) or less than msg_cnt */
+        if ( max_msgs <= rt->msg_cnt ) {
+          uint16_t new_len = rt->len - iter.curlen;
+          /* if no more sids left */
+          if ( new_len == subj.length() ) {
+            this->sub_map.remove( loc );
+            return NATS_EXPIRED;
+          }
+          /* remove sid */
+          else {
+            NatsPair val( subj );
+            iter.remove();
+            this->sub_map.resize( subj.hash(), &val, rt->len, new_len, loc );
+            return NATS_OK;
+          }
+        }
+        /* max_msgs is greater than the msg_cnt, update the subject */
+        else {
+          if ( max_msgs != 0 ) {
+            if ( rt->max_msgs == 0 || max_msgs < rt->max_msgs )
+              rt->max_msgs = max_msgs;
+          }
+          return NATS_OK;
+        }
+      }
+    }
+    return NATS_NOT_FOUND;
+  }
+
+  void print( void ) {
+    printf( "subj:\n" );
+    print_tab( this->sub_map );
+    printf( "sid:\n" );
+    print_tab( this->sid_map );
+  }
+
+  void print_tab( NatsMap &map ) {
+    NatsMapRec * rt;
+    uint32_t     i;
+    uint16_t     off;
+    NatsStr      one, two;
+
+    for ( rt = map.first( i, off ); rt != NULL;
+          rt = map.next( i, off ) ) {
+      one.read( rt->value );
+      printf( " [%u.%u,%x", i, off, rt->hash );
+      if ( rt->hash != one.hash() )
+        printf( ",!h!" );
+      RouteLoc loc;
+      NatsPair tmp( one );
+      if ( map.find( rt->hash, &tmp, 0, loc ) != rt )
+        printf( ",!r!" );
+      else
+        printf( ",%u", loc.j );
+      printf( "] cnt=%u,max=%u,%.*s: ", rt->msg_cnt, rt->max_msgs,
+              (int) one.len, one.str );
+      NatsIter iter;
+      iter.init( *rt );
+      if ( iter.get( two ) ) {
+        printf( "%.*s", (int) two.len, two.str );
+        for (;;) {
+          iter.incr();
+          if ( ! iter.get( two ) )
+            break;
+          printf( ", %.*s", (int) two.len, two.str );
+        }
       }
       printf( "\n" );
     }
   }
-  /* put in any elem, search for it and append if not found
-   * tab[ sub ] => {cnt, sid}, {cnt, sid} */
-  NatsSubStatus put( StrHashKey &key,  SidMsgCount &cnt,  StrHashRec &rec,
-                     bool copy_max_msgs = false ) {
-    SidIter       lv;
-    size_t        sz    = sizeof( SidMsgCount ) + rec.length(),
-                  asize = sz + key.rec.length() + 3;
-    HashStatus    hstat = HASH_OK;
-    NatsSubStatus nstat = NATS_OK;
-    do {
-      if ( hstat == HASH_FULL || this->h == NULL )
-        this->resize( asize++ );
-      hstat = this->h->hget( key.rec.str, key.rec.len, lv, key.pos );
-      if ( hstat == HASH_NOT_FOUND ) {
-        nstat = NATS_IS_NEW;
-      }
-      else {
-        /* search for sub/sid */
-        if ( lv.first() ) {
-          do {
-            /* if matches existing or is null entry */
-            if ( lv.len == 0 ||
-                 ( lv.len == rec.len &&
-                   lv.cmp( rec.str, lv.key_off(), lv.len ) == 0 ) ) {
-              SidMsgCount tmp( 0 );
-              lv.copy_out( &tmp, lv.off, sizeof( SidMsgCount ) );
-              cnt.msg_cnt = tmp.msg_cnt;
-              /* check of max_msgs causes sub to expire */
-              if ( cnt.max_msgs > 0 ) {
-                lv.copy_in( &cnt, lv.off, sizeof( uint32_t ) );
-                if ( cnt.max_msgs <= cnt.msg_cnt )
-                  nstat = NATS_IS_EXPIRED;
-              }
-              else {
-                cnt.max_msgs = tmp.max_msgs;
-              }
-              if ( lv.len != 0 )
-                return nstat; /* exists or is expired */
-              break;
-            }
-            else if ( copy_max_msgs ) {
-              if ( cnt.max_msgs == 0 ) {
-                uint32_t max_msgs;
-                lv.copy_out( &max_msgs, lv.off, sizeof( uint32_t ) );
-                if ( max_msgs != 0 )
-                  cnt.max_msgs = max_msgs;
-              }
-              copy_max_msgs = false;
-            }
-          } while ( lv.next() );
-        }
-      }
-      /* allocate new space for sub */
-      hstat = this->h->halloc( key.rec.str, key.rec.len, sz + lv.off, lv,
-                               key.pos );
-      if ( hstat == HASH_OK ) {
-        lv.copy_in( &cnt, lv.off, sizeof( SidMsgCount ) );
-        lv.copy_in( &rec, lv.off + sizeof( SidMsgCount ), rec.length() );
-      }
-    } while ( hstat == HASH_FULL );
-    return nstat;
-  }
-  /* update cnt for each sid or add it if it doesn't exist
-   * tab[ sub ] => {cnt, sid}, {cnt, sid} */
-  NatsSubStatus updcnt( StrHashKey &key,  SidMsgCount &cnt,
-                        StrHashRec *match ) {
-    SidIter       lv;
-    size_t        sz    = sizeof( SidMsgCount ) + 1,
-                  asize = sz + 3;
-    HashStatus    hstat = HASH_OK;
-    NatsSubStatus nstat = NATS_OK;
-    do {
-      if ( hstat == HASH_FULL || this->h == NULL )
-        this->resize( asize++ );
-      hstat = this->h->hget( key.rec.str, key.rec.len, lv, key.pos );
-      if ( hstat == HASH_NOT_FOUND ) {
-        nstat = NATS_IS_NEW;
-        /* allocate new space for zero length placeholder */
-        hstat = this->h->halloc( key.rec.str, key.rec.len, sz, lv, key.pos );
-        if ( hstat == HASH_OK ) {
-          lv.copy_in( &cnt, 0, sizeof( SidMsgCount ) );
-          lv.put_byte( sizeof( SidMsgCount ), 0 );
-          return NATS_IS_NEW;
-        }
-      }
-      else {
-        NatsSubStatus nstat = NATS_OK;
-        if ( lv.first() ) {
-          do {
-            if ( match == NULL ||
-                 ( match->len == lv.len &&
-                   lv.cmp( match->str, lv.key_off(), lv.len ) == 0 ) ) {
-              /* if matches existing */
-              SidMsgCount tmp( 0 );
-              lv.copy_out( &tmp, lv.off, sizeof( SidMsgCount ) );
-              cnt.msg_cnt = tmp.msg_cnt;
-              /* check of max_msgs causes sub to expire */
-              if ( cnt.max_msgs > 0 ) {
-                lv.copy_in( &cnt, lv.off, sizeof( uint32_t ) );
-                if ( cnt.max_msgs <= cnt.msg_cnt )
-                  nstat = NATS_IS_EXPIRED;
-              }
-              else {
-                cnt.max_msgs = tmp.max_msgs;
-              }
-              if ( match != NULL )
-                break;
-            }
-          } while ( lv.next() );
-        }
-        return nstat; /* exists or is expired */
-      }
-    } while ( hstat == HASH_FULL );
-    return nstat;
-  }
-  /* tab[ sub ] => [{cnt, sid}, ...] */
-  bool lookup( const char *sub,  size_t len,  HashPos &pos,
-               SidList &sid ) const {
-    if ( this->h == NULL )
-      return false;
-    return this->h->hget( sub, len, sid.lv, pos ) == HASH_OK;
-  }
-  /* tab[ sub ] => [{cnt, sid}, ...] */
-  bool lookup( StrHashKey &key,  SidList &sid ) const {
-    if ( this->h == NULL )
-      return false;
-    return this->h->hget( key.rec.str, key.rec.len, sid.lv, key.pos )== HASH_OK;
-  }
-  /* get the first entry, skipping over counters */
-  bool get_expired( const char *sub,  size_t len,  HashPos &pos,
-                    StrHashRec &rec ) const {
-    SidIter     lv;
-    SidMsgCount cnt( 0 );
-    rec.len = 0;
-    if ( this->h == NULL )
-      return false;
-    if ( this->h->hget( sub, len, lv, pos ) == HASH_NOT_FOUND )
-      return false;
-    if ( lv.first() ) {
-      do {
-        lv.copy_out( &cnt, lv.off, sizeof( SidMsgCount ) );
-        if ( cnt.max_msgs > 0 && cnt.msg_cnt >= cnt.max_msgs ) {
-          rec.len = lv.len;
-          lv.copy_out( rec.str, lv.off + sizeof( SidMsgCount ) + 1, lv.len );
-          return true;
-        }
-      } while ( lv.next() );
-    }
-    return false;
-  }
-  /* tab[ sub ] => tab[ sub ] - {sid} */
-  bool deref( StrHashKey &key,  StrHashRec &rec ) const {
-    SidIter    lv;
-    HashStatus hstat;
-
-    if ( this->h == NULL )
-      return false;
-    hstat = this->h->hget( key.rec.str, key.rec.len, lv, key.pos );
-    if ( hstat == HASH_NOT_FOUND )
-      return false;
-    if ( lv.first() ) {
-      do {
-        if ( lv.len == rec.len &&
-             lv.cmp( rec.str, lv.off + sizeof( SidMsgCount ) + 1,
-                     lv.len ) == 0 ) {
-          for ( size_t j = lv.end; j < lv.length(); j += 256 ) {
-            char   tmp[ 256 ];
-            size_t sz = lv.copy_out( tmp, j, sizeof( tmp ) );
-            lv.copy_in( tmp, lv.off, sz );
-            lv.off += sz;
-          }
-          if ( lv.off == 0 ) {
-            this->h->hrem( key.pos.i );
-            return true;
-          }
-          this->h->halloc( key.rec.str, key.rec.len, lv.off, lv, key.pos );
-          return false;
-        }
-      } while ( lv.next() );
-    }
-    return false;
-  }
-  /* iterate first tab[ sub ] */
-  bool first( HashPos &pos,  HashVal &kv ) const {
-    if ( this->h == NULL || this->h->hcount() == 0 )
-      return false;
-    pos.i = 0;
-    return this->next( pos, kv );
-  }
-  /* iterate next tab[ sub ] */
-  bool next( HashPos &pos,  HashVal &kv ) const {
-    if ( this->h->hindex( ++pos.i, kv ) == HASH_OK ) {
-      pos.h = kv_crc_c( kv.key, kv.keylen, 0 );
-      return true;
-    }
-    return false;
-  }
-  /* remove tab[ sid ] after using get() */
-  void rem( StrHashKey &key ) const {
-    this->h->hrem( key.pos.i );
-  }
-  /* add space to hash */
-  void resize( size_t add_len ) {
-    size_t count    = ( add_len >> 3 ) | 1,
-           data_len = add_len + 1;
-    if ( this->h != NULL ) {
-      data_len  = add_len + this->h->data_len();
-      data_len += data_len / 2 + 2;
-      count     = this->h->count();
-      count    += count / 2 + 2;
-    }
-    size_t asize = HashData::alloc_size( count, data_len );
-    void * m     = ::malloc( sizeof( HashData ) + asize );
-    void * p     = &((char *) m)[ sizeof( HashData ) ];
-    HashData *newbe = new ( m ) HashData( p, asize );
-    newbe->init( count, data_len );
-    if ( this->h != NULL ) {
-      this->h->copy( *newbe );
-      delete this->h;
-    }
-    this->h = newbe;
-  }
 };
 
 }
 }
-
 #endif
-

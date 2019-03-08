@@ -13,7 +13,7 @@ void print_routedb( RouteDB &rte )
   if ( rte.xht != NULL ) {
     printf( "xht:\n" );
     for ( i = 0; i <= rte.xht->tab_mask; i++ ) {
-      if ( rte.xht->tab[ i ].is_used() ) {
+      if ( rte.xht->is_used( i ) ) {
         uint32_t h = rte.xht->tab[ i ].hash,
                  v = rte.xht->tab[ i ].val,
                  cnt, *routes;
@@ -30,7 +30,7 @@ void print_routedb( RouteDB &rte )
   if ( rte.zht != NULL ) {
     printf( "zht:\n" );
     for ( i = 0; i <= rte.zht->tab_mask; i++ ) {
-      if ( rte.zht->tab[ i ].is_used() ) {
+      if ( rte.zht->is_used( i ) ) {
         uint32_t  h = rte.zht->tab[ i ].hash,
                   v = rte.zht->tab[ i ].val;
         CodeRef * p = (CodeRef *) (void *) &rte.code_buf[ v ];
@@ -45,7 +45,7 @@ void print_routedb( RouteDB &rte )
           rte.code_spc_size, rte.route_spc_size );
   if ( rte.xht != NULL )
     printf( "xht %u/%u\n", rte.xht->elem_count, rte.xht->tab_size() );
-  if ( rte.xht != NULL )
+  if ( rte.zht != NULL )
     printf( "zht %u/%u\n", rte.zht->elem_count, rte.zht->tab_size() );
 }
 
@@ -104,22 +104,24 @@ main( int, char ** )
       if ( n >= 3 ) {
         uint32_t r = atoi( args[ 2 ] );
         if ( arglen[ 0 ] == 3 && ::strncmp( args[ 0 ], "add", 3 ) == 0 ) {
+          uint32_t j = rte.get_route_count( hash );
           for ( int i = 2; ; ) {
             rte.add_route( hash, r );
             if ( ++i == n )
               break;
             r = atoi( args[ i ] );
           }
-          printf( "ok\n" );
+          printf( "%u rts added\n", rte.get_route_count( hash ) - j );
         }
         else if ( arglen[ 0 ] == 3 && ::strncmp( args[ 0 ], "del", 3 ) == 0 ) {
+          uint32_t j = rte.get_route_count( hash );
           for ( int i = 2; ; ) {
             rte.del_route( hash, r );
             if ( ++i == n )
               break;
             r = atoi( args[ i ] );
           }
-          printf( "ok\n" );
+          printf( "%u rts removed\n", j - rte.get_route_count( hash ) );
         }
         else {
           printf( "what?\n" );

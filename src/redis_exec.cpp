@@ -44,7 +44,7 @@ RedisExec::release( void )
 {
   if ( this->multi != NULL )
     this->discard_multi();
-  if ( this->sub_tab.h != NULL ) {
+  if ( ! this->sub_tab.is_null() ) {
     this->rem_all_sub();
     this->sub_tab.release();
   }

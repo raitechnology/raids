@@ -335,18 +335,44 @@ test_decimal_lnk   := $(raids_dlnk)
 
 $(bind)/test_decimal: $(test_decimal_objs) $(test_decimal_libs)
 
+test_cr_files := test_cr
+test_cr_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(test_cr_files)))
+test_cr_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(test_cr_files)))
+test_cr_libs  :=
+test_cr_lnk   :=
+
+$(bind)/test_cr: $(test_cr_objs) $(test_cr_libs)
+
+test_rtht_files := test_rtht
+test_rtht_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(test_rtht_files)))
+test_rtht_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(test_rtht_files)))
+test_rtht_libs  :=
+test_rtht_lnk   :=
+
+$(bind)/test_rtht: $(test_rtht_objs) $(test_rtht_libs)
+
+test_subht_files := test_subht
+test_subht_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(test_subht_files)))
+test_subht_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(test_subht_files)))
+test_subht_libs  := $(raids_dlib)
+test_subht_lnk   := $(raids_dlnk)
+
+$(bind)/test_subht: $(test_subht_objs) $(test_subht_libs)
+
 all_exes    += $(bind)/client $(bind)/test_msg \
                $(bind)/redis_cmd $(bind)/test_cmd $(bind)/test_list \
 	       $(bind)/test_hash $(bind)/test_set $(bind)/test_zset \
 	       $(bind)/test_hllnum $(bind)/test_hllw $(bind)/test_hllsub \
 	       $(bind)/test_geo $(bind)/test_routes $(bind)/test_delta \
-	       $(bind)/test_decimal
+	       $(bind)/test_decimal $(bind)/test_cr $(bind)/test_rtht \
+	       $(bind)/test_subht
 all_depends += $(client_deps) $(test_msg_deps) \
                $(redis_cmd_deps) $(test_cmd_deps) $(test_list_deps) \
 	       $(test_hash_deps) $(test_set_deps) $(test_zset_deps) \
 	       $(test_hllnum_deps) $(test_hllw_deps) $(test_hllsub_deps) \
 	       $(test_geo_deps) $(test_routes_deps) $(test_delta_deps) \
-	       $(test_decimal_deps)
+	       $(test_decimal_deps) $(test_cr_deps) $(test_rtht_deps) \
+	       $(test_subht_deps)
 
 all_dirs := $(bind) $(libd) $(objd) $(dependd)
 

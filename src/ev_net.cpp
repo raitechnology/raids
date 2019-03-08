@@ -246,7 +246,7 @@ RoutePublish::hash_to_sub( uint32_t r,  uint32_t h,  char *key,
         return ((EvNatsService *) s)->hash_to_sub( h, key, keylen );
       case EV_KV_PUBSUB:
         return ((KvPubSub *) s)->hash_to_sub( h, key, keylen );
-      case EV_SHM_SOCK: break;
+      case EV_SHM_SOCK:
         return ((EvShmClient *) s)->hash_to_sub( h, key, keylen );
     }
   }

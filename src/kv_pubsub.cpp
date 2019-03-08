@@ -163,7 +163,7 @@ KvPubSub::subscribe_mcast( const char *sub,  size_t len,  bool activate,
       if ( (status = this->kctx.value( &val, sz )) == KEY_OK &&
            sz == sizeof( CubeRoute128 ) ) {
         CubeRoute128 cr;
-        ::memcpy( cr.w, val, sizeof( CubeRoute128 ) );
+        cr.copy_from( val );
         if ( activate ) {
           if ( cr.is_set( this->ctx_id ) )
             return true;
@@ -307,10 +307,14 @@ KvPubSub::process( bool )
                ::memcmp( kp->u.buf, "_SYS.", 5 ) != 0 ) {
             if ( (status = scan_kctx.value( &val, sz )) == KEY_OK &&
                  sz == sizeof( CubeRoute128 ) ) {
-              ::memcpy( cr.w, val, sizeof( CubeRoute128 ) );
+              cr.copy_from( val );
+              cr.clear( this->ctx_id );
               if ( ! cr.is_empty() && kp->keylen > 0 ) {
                 /*printf( "addkey: %.*s\r\n", kp->keylen, kp->u.buf );*/
                 uint32_t hash = kv_crc_c( kp->u.buf, kp->keylen - 1, 0 );
+                KvSubRoute * rt;
+                rt = this->sub_tab.upsert( hash, kp->u.buf, kp->keylen - 1 );
+                cr.copy_to( rt->rt_bits );
                 this->poll.sub_route.add_route( hash, this->fd );
               }
             }
@@ -352,7 +356,7 @@ KvPubSub::get_mcast_route( CubeRoute128 &cr )
   if ( (status = this->kctx.find( &this->wrk )) == KEY_OK ) {
     if ( (status = this->kctx.value( &val, sz )) == KEY_OK &&
          sz == sizeof( CubeRoute128 ) ) {
-      ::memcpy( cr.w, val, sizeof( CubeRoute128 ) );
+      cr.copy_from( val );
       cr.clear( this->ctx_id );
       return ! cr.is_empty();
     }
@@ -403,48 +407,47 @@ KvPubSub::write( void )
     size_t       mc_cnt = 0;
     range_t      mc_range;
     size_t       cnt = 0;
+    KvSubRoute * rt;
     KvMsgList  * l;
     size_t       i, dest,
                  veccnt = 0;
     used.zero();
     for ( l = this->sendq.hd; l != NULL; l = l->next ) {
-      KvMsg & msg = l->msg;
-      uint8_t start = msg.dest_start;
+      KvMsg & msg   = l->msg;
+      uint8_t start = msg.dest_start,
+              end   = msg.dest_end;
 
-      if ( start == 0 ) { /* is mcast to all nodes */
-        if ( is_kv_bcast( msg.msg_type ) ) {
-          if ( mc_cnt == 0 ) {
-            mc_range.w = 0;
-            mc_cnt = mcast.branch4( this->ctx_id, 0, MAX_CTX_ID, mc_range.b );
+      if ( start != end ) { /* if not to a single node */
+        if ( is_kv_bcast( msg.msg_type ) ) { /* calculate the dest range */
+          if ( start == 0 ) {
+            if ( mc_cnt == 0 ) {
+              mc_range.w = 0;
+              mc_cnt = mcast.branch4( this->ctx_id, 0, MAX_CTX_ID, mc_range.b );
+            }
+            if ( mc_cnt > 0 )
+              l->range.w = mc_range.w;
+            cnt = mc_cnt;
           }
-          if ( mc_cnt > 0 )
-            l->range.w = mc_range.w;
-          cnt = mc_cnt;
+          else {
+            cnt = mcast.branch4( this->ctx_id, start, end, l->range.b );
+          }
         }
         else {
           KvSubMsg &submsg = (KvSubMsg &) msg;
-          if ( this->get_sub_mcast( submsg.subject(), submsg.sublen, cr ) )
-            cnt = cr.branch4( this->ctx_id, 0, MAX_CTX_ID, l->range.b );
-          else
+          rt = this->sub_tab.find( submsg.hash, submsg.subject(),
+                                   submsg.sublen );
+          if ( rt != NULL ) {
+            cr.copy_from( rt->rt_bits );
+            cnt = cr.branch4( this->ctx_id, start, end, l->range.b );
+          }
+          else {
             cnt = 0;
-        }
-      }
-      else if ( start != msg.dest_end ) { /* if not to a single node */
-        if ( is_kv_bcast( msg.msg_type ) ) {
-          /* calculate the dest range */
-          cnt = mcast.branch4( this->ctx_id, start, msg.dest_end, l->range.b );
-        }
-        else {
-          KvSubMsg &submsg = (KvSubMsg &) msg;
-          if ( this->get_sub_mcast( submsg.subject(), submsg.sublen, cr ) )
-            cnt = cr.branch4( this->ctx_id, start, msg.dest_end, l->range.b );
-          else
-            cnt = 0;
+          }
         }
       }
       else if ( mcast.is_set( start ) ) { /* is single node */
         l->range.b[ 0 ] = start;
-        l->range.b[ 1 ] = msg.dest_end;
+        l->range.b[ 1 ] = end;
         cnt = 2;
       }
       if ( cnt > 0 ) { /* set a bit for the destination  */
@@ -579,15 +582,27 @@ KvPubSub::get_sub_mcast( const char *sub,  size_t len,  CubeRoute128 &cr )
   hash1 = this->seed1;
   hash2 = this->seed2;
   kb->hash( hash1, hash2 );
-  this->kctx.set_key( *kb );
-  this->kctx.set_hash( hash1, hash2 );
+
+  this->rt_kctx.set_key( *kb );
+  this->rt_kctx.set_hash( hash1, hash2 );
   /* check if already set by using find(), lower cost when route is expected
    * to be set */
-  if ( (status = this->kctx.find( &this->wrk )) == KEY_OK ) {
-    if ( (status = this->kctx.value( &val, sz )) == KEY_OK &&
-         sz == sizeof( CubeRoute128 ) ) {
-      ::memcpy( cr.w, val, sizeof( CubeRoute128 ) );
-      return true;
+  for ( int cnt = 0; ; ) {
+    if ( (status = this->rt_kctx.find( &this->rt_wrk )) == KEY_OK ) {
+      if ( (status = this->rt_kctx.value( &val, sz )) == KEY_OK &&
+           sz == sizeof( CubeRoute128 ) ) {
+        cr.copy_from( val );
+        return true;
+      }
+    }
+    if ( status == KEY_NOT_FOUND )
+      break;
+    if ( ++cnt == 50 ) {
+      fprintf( stderr, "error kv_pubsub mc lookup (%.*s): (%s) %s\n",
+               (int) len, sub,
+               kv_key_status_string( status ),
+               kv_key_status_description( status ) );
+      break;
     }
   }
   cr.zero();
@@ -595,7 +610,7 @@ KvPubSub::get_sub_mcast( const char *sub,  size_t len,  CubeRoute128 &cr )
 }
 
 void
-KvPubSub::route_msg( KvMsg &msg )
+KvPubSub::route_msg_from_shm( KvMsg &msg ) /* inbound from shm */
 {
   print_msg( msg );
   /* if msg destination has more hops */
@@ -607,46 +622,53 @@ KvPubSub::route_msg( KvMsg &msg )
     this->sendq.push_tl( l );
     this->idle_push( EV_WRITE );
   }
-  /* update my routing table when sub/unsub occurs */
-  if ( msg.msg_type == KV_MSG_SUB ||
-       msg.msg_type == KV_MSG_PSUB ||
-       msg.msg_type == KV_MSG_UNSUB ||
-       msg.msg_type == KV_MSG_PUNSUB ) {
-    KvSubMsg &submsg = (KvSubMsg &) msg;
-    CubeRoute128 cr;
-    if ( msg.msg_type == KV_MSG_SUB || msg.msg_type == KV_MSG_PSUB )
-      /* adding a route, publishes will be forwarded to shm */
-      this->poll.sub_route.add_route( submsg.hash, this->fd );
-    else {
-      /* check if no more routes to shm exist, if true then remove */
-      bool rm = false;
-      if ( ! this->get_sub_mcast( submsg.subject(), submsg.sublen, cr ) )
-        rm = true;
-      else {
-        cr.clear( this->ctx_id );
-        rm = cr.is_empty();
+  switch ( msg.msg_type ) {
+    case KV_MSG_SUB: /* update my routing table when sub/unsub occurs */
+    case KV_MSG_PSUB:
+    case KV_MSG_UNSUB:
+    case KV_MSG_PUNSUB: {
+      KvSubMsg &submsg = (KvSubMsg &) msg;
+      CubeRoute128 cr;
+
+      this->get_sub_mcast( submsg.subject(), submsg.sublen, cr );
+      cr.clear( this->ctx_id );
+      /* if no more routes to shm exist, then remove */
+      if ( cr.is_empty() ) {
+        this->sub_tab.remove( submsg.hash, submsg.subject(), submsg.sublen );
+        if ( this->sub_tab.find_by_hash( submsg.hash ) == NULL )
+          this->poll.sub_route.del_route( submsg.hash, this->fd );
       }
-      if ( rm )
-        this->poll.sub_route.del_route( submsg.hash, this->fd );
+      /* adding a route, publishes will be forwarded to shm */
+      else {
+        KvSubRoute * rt;
+        rt = this->sub_tab.upsert( submsg.hash, submsg.subject(),
+                                   submsg.sublen );
+        cr.copy_to( rt->rt_bits );
+        this->poll.sub_route.add_route( submsg.hash, this->fd );
+      }
+      break;
     }
-  }
   /* forward message from publisher to shm */
-  else if ( msg.msg_type == KV_MSG_PUBLISH ) {
-    KvSubMsg &submsg = (KvSubMsg &) msg;
-    uint32_t * routes, rcnt;
-    rcnt = this->poll.sub_route.get_route( submsg.hash, routes );
-    printf( "get_route rcnt %u\r\n", rcnt );
-    if ( rcnt > 0 ) {
-      char   msg_len_buf[ 24 ];
-      size_t msg_len_digits = RedisMsg::uint_digits( submsg.msg_size );
-      RedisMsg::uint_to_str( submsg.msg_size, msg_len_buf, msg_len_digits );
-      EvPublish pub( submsg.subject(), submsg.sublen,
-                     submsg.reply(), submsg.replylen,
-                     submsg.msg_data(), submsg.msg_size,
-                     routes, rcnt, this->fd, submsg.hash,
-                     msg_len_buf, msg_len_digits );
-      this->poll.sub_route.rte.publish( pub );
+    case KV_MSG_PUBLISH: {
+      KvSubMsg &submsg = (KvSubMsg &) msg;
+      uint32_t * routes, rcnt;
+      rcnt = this->poll.sub_route.get_route( submsg.hash, routes );
+      printf( "get_route rcnt %u\r\n", rcnt );
+      if ( rcnt > 0 ) {
+        char   msg_len_buf[ 24 ];
+        size_t msg_len_digits = RedisMsg::uint_digits( submsg.msg_size );
+        RedisMsg::uint_to_str( submsg.msg_size, msg_len_buf, msg_len_digits );
+        EvPublish pub( submsg.subject(), submsg.sublen,
+                       submsg.reply(), submsg.replylen,
+                       submsg.msg_data(), submsg.msg_size,
+                       routes, rcnt, this->fd, submsg.hash,
+                       msg_len_buf, msg_len_digits );
+        this->poll.sub_route.rte.publish( pub );
+      }
+      break;
     }
+
+    default: break; /* HELLO, BYE */
   }
 }
 
@@ -676,10 +698,10 @@ KvPubSub::read( void )
       for ( uint64_t i = 0; i < seqno2; i++ ) {
         if ( data_sz[ i ] >= sizeof( KvMsg ) ) {
           KvMsg &msg = *(KvMsg *) data[ i ];
-          /* check these, make sure messages are in order */
+          /* check these, make sure messages are in order ?? */
           this->inbox[ msg.src ]->src_session_id = msg.session_id;
           this->inbox[ msg.src ]->src_seqno      = msg.seqno;
-          this->route_msg( msg );
+          this->route_msg_from_shm( msg );
         }
       }
       count += seqno2;
@@ -687,6 +709,7 @@ KvPubSub::read( void )
         break;
     }
   }
+  /* remove msgs consumed */
   if ( count > 0 ) {
     if ( this->kctx.acquire( &this->wrk ) <= KEY_IS_NEW ) {
       this->kctx.trim_msg( ibx.ibx_seqno );
@@ -711,9 +734,15 @@ KvPubSub::publish( EvPublish &pub )
 }
 
 bool
-KvPubSub::hash_to_sub( uint32_t ,  char *,  size_t & )
+KvPubSub::hash_to_sub( uint32_t h,  char *key,  size_t &keylen )
 {
-  printf( "hash to sub\n" );
-  return true;
+  KvSubRoute * rt;
+  if ( (rt = this->sub_tab.find_by_hash( h )) != NULL /*||
+     (rt = this->sub_tab.find_by_hash( h | UIntHashTab::SLOT_USED )) != NULL*/){
+    ::memcpy( key, rt->value, rt->len );
+    keylen = rt->len;
+    return true;
+  }
+  return false;
 }
 

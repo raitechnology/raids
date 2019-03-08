@@ -21,8 +21,7 @@ enum NatsState {
 
 struct EvNatsService : public EvConnection {
   void * operator new( size_t, void *ptr ) { return ptr; }
-  NatsMap    sub_tab,     /* subscriptions open by client */
-             sid_tab;     /* sub ids for the subs (sid -> sub, sub -> sid) */
+  NatsSubMap map;
 
   char     * msg_ptr;     /* ptr to the msg blob */
   size_t     msg_len;     /* size of the current message blob */
@@ -74,7 +73,6 @@ struct EvNatsService : public EvConnection {
   /*HashData * resize_tab( HashData *curr,  size_t add_len );*/
   void add_sub( void );
   void rem_sid( uint32_t max_msgs );
-  void rem_sid_key( StrHashKey &sidkey );
   void rem_all_sub( void );
   bool fwd_pub( void );
   bool publish( EvPublish &pub );

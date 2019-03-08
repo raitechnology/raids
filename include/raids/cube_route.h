@@ -26,6 +26,12 @@ struct CubeRoute {
 
   uint64_t w[ BITS_W ];
 
+  void copy_from( const void *p ) {
+    ::memcpy( this->w, p, sizeof( this->w ) );
+  }
+  void copy_to( void *p ) {
+    ::memcpy( p, this->w, sizeof( this->w ) );
+  }
   /* no error checking here, i must be >= 0 && < BITS */
   bool is_set( size_t i ) const {
     return ( this->w[ i / 64 ] & ( (uint64_t) 1 << ( i % 64 ) ) ) != 0;
@@ -183,19 +189,30 @@ struct CubeRoute {
     return false;
   }
 
+  static inline bool next_ffs( uint64_t x,  size_t &i ) {
+    if ( ++i == 64 )
+      return false;
+    if ( (x >>= i) == 0 )
+      return false;
+    i += __builtin_ffsll( x ) - 1;
+    return true;
+  }
+
   bool next_set( size_t &i ) const {
     size_t off = i / 64,
            shft = i % 64;
     for (;;) {
-      if ( ++shft == 64 ) {
-        if ( ++off == BITS_W )
-          return false;
-        shft = 0;
-      }
-      if ( ( this->w[ off ] & ( (uint64_t) 1 << shft ) ) != 0 ) {
+      if ( next_ffs( this->w[ off ], shft ) ) {
         i = off * 64 + shft;
         return true;
       }
+      if ( ++off == BITS_W )
+        return false;
+      if ( ( this->w[ off ] & 1 ) != 0 ) {
+        i = off * 64;
+        return true;
+      }
+      shft = 0;
     }
   }
   /* Return count * 2 of ranges[] of nodes to visit, [ {start, end}, ... ],
@@ -285,7 +302,7 @@ struct CubeRoute {
   }
 
   void print_traverse( int x,  size_t node,  size_t start,  size_t end ) {
-    size_t i, j, pop, cnt;
+    size_t i, j;
     RangeType range[ 8 ];
 
     if ( (j = this->branch4( node, start, end, range )) == 0 ) {

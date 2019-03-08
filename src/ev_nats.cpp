@@ -415,112 +415,98 @@ break_loop:;
 void
 EvNatsService::add_sub( void )
 {
-  /* case1:  sid doesn't exist, add sid to sid tab & sid to subject tab
-   *   sid -> null / sid -> sid tab [ sid ],
-   *                        sid -> subj tab [ subj ] */
-  StrHashRec & sidrec = StrHashRec::make_rec( this->sid, this->sid_len ),
-             & subrec = StrHashRec::make_rec( this->subject, this->subject_len);
-  StrHashKey   sidkey( sidrec ),
-               subkey( subrec );
-  SidMsgCount  cnt( 0 );
+  NatsStr xsid( this->sid, this->sid_len );
+  NatsStr xsubj( this->subject, this->subject_len );
 
-  this->sid_tab.put( sidkey, cnt, subrec, true );
-  if ( this->sub_tab.put( subkey, cnt, sidrec ) == NATS_IS_NEW ) {
-    uint32_t rcnt = this->poll.sub_route.add_route( subkey.pos.h, this->fd );
-    this->poll.pubsub->notify_sub( subkey.pos.h, subrec.str, subrec.len,
+  if ( this->map.put( xsubj, xsid ) == NATS_IS_NEW ) {
+    uint32_t rcnt = this->poll.sub_route.add_route( xsubj.hash(), this->fd );
+    this->poll.pubsub->notify_sub( xsubj.hash(), xsubj.str, xsubj.len,
                                    this->fd, rcnt, 'N' );
   }
 #if 0
   printf( "add_sub:\n" );
-  this->sid_tab.print();
-  this->sub_tab.print();
+  this->map.print();
 #endif
 }
 
 void
 EvNatsService::rem_sid( uint32_t max_msgs )
 {
-  StrHashRec & sidrec = StrHashRec::make_rec( this->sid, this->sid_len );
-  StrHashKey   sidkey( sidrec );
+  NatsStr       xsid( this->sid, this->sid_len ),
+                xsubj;
+  NatsLookup    look;
+  uint32_t      exp_cnt  = 0,
+                subj_cnt = 0;
+  NatsSubStatus status;
 
-  if ( max_msgs != 0 ) {
-    SidMsgCount cnt( max_msgs );
-    SidList     sub_list;
-    /* update the max_msgs foreach sid -> subj */
-    if ( this->sid_tab.updcnt( sidkey, cnt, NULL ) != NATS_IS_NEW ) {
-      if ( this->sid_tab.lookup( sidkey, sub_list ) ) {
-        if ( sub_list.first() ) {
-          do {
-            StrHashKey subkey( sub_list.sid );
-            if ( this->sub_tab.updcnt( subkey, cnt,
-                                       &sidrec ) == NATS_IS_EXPIRED ) {
-              this->rem_sid_key( sidkey );
-              break;
-            }
-          } while ( sub_list.next() );
-        }
+  if ( this->map.lookup_sid( xsid, look ) == NATS_OK ) {
+    while ( look.iter.get( xsubj ) ) {
+      uint32_t h = xsubj.hash();
+      status = this->map.expire_subj( xsubj, xsid, max_msgs );
+      if ( status == NATS_EXPIRED ) {
+        uint32_t rcnt = 0;
+        if ( this->map.sub_map.find_by_hash( h ) == NULL )
+          rcnt = this->poll.sub_route.del_route( h, this->fd );
+        this->poll.pubsub->notify_unsub( h, xsubj.str, xsubj.len,
+                                         this->fd, rcnt, 'N' );
+      }
+      if ( status != NATS_OK ) {
+        exp_cnt++;
+        look.iter.remove();
+      }
+      else {
+        look.iter.incr();
+      }
+      subj_cnt++;
+    }
+    /* no more subs left */
+    if ( max_msgs == 0 || exp_cnt == subj_cnt )
+      this->map.sid_map.remove( look.loc );
+    else { /* wait for max msgs */
+      look.rt->max_msgs = max_msgs;
+      if ( exp_cnt > 0 ) {
+        NatsPair val( xsid );
+        uint16_t new_len = look.rt->len - look.iter.rmlen;
+        this->map.sid_map.resize( xsid.hash(), &val, look.rt->len, new_len,
+                                  look.loc );
       }
     }
   }
-  else {
-    this->rem_sid_key( sidkey );
-  }
 #if 0
   printf( "rem_sid(%u):\n", max_msgs );
-  this->sid_tab.print();
-  this->sub_tab.print();
+  this->map.print();
 #endif
-}
-
-void
-EvNatsService::rem_sid_key( StrHashKey &sidkey )
-{
-  SidList sub_list;
-  /*printf( "rem_sid_key(%.*s)\n", (int) sidkey.rec.len, sidkey.rec.str );*/
-  if ( this->sid_tab.lookup( sidkey, sub_list ) ) {
-    if ( sub_list.first() ) {
-      do {
-        StrHashKey subkey( sub_list.sid );
-        if ( this->sub_tab.deref( subkey, sidkey.rec ) ) {
-        /*printf( "rem_route(%.*s)\n", (int) subkey.rec.len, subkey.rec.str );*/
-          uint32_t rcnt = this->poll.sub_route.del_route( subkey.pos.h,
-                                                          this->fd );
-          this->poll.pubsub->notify_unsub( subkey.pos.h, subkey.rec.str,
-                                          subkey.rec.len, this->fd, rcnt, 'N' );
-        }
-      } while ( sub_list.next() );
-    }
-    this->sid_tab.rem( sidkey );
-  }
 }
 
 void
 EvNatsService::rem_all_sub( void )
 {
-  HashPos pos;
-  HashVal kv;
-  if ( this->sub_tab.first( pos, kv ) ) {
-    do {
-      uint32_t rcnt = this->poll.sub_route.del_route( pos.h, this->fd );
-      this->poll.pubsub->notify_unsub( pos.h, kv.key, kv.keylen, this->fd,
-                                       rcnt, 'N' );
-    } while ( this->sub_tab.next( pos, kv ) );
+  NatsMapRec * rt;
+  uint32_t     i;
+  uint16_t     off;
+  NatsStr      subj;
+
+  for ( rt = this->map.sub_map.first( i, off ); rt != NULL;
+        rt = this->map.sub_map.next( i, off ) ) {
+    subj.read( rt->value );
+    uint32_t rcnt = this->poll.sub_route.del_route( rt->hash, this->fd );
+    this->poll.pubsub->notify_unsub( rt->hash, subj.str, subj.len,
+                                     this->fd, rcnt, 'N' );
   }
 }
 
 bool
 EvNatsService::fwd_pub( void )
 {
-  HashPos    sub_pos;
+  NatsStr    xsub( this->subject, this->subject_len );
   uint32_t * routes,
              rcnt;
-  sub_pos.init( this->subject, this->subject_len );
-  rcnt = this->poll.sub_route.get_route( sub_pos.h, routes );
+  rcnt = this->poll.sub_route.get_route( xsub.hash(), routes );
   if ( rcnt > 0 ) {
     EvPublish pub( this->subject, this->subject_len,
                    this->reply, this->reply_len,
                    this->msg_ptr, this->msg_len,
-                   routes, rcnt, this->fd, sub_pos.h,
+                   routes, rcnt, this->fd, xsub.hash(),
                    this->msg_len_ptr, this->msg_len_digits );
     return this->poll.publish( pub );
   }
@@ -530,37 +516,34 @@ EvNatsService::fwd_pub( void )
 bool
 EvNatsService::publish( EvPublish &pub )
 {
-  bool flow_good   = true;
-  int  sub_expired = 0;
+  bool flow_good = true;
 
   if ( this->echo || (uint32_t) this->fd != pub.src_route ) {
-    SidList sid_list;
-    HashPos sub_pos( pub.subj_hash );
-    if ( this->sub_tab.lookup( pub.subject, pub.subject_len, sub_pos,
-                               sid_list ) ) {
-      if ( sid_list.first() ) {
-        do {
-          flow_good &= this->fwd_msg( pub, sid_list.sid.str, sid_list.sid.len );
-          if ( ! sid_list.incr_msg_count() )
-            sub_expired++;
-        } while ( sid_list.next() );
+    NatsStr       xsubj( pub.subject, pub.subject_len, pub.subj_hash );
+    NatsStr       xsid;
+    NatsLookup    look;
+    NatsSubStatus status = this->map.lookup_publish( xsubj, look );
+
+    if ( status != NATS_NOT_FOUND ) {
+      for ( ; look.iter.get( xsid ); look.iter.incr() ) {
+        flow_good &= this->fwd_msg( pub, xsid.str, xsid.len );
       }
-      if ( sub_expired > 0 ) {
-        StrHashRec sidrec;
-        for ( ; sub_expired > 0; sub_expired-- ) {
-          if ( this->sub_tab.get_expired( pub.subject, pub.subject_len, sub_pos,
-                                          sidrec ) ) {
-            StrHashKey sidkey( sidrec );
-            this->rem_sid_key( sidkey );
-          }
-        }
+    }
+    if ( status == NATS_EXPIRED ) {
+      uint32_t h = pub.subj_hash;
+      if ( this->map.expire_publish( xsubj, look ) == NATS_EXPIRED ) {
+        uint32_t rcnt = 0;
+        /* check for duplicate hashes */
+        if ( this->map.sub_map.find_by_hash( h ) == NULL )
+          rcnt = this->poll.sub_route.del_route( h, this->fd );
+        this->poll.pubsub->notify_unsub( h, xsubj.str, xsubj.len,
+                                         this->fd, rcnt, 'N' );
       }
     }
   }
 #if 0
   printf( "publish:\n" );
-  this->sid_tab.print();
-  this->sub_tab.print();
+  this->map.print();
 #endif
   return flow_good;
 }
@@ -568,22 +551,15 @@ EvNatsService::publish( EvPublish &pub )
 bool
 EvNatsService::hash_to_sub( uint32_t h,  char *key,  size_t &keylen )
 {
-  HashPos pos( h );
-  HashVal kv;
-  if ( this->sub_tab.h == NULL )
-    return false;
-  if ( this->sub_tab.h->hscan( pos, kv ) != HASH_OK )
-    return false;
-  for ( ; ; pos.i++ ) {
-    uint32_t h2 = kv_crc_c( kv.key, kv.keylen, 0 );
-    if ( ( h | UIntHashTab::SLOT_USED ) == ( h2 | UIntHashTab::SLOT_USED ) ) {
-      ::memcpy( key, kv.key, kv.keylen );
-      keylen = kv.keylen;
-      return true;
-    }
-    if ( this->sub_tab.h->hscan( pos, kv ) != HASH_OK )
-      return false;
+  NatsMapRec * rt;
+  if ( (rt = this->map.sub_map.find_by_hash( h )) != NULL ) {
+    NatsStr xsub;
+    xsub.read( rt->value );
+    ::memcpy( key, xsub.str, xsub.len );
+    keylen = rt->len;
+    return true;
   }
+  return false;
 }
 
 static inline char *
@@ -752,8 +728,7 @@ EvNatsService::release( void )
 {
   //printf( "nats release fd=%d\n", this->fd );
   this->rem_all_sub();
-  this->sub_tab.release();
-  this->sid_tab.release();
+  this->map.release();
   this->EvConnection::release_buffers();
   this->push_free_list();
 }

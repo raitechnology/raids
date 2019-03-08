@@ -6,6 +6,7 @@
 #include <raids/stream_buf.h>
 #include <raids/ev_net.h>
 #include <raids/cube_route.h>
+#include <raids/route_ht.h>
 
 namespace rai {
 namespace ds {
@@ -98,16 +99,38 @@ static inline bool is_kv_bcast( uint8_t msg_type ) {
   return msg_type < KV_MSG_PUBLISH; /* all others flood the network */
 }
 
+struct KvSubRoute {
+  uint32_t hash;
+  uint8_t  rt_bits[ sizeof( CubeRoute128 ) ];
+  uint16_t len;
+  char     value[ 2 ];
+  bool equals( const void *s,  uint16_t l ) const {
+    return l == this->len && ::memcmp( s, this->value, l ) == 0;
+  }
+  void copy( const void *s,  uint16_t l ) {
+    ::memcpy( this->value, s, l );
+  }
+};
+
+typedef RouteVec<KvSubRoute> KvSubTab;
+
 struct KvPubSub : public EvSocket {
   uint16_t     ctx_id,                 /* my endpoint */
                pad[ 3 ];
   uint64_t     seed1, seed2,           /* seeds of the shm keys */
                session_id,             /* session id of the my endpoint */
                next_seqno;             /* next seqno of msg sent */
-  kv::KeyCtx   kctx;                   /* a shm kv context */
+
+  KvSubTab     sub_tab;                /* subject route table to shm */
+  kv::KeyCtx   kctx,                   /* a kv context for send/recv msgs */
+               rt_kctx;                /* a kv context for route lookup */
+
   KvMsgQueue * inbox[ KV_MAX_CTX_ID ], /* _SYS.IBX.xx : inbox of each context */
              & mcast;                  /* _SYS.MC : ctx_ids to shm network */
-  kv::WorkAllocT< 1024 > wrk, wrkq;    /* wrk for kv, wrkq is pending sends */
+
+  kv::WorkAllocT< 1024 >   wrk,        /* wrk for kctx */
+                           rt_wrk,     /* wrk for rt_kctx kv */
+                           wrkq;       /* for pending sends to shm */
   kv::DLinkList<KvMsgList> sendq;      /* sendq is to the network */
 
   void * operator new( size_t, void *ptr ) { return ptr; }
@@ -117,6 +140,8 @@ struct KvPubSub : public EvSocket {
       next_seqno( 0 ),
       kctx( *p.map, p.map->ctx[ p.ctx_id ], p.map->ctx[ p.ctx_id ].stat2,
             p.map->ctx[ p.ctx_id ].db_num2, NULL ),
+      rt_kctx( *p.map, p.map->ctx[ p.ctx_id ], p.map->ctx[ p.ctx_id ].stat2,
+               p.map->ctx[ p.ctx_id ].db_num2, NULL ),
       mcast( *(new ( mcptr ) KvMsgQueue( this->kctx, mc, mclen )) ) {
     ::memset( this->inbox, 0, sizeof( this->inbox ) );
     this->EvSocket::fd = sock;
@@ -146,7 +171,7 @@ struct KvPubSub : public EvSocket {
   void process_close( void );
   void write( void );
   bool get_sub_mcast( const char *sub,  size_t len,  CubeRoute128 &cr );
-  void route_msg( KvMsg &msg );
+  void route_msg_from_shm( KvMsg &msg );
   void read( void );
   bool publish( EvPublish &pub );
   void publish_status( KvMsgType mtype );

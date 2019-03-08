@@ -194,7 +194,7 @@ struct RedisExec {
                    step;      /* incr between keys */
   uint64_t         step_mask; /* step key mask */
   size_t           argc;      /* count of args in cmd msg */
-  SubMap           sub_tab;   /* pub/sub subscription table */
+  RedisSubMap      sub_tab;   /* pub/sub subscription table */
   RouteDB        & sub_route; /* map subject to sub_id */
   KvPubSub       & pubsub;    /* notify subscribe and unsubscribe */
   uint32_t         sub_id;    /* fd, set this after accept() */

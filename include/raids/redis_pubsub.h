@@ -1,109 +1,86 @@
 #ifndef __rai_raids__redis_pubsub_h__
 #define __rai_raids__redis_pubsub_h__
 
-#include <raids/redis_hash.h>
+#include <raids/route_ht.h>
 
 namespace rai {
 namespace ds {
 
-struct SubMsgCount {
+struct RedisSubRoute {
+  uint32_t hash;
   uint32_t msg_cnt;
-  SubMsgCount() : msg_cnt( 0 ) {}
+  uint16_t len;
+  char     value[ 2 ];
+  bool equals( const void *s,  uint16_t l ) const {
+    return l == this->len && ::memcmp( s, this->value, l ) == 0;
+  }
+  void copy( const void *s,  uint16_t l ) {
+    ::memcpy( this->value, s, l );
+  }
 };
 
-enum SubStatus {
-  SUB_OK        = 0,
-  SUB_EXISTS    = 1,
-  SUB_NOT_FOUND = 2
+struct RedisSubRoutePos {
+  RedisSubRoute * rt;
+  uint32_t v;
+  uint16_t off;
 };
 
-struct SubMap {
-  HashData * h;
-  SubMap() : h( 0 ) {}
+enum RedisSubStatus {
+  REDIS_SUB_OK        = 0,
+  REDIS_SUB_EXISTS    = 1,
+  REDIS_SUB_NOT_FOUND = 2
+};
+
+struct RedisSubMap {
+  RouteVec<RedisSubRoute> tab;
+
+  bool is_null( void ) const {
+    return this->tab.vec_size == 0;
+  }
 
   size_t sub_count( void ) const {
-    if ( this->h == NULL )
-      return 0;
-    return this->h->hcount();
+    return this->tab.pop();
   }
   void release( void ) {
-    if ( this->h != NULL )
-      delete this->h;
-    this->h = NULL;
+    this->tab.release();
   }
   /* put in new sub
    * tab[ sub ] => {cnt} */
-  SubStatus put( const char *sub,  size_t len,  HashPos &pos ) {
-    SubMsgCount rec;
-    size_t      sz    = sizeof( rec ) + (uint8_t) len + 3,
-                asize = sz;
-    HashStatus  hstat = HASH_OK;
-    for (;;) {
-      if ( hstat == HASH_FULL || this->h == NULL )
-        this->resize( asize++ );
-      hstat = this->h->hsetnx( sub, len, &rec, sizeof( rec ), pos );
-      if ( hstat != HASH_FULL ) {
-        if ( hstat == HASH_EXISTS )
-          return SUB_EXISTS;
-        return SUB_OK;
-      }
+  RedisSubStatus put( uint32_t h,  const char *sub,  size_t len ) {
+    RouteLoc loc;
+    RedisSubRoute * rt = this->tab.upsert( h, sub, len, loc );
+    if ( rt == NULL )
+      return REDIS_SUB_NOT_FOUND;
+    if ( loc.is_new ) {
+      rt->msg_cnt = 0;
+      return REDIS_SUB_OK;
     }
+    return REDIS_SUB_EXISTS;
   }
   /* update cnt for sub
    * tab[ sub ] => {cnt++} */
-  SubStatus updcnt( const char *sub,  size_t len,  HashPos &pos ) const {
-    ListVal     lv;
-    SubMsgCount rec;
-
-    if ( this->h == NULL ||
-         this->h->hget( sub, len, lv, pos ) == HASH_NOT_FOUND )
-      return SUB_NOT_FOUND;
-    lv.copy_out( &rec, 0, sizeof( rec ) );
-    rec.msg_cnt++;
-    lv.copy_in( &rec, 0, sizeof( rec ) );
-    return SUB_OK;
+  RedisSubStatus updcnt( uint32_t h,  const char *sub,  size_t len ) const {
+    RedisSubRoute * rt = this->tab.find( h, sub, len );
+    if ( rt == NULL )
+      return REDIS_SUB_NOT_FOUND;
+    rt->msg_cnt++;
+    return REDIS_SUB_OK;
   }
   /* remove tab[ sub ] */
-  SubStatus rem( const char *sub,  size_t len,  HashPos &pos ) const {
-    if ( this->h == NULL || this->h->hdel( sub, len, pos ) == HASH_NOT_FOUND )
-      return SUB_NOT_FOUND;
-    return SUB_OK;
-  }
-  /* add space to hash */
-  void resize( size_t add_len ) {
-    size_t count    = ( add_len >> 3 ) | 1,
-           data_len = add_len + 1;
-    if ( this->h != NULL ) {
-      data_len  = add_len + this->h->data_len();
-      data_len += data_len / 2 + 2;
-      count     = this->h->count();
-      count    += count / 2 + 2;
-    }
-    size_t asize = HashData::alloc_size( count, data_len );
-    void * m     = ::malloc( sizeof( HashData ) + asize );
-    void * p     = &((char *) m)[ sizeof( HashData ) ];
-    HashData *newbe = new ( m ) HashData( p, asize );
-    newbe->init( count, data_len );
-    if ( this->h != NULL ) {
-      this->h->copy( *newbe );
-      delete this->h;
-    }
-    this->h = newbe;
+  RedisSubStatus rem( uint32_t h,  const char *sub,  size_t len ) {
+    if ( ! this->tab.remove( h, sub, len ) )
+      return REDIS_SUB_NOT_FOUND;
+    return REDIS_SUB_OK;
   }
   /* iterate first tab[ sub ] */
-  bool first( HashPos &pos,  HashVal &kv ) const {
-    if ( this->h == NULL || this->h->hcount() == 0 )
-      return false;
-    pos.i = 0;
-    return this->next( pos, kv );
+  bool first( RedisSubRoutePos &pos ) {
+    pos.rt = this->tab.first( pos.v, pos.off );
+    return pos.rt != NULL;
   }
   /* iterate next tab[ sub ] */
-  bool next( HashPos &pos,  HashVal &kv ) const {
-    if ( this->h->hindex( ++pos.i, kv ) == HASH_OK ) {
-      pos.h = kv_crc_c( kv.key, kv.keylen, 0 );
-      return true;
-    }
-    return false;
+  bool next( RedisSubRoutePos &pos ) {
+    pos.rt = this->tab.next( pos.v, pos.off );
+    return pos.rt != NULL;
   }
 };
 
