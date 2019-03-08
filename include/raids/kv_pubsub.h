@@ -114,6 +114,24 @@ struct KvSubRoute {
 
 typedef RouteVec<KvSubRoute> KvSubTab;
 
+struct KvLast {
+  uint8_t start, end, cnt;
+
+  void set( uint8_t start, uint8_t end, uint8_t cnt ) {
+    this->start = start; this->end = end; this->cnt = cnt;
+  }
+  bool equals( uint8_t start,  uint8_t end,  KvSubMsg &submsg,
+               KvMsgList *l ) const {
+    if ( start == this->start && end == this->end ) {
+      KvSubMsg &sub = (KvSubMsg &) l->msg;
+      return sub.hash == submsg.hash &&
+             sub.sublen == submsg.sublen &&
+             ::memcmp( sub.subject(), submsg.subject(), sub.sublen ) == 0;
+    }
+    return false;
+  }
+};
+
 struct KvPubSub : public EvSocket {
   uint16_t     ctx_id,                 /* my endpoint */
                pad[ 3 ];

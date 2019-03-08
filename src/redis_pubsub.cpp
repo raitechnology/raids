@@ -37,7 +37,7 @@ RedisExec::rem_all_sub( void )
 bool
 RedisExec::do_pub( EvPublish &pub )
 {
-  /* don't publish to self ?? */
+  /* don't publish to self ?? (redis does not allow pub w/sub on same conn) */
   if ( (uint32_t) this->sub_id != pub.src_route ) {
     RedisSubStatus stat;
     stat = this->sub_tab.updcnt( pub.subj_hash, pub.subject, pub.subject_len );

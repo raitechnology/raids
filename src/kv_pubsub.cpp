@@ -175,19 +175,37 @@ KvPubSub::subscribe_mcast( const char *sub,  size_t len,  bool activate,
       }
     }
   }
+  /* doesn't exist or skip find, use acquire */
   if ( (status = this->kctx.acquire( &this->wrk )) <= KEY_IS_NEW ) {
-    bool is_new = ( status == KEY_IS_NEW );
-    if ( (status = this->kctx.resize( &val, KV_CTX_BYTES, true )) == KEY_OK ) {
-      CubeRoute128 &cr = *(CubeRoute128 *) val;
-      if ( is_new )
-        cr.zero();
+    CubeRoute128 *cr;
+    /* new sub */
+    if ( status == KEY_IS_NEW ) {
       if ( activate ) {
-        cr.set( this->ctx_id );
+        status = this->kctx.resize( &val, KV_CTX_BYTES );
+        if ( status == KEY_OK ) {
+          cr = (CubeRoute128 *) val;
+          cr->zero();
+          cr->set( this->ctx_id );
+          res = true;
+        }
+      }
+      else { /* doesn't exist, don't create it just to clear it */
         res = true;
       }
-      else if ( cr.is_set( this->ctx_id ) ) {
-        cr.clear( this->ctx_id );
+    }
+    else { /* exists, get the value and set / clear the ctx bit */
+      status = this->kctx.value( &val, sz );
+      if ( status == KEY_OK && sz == KV_CTX_BYTES ) {
         res = true;
+        cr = (CubeRoute128 *) val;
+        if ( activate ) {
+          cr->set( this->ctx_id );
+        }
+        else {
+          cr->clear( this->ctx_id );
+          if ( cr->is_empty() )
+            this->kctx.tombstone(); /* is the last subscriber */
+        }
       }
     }
     this->kctx.release();
@@ -403,6 +421,7 @@ KvPubSub::write( void )
   CubeRoute128 mcast;
   /* if there are other contexts recving msgs */
   if ( this->get_mcast_route( mcast ) ) {
+    static const uint8_t LAST_SIZE = 32;
     CubeRoute128 used, cr;
     size_t       mc_cnt = 0;
     range_t      mc_range;
@@ -411,6 +430,11 @@ KvPubSub::write( void )
     KvMsgList  * l;
     size_t       i, dest,
                  veccnt = 0;
+    uint8_t      last_buf[ LAST_SIZE ];
+    KvLast       last[ LAST_SIZE ];
+    KvMsgList  * llast[ LAST_SIZE ];
+    uint8_t      j = 0, k = 0;
+
     used.zero();
     for ( l = this->sendq.hd; l != NULL; l = l->next ) {
       KvMsg & msg   = l->msg;
@@ -434,14 +458,30 @@ KvPubSub::write( void )
         }
         else {
           KvSubMsg &submsg = (KvSubMsg &) msg;
-          rt = this->sub_tab.find( submsg.hash, submsg.subject(),
-                                   submsg.sublen );
-          if ( rt != NULL ) {
-            cr.copy_from( rt->rt_bits );
-            cnt = cr.branch4( this->ctx_id, start, end, l->range.b );
+          uint8_t h = (uint8_t) submsg.hash;
+          /* cache the last routes, to avoid branch4 for the same subj */
+          const uint8_t *p;
+          cnt = 0;
+          if ( k > 0 &&
+               (p = (const uint8_t *) ::memchr( last_buf, h, k )) != NULL ) {
+            i = p - last_buf;
+            if ( last[ i ].equals( start, end, submsg, llast[ i ] ) ) {
+              cnt = last[ i ].cnt;
+              l->range.w = llast[ i ]->range.w;
+            }
           }
-          else {
-            cnt = 0;
+          /* find the route for subject */
+          if ( cnt == 0 ) {
+            rt = this->sub_tab.find( submsg.hash, submsg.subject(),
+                                     submsg.sublen );
+            if ( rt != NULL ) {
+              cr.copy_from( rt->rt_bits );
+              cnt = cr.branch4( this->ctx_id, start, end, l->range.b );
+              last[ j ].set( start, end, cnt );
+              llast[ j ] = l;
+              j = ( j + 1 ) % LAST_SIZE;
+              k = ( k < LAST_SIZE ? k + 1 : LAST_SIZE );
+            }
           }
         }
       }
