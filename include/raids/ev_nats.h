@@ -72,7 +72,9 @@ struct EvNatsService : public EvConnection {
   void process( bool use_prefetch );
   /*HashData * resize_tab( HashData *curr,  size_t add_len );*/
   void add_sub( void );
+  void add_wild( NatsStr &xsubj );
   void rem_sid( uint32_t max_msgs );
+  void rem_wild( NatsStr &xsubj );
   void rem_all_sub( void );
   bool fwd_pub( void );
   bool publish( EvPublish &pub );

@@ -145,8 +145,21 @@ EvShmClient::stream_to_msg( void )
         }
       }
     }
-    if ( len > 0 && out.unpack( buf, len, this->tmp ) == REDIS_MSG_OK )
-      this->cb.on_msg( out );
+    for ( size_t off = 0; ; ) {
+      size_t buflen = len - off;
+      RedisMsgStatus mstatus;
+      if ( buflen == 0 )
+        break;
+      mstatus = out.unpack( &((uint8_t *) buf)[ off ], buflen, this->tmp );
+      if ( mstatus == REDIS_MSG_OK )
+        this->cb.on_msg( out );
+      else {
+        fprintf( stderr, "protocol error(%d/%s), ignoring %lu bytes\n",
+                 mstatus, redis_msg_status_string( mstatus ), buflen );
+        break;
+      }
+      off += buflen;
+    }
   }
   this->reset();
 }

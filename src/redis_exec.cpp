@@ -44,9 +44,10 @@ RedisExec::release( void )
 {
   if ( this->multi != NULL )
     this->discard_multi();
-  if ( ! this->sub_tab.is_null() ) {
+  if ( ! this->sub_tab.is_null() || ! this->pat_tab.is_null() ) {
     this->rem_all_sub();
     this->sub_tab.release();
+    this->pat_tab.release();
   }
   this->wrk.release_all();
 }

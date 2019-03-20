@@ -29,6 +29,13 @@ struct CubeRoute {
   void copy_from( const void *p ) {
     ::memcpy( this->w, p, sizeof( this->w ) );
   }
+  void or_from( const void *p ) {
+    for ( size_t i = 0; i < BITS_W; i++ ) {
+      uint64_t x;
+      ::memcpy( &x, &((const char *) p)[ i * sizeof( x ) ], sizeof( x ) );
+      this->w[ i ] |= x;
+    }
+  }
   void copy_to( void *p ) {
     ::memcpy( p, this->w, sizeof( this->w ) );
   }

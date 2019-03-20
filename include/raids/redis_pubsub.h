@@ -1,6 +1,12 @@
 #ifndef __rai_raids__redis_pubsub_h__
 #define __rai_raids__redis_pubsub_h__
 
+
+extern "C" {
+  struct pcre2_real_code_8;
+  struct pcre2_real_match_data_8;
+}
+
 #include <raids/route_ht.h>
 
 namespace rai {
@@ -79,6 +85,68 @@ struct RedisSubMap {
   }
   /* iterate next tab[ sub ] */
   bool next( RedisSubRoutePos &pos ) {
+    pos.rt = this->tab.next( pos.v, pos.off );
+    return pos.rt != NULL;
+  }
+};
+
+struct RedisPatternRoute {
+  uint32_t                  hash,
+                            msg_cnt;
+  pcre2_real_code_8       * re;
+  pcre2_real_match_data_8 * md;
+  uint16_t                  len;
+  char                      value[ 2 ];
+
+  bool equals( const void *s,  uint16_t l ) const {
+    return l == this->len && ::memcmp( s, this->value, l ) == 0;
+  }
+  void copy( const void *s,  uint16_t l ) {
+    ::memcpy( this->value, s, l );
+  }
+};
+
+struct RedisPatternRoutePos {
+  RedisPatternRoute * rt;
+  uint32_t v;
+  uint16_t off;
+};
+
+struct RedisPatternMap {
+  RouteVec<RedisPatternRoute> tab;
+
+  bool is_null( void ) const {
+    return this->tab.vec_size == 0;
+  }
+
+  size_t sub_count( void ) const {
+    return this->tab.pop();
+  }
+  void release( void );
+  /* put in new sub
+   * tab[ sub ] => {cnt} */
+  RedisSubStatus put( uint32_t h,  const char *sub,  size_t len,
+                      RedisPatternRoute *&rt ) {
+    RouteLoc loc;
+    rt = this->tab.upsert( h, sub, len, loc );
+    if ( rt == NULL )
+      return REDIS_SUB_NOT_FOUND;
+    if ( loc.is_new ) {
+      rt->msg_cnt = 0;
+      rt->re = NULL;
+      rt->md = NULL;
+      return REDIS_SUB_OK;
+    }
+    return REDIS_SUB_EXISTS;
+  }
+
+  /* iterate first tab[ sub ] */
+  bool first( RedisPatternRoutePos &pos ) {
+    pos.rt = this->tab.first( pos.v, pos.off );
+    return pos.rt != NULL;
+  }
+  /* iterate next tab[ sub ] */
+  bool next( RedisPatternRoutePos &pos ) {
     pos.rt = this->tab.next( pos.v, pos.off );
     return pos.rt != NULL;
   }

@@ -195,6 +195,7 @@ struct RedisExec {
   uint64_t         step_mask; /* step key mask */
   size_t           argc;      /* count of args in cmd msg */
   RedisSubMap      sub_tab;   /* pub/sub subscription table */
+  RedisPatternMap  pat_tab;   /* pub/sub pattern sub table */
   RouteDB        & sub_route; /* map subject to sub_id */
   KvPubSub       & pubsub;    /* notify subscribe and unsubscribe */
   uint32_t         sub_id;    /* fd, set this after accept() */
@@ -364,7 +365,12 @@ struct RedisExec {
   ExecStatus exec_punsubscribe( void );
   ExecStatus exec_subscribe( void );
   ExecStatus exec_unsubscribe( void );
+  ExecStatus do_subscribe( const char *sub,  size_t len );
+  ExecStatus do_unsubscribe( const char *sub,  size_t len );
+  ExecStatus do_psubscribe( const char *sub,  size_t len );
+  ExecStatus do_punsubscribe( const char *sub,  size_t len );
   ExecStatus do_sub( int flags );
+  bool pub_message( EvPublish &pub,  RedisPatternRoute *rt );
   bool do_pub( EvPublish &pub );
   bool do_hash_to_sub( uint32_t h,  char *key,  size_t &keylen );
   /* SCRIPT */

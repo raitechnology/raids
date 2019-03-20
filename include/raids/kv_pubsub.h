@@ -53,34 +53,77 @@ struct KvMsgList {
   KvMsg       msg;
 };
 
+struct KvPrefHash {
+  uint8_t pref;
+  uint8_t hash[ 4 ];
+
+  uint32_t get_hash( void ) const {
+    uint32_t h;
+    ::memcpy( &h, this->hash, sizeof( uint32_t ) );
+    return h;
+  }
+  void set_hash( uint32_t h ) {
+    ::memcpy( this->hash, &h, sizeof( uint32_t ) );
+  }
+};
+
 struct KvSubMsg : public KvMsg {
   uint32_t hash,     /* hash of subject */
-           sub_id,   /* the fd of subscriber at source */
            msg_size; /* size of message data */
   uint16_t sublen,   /* length of subject, not including null char */
            replylen; /* length of reply, not including null char */
+  char     buf[ 4 ];
 
   char * subject( void ) {
-    return (char *) (void *) &this[ 1 ];
+    return this->buf;
   }
   char * reply( void ) {
-    char * ptr = this->subject();
-    return &ptr[ this->sublen + 1 ];
+    return &this->buf[ this->sublen + 1 ];
+  }
+  uint8_t * trail( void ) {
+    return (uint8_t *) &this->buf[ this->sublen + 1 + this->replylen + 1 ];
+  }
+  void set_subject( const char *s,  uint16_t len ) {
+    this->sublen = len;
+    ::memcpy( this->buf, s, len );
+    this->buf[ len ] = '\0';
+  }
+  void set_reply( const char *s,  uint16_t len ) {
+    this->replylen = len;
+    ::memcpy( &this->buf[ this->sublen + 1 ], s, len );
+    this->buf[ this->sublen + 1 + len ] = '\0';
   }
   char & src_type( void ) {
-    char * ptr = this->reply();
-    return ptr[ this->replylen + 1 ];
+    char * ptr = (char *) this->trail();
+    return ptr[ 0 ];
   }
   void * msg_data( void ) {
-    char   * ptr = this->subject();
-    uint32_t off = this->sublen + 1 + this->replylen + 1 + 1;
-    off = kv::align<uint32_t>( off, sizeof( uint32_t ) );
-    return &ptr[ off ];
+    uint32_t off = kv::align<uint32_t>( this->msg_size, sizeof( uint32_t ) );
+    return &((char *) (void *) this)[ this->size - off ];
   }
-  static size_t calc_size( size_t sublen,  size_t replylen,  size_t msg_size ) {
+  void set_msg_data( const void *p,  uint32_t len ) {
+    uint32_t off = kv::align<uint32_t>( len, sizeof( uint32_t ) );
+    this->msg_size = len;
+    ::memcpy( &((char *) (void *) this)[ this->size - off ], p, len );
+  }
+  uint8_t & prefix_cnt( void ) {
+    uint8_t * ptr = this->trail();
+    return ptr[ 1 ];
+  }
+  KvPrefHash * prefix_array( void ) {
+    uint8_t * ptr = this->trail();
+    return (KvPrefHash *) (void *) &ptr[ 2 ];
+  }
+  KvPrefHash & prefix_hash( uint8_t i ) {
+    return this->prefix_array()[ i ];
+  }
+  static size_t calc_size( size_t sublen,  size_t replylen,  size_t msg_size,
+                           uint8_t pref_cnt ) {
     return kv::align<size_t>(
-      kv::align<size_t>( sizeof( KvSubMsg ) + sublen + 1 + replylen + 1 + 1,
-                         sizeof( uint32_t ) ) + msg_size, sizeof( uint32_t ) );
+      sizeof( KvSubMsg ) - 4 + sublen + 1 + replylen + 1
+      + 1 /* src */ + 1 /* pref_cnt */
+      + (size_t) pref_cnt * 5 /* pref + hash */, sizeof( uint32_t ) )
+      + kv::align<size_t>( msg_size, sizeof( uint32_t ) );
   }
 };
 
@@ -177,13 +220,25 @@ struct KvPubSub : public EvSocket {
   bool send_vec( size_t cnt,  void *vec,  uint64_t *siz,  size_t dest );
   KvMsg *create_kvmsg( KvMsgType mtype,  size_t sz );
   KvSubMsg *create_kvsubmsg( uint32_t h,  const char *sub,  size_t len,
-                             const char *reply,  size_t rlen,
+                             const uint8_t *pref,  const uint32_t *hash,
+                             uint8_t pref_cnt,  const char *reply, size_t rlen,
                              const void *msgdata,  size_t msgsz,
-                             uint32_t sub_id,  char src_type,  KvMsgType mtype );
+                             char src_type,  KvMsgType mtype );
+  KvSubMsg *create_kvsubmsg( uint32_t h,  const char *sub,  size_t len,
+                             char src_type,  KvMsgType mtype );
+  KvSubMsg *create_kvsubmsg( uint32_t h,  const char *pattern,  size_t len,
+                             const char *prefix,  uint8_t prefix_len,
+                             char src_type,  KvMsgType mtype );
   void notify_sub( uint32_t h,  const char *sub,  size_t len,
                    uint32_t sub_id,  uint32_t rcnt,  char src_type );
   void notify_unsub( uint32_t h,  const char *sub,  size_t len,
                      uint32_t sub_id,  uint32_t rcnt,  char src_type );
+  void notify_psub( uint32_t h,  const char *pattern,  size_t len,
+                    const char *prefix,  uint8_t prefix_len,
+                    uint32_t sub_id,  uint32_t rcnt,  char src_type );
+  void notify_punsub( uint32_t h,  const char *pattern,  size_t len,
+                      const char *prefix,  uint8_t prefix_len,
+                      uint32_t sub_id,  uint32_t rcnt,  char src_type );
   void process( bool use_prefetch );
   void process_shutdown( void );
   void process_close( void );

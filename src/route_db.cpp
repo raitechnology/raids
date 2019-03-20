@@ -7,6 +7,17 @@
 using namespace rai;
 using namespace ds;
 
+void
+RouteDB::init_prefix_seed( void )
+{
+  for ( uint8_t i = 0; i < 64; i++ ) {
+    SysWildSub w( NULL, i );
+    this->pre_seed[ i ] = kv_crc_c( w.sub, w.len, 0 );
+    this->pre_count[ i ] = 0;
+  }
+  this->pat_mask = 0;
+}
+
 static uint32_t *
 make_space( uint32_t i,  uint32_t &size,  uint32_t *&ptr,  uint32_t *stat_spc )
 {
@@ -29,6 +40,14 @@ RouteDB::make_route_space( uint32_t i )
 {
   return make_space( i, this->route_spc_size, this->route_spc_ptr,
                      this->route_spc );
+}
+
+uint32_t *
+RouteDB::make_push_route_space( uint8_t n,  uint32_t i )
+{
+  return make_space( i, this->push_route_spc[ n ].size,
+                     this->push_route_spc[ n ].ptr,
+                     this->push_route_spc[ n ].spc );
 }
 
 uint32_t *
@@ -174,6 +193,31 @@ RouteDB::decompress_routes( uint32_t r,  uint32_t *&routes,  bool deref )
 }
 
 uint32_t
+RouteDB::push_decompress_routes( uint8_t n,  uint32_t r,  uint32_t *&routes )
+{
+  uint32_t rcnt;
+  if ( this->dc.is_not_encoded( r ) ) { /* if is a multi value code */
+    CodeRef * p;
+    uint32_t  pos,
+              val;
+    if ( this->zht != NULL && this->zht->find( r, pos, val ) ) {
+      p = (CodeRef *) (void *) &this->code_buf[ val ];
+      routes = this->make_push_route_space( n, p->rcnt );
+      rcnt = this->dc.decode_stream( p->ecnt, &p->code, 0, routes );
+    }
+    else { /* no route exists */
+      routes = NULL;
+      rcnt = 0;
+    }
+  }
+  else { /* single value code */
+    routes = this->make_push_route_space( n, MAX_DELTA_CODE_LENGTH );
+    rcnt = this->dc.decode( r, routes, 0 );
+  }
+  return rcnt;
+}
+
+uint32_t
 RouteDB::decompress_one( uint32_t r )
 {
   if ( this->dc.is_not_encoded( r ) ) { /* if is a multi value code */
@@ -259,6 +303,28 @@ RouteDB::del_route( uint32_t hash,  uint32_t r )
     if ( this->code_free * 2 > this->code_end )
       this->gc_code_ref_space();
   }
+  return xcnt;
+}
+
+uint32_t
+RouteDB::add_pattern_route( uint32_t hash,  uint32_t r,  uint16_t pre_len )
+{
+  uint32_t xcnt = this->add_route( hash, r );
+  if ( pre_len > 63 )
+    pre_len = 63;
+  if ( this->pre_count[ pre_len ]++ == 0 )
+    this->pat_mask |= ( (uint64_t) 1 << pre_len );
+  return xcnt;
+}
+
+uint32_t
+RouteDB::del_pattern_route( uint32_t hash,  uint32_t r,  uint16_t pre_len )
+{
+  uint32_t xcnt = this->del_route( hash, r );
+  if ( pre_len > 63 )
+    pre_len = 63;
+  if ( --this->pre_count[ pre_len ] == 0 )
+    this->pat_mask &= ~( (uint64_t) 1 << pre_len );
   return xcnt;
 }
 

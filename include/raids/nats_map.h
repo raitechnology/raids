@@ -1,6 +1,11 @@
 #ifndef __rai_raids__nats_map_h__
 #define __rai_raids__nats_map_h__
 
+extern "C" {
+  struct pcre2_real_code_8;
+  struct pcre2_real_match_data_8;
+}
+
 #include <raids/route_ht.h>
 
 namespace rai {
@@ -70,6 +75,30 @@ struct NatsStr {
   size_t length( void ) const {
     return sizeof( uint16_t ) + this->len;
   }
+
+  bool is_wild( void ) const {
+    if ( this->len == 0 )
+      return false;
+    /* last char or fist char * or > */
+    if ( this->str[ this->len - 1 ] == '*' ||
+         this->str[ this->len - 1 ] == '>' ) {
+      if ( this->len == 1 ) /* is first char */
+        return true;
+      if ( this->str[ this->len - 2 ] == '.' ) /* is last char */
+        return true;
+    }
+    /* look for .*. */
+    return ::memmem( this->str, this->len, ".*.", 3 ) != NULL;
+  }
+  bool is_valid( void ) {
+    if ( this->len == 0 )
+      return false;
+    /* if first is . or last is . */
+    if ( this->str[ 0 ] == '.' || this->str[ this->len - 1 ] == '.' )
+      return false;
+    /* if any empty segments */
+    return ::memmem( this->str, this->len, "..", 2 ) == NULL;
+  }
 };
 
 /* a struct used to insert or find a sid/subj */
@@ -107,6 +136,23 @@ struct NatsMapRec {
   }
 };
 
+/* hash of prefix with wild value */
+struct NatsWildRec {
+  uint32_t                  hash,
+                            subj_hash;
+  pcre2_real_code_8       * re;
+  pcre2_real_match_data_8 * md;
+  uint16_t                  len;
+  char                      value[ 2 ];
+
+  bool equals( const void *s,  uint16_t l ) const {
+    return l == this->len && ::memcmp( s, this->value, l ) == 0;
+  }
+  void copy( const void *s,  uint16_t l ) {
+    ::memcpy( this->value, s, l );
+  }
+};
+
 enum NatsSubStatus {
   NATS_OK        = 0,
   NATS_IS_NEW    = 1,
@@ -117,7 +163,8 @@ enum NatsSubStatus {
 };
 
 /* the subscription table map hashing methods */
-typedef RouteVec<NatsMapRec> NatsMap;
+typedef RouteVec<NatsMapRec>  NatsMap;
+typedef RouteVec<NatsWildRec> NatsWild;
 
 /* iterate over sid -> subjects or subject -> sids */
 struct NatsIter {
@@ -176,12 +223,28 @@ struct NatsLookup {
 
 /* table of subjects and sids for routing messages */
 struct NatsSubMap {
-  NatsMap sub_map, sid_map;
+  NatsMap  sub_map,
+           sid_map;
+  NatsWild wild_map;
 
   void release( void ) {
     this->sub_map.release();
     this->sid_map.release();
+    this->wild_map.release();
   }
+  NatsWildRec *add_wild( uint32_t h,  NatsStr &subj ) {
+    RouteLoc      loc;
+    NatsWildRec * rt;
+    rt = this->wild_map.upsert( h, subj.str, subj.len, loc );
+    if ( rt != NULL && loc.is_new ) {
+       rt->subj_hash = subj.hash();
+       rt->re = NULL;
+       rt->md = NULL;
+    }
+    return rt;
+  }
+  void rem_wild( uint32_t h,  NatsStr &subj );
+
   /* put in any elem, search for it and append if not found
    * sub_tab[ sub ] => sid, sid2...
    * sid_tab[ sid ] => subj */
@@ -235,6 +298,9 @@ struct NatsSubMap {
         return NATS_OK;
       return NATS_EXPIRED;
     }
+    return NATS_NOT_FOUND;
+  }
+  NatsSubStatus lookup_wild( NatsStr &,  NatsLookup & ) {
     return NATS_NOT_FOUND;
   }
   /* after publish, remove sids that are dead */

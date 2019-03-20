@@ -359,20 +359,28 @@ test_subht_lnk   := $(raids_dlnk)
 
 $(bind)/test_subht: $(test_subht_objs) $(test_subht_libs)
 
+test_wild_files := test_wild
+test_wild_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(test_wild_files)))
+test_wild_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(test_wild_files)))
+test_wild_libs  := $(raids_dlib)
+test_wild_lnk   := $(raids_dlnk)
+
+$(bind)/test_wild: $(test_wild_objs) $(test_wild_libs)
+
 all_exes    += $(bind)/client $(bind)/test_msg \
                $(bind)/redis_cmd $(bind)/test_cmd $(bind)/test_list \
 	       $(bind)/test_hash $(bind)/test_set $(bind)/test_zset \
 	       $(bind)/test_hllnum $(bind)/test_hllw $(bind)/test_hllsub \
 	       $(bind)/test_geo $(bind)/test_routes $(bind)/test_delta \
 	       $(bind)/test_decimal $(bind)/test_cr $(bind)/test_rtht \
-	       $(bind)/test_subht
+	       $(bind)/test_subht $(bind)/test_wild
 all_depends += $(client_deps) $(test_msg_deps) \
                $(redis_cmd_deps) $(test_cmd_deps) $(test_list_deps) \
 	       $(test_hash_deps) $(test_set_deps) $(test_zset_deps) \
 	       $(test_hllnum_deps) $(test_hllw_deps) $(test_hllsub_deps) \
 	       $(test_geo_deps) $(test_routes_deps) $(test_delta_deps) \
 	       $(test_decimal_deps) $(test_cr_deps) $(test_rtht_deps) \
-	       $(test_subht_deps)
+	       $(test_subht_deps) $(test_wild_deps)
 
 all_dirs := $(bind) $(libd) $(objd) $(dependd)
 

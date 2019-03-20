@@ -174,8 +174,12 @@ struct RouteHT {
   }
   /* find data and pos by hash */
   Data *locate_hash( uint32_t h,  uint16_t &pos ) const {
+    pos = (uint16_t) ( h % HT_SIZE );
+    return this->iterate_hash( h, pos );
+  }
+  Data *iterate_hash( uint32_t h,  uint16_t &pos ) const {
     Data   * data;
-    uint16_t i = (uint16_t) ( h % HT_SIZE );
+    uint16_t i = (uint16_t) ( pos % HT_SIZE );
 
     while ( this->entry[ i ].off != 0 ) {
       if ( this->entry[ i ].half == (uint16_t) h ) {
@@ -538,14 +542,23 @@ struct RouteVec {
     return this->find( h, s, l, loc );
   }
 
-  Data *find_by_hash( uint32_t h ) const {
-    uint32_t i = 0;
-    uint16_t j;
+  Data *find_by_hash( uint32_t h,  RouteLoc &loc ) const {
+    loc.init();
     if ( this->vec_size == 0 )
       return NULL;
     if ( this->vec_size > 1 )
-      i = this->bsearch( h );
-    return this->vec[ i ]->locate_hash( h, j );
+      loc.i = this->bsearch( h );
+    return this->vec[ loc.i ]->locate_hash( h, loc.j );
+  }
+
+  Data *find_next_by_hash( uint32_t h,  RouteLoc &loc ) const {
+    loc.j++;
+    return this->vec[ loc.i ]->iterate_hash( h, loc.j );
+  }
+
+  Data *find_by_hash( uint32_t h ) const {
+    RouteLoc loc;
+    return this->find_by_hash( h, loc );
   }
 
   bool init_ht( void ) {

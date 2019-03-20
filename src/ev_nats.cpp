@@ -18,6 +18,9 @@
 #include <raikv/util.h>
 #include <raids/ev_publish.h>
 #include <raids/kv_pubsub.h>
+#define PCRE2_CODE_UNIT_WIDTH 8
+#include <pcre2.h>
+#include <raids/pattern_cvt.h>
 
 using namespace rai;
 using namespace ds;
@@ -419,14 +422,92 @@ EvNatsService::add_sub( void )
   NatsStr xsubj( this->subject, this->subject_len );
 
   if ( this->map.put( xsubj, xsid ) == NATS_IS_NEW ) {
-    uint32_t rcnt = this->poll.sub_route.add_route( xsubj.hash(), this->fd );
-    this->poll.pubsub->notify_sub( xsubj.hash(), xsubj.str, xsubj.len,
-                                   this->fd, rcnt, 'N' );
+    if ( xsubj.is_wild() ) {
+      this->add_wild( xsubj );
+    }
+    else {
+      uint32_t rcnt = this->poll.sub_route.add_route( xsubj.hash(), this->fd );
+      this->poll.pubsub->notify_sub( xsubj.hash(), xsubj.str, xsubj.len,
+                                     this->fd, rcnt, 'N' );
+    }
   }
 #if 0
   printf( "add_sub:\n" );
   this->map.print();
 #endif
+}
+
+void
+EvNatsService::add_wild( NatsStr &xsubj )
+{
+  NatsWildRec * rt;
+  char          buf[ 1024 ];
+  PatternCvt    cvt( buf, sizeof( buf ) );
+  uint32_t      h, rcnt;
+  size_t        erroff;
+  int           error;
+
+  if ( cvt.convert_nats( xsubj.str, xsubj.len ) == 0 ) {
+    h = kv_crc_c( xsubj.str, cvt.prefixlen,
+                  this->poll.sub_route.prefix_seed( cvt.prefixlen ) );
+    rt = this->map.add_wild( h, xsubj );
+    if ( rt == NULL || rt->re != NULL )
+      return;
+    rt->re = pcre2_compile( (uint8_t *) buf, cvt.off, 0, &error, &erroff, 0 );
+    if ( rt->re == NULL ) {
+      fprintf( stderr, "re failed\n" );
+    }
+    else {
+      rt->md = pcre2_match_data_create_from_pattern( rt->re, NULL );
+      if ( rt->md == NULL ) {
+        pcre2_code_free( rt->re );
+        rt->re = NULL;
+        fprintf( stderr, "md failed\n" );
+      }
+    }
+    if ( rt->re == NULL ) {
+      this->map.rem_wild( h, xsubj );
+      return;
+    }
+    rcnt = this->poll.sub_route.add_pattern_route( h, this->fd, cvt.prefixlen );
+    this->poll.pubsub->notify_psub( h, buf, cvt.off, xsubj.str, cvt.prefixlen,
+                                    this->fd, rcnt, 'N' );
+  }
+}
+
+void
+NatsSubMap::rem_wild( uint32_t h,  NatsStr &subj )
+{
+  RouteLoc      loc;
+  NatsWildRec * rt;
+  if ( (rt = this->wild_map.find( h, subj.str, subj.len, loc )) != NULL ) {
+    if ( rt->md != NULL ) {
+      pcre2_match_data_free( rt->md );
+      rt->md = NULL;
+    }
+    if ( rt->re != NULL ) {
+      pcre2_code_free( rt->re );
+      rt->re = NULL;
+    }
+    this->wild_map.remove( loc );
+  }
+}
+
+void
+EvNatsService::rem_wild( NatsStr &xsubj )
+{
+  char       buf[ 1024 ];
+  PatternCvt cvt( buf, sizeof( buf ) );
+  uint32_t   h, rcnt;
+
+  if ( cvt.convert_nats( xsubj.str, xsubj.len ) == 0 ) {
+    h = kv_crc_c( xsubj.str, cvt.prefixlen,
+                  this->poll.sub_route.prefix_seed( cvt.prefixlen ) );
+    rcnt = this->poll.sub_route.del_pattern_route( h, this->fd, cvt.prefixlen );
+    this->poll.pubsub->notify_punsub( h, buf, cvt.off, xsubj.str, cvt.prefixlen,
+                                      this->fd, rcnt, 'N' );
+    this->map.rem_wild( h, xsubj );
+  }
 }
 
 void
@@ -444,11 +525,15 @@ EvNatsService::rem_sid( uint32_t max_msgs )
       uint32_t h = xsubj.hash();
       status = this->map.expire_subj( xsubj, xsid, max_msgs );
       if ( status == NATS_EXPIRED ) {
-        uint32_t rcnt = 0;
-        if ( this->map.sub_map.find_by_hash( h ) == NULL )
-          rcnt = this->poll.sub_route.del_route( h, this->fd );
-        this->poll.pubsub->notify_unsub( h, xsubj.str, xsubj.len,
-                                         this->fd, rcnt, 'N' );
+        if ( xsubj.is_wild() )
+          this->rem_wild( xsubj );
+        else {
+          uint32_t rcnt = 0;
+          if ( this->map.sub_map.find_by_hash( h ) == NULL )
+            rcnt = this->poll.sub_route.del_route( h, this->fd );
+          this->poll.pubsub->notify_unsub( h, xsubj.str, xsubj.len,
+                                           this->fd, rcnt, 'N' );
+        }
       }
       if ( status != NATS_OK ) {
         exp_cnt++;
@@ -484,33 +569,31 @@ EvNatsService::rem_all_sub( void )
   NatsMapRec * rt;
   uint32_t     i;
   uint16_t     off;
-  NatsStr      subj;
+  NatsStr      xsubj;
 
   for ( rt = this->map.sub_map.first( i, off ); rt != NULL;
         rt = this->map.sub_map.next( i, off ) ) {
-    subj.read( rt->value );
-    uint32_t rcnt = this->poll.sub_route.del_route( rt->hash, this->fd );
-    this->poll.pubsub->notify_unsub( rt->hash, subj.str, subj.len,
-                                     this->fd, rcnt, 'N' );
+    xsubj.read( rt->value );
+    if ( xsubj.is_wild() )
+      this->rem_wild( xsubj );
+    else {
+      uint32_t rcnt = this->poll.sub_route.del_route( rt->hash, this->fd );
+      this->poll.pubsub->notify_unsub( rt->hash, xsubj.str, xsubj.len,
+                                       this->fd, rcnt, 'N' );
+    }
   }
 }
 
 bool
 EvNatsService::fwd_pub( void )
 {
-  NatsStr    xsub( this->subject, this->subject_len );
-  uint32_t * routes,
-             rcnt;
-  rcnt = this->poll.sub_route.get_route( xsub.hash(), routes );
-  if ( rcnt > 0 ) {
-    EvPublish pub( this->subject, this->subject_len,
-                   this->reply, this->reply_len,
-                   this->msg_ptr, this->msg_len,
-                   routes, rcnt, this->fd, xsub.hash(),
-                   this->msg_len_ptr, this->msg_len_digits );
-    return this->poll.publish( pub );
-  }
-  return true;
+  NatsStr   xsub( this->subject, this->subject_len );
+  EvPublish pub( this->subject, this->subject_len,
+                 this->reply, this->reply_len,
+                 this->msg_ptr, this->msg_len,
+                 this->fd, xsub.hash(),
+                 this->msg_len_ptr, this->msg_len_digits );
+  return this->poll.publish( pub, NULL, 0, NULL );
 }
 
 bool
@@ -519,25 +602,55 @@ EvNatsService::publish( EvPublish &pub )
   bool flow_good = true;
 
   if ( this->echo || (uint32_t) this->fd != pub.src_route ) {
-    NatsStr       xsubj( pub.subject, pub.subject_len, pub.subj_hash );
-    NatsStr       xsid;
-    NatsLookup    look;
-    NatsSubStatus status = this->map.lookup_publish( xsubj, look );
-
-    if ( status != NATS_NOT_FOUND ) {
-      for ( ; look.iter.get( xsid ); look.iter.incr() ) {
-        flow_good &= this->fwd_msg( pub, xsid.str, xsid.len );
+    for ( uint8_t cnt = 0; cnt < pub.prefix_cnt; cnt++ ) {
+      NatsStr       xsid;
+      NatsLookup    look;
+      NatsSubStatus status;
+      
+      if ( pub.subj_hash == pub.hash[ cnt ] ) {
+        NatsStr xsubj( pub.subject, pub.subject_len, pub.hash[ cnt ] );
+        status = this->map.lookup_publish( xsubj, look );
+        if ( status != NATS_NOT_FOUND ) {
+          for ( ; look.iter.get( xsid ); look.iter.incr() ) {
+            flow_good &= this->fwd_msg( pub, xsid.str, xsid.len );
+          }
+        }
+        if ( status == NATS_EXPIRED ) {
+          uint32_t h = pub.subj_hash;
+          if ( this->map.expire_publish( xsubj, look ) == NATS_EXPIRED ) {
+            uint32_t rcnt = 0;
+            /* check for duplicate hashes */
+            if ( this->map.sub_map.find_by_hash( h ) == NULL )
+              rcnt = this->poll.sub_route.del_route( h, this->fd );
+            this->poll.pubsub->notify_unsub( h, xsubj.str, xsubj.len,
+                                             this->fd, rcnt, 'N' );
+          }
+        }
       }
-    }
-    if ( status == NATS_EXPIRED ) {
-      uint32_t h = pub.subj_hash;
-      if ( this->map.expire_publish( xsubj, look ) == NATS_EXPIRED ) {
-        uint32_t rcnt = 0;
-        /* check for duplicate hashes */
-        if ( this->map.sub_map.find_by_hash( h ) == NULL )
-          rcnt = this->poll.sub_route.del_route( h, this->fd );
-        this->poll.pubsub->notify_unsub( h, xsubj.str, xsubj.len,
-                                         this->fd, rcnt, 'N' );
+      else {
+        NatsWildRec * rt = NULL;
+        RouteLoc      loc;
+        uint32_t      h  = pub.hash[ cnt ];
+        rt = this->map.wild_map.find_by_hash( h, loc );
+        for (;;) {
+          if ( rt == NULL )
+            break;
+          if ( pcre2_match( rt->re, (const uint8_t *) pub.subject,
+                            pub.subject_len, 0, 0, rt->md, 0 ) == 1 ) {
+            NatsStr xsubj( rt->value, rt->len, rt->subj_hash );
+            status = this->map.lookup_publish( xsubj, look );
+            if ( status != NATS_NOT_FOUND ) {
+              for ( ; look.iter.get( xsid ); look.iter.incr() ) {
+                flow_good &= this->fwd_msg( pub, xsid.str, xsid.len );
+              }
+            }
+            if ( status == NATS_EXPIRED ) {
+              if ( this->map.expire_publish( xsubj, look ) == NATS_EXPIRED )
+                this->rem_wild( xsubj );
+            }
+          }
+          rt = this->map.wild_map.find_next_by_hash( h, loc );
+        }
       }
     }
   }

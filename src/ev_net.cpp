@@ -16,6 +16,7 @@
 #include <raids/ev_nats.h>
 #include <raids/ev_publish.h>
 #include <raids/kv_pubsub.h>
+#include <raids/bit_iter.h>
 
 using namespace rai;
 using namespace ds;
@@ -188,14 +189,26 @@ EvPoll::dispatch( void )
 }
 
 bool
-RoutePublish::publish( EvPublish &pub )
+EvPoll::publish_one( EvPublish &pub,  uint32_t *rcount_total,
+                     RoutePublishData &rpd )
 {
-  EvPoll & poll = static_cast<EvPoll &>( *this );
-  EvSocket *s;
-  bool flow_good = true;
-  for ( uint32_t i = 0; i < pub.rcount; i++ ) {
-    if ( pub.routes[ i ] <= (uint32_t) poll.maxfd &&
-         (s = poll.sock[ pub.routes[ i ] ]) != NULL ) {
+  uint32_t * routes    = rpd.routes;
+  uint32_t   rcount    = rpd.rcount;
+  uint32_t   hash[ 1 ];
+  uint8_t    prefix[ 1 ];
+  bool       flow_good = true;
+
+  if ( rcount_total != NULL )
+    *rcount_total += rcount;
+  pub.hash       = hash;
+  pub.prefix     = prefix;
+  pub.prefix_cnt = 1;
+  hash[ 0 ]      = rpd.hash;
+  prefix[ 0 ]    = rpd.prefix;
+  for ( uint32_t i = 0; i < rcount; i++ ) {
+    EvSocket * s;
+    if ( routes[ i ] <= (uint32_t) this->maxfd &&
+         (s = this->sock[ routes[ i ] ]) != NULL ) {
       switch ( s->type ) {
         case EV_REDIS_SOCK:
           flow_good &= ((EvRedisService *) s)->publish( pub );
@@ -203,7 +216,7 @@ RoutePublish::publish( EvPublish &pub )
         case EV_HTTP_SOCK:
           flow_good &= ((EvHttpService *) s)->publish( pub );
           break;
-	case EV_LISTEN_SOCK:  break;
+        case EV_LISTEN_SOCK:  break;
         case EV_CLIENT_SOCK:
           flow_good &= ((EvNetClient *) s)->publish( pub );
           break;
@@ -219,6 +232,220 @@ RoutePublish::publish( EvPublish &pub )
         case EV_SHM_SOCK: 
           flow_good &= ((EvShmClient *) s)->publish( pub );
           break;
+      }
+    }
+  }
+  return flow_good;
+}
+
+template<uint8_t N>
+bool
+EvPoll::publish_multi( EvPublish &pub,  uint32_t *rcount_total,
+                       RoutePublishData *rpd )
+{
+  EvSocket * s;
+  uint32_t   min_route,
+             rcount    = 0,
+             hash[ 2 ];
+  uint8_t    prefix[ 2 ],
+             i, cnt;
+  bool       flow_good = true;
+
+  pub.hash   = hash;
+  pub.prefix = prefix;
+  for (;;) {
+    for ( i = 0; i < N; ) {
+      if ( rpd[ i++ ].rcount > 0 ) {
+        min_route = rpd[ i - 1 ].routes[ 0 ];
+        goto have_one_route;
+      }
+    }
+    break;
+  have_one_route:;
+    for ( ; i < N; i++ ) {
+      if ( rpd[ i ].rcount > 0 ) {
+        if ( rpd[ i ].routes[ 0 ] < min_route )
+          min_route = rpd[ i ].routes[ 0 ];
+      }
+    }
+    cnt = 0;
+    for ( i = 0; i < N; i++ ) {
+      if ( rpd[ i ].routes[ 0 ] == min_route ) {
+        rpd[ i ].routes++;
+        rpd[ i ].rcount--;
+        hash[ cnt ]   = rpd[ i ].hash;
+        prefix[ cnt ] = rpd[ i ].prefix;
+        cnt++;
+      }
+    }
+    if ( (s = this->sock[ min_route ]) != NULL ) {
+      rcount++;
+      pub.prefix_cnt = cnt;
+      switch ( s->type ) {
+        case EV_REDIS_SOCK:
+          flow_good &= ((EvRedisService *) s)->publish( pub );
+          break;
+        case EV_HTTP_SOCK:
+          flow_good &= ((EvHttpService *) s)->publish( pub );
+          break;
+        case EV_LISTEN_SOCK:  break;
+        case EV_CLIENT_SOCK:
+          flow_good &= ((EvNetClient *) s)->publish( pub );
+          break;
+        case EV_TERMINAL:
+          flow_good &= ((EvTerminal *) s)->publish( pub );
+          break;
+        case EV_NATS_SOCK:
+          flow_good &= ((EvNatsService *) s)->publish( pub );
+          break;
+        case EV_KV_PUBSUB:
+          flow_good &= ((KvPubSub *) s)->publish( pub );
+          break;
+        case EV_SHM_SOCK: 
+          flow_good &= ((EvShmClient *) s)->publish( pub );
+          break;
+      }
+    }
+  }
+  if ( rcount_total != NULL )
+    *rcount_total += rcount;
+  return flow_good;
+}
+
+bool
+EvPoll::publish_queue( EvPublish &pub,  uint32_t *rcount_total )
+{
+  RoutePublishQueue & queue     = this->pub_queue;
+  RoutePublishData  * rpd       = queue.pop();
+  EvSocket          * s;
+  uint32_t            min_route;
+  uint32_t            rcount    = 0;
+  bool                flow_good = true;
+  uint8_t             cnt;
+  uint8_t             prefix[ 65 ];
+  uint32_t            hash[ 65 ];
+
+  pub.hash   = hash;
+  pub.prefix = prefix;
+  while ( rpd != NULL ) {
+    min_route = rpd->routes[ 0 ];
+    rpd->routes++;
+    rpd->rcount--;
+    cnt = 1;
+    hash[ 0 ]   = rpd->hash;
+    prefix[ 0 ] = rpd->prefix;
+    if ( rpd->rcount > 0 )
+      queue.push( rpd );
+    for (;;) {
+      if ( queue.is_empty() ) {
+        rpd = NULL;
+        break;
+      }
+      rpd = queue.pop();
+      if ( min_route != rpd->routes[ 0 ] )
+        break;
+      rpd->routes++;
+      rpd->rcount--;
+      hash[ cnt ]   = rpd->hash;
+      prefix[ cnt ] = rpd->prefix;
+      cnt++;
+      if ( rpd->rcount > 0 )
+        queue.push( rpd );
+    }
+    if ( (s = this->sock[ min_route ]) != NULL ) {
+      rcount++;
+      pub.prefix_cnt = cnt;
+      switch ( s->type ) {
+        case EV_REDIS_SOCK:
+          flow_good &= ((EvRedisService *) s)->publish( pub );
+          break;
+        case EV_HTTP_SOCK:
+          flow_good &= ((EvHttpService *) s)->publish( pub );
+          break;
+        case EV_LISTEN_SOCK:  break;
+        case EV_CLIENT_SOCK:
+          flow_good &= ((EvNetClient *) s)->publish( pub );
+          break;
+        case EV_TERMINAL:
+          flow_good &= ((EvTerminal *) s)->publish( pub );
+          break;
+        case EV_NATS_SOCK:
+          flow_good &= ((EvNatsService *) s)->publish( pub );
+          break;
+        case EV_KV_PUBSUB:
+          flow_good &= ((KvPubSub *) s)->publish( pub );
+          break;
+        case EV_SHM_SOCK: 
+          flow_good &= ((EvShmClient *) s)->publish( pub );
+          break;
+      }
+    }
+  }
+  if ( rcount_total != NULL )
+    *rcount_total += rcount;
+  return flow_good;
+}
+
+bool
+RoutePublish::publish( EvPublish &pub,  uint32_t *rcount_total,
+                       uint8_t pref_cnt,  KvPrefHash *ph )
+{
+  EvPoll   & poll      = static_cast<EvPoll &>( *this );
+  uint32_t * routes    = NULL;
+  uint32_t   rcount    = poll.sub_route.get_route( pub.subj_hash, routes ),
+             hash;
+  uint8_t    n         = 0;
+  bool       flow_good = true;
+  RoutePublishData rpd[ 65 ];
+
+  if ( rcount_total != NULL )
+    *rcount_total = 0;
+  if ( rcount > 0 ) {
+    rpd[ 0 ].prefix = 64;
+    rpd[ 0 ].hash   = pub.subj_hash;
+    rpd[ 0 ].rcount = rcount;
+    rpd[ 0 ].routes = routes;
+    n = 1;
+  }
+
+  BitIter64 bi( poll.sub_route.pat_mask );
+  if ( bi.first() ) {
+    uint8_t j = 0;
+    do {
+      while ( j < pref_cnt ) {
+        if ( ph[ j++ ].pref == bi.i ) {
+          hash = ph[ j - 1 ].get_hash();
+          goto found_hash;
+        }
+      }
+      hash = kv_crc_c( pub.subject, bi.i, poll.sub_route.prefix_seed( bi.i ) );
+    found_hash:;
+      rcount = poll.sub_route.push_get_route( n, hash, routes );
+      if ( rcount > 0 ) {
+        rpd[ n ].hash   = hash;
+        rpd[ n ].prefix = bi.i;
+        rpd[ n ].rcount = rcount;
+        rpd[ n ].routes = routes;
+        n++;
+      }
+    } while ( bi.next() );
+  }
+  /* likely cases <= 3 wilcard matches, most likely just 1 match */
+  if ( n > 0 ) {
+    if ( n == 1 ) {
+      flow_good &= poll.publish_one( pub, rcount_total, rpd[ 0 ] );
+    }
+    else {
+      switch ( n ) {
+        case 2:
+          flow_good &= poll.publish_multi<2>( pub, rcount_total, rpd );
+          break;
+        default: {
+          for ( uint8_t i = 0; i < n; i++ )
+            poll.pub_queue.push( &rpd[ i ] );
+          flow_good &= poll.publish_queue( pub, rcount_total );
+          break;
+        }
       }
     }
   }

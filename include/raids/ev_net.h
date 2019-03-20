@@ -107,6 +107,7 @@ struct EvPoll : public RoutePublish {
                           PREFETCH_SIZE = 8;  /* pipe size of number of pref */
   size_t                  prefetch_cnt[ PREFETCH_SIZE + 1 ];
   RouteDB                 sub_route;       /* subscriptions */
+  RoutePublishQueue       pub_queue;
   kv::DLinkList<EvSocket>       active_list;/* active socks in poll */
   kv::DLinkList<EvRedisService> free_redis; /* EvRedisService free */
   kv::DLinkList<EvHttpService>  free_http;  /* EvHttpService free */
@@ -125,6 +126,13 @@ struct EvPoll : public RoutePublish {
   int wait( int ms );            /* call epoll() with ms timeout */
   bool dispatch( void );         /* process any sock in the queues */
   void drain_prefetch( EvPrefetchQueue &q ); /* process prefetches */
+  bool publish_one( EvPublish &pub,  uint32_t *rcount_total,
+                    RoutePublishData &rpd );
+  template<uint8_t N>
+  bool publish_multi( EvPublish &pub,  uint32_t *rcount_total,
+                      RoutePublishData *rpd );
+  bool publish_queue( EvPublish &pub,  uint32_t *rcount_total );
+
   int add_sock( EvSocket *s );
   void remove_sock( EvSocket *s );
   void process_quit( void );     /* quit state close socks */
