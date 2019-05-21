@@ -7,3 +7,6 @@
 [submodule "linecook"]
 	path = linecook
 	url = https://github.com/injinj/linecook.git
+[submodule "raimd"]
+	path = raimd
+	url = https://github.com/raitechnology/raimd.git
