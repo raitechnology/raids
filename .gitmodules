@@ -4,9 +4,6 @@
 [submodule "h3"]
 	path = h3
 	url = https://github.com/raitechnology/h3.git
-[submodule "libdecnumber"]
-	path = libdecnumber
-	url = https://github.com/raitechnology/libdecnumber.git
 [submodule "linecook"]
 	path = linecook
 	url = https://github.com/injinj/linecook.git
