@@ -7,14 +7,15 @@
 #include <raids/redis_exec.h>
 #include <raikv/work.h>
 #include <raikv/key_hash.h>
-#include <raids/redis_hash.h>
-#include <raids/decimal.h>
+#include <raimd/md_hash.h>
+#include <raimd/decimal.h>
 
 static const char *
 hash_status_string[]= { "ok", "not found", "full", "updated", "exists", "bad" };
 
 using namespace rai;
 using namespace ds;
+using namespace md;
 
 static HashData *
 resize_hash( HashData *curr,  size_t add_len,  bool is_copy = false )

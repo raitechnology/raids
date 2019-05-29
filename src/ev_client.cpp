@@ -122,17 +122,15 @@ EvTerminal::process( void )
 {
   size_t buflen = this->len - this->off;
   size_t msgcnt = 0;
+  RedisMsgStatus status;
   this->term.tty_input( &this->recv[ this->off ], buflen );
   this->off = this->len;
 
   for (;;) {
-    char * buf;
-    RedisMsgStatus status;
-
     buflen = this->term.line_len - this->term.line_off;
     if ( buflen == 0 )
       break;
-    buf = &this->term.line_buf[ this->term.line_off ];
+    char * buf = &this->term.line_buf[ this->term.line_off ];
     status = this->process_msg( buf, buflen );
     if ( status != REDIS_MSG_OK ) {
       if ( status != REDIS_MSG_PARTIAL ) {
@@ -150,7 +148,30 @@ EvTerminal::process( void )
   if ( msgcnt > 0 )
     this->term.tty_prompt();
   this->flush_out();
+
+  if ( this->line_len > 0 ) {
+    status = this->process_msg( this->line, this->line_len );
+    if ( status == REDIS_MSG_OK )
+      this->cb.on_msg( this->msg );
+    else if ( status != REDIS_MSG_PARTIAL )
+      this->cb.on_err( this->line, this->line_len, status );
+    ::free( this->line );
+    this->line = NULL;
+    this->line_len = 0;
+  }
   this->pop( EV_PROCESS );
+}
+
+void
+EvTerminal::process_line( const char *s )
+{
+  size_t slen = ::strlen( s );
+  this->line = (char *) ::realloc( this->line, this->line_len + slen + 1 );
+  if ( this->line != NULL ) {
+    ::memcpy( &this->line[ this->line_len ], s, slen );
+    this->line_len += slen;
+  }
+  this->idle_push( EV_PROCESS );
 }
 
 void

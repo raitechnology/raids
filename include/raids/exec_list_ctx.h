@@ -4,7 +4,7 @@
 namespace rai {
 namespace ds {
 
-template <class LIST_CLASS, MDType LIST_TYPE>
+template <class LIST_CLASS, md::MDType LIST_TYPE>
 struct ExecListCtx {
   RedisExec   & exec;
   kv::KeyCtx  & kctx;
@@ -24,7 +24,7 @@ struct ExecListCtx {
     kv::KeyStatus status = this->exec.exec_key_fetch( this->ctx, readonly );
     if ( status == KEY_OK ) {
       if ( this->ctx.type != LIST_TYPE ) {
-        if ( this->ctx.type == MD_NODATA )
+        if ( this->ctx.type == md::MD_NODATA )
           return readonly ? KEY_NOT_FOUND : KEY_IS_NEW;
         return KEY_NO_VALUE;
       }
@@ -33,6 +33,8 @@ struct ExecListCtx {
   }
 
   bool create( size_t count,  size_t ndata ) {
+    /*count = kv::align<size_t>( count, 8 );
+    ndata = kv::align<size_t>( ndata, 16 );*/
     void * data    = NULL;
     size_t datalen = LIST_CLASS::alloc_size( count, ndata );
     if ( (this->ctx.kstatus = this->kctx.resize( &data, datalen )) == KEY_OK ) {
@@ -55,7 +57,7 @@ struct ExecListCtx {
   }
 
   bool open_readonly( void ) {
-    uint8_t  lhdr[ LIST_HDR_OOB_SIZE ];
+    uint8_t  lhdr[ md::LIST_HDR_OOB_SIZE ];
     void   * data    = NULL;
     size_t   datalen = 0;
     uint64_t llen    = sizeof( lhdr );

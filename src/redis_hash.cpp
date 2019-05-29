@@ -5,16 +5,16 @@
 #include <raikv/util.h>
 #include <raikv/msg_ctx.h>
 #include <raids/redis_exec.h>
-#include <raids/md_type.h>
-#include <raids/redis_hash.h>
+#include <raimd/md_hash.h>
 #include <raids/exec_list_ctx.h>
-#include <raids/decimal.h>
+#include <raimd/decimal.h>
 #define PCRE2_CODE_UNIT_WIDTH 8
 #include <pcre2.h>
 
 using namespace rai;
 using namespace ds;
 using namespace kv;
+using namespace md;
 
 enum {
   DO_HEXISTS      = 1<<0,

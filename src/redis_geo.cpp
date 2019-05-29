@@ -5,13 +5,14 @@
 #include <math.h>
 #include <raikv/util.h>
 #include <raids/redis_exec.h>
-#include <raids/md_type.h>
-#include <raids/redis_geo.h>
+#include <raimd/md_geo.h>
 #include <raids/exec_list_ctx.h>
+#include <h3/h3api.h>
 
 using namespace rai;
 using namespace ds;
 using namespace kv;
+using namespace md;
 
 enum {
   DO_GEOHASH           = 1<<0,
@@ -745,7 +746,7 @@ RedisExec::do_gradius_store( RedisKeyCtx &ctx )
   }
   /* storedist key, a sortedset type */
   else if ( (stp.withflags & STOREDIST_F) != 0 ) {
-    ExecListCtx<ZSetData, MD_SORTEDSET> zset( *this, ctx );
+    ExecListCtx<ZSetData, MD_ZSET> zset( *this, ctx );
     double units = stp.units;
     size_t i;
 

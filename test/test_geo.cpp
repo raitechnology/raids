@@ -8,14 +8,15 @@
 #include <raids/redis_exec.h>
 #include <raikv/work.h>
 #include <raikv/key_hash.h>
-#include <raids/redis_geo.h>
+#include <raimd/md_geo.h>
+#include <h3/h3api.h>
 
 static const char *
 geo_status_string[] = { "ok", "not found", "full", "updated", "exists" };
 
 using namespace rai;
 using namespace ds;
-#define fallthrough __attribute__ ((fallthrough))
+using namespace md;
 
 static GeoData *
 resize_geo( GeoData *curr,  size_t add_len,  bool is_copy = false )

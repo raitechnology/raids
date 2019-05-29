@@ -4,13 +4,14 @@
 #include <stdint.h>
 #include <raikv/util.h>
 #include <raids/redis_exec.h>
-#include <raids/md_type.h>
+#include <raimd/md_types.h>
 #define PCRE2_CODE_UNIT_WIDTH 8
 #include <pcre2.h>
 
 using namespace rai;
 using namespace ds;
 using namespace kv;
+using namespace md;
 
 ExecStatus
 RedisExec::exec_del( RedisKeyCtx &ctx )

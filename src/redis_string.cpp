@@ -6,12 +6,13 @@
 #include <raikv/util.h>
 #include <raids/redis_exec.h>
 #include <raids/redis_bitfield.h>
-#include <raids/decimal.h>
-#include <raids/md_type.h>
+#include <raimd/decimal.h>
+#include <raimd/md_types.h>
 
 using namespace rai;
 using namespace ds;
 using namespace kv;
+using namespace md;
 
 enum {
   HAS_EXPIRE_NS    = 1, /* SET flags: EX expire, NX not exist, XX must exist */

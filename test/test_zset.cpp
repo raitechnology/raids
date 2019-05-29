@@ -7,14 +7,14 @@
 #include <raids/redis_exec.h>
 #include <raikv/work.h>
 #include <raikv/key_hash.h>
-#include <raids/redis_zset.h>
+#include <raimd/md_zset.h>
 
 static const char *
 zset_status_string[] = { "ok", "not found", "full", "updated", "exists" };
 
 using namespace rai;
 using namespace ds;
-#define fallthrough __attribute__ ((fallthrough))
+using namespace md;
 
 static ZSetData *
 resize_zset( ZSetData *curr,  size_t add_len,  bool is_copy = false )
@@ -269,7 +269,7 @@ main( int, char ** )
       case ZRANGE_CMD:          /* ZRANGE key start stop [WITHSCORES] */
       case ZREVRANGE_CMD:       /* ZREVRANGE key start stop [WITHSCORES] */
         withscores = ( msg.match_arg( 4, "withscores", 10, NULL ) == 1 );
-        fallthrough;
+        /* FALLTHRU */
       case ZREMRANGEBYRANK_CMD: /* ZREMRANGEBYRANK key start stop */
         if ( ! msg.get_arg( 2, ival ) || ! msg.get_arg( 3, jval ) )
           goto bad_args;
@@ -358,7 +358,7 @@ main( int, char ** )
       case ZRANGEBYLEX_CMD:     /* ZRANGEBYLEX key min max [LIMIT off cnt] */
       case ZREVRANGEBYLEX_CMD:  /* ZREVRANGEBYLEX key min max [LIMIT off cnt] */
         limit = ( msg.match_arg( 4, "limit", 5, NULL ) == 1 );
-        fallthrough;
+        /* FALLTHRU */
       case ZLEXCOUNT_CMD:       /* ZLEXCOUNT key min max */
       case ZREMRANGEBYLEX_CMD:  /* ZREMRANGEBYLEX key min max */
         if ( ! msg.get_arg( 2, lexlo, lexlolen ) ||
@@ -495,7 +495,7 @@ main( int, char ** )
                                          "min", 3,
                                          "max", 3,
                                          "none", 4, NULL ) ) {
-            default: fallthrough;
+            default: /* FALLTHRU */
             case 1: agg_type = ZAGGREGATE_SUM; break;
             case 2: agg_type = ZAGGREGATE_MIN; break;
             case 3: agg_type = ZAGGREGATE_MAX; break;

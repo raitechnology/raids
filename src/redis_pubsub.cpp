@@ -4,7 +4,6 @@
 #include <stdint.h>
 #include <raikv/util.h>
 #include <raids/redis_exec.h>
-#include <raids/md_type.h>
 #include <raids/ev_publish.h>
 #include <raids/route_db.h>
 #include <raids/kv_pubsub.h>

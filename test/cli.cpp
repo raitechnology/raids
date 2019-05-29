@@ -12,15 +12,15 @@ using namespace ds;
 using namespace kv;
 
 struct MyClient;
-struct StdinCallback : public EvCallback {
+struct TermCallback : public EvCallback { /* from terminal */
   MyClient &me;
-  StdinCallback( MyClient &m ) : me( m ) {}
+  TermCallback( MyClient &m ) : me( m ) {}
   virtual void on_msg( RedisMsg &msg );
   virtual void on_err( char *buf,  size_t buflen,  RedisMsgStatus status );
   virtual void on_close( void );
 };
 
-struct ClientCallback : public EvCallback {
+struct ClientCallback : public EvCallback { /* from socket */
   MyClient &me;
   ClientCallback( MyClient &m ) : me( m ) {}
   virtual void on_msg( RedisMsg &msg );
@@ -30,18 +30,20 @@ struct ClientCallback : public EvCallback {
 
 struct MyClient {
   EvPoll       & poll;
-  ClientCallback clicb;
-  StdinCallback  termcb;
-  EvTcpClient    tclient;
-  EvUnixClient   uclient;
-  EvShmClient    shm;
-  EvClient     * client;
-  EvTerminal     term;
+  ClientCallback clicb;   /* cb when network socket reads msg */
+  TermCallback   termcb;  /* cb when terminal reads msg */
+  EvTcpClient    tclient; /* tcp sock connection */
+  EvUnixClient   uclient; /* unix sock connection */
+  EvShmClient    shm;     /* shm fake connection, executes directly, no wait */
+  EvClient     * client;  /* one of the previous clients (tcp, unix, shm) */
+  EvTerminal     term;    /* read from keyboard */
+  uint64_t       msg_sent,
+                 msg_recv;
 
   MyClient( EvPoll &p ) : poll( p ), clicb( *this ),
      termcb( *this ), tclient( p, this->clicb ),
      uclient( p, this->clicb ), shm( p, this->clicb ),
-     client( 0 ), term( p, this->termcb ) {}
+     client( 0 ), term( p, this->termcb ), msg_sent( 0 ), msg_recv( 0 ) {}
 
   int connect( const char *h,  int p ) {
     int status;
@@ -75,7 +77,7 @@ struct MyClient {
 };
 
 void
-StdinCallback::on_msg( RedisMsg &msg )
+TermCallback::on_msg( RedisMsg &msg )
 {
   if ( msg.type == RedisMsg::BULK_ARRAY &&
        msg.len == 1 &&
@@ -99,17 +101,18 @@ StdinCallback::on_msg( RedisMsg &msg )
       ::free( b );
   }
 
+  this->me.msg_sent++;
   this->me.client->send_msg( msg );
 }
 
 void
-StdinCallback::on_err( char *,  size_t,  RedisMsgStatus status )
+TermCallback::on_err( char *,  size_t,  RedisMsgStatus status )
 {
   this->me.print_err( "terminal", status );
 }
 
 void
-StdinCallback::on_close( void )
+TermCallback::on_close( void )
 {
   this->me.term.printf( "bye\n" );
 }
@@ -131,6 +134,7 @@ ClientCallback::on_msg( RedisMsg &msg )
     if ( b != buf )
       ::free( b );
   }
+  this->me.msg_recv++;
 }
 
 void
@@ -147,11 +151,8 @@ ClientCallback::on_close( void )
 }
 
 static const char *
-get_arg( int argc, char *argv[], int n, int b, const char *f, const char *def )
+get_arg( int argc, char *argv[], int b, const char *f, const char *def )
 { 
-  /* [1]=host, [2]=port, no flags */
-  if ( n > 0 && argc > n && argv[ 1 ][ 0 ] != '-' )
-    return argv[ n ];
   for ( int i = 1; i < argc - b; i++ ) 
     if ( ::strcmp( f, argv[ i ] ) == 0 ) /* -p port */
       return argv[ i + b ];
@@ -162,21 +163,30 @@ int
 main( int argc, char *argv[] )
 {
   SignalHandler sighndl;
+  FILE       * input_fp = NULL;
   int          status = 0;
   bool         is_connected = false;
   EvPoll       poll;
   MyClient     my( poll );
 
-  const char * ho = get_arg( argc, argv, 1, 1, "-x", NULL ),
-             * pt = get_arg( argc, argv, 2, 1, "-p", "8888" ),
-             * pa = get_arg( argc, argv, 2, 1, "-a", NULL ),
-             * ma = get_arg( argc, argv, 2, 1, "-m", NULL ),
-             * he = get_arg( argc, argv, 0, 0, "-h", 0 );
+  const char * ho = get_arg( argc, argv, 1, "-x", NULL ),
+             * pt = get_arg( argc, argv, 1, "-p", "8888" ),
+             * pa = get_arg( argc, argv, 1, "-a", NULL ),
+             * ma = get_arg( argc, argv, 1, "-m", NULL ),
+             * fi = get_arg( argc, argv, 1, "-f", NULL ),
+             * he = get_arg( argc, argv, 0, "-h", 0 );
   if ( he != NULL ) {
     printf( "%s [-x host] [-p port] [-a /tmp/sock] [-m map]\n", argv[ 0 ] );
     return 0;
   }
 
+  if ( fi != NULL ) {
+    input_fp = ::fopen( fi, "r" );
+    if ( input_fp == NULL ) {
+      perror( fi );
+      return 1;
+    }
+  }
   poll.init( 5, false/*, false*/ );
   if ( pa != NULL ) {
     if ( my.connect( pa ) != 0 ) {
@@ -216,12 +226,30 @@ main( int argc, char *argv[] )
       if ( poll.quit >= 5 )
         break;
       bool idle = poll.dispatch(); /* true if idle, false if busy */
+      if ( idle && input_fp != NULL && my.term.line_len == 0 &&
+           my.msg_sent == my.msg_recv ) {
+        char tmp[ 1024 ];
+      get_next_line:;
+        if ( fgets( tmp, sizeof( tmp ), input_fp ) == NULL ) {
+          ::fclose( input_fp );
+          input_fp = NULL;
+          poll.quit++;
+        }
+        else {
+          if ( tmp[ 0 ] != '#' )
+            my.term.process_line( tmp );
+          else
+            goto get_next_line;
+        }
+      }
       poll.wait( idle ? 100 : 0 );
       if ( sighndl.signaled )
         poll.quit++;
     }
     my.term.finish();
   }
+  if ( input_fp != NULL )
+    ::fclose( input_fp );
 
   return status;
 }

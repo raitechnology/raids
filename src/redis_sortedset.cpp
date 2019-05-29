@@ -4,17 +4,19 @@
 #include <stdint.h>
 #include <raikv/util.h>
 #include <raids/redis_exec.h>
-#include <raids/md_type.h>
 #include <raikv/key_hash.h>
-#include <raids/redis_zset.h>
-#include <raids/redis_geo.h>
+#include <raimd/md_types.h>
+#include <raimd/md_zset.h>
+#include <raimd/md_geo.h>
 #include <raids/exec_list_ctx.h>
+#include <h3/h3api.h>
 #define PCRE2_CODE_UNIT_WIDTH 8
 #include <pcre2.h>
 
 using namespace rai;
 using namespace ds;
 using namespace kv;
+using namespace md;
 
 enum {
   DO_ZADD             = 1<<0,
@@ -235,7 +237,7 @@ RedisExec::do_zread( RedisKeyCtx &ctx,  int flags )
     case KEY_NOT_FOUND: return EXEC_SEND_ZERO;
     default:            return ERR_KV_STATUS;
     case KEY_OK:
-      if ( ctx.type != MD_SORTEDSET && ctx.type != MD_GEO ) {
+      if ( ctx.type != MD_ZSET && ctx.type != MD_GEO ) {
         if ( ctx.type == MD_NODATA )
           return EXEC_SEND_ZERO;
         return ERR_BAD_TYPE;
@@ -243,8 +245,8 @@ RedisExec::do_zread( RedisKeyCtx &ctx,  int flags )
       break;
   }
 
-  if ( ctx.type == MD_SORTEDSET ) {
-    ExecListCtx<ZSetData, MD_SORTEDSET> zset( *this, ctx );
+  if ( ctx.type == MD_ZSET ) {
+    ExecListCtx<ZSetData, MD_ZSET> zset( *this, ctx );
     if ( ! zset.open_readonly() )
       return ERR_KV_STATUS;
     switch ( flags & ( DO_ZCARD | DO_ZCOUNT | DO_ZSCORE |
@@ -470,7 +472,7 @@ RedisExec::do_zwrite( RedisKeyCtx &ctx,  int flags )
     return EXEC_SEND_INT;
   }
 
-  ExecListCtx<ZSetData, MD_SORTEDSET> zset( *this, ctx );
+  ExecListCtx<ZSetData, MD_ZSET> zset( *this, ctx );
   if ( ctx.is_new ) {
     if ( ! zset.create( count, ndata ) )
       return ERR_KV_STATUS;
@@ -603,15 +605,15 @@ RedisExec::do_zmultiscan( RedisKeyCtx &ctx,  int flags,  ScanArgs *sa )
     case KEY_OK:
       if ( ctx.type == MD_NODATA )
         goto finished;
-      if ( ctx.type != MD_SORTEDSET && ctx.type != MD_GEO )
+      if ( ctx.type != MD_ZSET && ctx.type != MD_GEO )
         return ERR_BAD_TYPE;
       break;
     default:
       return ERR_KV_STATUS;
   }
 
-  if ( ctx.type == MD_SORTEDSET ) {
-    ExecListCtx<ZSetData, MD_SORTEDSET> zset( *this, ctx );
+  if ( ctx.type == MD_ZSET ) {
+    ExecListCtx<ZSetData, MD_ZSET> zset( *this, ctx );
     ZSetVal    zv;
     ZSetStatus zstatus;
 
@@ -865,13 +867,13 @@ RedisExec::do_zremrange( RedisKeyCtx &ctx,  int flags )
     case KEY_OK:
       if ( ctx.type == MD_NODATA )
         return EXEC_SEND_ZERO;
-      if ( ctx.type != MD_SORTEDSET && ctx.type != MD_GEO )
+      if ( ctx.type != MD_ZSET && ctx.type != MD_GEO )
         return ERR_BAD_TYPE;
       break;
   }
 
-  if ( ctx.type == MD_SORTEDSET ) {
-    ExecListCtx<ZSetData, MD_SORTEDSET> zset( *this, ctx );
+  if ( ctx.type == MD_ZSET ) {
+    ExecListCtx<ZSetData, MD_ZSET> zset( *this, ctx );
 
     if ( ! zset.open() )
       return ERR_KV_STATUS;
@@ -972,7 +974,7 @@ RedisExec::do_zsetop( RedisKeyCtx &ctx,  int flags )
     uint8_t  type    = MD_NODATA;
     switch ( this->exec_key_fetch( ctx, true ) ) {
       case KEY_OK:
-        if ( ctx.type == MD_SORTEDSET || ctx.type == MD_GEO ) {
+        if ( ctx.type == MD_ZSET || ctx.type == MD_GEO ) {
           ctx.kstatus = this->kctx.value( &data, datalen );
           type = ctx.type;
           if ( ctx.kstatus != KEY_OK )
@@ -1063,10 +1065,10 @@ RedisExec::do_zsetop_store( RedisKeyCtx &ctx,  int flags )
         break;
     }
     if ( type == MD_NODATA )
-      type = MD_SORTEDSET; /* empty set */
+      type = MD_ZSET; /* empty set */
   }
 
-  if ( type == MD_SORTEDSET ) {
+  if ( type == MD_ZSET ) {
     ZSetData   tmp[ 2 ];
     ZSetData * zset,
              * old_zset;
@@ -1084,7 +1086,7 @@ RedisExec::do_zsetop_store( RedisKeyCtx &ctx,  int flags )
       ZSetData set2( this->keys[ i ]->part->data( 0 ),
                      this->keys[ i ]->part->size );
       type = this->keys[ i ]->part->type;
-      if ( type != MD_SORTEDSET && type != MD_NODATA )
+      if ( type != MD_ZSET && type != MD_NODATA )
         return ERR_BAD_TYPE; /* prevent mixing sortedset with geo */
       ZMergeCtx  ctx;
       ZSetStatus zstat = ZSET_OK;

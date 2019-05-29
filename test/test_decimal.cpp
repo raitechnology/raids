@@ -2,10 +2,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
-#include <raids/decimal.h>
+#include <raimd/decimal.h>
 
 using namespace rai;
-using namespace ds;
+using namespace md;
 
 int
 main( int , char ** )

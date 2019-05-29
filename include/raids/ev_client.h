@@ -76,9 +76,11 @@ struct EvTerminal : public EvNetClient {
   void * operator new( size_t, void *ptr ) { return ptr; }
   void operator delete( void *ptr ) { ::free( ptr ); }
   Term term;
+  char * line;
+  size_t line_len;
 
   EvTerminal( EvPoll &p,  EvCallback &callback )
-    : EvNetClient( p, callback, EV_TERMINAL ) {}
+    : EvNetClient( p, callback, EV_TERMINAL ), line( 0 ), line_len( 0 ) {}
   int start( void );
   void flush_out( void );
   void process( void );
@@ -89,6 +91,7 @@ struct EvTerminal : public EvNetClient {
 #else
       ;
 #endif
+  void process_line( const char *line );
 };
 
 }

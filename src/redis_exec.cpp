@@ -8,11 +8,12 @@
 #include <raikv/util.h>
 #include <raids/redis_exec.h>
 #include <raids/redis_cmd_db.h>
-#include <raids/md_type.h>
+#include <raimd/md_types.h>
 
 using namespace rai;
 using namespace ds;
 using namespace kv;
+using namespace md;
 
 static char ok[]      = "+OK\r\n";
 static char nil[]     = "$-1\r\n";
@@ -661,13 +662,13 @@ RedisExec::exec_key_continue( RedisKeyCtx &ctx )
             case HASH_CATG:        type = MD_HASH;        break;
             case HYPERLOGLOG_CATG: type = MD_HYPERLOGLOG; break;
             case LIST_CATG:        type = MD_LIST;        break;
-            case PUBSUB_CATG:      type = MD_PUBSUB;      break;
-            case SCRIPT_CATG:      type = MD_SCRIPT;      break;
+            case PUBSUB_CATG:      type = MD_NODATA; /*MD_PUBSUB;*/  break;
+            case SCRIPT_CATG:      type = MD_NODATA; /*MD_SCRIPT;*/  break;
             case SET_CATG:         type = MD_SET;         break;
-            case SORTED_SET_CATG:  type = MD_SORTEDSET;   break;
+            case SORTED_SET_CATG:  type = MD_ZSET;        break;
             case STRING_CATG:      type = MD_STRING;      break;
-            case TRANSACTION_CATG: type = MD_TRANSACTION; break;
-            case STREAM_CATG:      type = MD_STREAM;      break;
+            case TRANSACTION_CATG: type = MD_NODATA; /*MD_TRANSACTION;*/ break;
+            case STREAM_CATG:      type = MD_NODATA; /*MD_STREAM;*/  break;
           }
         }
         if ( type != MD_NODATA )
@@ -1342,6 +1343,8 @@ RedisExec::send_err_key_doesnt_exist( void )
 const char *
 RedisKeyCtx::get_type_str( void ) const
 {
+  return md_type_str( (MDType) this->type, 0 );
+#if 0
   switch ( this->type ) {
     default:
     case MD_NODATA: return "nodata";
@@ -1373,5 +1376,5 @@ RedisKeyCtx::get_type_str( void ) const
     case MD_SCRIPT: return "script";
     case MD_TRANSACTION: return "transaction";
   }
+#endif
 }
-

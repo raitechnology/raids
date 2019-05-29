@@ -4,8 +4,8 @@
 #include <stdint.h>
 #include <raikv/util.h>
 #include <raids/redis_exec.h>
-#include <raids/md_type.h>
-#include <raids/redis_set.h>
+#include <raimd/md_types.h>
+#include <raimd/md_set.h>
 #include <raids/set_bits.h>
 #include <raids/exec_list_ctx.h>
 #define PCRE2_CODE_UNIT_WIDTH 8
@@ -14,6 +14,7 @@
 using namespace rai;
 using namespace ds;
 using namespace kv;
+using namespace md;
 
 enum {
   DO_SCARD       = 1<<0,

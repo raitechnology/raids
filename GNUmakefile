@@ -46,7 +46,7 @@ CFLAGS := $(default_cflags)
 cflags := $(gcc_wflags) $(CFLAGS) $(arch_cflags)
 
 # where to find the raids/xyz.h files
-INCLUDES    ?= -Iinclude -Iraikv/include
+INCLUDES    ?= -Iinclude -Iraikv/include -Iraimd/include
 includes    := $(INCLUDES)
 DEFINES     ?=
 defines     := $(DEFINES)
@@ -57,7 +57,8 @@ thread_lib  := -pthread -lrt
 
 # test submodules exist (they don't exist for dist_rpm, dist_dpkg targets)
 have_lc_submodule  := $(shell if [ -d ./linecook ]; then echo yes; else echo no; fi )
-have_dec_submodule := $(shell if [ -d ./libdecnumber ]; then echo yes; else echo no; fi )
+have_md_submodule  := $(shell if [ -d ./raimd ]; then echo yes; else echo no; fi )
+have_dec_submodule := $(shell if [ -d ./raimd/libdecnumber ]; then echo yes; else echo no; fi )
 have_kv_submodule  := $(shell if [ -d ./raikv ]; then echo yes; else echo no; fi )
 have_h3_submodule  := $(shell if [ -d ./h3 ]; then echo yes; else echo no; fi )
 
@@ -85,14 +86,14 @@ lnk_lib     += -llinecook
 dlnk_lib    += -llinecook
 endif
 
-ifeq (yes,$(have_dec_submodule))
-dec_lib     := libdecnumber/$(libd)/libdecnumber.a
-lnk_lib     += $(dec_lib)
-dlnk_lib    += -Llibdecnumber/$(libd) -ldecnumber
-rpath3       = ,-rpath,$(pwd)/libdecnumber/$(libd)
+ifeq (yes,$(have_md_submodule))
+md_lib      := raimd/$(libd)/libraimd.a
+lnk_lib     += $(md_lib)
+dlnk_lib    += -Lraimd/$(libd) -lraimd
+rpath3       = ,-rpath,$(pwd)/raimd/$(libd)
 else
-lnk_lib     += -ldecnumber
-dlnk_lib    += -ldecnumber
+lnk_lib     += -lraimd
+dlnk_lib    += -lraimd
 endif
 
 ifeq (yes,$(have_h3_submodule))
@@ -105,14 +106,24 @@ lnk_lib     += -lh3
 dlnk_lib    += -lh3
 endif
 
+ifeq (yes,$(have_dec_submodule))
+dec_lib     := raimd/libdecnumber/$(libd)/libdecnumber.a
+lnk_lib     += $(dec_lib)
+dlnk_lib    += -Lraimd/libdecnumber/$(libd) -ldecnumber
+rpath5       = ,-rpath,$(pwd)/raimd/libdecnumber/$(libd)
+else
+lnk_lib     += -ldecnumber
+dlnk_lib    += -ldecnumber
+endif
+
 ds_lib      := $(libd)/libraids.a
-rpath       := -Wl,-rpath,$(pwd)/$(libd)$(rpath1)$(rpath2)$(rpath3)$(rpath4)
+rpath       := -Wl,-rpath,$(pwd)/$(libd)$(rpath1)$(rpath2)$(rpath3)$(rpath4)$(rpath5)
 dlnk_lib    += -lpcre2-8 -lcrypto
 lnk_lib     += -lpcre2-8 -lcrypto
 malloc_lib  :=
 
 .PHONY: everything
-everything: $(kv_lib) $(h3_lib) $(dec_lib) $(lc_lib) all
+everything: $(kv_lib) $(h3_lib) $(dec_lib) $(md_lib) $(lc_lib) all
 
 # build submodules if have them
 ifeq (yes,$(have_kv_submodule))
@@ -125,7 +136,11 @@ $(lc_lib):
 endif
 ifeq (yes,$(have_dec_submodule))
 $(dec_lib):
-	$(MAKE) -C libdecnumber
+	$(MAKE) -C raimd/libdecnumber
+endif
+ifeq (yes,$(have_md_submodule))
+$(md_lib):
+	$(MAKE) -C raimd
 endif
 ifeq (yes,$(have_h3_submodule))
 $(h3_lib):
@@ -151,7 +166,7 @@ redis_exec_defines := -DDS_VER=$(ver_build)
 
 redis_geo_includes        = -Ih3/src/h3lib/include -I/usr/include/h3lib
 redis_sortedset_includes  = -Ih3/src/h3lib/include -I/usr/include/h3lib
-decimal_includes         := -Ilibdecnumber/include
+decimal_includes         := -Iraimd/libdecnumber/include
 ev_client_includes       := -Ilinecook/include
 term_includes            := -Ilinecook/include
 
@@ -159,7 +174,7 @@ libraids_files := ev_net ev_service ev_http term ev_client ev_tcp ev_unix \
   ev_nats shm_client stream_buf route_db redis_msg redis_cmd_db redis_exec \
   redis_geo redis_hash redis_hyperloglog redis_key redis_list redis_pubsub \
   redis_script redis_set redis_sortedset redis_stream redis_string \
-  redis_transaction decimal kv_pubsub
+  redis_transaction kv_pubsub
 libraids_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(libraids_files)))
 libraids_dbjs  := $(addprefix $(objd)/, $(addsuffix .fpic.o, $(libraids_files)))
 libraids_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(libraids_files))) \
@@ -435,7 +450,7 @@ ifeq ($(DESTDIR),)
 # 'sudo make install' puts things in /usr/local/lib, /usr/local/include
 install_prefix = /usr/local
 else
-# debuild uses DESTDIR to put things into debian/libdecnumber/usr
+# debuild uses DESTDIR to put things into debian/raids/usr
 install_prefix = $(DESTDIR)/usr
 endif
 

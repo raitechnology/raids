@@ -7,7 +7,7 @@
 #include <raids/redis_exec.h>
 #include <raikv/work.h>
 #include <raikv/key_hash.h>
-#include <raids/redis_set.h>
+#include <raimd/md_set.h>
 #include <raids/set_bits.h>
 
 static const char *
@@ -15,7 +15,7 @@ set_status_string[] = { "ok", "not found", "full", "updated", "exists" };
 
 using namespace rai;
 using namespace ds;
-#define fallthrough __attribute__ ((fallthrough))
+using namespace md;
 
 static SetData *
 resize_set( SetData *curr,  size_t add_len,  bool is_copy = false )
@@ -242,7 +242,7 @@ main( int, char ** )
             sk->set = resize_set( sk->set, sk2->set->data_len() );
           }
         }
-        fallthrough;
+        /* FALLTHRU */
       case SMEMBERS_CMD:    /* SMEMBERS key */
         count = sk->set->count();
         for ( i = 1; i < count; i++ ) {

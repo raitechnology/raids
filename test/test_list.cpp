@@ -6,13 +6,14 @@
 #include <raids/redis_msg.h>
 #include <raids/redis_exec.h>
 #include <raikv/work.h>
-#include <raids/redis_list.h>
+#include <raimd/md_list.h>
 
 static const char *
 list_status_string[] = { "ok", "not found", "full" };
 
 using namespace rai;
 using namespace ds;
+using namespace md;
 
 static ListData *
 resize_list( ListData *curr,  size_t add_len )

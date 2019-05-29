@@ -4,7 +4,6 @@
 #include <stdint.h>
 #include <raikv/util.h>
 #include <raids/redis_exec.h>
-#include <raids/md_type.h>
 
 using namespace rai;
 using namespace ds;
