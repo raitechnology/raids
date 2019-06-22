@@ -45,7 +45,7 @@ do_match( reg_kind t,  const char **pat,  size_t pc,
     if ( t == IS_GLOB )
       rc = cvt.convert_glob( pat[ i ], ::strlen( pat[ i ] ) );
     else
-      rc = cvt.convert_nats( pat[ i ], ::strlen( pat[ i ] ) );
+      rc = cvt.convert_rv( pat[ i ], ::strlen( pat[ i ] ) );
     printf( "\n(%s) \"%s\" : \"%.*s\" -> \"%.*s\" (%lu)\n",
             ( t == IS_GLOB ? "glob" : "rv" ), pat[ i ],
             (int) cvt.off, buf, (int) cvt.prefixlen, pat[ i ],

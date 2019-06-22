@@ -104,7 +104,7 @@ rai::ds::shmdp_initialize( const char *mn,  int pt )
     exit( 9 );
   }
   qp = new ( m ) QueuePoll();
-  qp->poll.init( 5, false/*, false*/ );
+  qp->poll.init( 16, false/*, false*/ );
   if ( mn == NULL ) {
     if ( (mn = ::getenv( "RAIDS_SHM" )) == NULL ) {
       fprintf( stderr, "RAIDS_SHM env var not set\n" );

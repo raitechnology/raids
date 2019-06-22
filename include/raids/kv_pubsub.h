@@ -72,6 +72,10 @@ struct KvSubMsg : public KvMsg {
            msg_size; /* size of message data */
   uint16_t sublen,   /* length of subject, not including null char */
            replylen; /* length of reply, not including null char */
+  uint8_t  code,
+           msg_enc,
+           pad1,
+           pad2;
   char     buf[ 4 ];
 
   char * subject( void ) {
@@ -219,16 +223,17 @@ struct KvPubSub : public EvSocket {
   bool send_msg( KvMsg &msg );
   bool send_vec( size_t cnt,  void *vec,  uint64_t *siz,  size_t dest );
   KvMsg *create_kvmsg( KvMsgType mtype,  size_t sz );
+  KvSubMsg *create_kvpublish( uint32_t h,  const char *sub,  size_t len,
+                              const uint8_t *pref,  const uint32_t *hash,
+                              uint8_t pref_cnt,  const char *reply, size_t rlen,
+                              const void *msgdata,  size_t msgsz,
+                              char src_type,  KvMsgType mtype,
+                              uint8_t code,  uint8_t msg_enc );
   KvSubMsg *create_kvsubmsg( uint32_t h,  const char *sub,  size_t len,
-                             const uint8_t *pref,  const uint32_t *hash,
-                             uint8_t pref_cnt,  const char *reply, size_t rlen,
-                             const void *msgdata,  size_t msgsz,
                              char src_type,  KvMsgType mtype );
-  KvSubMsg *create_kvsubmsg( uint32_t h,  const char *sub,  size_t len,
-                             char src_type,  KvMsgType mtype );
-  KvSubMsg *create_kvsubmsg( uint32_t h,  const char *pattern,  size_t len,
-                             const char *prefix,  uint8_t prefix_len,
-                             char src_type,  KvMsgType mtype );
+  KvSubMsg *create_kvpsubmsg( uint32_t h,  const char *pattern,  size_t len,
+                              const char *prefix,  uint8_t prefix_len,
+                              char src_type,  KvMsgType mtype );
   void notify_sub( uint32_t h,  const char *sub,  size_t len,
                    uint32_t sub_id,  uint32_t rcnt,  char src_type );
   void notify_unsub( uint32_t h,  const char *sub,  size_t len,

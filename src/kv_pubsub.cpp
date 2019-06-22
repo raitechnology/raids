@@ -9,13 +9,16 @@
 #include <sys/un.h>
 
 #include <raids/ev_publish.h>
+#include <raids/ev_capr.h>
 #include <raids/kv_pubsub.h>
 #include <raids/cube_route.h>
 #include <raids/redis_msg.h>
+#include <raimd/md_types.h>
 
 using namespace rai;
 using namespace kv;
 using namespace ds;
+using namespace md;
 
 static const uint16_t KV_CTX_BYTES = KV_MAX_CTX_ID / 8;
 #if __cplusplus > 201103L
@@ -337,7 +340,7 @@ KvPubSub::subscribe_mcast( const char *sub,  size_t len,  bool activate,
 KvMsg *
 KvPubSub::create_kvmsg( KvMsgType mtype,  size_t sz )
 {
-  KvMsgList * l = (KvMsgList *) this->wrkq.alloc( sizeof( KvMsgList ) + sz + 8 );
+  KvMsgList * l = (KvMsgList *) this->wrkq.alloc( sizeof( KvMsgList ) + sz + 8);
   KvMsg   & msg = l->msg;
 
   l->range.w = 0;
@@ -353,16 +356,19 @@ KvPubSub::create_kvmsg( KvMsgType mtype,  size_t sz )
 }
 
 KvSubMsg *
-KvPubSub::create_kvsubmsg( uint32_t h,  const char *sub,  size_t len,
-                           const uint8_t *pref,  const uint32_t *hash,
-                           uint8_t pref_cnt,  const char *reply,  size_t rlen,
-                           const void *msgdata,  size_t msgsz,
-                           char src_type,  KvMsgType mtype )
+KvPubSub::create_kvpublish( uint32_t h,  const char *sub,  size_t len,
+                            const uint8_t *pref,  const uint32_t *hash,
+                            uint8_t pref_cnt,  const char *reply,  size_t rlen,
+                            const void *msgdata,  size_t msgsz,
+                            char src_type,  KvMsgType mtype,
+                            uint8_t code,  uint8_t msg_enc )
 {
   KvSubMsg * msg;
   size_t     sz = KvSubMsg::calc_size( len, rlen, msgsz, pref_cnt );
   msg = (KvSubMsg *) this->create_kvmsg( mtype, sz );
-  msg->hash      = h;
+  msg->hash    = h;
+  msg->code    = code;
+  msg->msg_enc = msg_enc;
   msg->set_subject( sub, len );
   msg->set_reply( reply, rlen );
   msg->src_type() = src_type;
@@ -385,6 +391,8 @@ KvPubSub::create_kvsubmsg( uint32_t h,  const char *sub,  size_t len,
   msg = (KvSubMsg *) this->create_kvmsg( mtype, sz );
   msg->hash     = h;
   msg->msg_size = 0;
+  msg->code     = CAPR_LISTEN;
+  msg->msg_enc  = 0;
   msg->set_subject( sub, len );
   msg->set_reply( NULL, 0 );
   msg->src_type() = src_type;
@@ -393,15 +401,17 @@ KvPubSub::create_kvsubmsg( uint32_t h,  const char *sub,  size_t len,
 }
 
 KvSubMsg *
-KvPubSub::create_kvsubmsg( uint32_t h,  const char *pattern,  size_t len,
-                           const char *prefix,  uint8_t prefix_len,
-                           char src_type,  KvMsgType mtype )
+KvPubSub::create_kvpsubmsg( uint32_t h,  const char *pattern,  size_t len,
+                            const char *prefix,  uint8_t prefix_len,
+                            char src_type,  KvMsgType mtype )
 {
   KvSubMsg * msg;
   size_t     sz = KvSubMsg::calc_size( len, prefix_len, 0, 1 );
   msg = (KvSubMsg *) this->create_kvmsg( mtype, sz );
   msg->hash     = h;
   msg->msg_size = 0;
+  msg->code     = CAPR_LISTEN;
+  msg->msg_enc  = 0;
   msg->set_subject( pattern, len );
   msg->set_reply( prefix, prefix_len );
   msg->src_type() = src_type;
@@ -470,8 +480,8 @@ KvPubSub::notify_psub( uint32_t h,  const char *pattern,  size_t len,
   SysWildSub w( prefix, prefix_len );
   this->subscribe_mcast( w.sub, w.len, true, use_find );
 
-  this->create_kvsubmsg( h, pattern, len, prefix, prefix_len, src_type,
-                         KV_MSG_PSUB );
+  this->create_kvpsubmsg( h, pattern, len, prefix, prefix_len, src_type,
+                          KV_MSG_PSUB );
   this->idle_push( EV_WRITE );
   printf( "psubscribe %x %.*s %s %u:%c rcnt=%u\n",
           h, (int) len, pattern, w.sub, sub_id, src_type, rcnt );
@@ -492,8 +502,8 @@ KvPubSub::notify_punsub( uint32_t h,  const char *pattern,  size_t len,
   SysWildSub w( prefix, prefix_len );
   if ( do_unsubscribe )
     this->subscribe_mcast( w.sub, w.len, false, false );
-  this->create_kvsubmsg( h, pattern, len, prefix, prefix_len, src_type,
-                         KV_MSG_PUNSUB );
+  this->create_kvpsubmsg( h, pattern, len, prefix, prefix_len, src_type,
+                          KV_MSG_PUNSUB );
   this->idle_push( EV_WRITE );
   printf( "punsubscribe %x %.*s %s %u:%c rcnt=%u\n",
           h, (int) len, pattern, w.sub, sub_id, src_type, rcnt );
@@ -893,17 +903,14 @@ KvPubSub::route_msg_from_shm( KvMsg &msg ) /* inbound from shm */
       }
       break;
     }
-  /* forward message from publisher to shm */
+    /* forward message from publisher to shm */
     case KV_MSG_PUBLISH: {
       KvSubMsg &submsg = (KvSubMsg &) msg;
-      char   msg_len_buf[ 24 ];
-      size_t msg_len_digits = RedisMsg::uint_digits( submsg.msg_size );
-      RedisMsg::uint_to_str( submsg.msg_size, msg_len_buf, msg_len_digits );
       EvPublish pub( submsg.subject(), submsg.sublen,
                      submsg.reply(), submsg.replylen,
                      submsg.msg_data(), submsg.msg_size,
-                     this->fd, submsg.hash,
-                     msg_len_buf, msg_len_digits );
+                     this->fd, submsg.hash, NULL, 0,
+                     submsg.msg_enc, submsg.code );
       this->poll.publish( pub, NULL, submsg.prefix_cnt(),
                           submsg.prefix_array() );
       break;
@@ -964,10 +971,11 @@ KvPubSub::publish( EvPublish &pub )
 {
   /* no publish to self */
   if ( (uint32_t) this->fd != pub.src_route ) {
-    this->create_kvsubmsg( pub.subj_hash, pub.subject, pub.subject_len,
-                           pub.prefix, pub.hash, pub.prefix_cnt,
-                           (const char *) pub.reply, pub.reply_len, pub.msg,
-                           pub.msg_len, 'K', KV_MSG_PUBLISH );
+    this->create_kvpublish( pub.subj_hash, pub.subject, pub.subject_len,
+                            pub.prefix, pub.hash, pub.prefix_cnt,
+                            (const char *) pub.reply, pub.reply_len, pub.msg,
+                            pub.msg_len, 'K', KV_MSG_PUBLISH,
+                            pub.pub_type, pub.msg_enc );
     this->idle_push( EV_WRITE );
     /* send backpressure TODO */
   }

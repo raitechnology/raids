@@ -10,9 +10,11 @@
 #define PCRE2_CODE_UNIT_WIDTH 8
 #include <pcre2.h>
 #include <raids/pattern_cvt.h>
+#include <raimd/md_types.h>
 
 using namespace rai;
 using namespace ds;
+using namespace md;
 
 enum {
   DO_SUBSCRIBE    = 1<<0,
@@ -78,6 +80,9 @@ RedisExec::pub_message( EvPublish &pub,  RedisPatternRoute *rt )
   size_t              sz, off,
                       sdigits,
                       pdigits;
+  size_t              msg_len_digits =
+                       ( pub.msg_len_digits > 0 ? pub.msg_len_digits :
+                         RedisMsg::uint_digits( pub.msg_len ) );
   char              * msg;
 
   off     = 0;
@@ -88,7 +93,7 @@ RedisExec::pub_message( EvPublish &pub,  RedisPatternRoute *rt )
         /* *3 .. $subject_len       subject ..        */
     sz = hdr_sz + 1 + sdigits + 2 + pub.subject_len + 2 +
       /* $msg_len ..                  msg */
-         1 + pub.msg_len_digits + 2 + pub.msg_len + 2;
+         1 + msg_len_digits + 2 + pub.msg_len + 2;
 
     msg = this->strm.alloc( sz );
     if ( msg == NULL )
@@ -105,7 +110,7 @@ RedisExec::pub_message( EvPublish &pub,  RedisPatternRoute *rt )
       /* $subject_len       subject ..        */
          1 + sdigits + 2 + pub.subject_len + 2 +
       /* $msg_len ..                  msg */
-         1 + pub.msg_len_digits + 2 + pub.msg_len + 2;
+         1 + msg_len_digits + 2 + pub.msg_len + 2;
 
     msg = this->strm.alloc( sz );
     if ( msg == NULL )
@@ -124,8 +129,11 @@ RedisExec::pub_message( EvPublish &pub,  RedisPatternRoute *rt )
   ::memcpy( &msg[ off ], pub.subject, pub.subject_len );
   off  = crlf( msg, off + pub.subject_len );
   msg[ off++ ] = '$';
-  ::memcpy( &msg[ off ], pub.msg_len_buf, pub.msg_len_digits );
-  off += pub.msg_len_digits;
+  if ( pub.msg_len_digits == 0 )
+    RedisMsg::uint_to_str( pub.msg_len, &msg[ off ], msg_len_digits );
+  else
+    ::memcpy( &msg[ off ], pub.msg_len_buf, msg_len_digits );
+  off += msg_len_digits;
   off  = crlf( msg, off );
   ::memcpy( &msg[ off ], pub.msg, pub.msg_len );
   crlf( msg, off + pub.msg_len );
@@ -299,16 +307,9 @@ RedisExec::exec_publish( void )
        ! this->msg.get_arg( 2, msg, msg_len ) )
     return ERR_BAD_ARGS;
 
-  char     msg_len_buf[ 24 ];
   uint32_t h = kv_crc_c( subj, subj_len, 0 );
-  size_t   msg_len_digits = RedisMsg::uint_digits( msg_len );
-
-  RedisMsg::uint_to_str( msg_len, msg_len_buf, msg_len_digits );
-  EvPublish pub( subj, subj_len,
-                 NULL, 0,
-                 msg, msg_len,
-                 this->sub_id, h,
-                 msg_len_buf, msg_len_digits );
+  EvPublish pub( subj, subj_len, NULL, 0, msg, msg_len,
+                 this->sub_id, h, NULL, 0, MD_STRING, 'p' );
   this->sub_route.rte.publish( pub, &rcount, 0, NULL );
   rte_digits = RedisMsg::uint_digits( rcount );
   buf = this->strm.alloc( rte_digits + 3 ); 

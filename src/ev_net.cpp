@@ -14,9 +14,11 @@
 #include <raids/ev_client.h>
 #include <raids/ev_http.h>
 #include <raids/ev_nats.h>
+#include <raids/ev_capr.h>
 #include <raids/ev_publish.h>
 #include <raids/kv_pubsub.h>
 #include <raids/bit_iter.h>
+#include <raids/timer_queue.h>
 
 using namespace rai;
 using namespace ds;
@@ -41,6 +43,9 @@ EvPoll::init( int numfds,  bool prefetch/*,  bool single*/ )
     perror( "malloc" );
     return -1;
   }
+  this->timer_queue = EvTimerQueue::create_timer_queue( *this );
+  if ( this->timer_queue == NULL )
+    return -1;
   return 0;
 }
 
@@ -86,8 +91,10 @@ sock_type_string( EvSockType t )
     case EV_CLIENT_SOCK: return "client";
     case EV_TERMINAL:    return "term";
     case EV_NATS_SOCK:   return "nats";
+    case EV_CAPR_SOCK:   return "capr";
     case EV_KV_PUBSUB:   return "kv_pubsub";
     case EV_SHM_SOCK:    return "shm";
+    case EV_TIMER_QUEUE: return "timer";
   }
   return "unknown";
 }
@@ -118,8 +125,10 @@ EvPoll::dispatch( void )
           case EV_CLIENT_SOCK: ((EvNetClient *) s)->read(); break;
           case EV_TERMINAL:    ((EvTerminal *) s)->read(); break;
           case EV_NATS_SOCK:   ((EvNatsService *) s)->read(); break;
+          case EV_CAPR_SOCK:   ((EvCaprService *) s)->read(); break;
           case EV_KV_PUBSUB:   ((KvPubSub *) s)->read(); break;
           case EV_SHM_SOCK:    break;
+          case EV_TIMER_QUEUE: ((EvTimerQueue *) s)->read(); break;
         }
         break;
       case EV_PROCESS:
@@ -130,8 +139,10 @@ EvPoll::dispatch( void )
           case EV_CLIENT_SOCK: ((EvNetClient *) s)->process(); break;
           case EV_TERMINAL:    ((EvTerminal *) s)->process(); break;
           case EV_NATS_SOCK:   ((EvNatsService *) s)->process( false ); break;
+          case EV_CAPR_SOCK:   ((EvCaprService *) s)->process( false ); break;
           case EV_KV_PUBSUB:   ((KvPubSub *) s)->process( false ); break;
           case EV_SHM_SOCK:    break;
+          case EV_TIMER_QUEUE: ((EvTimerQueue *) s)->process(); break;
         }
         break;
       case EV_WRITE:
@@ -143,8 +154,10 @@ EvPoll::dispatch( void )
           case EV_CLIENT_SOCK: ((EvNetClient *) s)->write(); break;
           case EV_TERMINAL:    ((EvTerminal *) s)->write(); break;
           case EV_NATS_SOCK:   ((EvNatsService *) s)->write(); break;
+          case EV_CAPR_SOCK:   ((EvCaprService *) s)->write(); break;
           case EV_KV_PUBSUB:   ((KvPubSub *) s)->write(); break;
           case EV_SHM_SOCK:    break;
+          case EV_TIMER_QUEUE: break;
         }
         break;
       case EV_SHUTDOWN:
@@ -155,8 +168,10 @@ EvPoll::dispatch( void )
           case EV_CLIENT_SOCK: ((EvNetClient *) s)->process_shutdown(); break;
           case EV_TERMINAL:    ((EvTerminal *) s)->process_shutdown(); break;
           case EV_NATS_SOCK:   ((EvNatsService *) s)->process_shutdown(); break;
+          case EV_CAPR_SOCK:   ((EvCaprService *) s)->process_shutdown(); break;
           case EV_KV_PUBSUB:   ((KvPubSub *) s)->process_shutdown(); break;
           case EV_SHM_SOCK:    ((EvShmClient *) s)->process_shutdown(); break;
+          case EV_TIMER_QUEUE: ((EvTimerQueue *) s)->process_shutdown(); break;
         }
         break;
       case EV_CLOSE:
@@ -169,8 +184,10 @@ EvPoll::dispatch( void )
           case EV_CLIENT_SOCK: ((EvNetClient *) s)->process_close(); break;
           case EV_TERMINAL:    ((EvTerminal *) s)->process_close(); break;
           case EV_NATS_SOCK:   ((EvNatsService *) s)->process_close(); break;
+          case EV_CAPR_SOCK:   ((EvCaprService *) s)->process_close(); break;
           case EV_KV_PUBSUB:   ((KvPubSub *) s)->process_close(); break;
           case EV_SHM_SOCK:    ((EvShmClient *) s)->process_close(); break;
+          case EV_TIMER_QUEUE: ((EvTimerQueue *) s)->process_close(); break;
         }
         break;
     }
@@ -226,12 +243,16 @@ EvPoll::publish_one( EvPublish &pub,  uint32_t *rcount_total,
         case EV_NATS_SOCK:
           flow_good &= ((EvNatsService *) s)->publish( pub );
           break;
+        case EV_CAPR_SOCK:
+          flow_good &= ((EvCaprService *) s)->publish( pub );
+          break;
         case EV_KV_PUBSUB:
           flow_good &= ((KvPubSub *) s)->publish( pub );
           break;
         case EV_SHM_SOCK: 
           flow_good &= ((EvShmClient *) s)->publish( pub );
           break;
+        case EV_TIMER_QUEUE:  break;
       }
     }
   }
@@ -260,17 +281,16 @@ EvPoll::publish_multi( EvPublish &pub,  uint32_t *rcount_total,
         goto have_one_route;
       }
     }
-    break;
-  have_one_route:;
+    break; /* if no routes left */
+  have_one_route:; /* if at least one route, find minimum route number */
     for ( ; i < N; i++ ) {
-      if ( rpd[ i ].rcount > 0 ) {
-        if ( rpd[ i ].routes[ 0 ] < min_route )
-          min_route = rpd[ i ].routes[ 0 ];
-      }
+      if ( rpd[ i ].rcount > 0 && rpd[ i ].routes[ 0 ] < min_route )
+        min_route = rpd[ i ].routes[ 0 ];
     }
+    /* accumulate hashes going to min_route */
     cnt = 0;
     for ( i = 0; i < N; i++ ) {
-      if ( rpd[ i ].routes[ 0 ] == min_route ) {
+      if ( rpd[ i ].rcount > 0 && rpd[ i ].routes[ 0 ] == min_route ) {
         rpd[ i ].routes++;
         rpd[ i ].rcount--;
         hash[ cnt ]   = rpd[ i ].hash;
@@ -278,6 +298,7 @@ EvPoll::publish_multi( EvPublish &pub,  uint32_t *rcount_total,
         cnt++;
       }
     }
+    /* send hashes to min_route */
     if ( (s = this->sock[ min_route ]) != NULL ) {
       rcount++;
       pub.prefix_cnt = cnt;
@@ -298,12 +319,16 @@ EvPoll::publish_multi( EvPublish &pub,  uint32_t *rcount_total,
         case EV_NATS_SOCK:
           flow_good &= ((EvNatsService *) s)->publish( pub );
           break;
+        case EV_CAPR_SOCK:
+          flow_good &= ((EvCaprService *) s)->publish( pub );
+          break;
         case EV_KV_PUBSUB:
           flow_good &= ((KvPubSub *) s)->publish( pub );
           break;
         case EV_SHM_SOCK: 
           flow_good &= ((EvShmClient *) s)->publish( pub );
           break;
+        case EV_TIMER_QUEUE:  break;
       }
     }
   }
@@ -372,12 +397,16 @@ EvPoll::publish_queue( EvPublish &pub,  uint32_t *rcount_total )
         case EV_NATS_SOCK:
           flow_good &= ((EvNatsService *) s)->publish( pub );
           break;
+        case EV_CAPR_SOCK:
+          flow_good &= ((EvCaprService *) s)->publish( pub );
+          break;
         case EV_KV_PUBSUB:
           flow_good &= ((KvPubSub *) s)->publish( pub );
           break;
         case EV_SHM_SOCK: 
           flow_good &= ((EvShmClient *) s)->publish( pub );
           break;
+        case EV_TIMER_QUEUE:  break;
       }
     }
   }
@@ -471,10 +500,13 @@ RoutePublish::hash_to_sub( uint32_t r,  uint32_t h,  char *key,
         return ((EvTerminal *) s)->hash_to_sub( h, key, keylen );
       case EV_NATS_SOCK:
         return ((EvNatsService *) s)->hash_to_sub( h, key, keylen );
+      case EV_CAPR_SOCK:
+        return ((EvCaprService *) s)->hash_to_sub( h, key, keylen );
       case EV_KV_PUBSUB:
         return ((KvPubSub *) s)->hash_to_sub( h, key, keylen );
       case EV_SHM_SOCK:
         return ((EvShmClient *) s)->hash_to_sub( h, key, keylen );
+      case EV_TIMER_QUEUE: break;
     }
   }
   return false;
@@ -521,8 +553,10 @@ EvPoll::drain_prefetch( EvPrefetchQueue &q )
           case EV_CLIENT_SOCK: break;
           case EV_TERMINAL:    break;
           case EV_NATS_SOCK:   ((EvNatsService *) svc)->process( true ); break;
+          case EV_CAPR_SOCK:   ((EvCaprService *) svc)->process( true ); break;
           case EV_KV_PUBSUB:   ((KvPubSub *) svc)->process( true ); break;
           case EV_SHM_SOCK:    break;
+          case EV_TIMER_QUEUE: break;
         }
         break;
       case EXEC_DEPENDS:   /* incomplete, depends on another key */
@@ -619,6 +653,29 @@ EvPoll::add_sock( EvSocket *s )
   return 0;
 }
 
+bool
+EvPoll::timer_expire( EvTimerEvent &ev )
+{
+  EvSocket *s;
+
+  if ( ev.id <= this->maxfd && (s = this->sock[ ev.id ]) != NULL ) {
+    switch ( s->type ) {
+      case EV_REDIS_SOCK:  break;
+      case EV_HTTP_SOCK:   break;
+      case EV_CLIENT_SOCK: break;
+      case EV_TERMINAL:    break;
+      case EV_NATS_SOCK:   break;
+      case EV_CAPR_SOCK:   
+        return ((EvCaprService *) s)->timer_expire( ev.timer_id );
+      case EV_SHM_SOCK:    break;
+      case EV_LISTEN_SOCK: break;
+      case EV_KV_PUBSUB:   break;
+      case EV_TIMER_QUEUE: break;
+    }
+  }
+  return false;
+}
+
 void
 EvPoll::remove_sock( EvSocket *s )
 {
@@ -647,11 +704,11 @@ EvPoll::remove_sock( EvSocket *s )
     case EV_CLIENT_SOCK: ((EvNetClient *) s)->release();    break;
     case EV_TERMINAL:    ((EvTerminal *) s)->release();     break;
     case EV_NATS_SOCK:   ((EvNatsService *) s)->release();  break;
+    case EV_CAPR_SOCK:   ((EvCaprService *) s)->release();  break;
     case EV_SHM_SOCK:    ((EvShmClient *) s)->release();    break;
-      break;
-    case EV_LISTEN_SOCK:
-    case EV_KV_PUBSUB:
-      break;
+    case EV_LISTEN_SOCK: break;
+    case EV_KV_PUBSUB:   break;
+    case EV_TIMER_QUEUE: break;
   }
 }
 

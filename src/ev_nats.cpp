@@ -21,10 +21,12 @@
 #define PCRE2_CODE_UNIT_WIDTH 8
 #include <pcre2.h>
 #include <raids/pattern_cvt.h>
+#include <raimd/md_types.h>
 
 using namespace rai;
 using namespace ds;
 using namespace kv;
+using namespace md;
 
 /*
  * NATS protocol:
@@ -447,7 +449,7 @@ EvNatsService::add_wild( NatsStr &xsubj )
   size_t        erroff;
   int           error;
 
-  if ( cvt.convert_nats( xsubj.str, xsubj.len ) == 0 ) {
+  if ( cvt.convert_rv( xsubj.str, xsubj.len ) == 0 ) {
     h = kv_crc_c( xsubj.str, cvt.prefixlen,
                   this->poll.sub_route.prefix_seed( cvt.prefixlen ) );
     rt = this->map.add_wild( h, xsubj );
@@ -500,7 +502,7 @@ EvNatsService::rem_wild( NatsStr &xsubj )
   PatternCvt cvt( buf, sizeof( buf ) );
   uint32_t   h, rcnt;
 
-  if ( cvt.convert_nats( xsubj.str, xsubj.len ) == 0 ) {
+  if ( cvt.convert_rv( xsubj.str, xsubj.len ) == 0 ) {
     h = kv_crc_c( xsubj.str, cvt.prefixlen,
                   this->poll.sub_route.prefix_seed( cvt.prefixlen ) );
     rcnt = this->poll.sub_route.del_pattern_route( h, this->fd, cvt.prefixlen );
@@ -592,7 +594,8 @@ EvNatsService::fwd_pub( void )
                  this->reply, this->reply_len,
                  this->msg_ptr, this->msg_len,
                  this->fd, xsub.hash(),
-                 this->msg_len_ptr, this->msg_len_digits );
+                 this->msg_len_ptr, this->msg_len_digits,
+                 MD_STRING, 'p' );
   return this->poll.publish( pub, NULL, 0, NULL );
 }
 
@@ -685,11 +688,14 @@ concat_hdr( char *p,  const char *q,  size_t sz )
 bool
 EvNatsService::fwd_msg( EvPublish &pub,  const void *sid,  size_t sid_len )
 {
+  size_t msg_len_digits =
+           ( pub.msg_len_digits > 0 ? pub.msg_len_digits :
+             RedisMsg::uint_digits( pub.msg_len ) );
   size_t len = 4 +                                  /* MSG */
                pub.subject_len + 1 +                /* <subject> */
                sid_len + 1 +                        /* <sid> */
     ( pub.reply_len > 0 ? pub.reply_len + 1 : 0 ) + /* [reply] */
-               pub.msg_len_digits + 2 +             /* <size> \r\n */
+               msg_len_digits + 2 +             /* <size> \r\n */
                pub.msg_len + 2;                     /* <blob> \r\n */
   char *p = this->alloc( len );
 
@@ -702,7 +708,13 @@ EvNatsService::fwd_msg( EvPublish &pub,  const void *sid,  size_t sid_len )
     p = concat_hdr( p, (const char *) pub.reply, pub.reply_len );
     *p++ = ' ';
   }
-  p = concat_hdr( p, pub.msg_len_buf, pub.msg_len_digits );
+  if ( pub.msg_len_digits == 0 ) {
+    RedisMsg::uint_to_str( pub.msg_len, p, msg_len_digits );
+    p = &p[ msg_len_digits ];
+  }
+  else {
+    p = concat_hdr( p, pub.msg_len_buf, msg_len_digits );
+  }
 
   *p++ = '\r'; *p++ = '\n';
   ::memcpy( p, pub.msg, pub.msg_len );

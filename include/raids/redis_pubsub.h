@@ -1,7 +1,6 @@
 #ifndef __rai_raids__redis_pubsub_h__
 #define __rai_raids__redis_pubsub_h__
 
-
 extern "C" {
   struct pcre2_real_code_8;
   struct pcre2_real_match_data_8;

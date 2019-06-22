@@ -17,8 +17,10 @@ enum EvSockType {
   EV_CLIENT_SOCK = 3, /* redis client protocol */
   EV_TERMINAL    = 4, /* redis terminal (converts redis proto to/from json) */
   EV_NATS_SOCK   = 5, /* nats pub/sub protocol */
-  EV_KV_PUBSUB   = 6,
-  EV_SHM_SOCK    = 7
+  EV_CAPR_SOCK   = 6, /* capr pub/sub protocol */
+  EV_KV_PUBSUB   = 7, /* route between processes */
+  EV_SHM_SOCK    = 8, /* local shm client */
+  EV_TIMER_QUEUE = 9  /* event timers */
 };
 
 enum EvState {
@@ -33,9 +35,9 @@ enum EvState {
 };
 
 enum EvListFlag {
-  IN_NO_LIST     = 0,
-  IN_ACTIVE_LIST = 1,
-  IN_FREE_LIST   = 2
+  IN_NO_LIST     = 0, /* init, invalid */
+  IN_ACTIVE_LIST = 1, /* in the active list */
+  IN_FREE_LIST   = 2  /* in a free list */
 };
 
 struct EvSocket;
@@ -86,16 +88,24 @@ struct EvSocket {
 struct EvRedisService;
 struct EvHttpService;
 struct EvNatsService;
+struct EvCaprService;
 struct KvPubSub;
 struct EvShm;
+struct EvTimerQueue;
+struct EvTimerEvent;
 
+/* route_db.h has RoutePublish which contains the function for publishing -
+ *   bool publish( pub, rcount, pref_cnt, ph )
+ *   publishers may not need to see EvPoll, only RoutePublish, that is why it
+ *   is a sepearate structure */
 struct EvPoll : public RoutePublish {
   kv::PrioQueue<EvSocket *, EvSocket::is_greater> queue;
   EvSocket             ** sock;            /* sock array indexed by fd */
   struct epoll_event    * ev;              /* event array used by epoll() */
   kv::HashTab           * map;             /* the data store */
   EvPrefetchQueue       * prefetch_queue;  /* ordering keys */
-  KvPubSub              * pubsub;
+  KvPubSub              * pubsub;          /* cross process pubsub */
+  EvTimerQueue          * timer_queue;     /* timer events */
   uint64_t                prio_tick;       /* priority queue ticker */
   uint32_t                ctx_id,          /* this thread context */
                           fdcnt;           /* num fds in poll set */
@@ -107,17 +117,23 @@ struct EvPoll : public RoutePublish {
                           PREFETCH_SIZE = 8;  /* pipe size of number of pref */
   size_t                  prefetch_cnt[ PREFETCH_SIZE + 1 ];
   RouteDB                 sub_route;       /* subscriptions */
-  RoutePublishQueue       pub_queue;
+  RoutePublishQueue       pub_queue;       /* temp routing queue: */
+     /* this causes a message matching multiple wildcards to be sent once */
+
+  /* socket lists, active and free lists, multiple socks are allocated at a
+   * time to speed up accept and connection setup */
   kv::DLinkList<EvSocket>       active_list;/* active socks in poll */
   kv::DLinkList<EvRedisService> free_redis; /* EvRedisService free */
   kv::DLinkList<EvHttpService>  free_http;  /* EvHttpService free */
   kv::DLinkList<EvNatsService>  free_nats;  /* EvNatsService free */
-  /*bool single_thread;*/
+  kv::DLinkList<EvCaprService>  free_capr;  /* EvCaprService free */
+  /*bool single_thread; (if kv single threaded) */
 
   EvPoll()
     : sock( 0 ), ev( 0 ), map( 0 ), prefetch_queue( 0 ), pubsub( 0 ),
-      prio_tick( 0 ), ctx_id( 0 ), fdcnt( 0 ), efd( -1 ), nfds( -1 ),
-      maxfd( -1 ), quit( 0 ), sub_route( *this )/*, single_thread( false )*/ {
+      timer_queue( 0 ), prio_tick( 0 ), ctx_id( 0 ), fdcnt( 0 ), efd( -1 ),
+      nfds( -1 ), maxfd( -1 ), quit( 0 ), sub_route( *this )
+      /*, single_thread( false )*/ {
     ::memset( this->prefetch_cnt, 0, sizeof( this->prefetch_cnt ) );
   }
 
@@ -133,8 +149,9 @@ struct EvPoll : public RoutePublish {
                       RoutePublishData *rpd );
   bool publish_queue( EvPublish &pub,  uint32_t *rcount_total );
 
-  int add_sock( EvSocket *s );
-  void remove_sock( EvSocket *s );
+  int add_sock( EvSocket *s );     /* add to poll set */
+  void remove_sock( EvSocket *s ); /* remove from poll set */
+  bool timer_expire( EvTimerEvent &ev ); /* process timer event fired */
   void process_quit( void );     /* quit state close socks */
 };
 

@@ -118,7 +118,7 @@ struct PatternCvt {
    * * = [^.]+[.]  / match one segment
    * > = .+ / match one or more segments
    */
-  int convert_nats( const char *pattern,  size_t patlen ) {
+  int convert_rv( const char *pattern,  size_t patlen ) {
     size_t k, j = 0;
     bool   anchor_end = true;
 

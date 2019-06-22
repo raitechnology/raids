@@ -171,10 +171,10 @@ ev_client_includes       := -Ilinecook/include
 term_includes            := -Ilinecook/include
 
 libraids_files := ev_net ev_service ev_http term ev_client ev_tcp ev_unix \
-  ev_nats shm_client stream_buf route_db redis_msg redis_cmd_db redis_exec \
-  redis_geo redis_hash redis_hyperloglog redis_key redis_list redis_pubsub \
-  redis_script redis_set redis_sortedset redis_stream redis_string \
-  redis_transaction kv_pubsub
+  ev_nats ev_capr shm_client stream_buf route_db redis_msg redis_cmd_db \
+  redis_exec redis_geo redis_hash redis_hyperloglog redis_key redis_list \
+  redis_pubsub redis_script redis_set redis_sortedset redis_stream \
+  redis_string redis_transaction kv_pubsub timer_queue
 libraids_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(libraids_files)))
 libraids_dbjs  := $(addprefix $(objd)/, $(addsuffix .fpic.o, $(libraids_files)))
 libraids_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(libraids_files))) \
@@ -382,13 +382,21 @@ test_wild_lnk   := $(raids_dlnk)
 
 $(bind)/test_wild: $(test_wild_objs) $(test_wild_libs)
 
+test_timer_files := test_timer
+test_timer_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(test_timer_files)))
+test_timer_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(test_timer_files)))
+test_timer_libs  := $(raids_dlib)
+test_timer_lnk   := $(raids_dlnk)
+
+$(bind)/test_timer: $(test_timer_objs) $(test_timer_libs)
+
 all_exes    += $(bind)/client $(bind)/test_msg \
                $(bind)/redis_cmd $(bind)/test_cmd $(bind)/test_list \
 	       $(bind)/test_hash $(bind)/test_set $(bind)/test_zset \
 	       $(bind)/test_hllnum $(bind)/test_hllw $(bind)/test_hllsub \
 	       $(bind)/test_geo $(bind)/test_routes $(bind)/test_delta \
 	       $(bind)/test_decimal $(bind)/test_cr $(bind)/test_rtht \
-	       $(bind)/test_subht $(bind)/test_wild
+	       $(bind)/test_subht $(bind)/test_wild $(bind)/test_timer
 all_depends += $(client_deps) $(test_msg_deps) \
                $(redis_cmd_deps) $(test_cmd_deps) $(test_list_deps) \
 	       $(test_hash_deps) $(test_set_deps) $(test_zset_deps) \

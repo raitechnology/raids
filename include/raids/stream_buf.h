@@ -150,6 +150,18 @@ struct StreamBuf {
       this->alloc_fail = true;
     }
   }
+  void append2( const void *p,  size_t amt,
+                const void *p2,  size_t amt2 ) {
+    char *b = this->alloc( amt + amt2 );
+    if ( b != NULL ) {
+      ::memcpy( b, p, amt );
+      ::memcpy( &b[ amt ], p2, amt2 );
+      this->sz += amt + amt2;
+    }
+    else {
+      this->alloc_fail = true;
+    }
+  }
 };
 
 }
