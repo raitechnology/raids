@@ -69,7 +69,8 @@ using namespace md;
  *    +     | SESSION_START | first message published
  *    !     | SESSION_INFO  | info message every 60 seconds
  *    -     | SESSION_STOP  | last message published if shutdown
- *
+ *      It doesn't matter which side sends SESSION_START first,
+ *      proto is designed for multiplexing sessions over multicast
  *      { "sub-listen" : "wildcard", "bcast-feed" : "wildcard",
  *        "inter-feed" : "wildcard", "casca-feed" : "wildcard",
  *        "user" : "name", "host" : "hostname", "app" : "application",
@@ -176,15 +177,6 @@ EvCaprListen::accept( void )
   c->pub_session( CAPR_SESSION_START );
   this->poll.timer_queue->add_timer( c->fd, CAPR_SESSION_IVAL, c->timer_id,
                                      IVAL_SECS );
-}
-
-void
-EvCaprService::send( CaprMsgOut &rec,  size_t off,   const void *data,
-                     size_t data_len )
-{
-  this->append2( &rec, off, data, data_len );
-  this->bs += off + data_len;
-  this->ms++;
 }
 
 static void
@@ -365,10 +357,10 @@ EvCaprService::rem_sub( CaprMsgIn &rec )
 {
   char     sub[ CAPR_MAX_SUBJ_LEN ];
   bool     is_wild;
-  uint32_t len  = rec.get_subscription( sub, is_wild ),
-           h    = kv_crc_c( sub, len, 0 ),
-           rcnt = 0;
+  uint32_t len  = rec.get_subscription( sub, is_wild );
   if ( ! is_wild ) {
+    uint32_t h    = kv_crc_c( sub, len, 0 ),
+             rcnt = 0;
     if ( this->sub_tab.rem( h, sub, len ) == CAPR_SUB_OK ) {
       printf( "rem sub %s\n", sub );
       if ( this->sub_tab.tab.find_by_hash( h ) == NULL )
@@ -489,6 +481,15 @@ EvCaprService::hash_to_sub( uint32_t h,  char *key,  size_t &keylen )
   keylen = rt->len;
   ::memcpy( key, rt->value, keylen );
   return true;
+}
+
+void
+EvCaprService::send( CaprMsgOut &rec,  size_t off,   const void *data,
+                     size_t data_len )
+{
+  this->append2( &rec, off, data, data_len );
+  this->bs += off + data_len;
+  this->ms++;
 }
 
 bool

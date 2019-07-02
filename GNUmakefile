@@ -24,11 +24,11 @@ ifeq (-g,$(findstring -g,$(port_extra)))
 endif
 
 CC          ?= gcc
-CXX         ?= g++
+CXX         ?= $(CC) -x c++
 cc          := $(CC)
 cpp         := $(CXX)
 cppflags    := -fno-rtti -fno-exceptions
-arch_cflags := -march=corei7-avx -fno-omit-frame-pointer
+arch_cflags := -std=c++11 -march=corei7-avx -fno-omit-frame-pointer
 cpplink     := $(CC)
 gcc_wflags  := -Wall -Wextra -Werror
 fpicflags   := -fPIC
@@ -171,7 +171,7 @@ ev_client_includes       := -Ilinecook/include
 term_includes            := -Ilinecook/include
 
 libraids_files := ev_net ev_service ev_http term ev_client ev_tcp ev_unix \
-  ev_nats ev_capr shm_client stream_buf route_db redis_msg redis_cmd_db \
+  ev_nats ev_capr ev_rv shm_client stream_buf route_db redis_msg redis_cmd_db \
   redis_exec redis_geo redis_hash redis_hyperloglog redis_key redis_list \
   redis_pubsub redis_script redis_set redis_sortedset redis_stream \
   redis_string redis_transaction kv_pubsub timer_queue

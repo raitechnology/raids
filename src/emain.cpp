@@ -13,6 +13,7 @@
 #include <raids/ev_http.h>
 #include <raids/ev_nats.h>
 #include <raids/ev_capr.h>
+#include <raids/ev_rv.h>
 #include <raids/ev_client.h>
 
 using namespace rai;
@@ -41,6 +42,7 @@ main( int argc, char *argv[] )
              * hp = get_arg( argc, argv, 1, "-w", "48080" ), /* http/websock */
              * np = get_arg( argc, argv, 1, "-n", "42222" ), /* nats */
              * cp = get_arg( argc, argv, 1, "-c", "8866" ),  /* capr */
+             * rv = get_arg( argc, argv, 1, "-r", "7501" ),  /* rv */
              * fd = get_arg( argc, argv, 1, "-x", "4096" ),  /* max num fds */
              * fe = get_arg( argc, argv, 1, "-f", "1" ),
              /** si = get_arg( argc, argv, 1, "-s", "0" ),*/
@@ -50,13 +52,14 @@ main( int argc, char *argv[] )
     printf( "%s"
 " [-m map] [-p port] [-u unix] [-w web] [-n nats] [-c capr]"
 " [-x mfd] [-f pre]\n" /*"[-s sin]\n"*/
-      "  map  = kv shm map name  (sysv2m:shm.test)\n"
-      "  port = listen tcp port  (8888)\n"
-      "  unix = listen unix name (/tmp/raids.sock)\n"
-      "  web  = listen www port  (48080)\n"
-      "  nats = listen nats port (42222)\n"
-      "  capr = listen capr port (8866)\n"
-      "  mfd  = max fds          (4096)\n"
+      "  map  = kv shm map name   (sysv2m:shm.test)\n"
+      "  port = listen redis port (8888)\n"
+      "  unix = listen unix name  (/tmp/raids.sock)\n"
+      "  web  = listen websocket  (48080)\n"
+      "  nats = listen nats port  (42222)\n"
+      "  capr = listen capr port  (8866)\n"
+      "  rv   = listen rv port    (7501)\n"
+      "  mfd  = max fds           (4096)\n"
       "  pre  = prefetch keys:  0 = no, 1 = yes (1)\n"
       /*"  sin  = single thread:  0 = no, 1 = yes (0)\n"*/, argv[ 0 ] );
     return 0;
@@ -72,6 +75,7 @@ main( int argc, char *argv[] )
   EvHttpListen      http_sv( poll );
   EvNatsListen      nats_sv( poll );
   EvCaprListen      capr_sv( poll );
+  EvRvListen        rv_sv( poll );
   int               maxfd = atoi( fd );
 
   if ( maxfd == 0 )
@@ -97,16 +101,20 @@ main( int argc, char *argv[] )
   if ( capr_sv.listen( NULL, atoi( cp ) ) != 0 ) {
     fprintf( stderr, "unable to open capr listen socket on %s\n", cp );
   }
+  if ( rv_sv.listen( NULL, atoi( rv ) ) != 0 ) {
+    fprintf( stderr, "unable to open rv listen socket on %s\n", rv );
+  }
   if ( status == 0 ) {
     printf( "raids_version:        %s\n", kv_stringify( DS_VER ) );
     printf( "max_fds:              %d\n", maxfd );
     printf( "prefetch:             %s\n", fe[ 0 ] == '1' ? "true" : "false" );
     /*printf( "single_thread:        %s\n", si[ 0 ] == '1' ? "true" : "false" );*/
-    printf( "listening:            %s\n", pt );
-    printf( "unix:                 %s\n", sn );
-    printf( "www:                  %s\n", hp );
+    printf( "redis:                %s\n", pt );
+    printf( "unix/redis:           %s\n", sn );
+    printf( "websocket:            %s\n", hp );
     printf( "nats:                 %s\n", np );
     printf( "capr:                 %s\n", cp );
+    printf( "rv:                   %s\n", rv );
     fflush( stdout );
     sighndl.install();
     for (;;) {

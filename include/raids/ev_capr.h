@@ -171,17 +171,13 @@ struct EvCaprService : public EvConnection {
   CaprSubMap     sub_tab;
   CaprPatternMap pat_tab;
   CaprSession  * sess;
-  char         * msg_ptr; /* ptr to the msg blob */
-  size_t         msg_len; /* size of the current message blob */
   uint64_t       ms, bs,  /* msgs sent, bytes sent */
                  mr, br,  /* msgs recv, bytes recv */
                  timer_id;
 
   EvCaprService( EvPoll &p ) : EvConnection( p, EV_CAPR_SOCK ) {}
   void initialize_state( uint64_t id ) {
-    this->sess    = NULL;
-    this->msg_ptr = NULL;
-    this->msg_len = 0;
+    this->sess = NULL;
     this->ms = this->bs = 0;
     this->mr = this->br = 0;
     this->timer_id = id;
@@ -189,7 +185,6 @@ struct EvCaprService : public EvConnection {
   void send( CaprMsgOut &rec,  size_t off,  const void *data, size_t data_len );
   void process( bool use_prefetch );
   bool timer_expire( uint64_t tid );
-  /*HashData * resize_tab( HashData *curr,  size_t add_len );*/
   void reassert_subs( CaprMsgIn &rec );
   void add_sub( CaprMsgIn &rec );
   void add_subscription( const char *sub,  uint32_t len,  bool is_wild );
@@ -199,7 +194,6 @@ struct EvCaprService : public EvConnection {
   bool publish( EvPublish &pub );
   bool hash_to_sub( uint32_t h,  char *key,  size_t &keylen );
   bool fwd_msg( EvPublish &pub,  const void *sid,  size_t sid_len );
-  void parse_connect( const char *buf,  size_t sz );
   void process_close( void ) {}
   void release( void );
   void push_free_list( void );
@@ -249,7 +243,6 @@ static const uint8_t
   CAPR_DICT_REPLY = 'z'; /* one shot reply to a dictionary request */
 
 static const uint32_t
-  RAIMSG_TYPE_ID    = 0x07344064,
   CAPR_SESSION_IVAL = 60;
 
 struct CaprSession {
