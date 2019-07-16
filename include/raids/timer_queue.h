@@ -28,22 +28,27 @@ struct EvTimerEvent {
 };
 
 struct EvTimerQueue : public EvSocket {
+  static const uint64_t MAX_DELTA = 100 * 1000; /* 100 us */
+
   void * operator new( size_t, void *ptr ) { return ptr; }
   void operator delete( void *ptr ) { ::free( ptr ); }
   kv::PrioQueue<EvTimerEvent, EvTimerEvent::is_greater> queue;
-  uint64_t last, now;
+  uint64_t last, now, delta;
 
   EvTimerQueue( EvPoll &p )
-    : EvSocket( p, EV_TIMER_QUEUE ), last( 0 ), now( 0 ) {}
+    : EvSocket( p, EV_TIMER_QUEUE ), last( 0 ), now( 0 ), delta( 0 ) {}
 
   bool add_timer( int id,  uint32_t ival,  uint64_t timer_id,  TimerUnits u );
   bool remove_timer( int id,  uint64_t timer_id );
   void repost( void );
   bool read( void );
-  bool set_timer( uint64_t ns );
+  bool set_timer( void );
   void process( void );
   void process_close( void ) {}
   void process_shutdown( void ) {}
+  uint64_t busy_delta( void ) {
+    return this->delta > MAX_DELTA ? MAX_DELTA : this->delta;
+  }
 
   static EvTimerQueue *create_timer_queue( EvPoll &p );
 };

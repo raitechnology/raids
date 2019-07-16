@@ -41,9 +41,9 @@ using namespace md;
  *
  *    These are likely legacy from the old CI protocol which had 1.X versions.
  *
- * 2. send info-rec [2, 2, 0, 1, 0x4000, 0x4000, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
- *    recv info-rec [3, 2, 0, 1, 0x4000, 0x4000, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
- *    send info-rec [1, 2, 0, 1, 0x4000, 0x4000, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+ * 2. send info-rec [2, 2, 0, 1, 4<<24, 4<<24, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+ *    recv info-rec [3, 2, 0, 1, 4<<24, 4<<24, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+ *    send info-rec [1, 2, 0, 1, 4<<24, 4<<24, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
  *
  *    Negotiating options, not sure what it means, except that
  *      2 = request, 3 = response, 1 = agreement

@@ -164,3 +164,15 @@ EvShmClient::stream_to_msg( void )
   this->reset();
 }
 
+/* EvShmSvc virtual functions */
+EvShmSvc::~EvShmSvc() {}
+bool   EvShmSvc::timer_expire( uint64_t ) { return false; }
+bool   EvShmSvc::read( void ) { return false; }
+size_t EvShmSvc::write( void ) { return 0; }
+bool   EvShmSvc::publish( EvPublish & ) { return false; }
+bool   EvShmSvc::hash_to_sub( uint32_t,  char *,  size_t & ) { return false; }
+void   EvShmSvc::process( bool ) {}
+void   EvShmSvc::process_shutdown( void ) {}
+void   EvShmSvc::process_close( void ) {}
+void   EvShmSvc::release( void ) {}
+

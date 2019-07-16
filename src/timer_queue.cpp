@@ -32,7 +32,9 @@ EvTimerQueue::create_timer_queue( EvPoll &p )
   }
   EvTimerQueue * q = new ( m ) EvTimerQueue( p );
   q->fd = tfd;
-  q->last = current_monotonic_time_ns();
+  q->last  = current_monotonic_time_ns();
+  q->now   = q->last;
+  q->delta = MAX_DELTA;
   if ( p.add_sock( q ) < 0 ) {
     printf( "failed to add timer %d\n", tfd );
     ::close( tfd );
@@ -42,7 +44,7 @@ EvTimerQueue::create_timer_queue( EvPoll &p )
   return q;
 }
 
-static const uint32_t to_ns[] = { 1000 * 1000 * 1000, 1000 * 1000, 1000, 0 };
+static const uint32_t to_ns[] = { 1000 * 1000 * 1000, 1000 * 1000, 1000, 1 };
 
 bool
 EvTimerQueue::add_timer( int id,  uint32_t ival,  uint64_t timer_id,
@@ -75,8 +77,10 @@ void
 EvTimerQueue::repost( void )
 {
   EvTimerEvent el = this->queue.pop();
-  el.next_expire += (uint64_t) ( el.ival >> 2 ) *
-                    (uint64_t) to_ns[ el.ival & 3 ];
+  do {
+    el.next_expire += (uint64_t) ( el.ival >> 2 ) *
+                      (uint64_t) to_ns[ el.ival & 3 ];
+  } while ( el.next_expire <= this->now );
   this->queue.push( el );
 }
 
@@ -108,13 +112,13 @@ EvTimerQueue::read( void )
 }
 
 bool
-EvTimerQueue::set_timer( uint64_t ns )
+EvTimerQueue::set_timer( void )
 {
   struct itimerspec ts;
   ts.it_interval.tv_sec = 0;
   ts.it_interval.tv_nsec = 0;
-  ts.it_value.tv_sec  = ns / (uint64_t) 1000000000;
-  ts.it_value.tv_nsec = ns % (uint64_t) 1000000000;
+  ts.it_value.tv_sec  = this->delta / (uint64_t) 1000000000;
+  ts.it_value.tv_nsec = this->delta % (uint64_t) 1000000000;
 
   if ( timerfd_settime( this->fd, 0, &ts, NULL ) < 0 ) {
     perror( "set timer" );
@@ -138,7 +142,8 @@ EvTimerQueue::process( void )
         this->queue.pop(); /* remove timer */
     }
     else {
-      if ( ! this->set_timer( ev.next_expire - this->now ) )
+      this->delta = ev.next_expire - this->now;
+      if ( ! this->set_timer() )
         return; /* probably need to exit, this retries later */
       break;
     }

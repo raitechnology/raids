@@ -179,9 +179,13 @@ struct KvLast {
   }
 };
 
+enum KvPubSubFlags {
+  KV_DO_NOTIFY = 1
+};
 struct KvPubSub : public EvSocket {
   uint16_t     ctx_id,                 /* my endpoint */
-               pad[ 3 ];
+               flags;
+  uint32_t     pad;
   uint64_t     seed1, seed2,           /* seeds of the shm keys */
                session_id,             /* session id of the my endpoint */
                next_seqno;             /* next seqno of msg sent */
@@ -201,8 +205,8 @@ struct KvPubSub : public EvSocket {
   void * operator new( size_t, void *ptr ) { return ptr; }
   KvPubSub( EvPoll &p,  int sock,  void *mcptr,  const char *mc,  size_t mclen )
     : EvSocket( p, EV_KV_PUBSUB ),
-      ctx_id( p.ctx_id ), seed1( 0 ), seed2( 0 ), session_id( 0 ),
-      next_seqno( 0 ),
+      ctx_id( p.ctx_id ), flags( KV_DO_NOTIFY ), seed1( 0 ), seed2( 0 ),
+      session_id( 0 ), next_seqno( 0 ),
       kctx( *p.map, p.map->ctx[ p.ctx_id ], p.map->ctx[ p.ctx_id ].stat2,
             p.map->ctx[ p.ctx_id ].db_num2, NULL ),
       rt_kctx( *p.map, p.map->ctx[ p.ctx_id ], p.map->ctx[ p.ctx_id ].stat2,
@@ -251,6 +255,7 @@ struct KvPubSub : public EvSocket {
   bool get_sub_mcast( const char *sub,  size_t len,  CubeRoute128 &cr );
   void route_msg_from_shm( KvMsg &msg );
   void read( void );
+  bool busy_poll( uint64_t time_ns );
   bool publish( EvPublish &pub );
   void publish_status( KvMsgType mtype );
   bool hash_to_sub( uint32_t h,  char *key,  size_t &keylen );

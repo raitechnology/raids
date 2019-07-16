@@ -226,12 +226,13 @@ gen_perfect_hash( void )
   uint64_t x = 0;
   uint32_t ht[ 1024 ];
   size_t   i;
-  uint32_t r = 0;
+  uint32_t r = 0xa28b04b0U;
   const char *cmd;
+  int k = 0;
 
   rand.init();
-  for ( int k = 0; ; k++ ) {
-    ::memset( ht, 0, sizeof( ht ) );
+  goto try_first;
+  for (;;) {
     if ( ( k & 1 ) == 0 ) {
       x = rand.next();
       r = (uint32_t) x;
@@ -239,6 +240,8 @@ gen_perfect_hash( void )
     else {
       r = x >> 32;
     }
+  try_first:;
+    ::memset( ht, 0, sizeof( ht ) );
     for ( i = 1; i < cmd_db_cnt; i++ ) {
       const char *cmd = cmd_db[ i ].name;
       int len = ::strlen( cmd );
@@ -251,6 +254,7 @@ gen_perfect_hash( void )
     }
     goto gen_hash_tab;
   try_next:;
+    k++;
   }
 gen_hash_tab:;
   printf( "/* Generated ht[] is a perfect hash, but does not strcmp() cmd */\n"

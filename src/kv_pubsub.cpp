@@ -7,6 +7,8 @@
 #include <fcntl.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <sys/signal.h>
+#include <sys/signalfd.h>
 
 #include <raids/ev_publish.h>
 #include <raids/ev_capr.h>
@@ -36,6 +38,8 @@ static const char   sys_mc[]  = "_SYS.MC",
                     sys_ibx[] = "_SYS.IBX.";
 static const size_t mc_name_size  = sizeof( sys_mc ),
                     ibx_name_size = 12;
+int use_dsunix = 0;
+
 static void
 make_ibx( char *ibname,  uint16_t ctx_id )
 {
@@ -55,7 +59,7 @@ make_dsunix_sockname( struct sockaddr_un &un,  uint32_t id )
   un.sun_path[ 8 ] = hdigit( id & 0xf );
   return sizeof( path ) - 1 + offsetof( struct sockaddr_un, sun_path );
 }
-
+#if 0
 static const char *
 msg_type_string( KvMsgType msg_type )
 {
@@ -71,6 +75,7 @@ msg_type_string( KvMsgType msg_type )
   }
   return "unknown";
 }
+#endif
 #if 0
 struct HexDump {
   static const char hex_chars[];
@@ -134,6 +139,7 @@ dump_hex( void *ptr,  uint64_t size )
   }
 }
 #endif
+#if 0
 static void 
 print_msg( KvMsg &msg )
 {
@@ -171,6 +177,7 @@ print_msg( KvMsg &msg )
   }
   /*dump_hex( &msg, msg.size );*/
 }
+#endif
 
 KvPubSub *
 KvPubSub::create( EvPoll &poll )
@@ -184,16 +191,33 @@ KvPubSub::create( EvPoll &poll )
   size_t     i, len;
   char       ibname[ 12 ];
 
-  if ( (fd = socket( AF_UNIX, SOCK_DGRAM, 0 )) < 0 )
-    return NULL;
-  len = make_dsunix_sockname( un, poll.ctx_id );
-  ::unlink( un.sun_path );
-  if ( ::bind( fd, (struct sockaddr *) &un, len ) < 0 ) {
-    ::close( fd );
-    return NULL;
+  if ( use_dsunix ) {
+    if ( (fd = socket( AF_UNIX, SOCK_DGRAM, 0 )) < 0 )
+      return NULL;
+    len = make_dsunix_sockname( un, poll.ctx_id );
+    ::unlink( un.sun_path );
+    if ( ::bind( fd, (struct sockaddr *) &un, len ) < 0 ) {
+      ::close( fd );
+      return NULL;
+    }
+    ::fcntl( fd, F_SETFL, O_NONBLOCK | ::fcntl( fd, F_GETFL ) );
   }
-  ::fcntl( fd, F_SETFL, O_NONBLOCK | ::fcntl( fd, F_GETFL ) );
+  else {
+    sigset_t mask;
 
+    sigemptyset( &mask );
+    sigaddset( &mask, SIGUSR1 );
+
+    if ( sigprocmask( SIG_BLOCK, &mask, NULL ) == -1 ) {
+      perror("sigprocmask");
+      return NULL;
+    }
+    fd = signalfd( -1, &mask, SFD_NONBLOCK );
+    if ( fd == -1 ) {
+      perror( "signalfd" );
+      return NULL;
+    }
+  }
   i = MAX_CTX_ID + 1;
   if ( (p = aligned_malloc( sizeof( KvPubSub ) +
                             sizeof( KvMsgQueue ) * i + 32 * i )) == NULL )
@@ -578,9 +602,11 @@ KvPubSub::process_shutdown( void )
 void
 KvPubSub::process_close( void )
 {
-  struct sockaddr_un un;
-  make_dsunix_sockname( un, this->ctx_id );
-  ::unlink( un.sun_path );
+  if ( use_dsunix ) {
+    struct sockaddr_un un;
+    make_dsunix_sockname( un, this->ctx_id );
+    ::unlink( un.sun_path );
+  }
   this->poll.remove_sock( this );
 }
 
@@ -663,7 +689,7 @@ KvPubSub::write( void )
       uint8_t start = msg.dest_start,
               end   = msg.dest_end;
 
-      print_msg( msg );
+      /*print_msg( msg );*/
       if ( start != end ) { /* if not to a single node */
         if ( is_kv_bcast( msg.msg_type ) ) { /* calculate the dest range */
           if ( start == 0 ) {
@@ -772,16 +798,30 @@ KvPubSub::write( void )
         }
       }
     }
-    /* notify each dest fd through poll() */
-    if ( used.first_set( dest ) ) {
-      do {
-        struct sockaddr_un un;
-        size_t len;
-        uint8_t buf[ 1 ];
-        buf[ 0 ] = (uint8_t) this->ctx_id;
-        len = make_dsunix_sockname( un, dest );
-        sendto( this->fd, buf, sizeof( buf ), 0, (struct sockaddr *) &un, len );
-      } while ( used.next_set( dest ) );
+    if ( ( this->flags & KV_DO_NOTIFY ) != 0 ) {
+      /* notify each dest fd through poll() */
+      if ( use_dsunix ) {
+        if ( used.first_set( dest ) ) {
+          do {
+            struct sockaddr_un un;
+            size_t len;
+            uint8_t buf[ 1 ];
+            buf[ 0 ] = (uint8_t) this->ctx_id;
+            len = make_dsunix_sockname( un, dest );
+            ::sendto( this->fd, buf, sizeof( buf ), 0, (struct sockaddr *) &un,
+                      len );
+          } while ( used.next_set( dest ) );
+        }
+      }
+      else {
+        if ( used.first_set( dest ) ) {
+          do {
+            uint32_t pid = this->poll.map->ctx[ dest ].ctx_pid;
+            if ( pid > 0 )
+              ::kill( pid, SIGUSR1 );
+          } while ( used.next_set( dest ) );
+        }
+      }
     }
   }
   /* reset sendq, free mem */
@@ -841,7 +881,7 @@ KvPubSub::get_sub_mcast( const char *sub,  size_t len,  CubeRoute128 &cr )
 void
 KvPubSub::route_msg_from_shm( KvMsg &msg ) /* inbound from shm */
 {
-  print_msg( msg );
+  /*print_msg( msg );*/
   /* if msg destination has more hops */
   if ( msg.dest_start != msg.dest_end ) {
     KvMsgList * l = (KvMsgList *)
@@ -931,8 +971,15 @@ KvPubSub::read( void )
   char buf[ 8 ];
 
   this->pop3( EV_READ, EV_READ_LO, EV_READ_HI );
-  while ( recv( this->fd, buf, sizeof( buf ), 0 ) > 0 )
-    ;
+  if ( use_dsunix ) {
+    while ( ::recv( this->fd, buf, sizeof( buf ), 0 ) > 0 )
+      ;
+  }
+  else {
+    struct signalfd_siginfo fdsi;
+    while ( ::read( this->fd, &fdsi, sizeof( fdsi ) ) > 0 )
+      ;
+  }
   this->kctx.set_key( ibx.kbuf );
   this->kctx.set_hash( ibx.hash1, ibx.hash2 );
   if ( this->kctx.find( &this->wrk ) == KEY_OK ) {
@@ -964,6 +1011,58 @@ KvPubSub::read( void )
       this->kctx.release();
     }
   }
+}
+
+bool
+KvPubSub::busy_poll( uint64_t time_ns )
+{
+  static const size_t veclen = 1024;
+  void   * data[ veclen ];
+  uint64_t data_sz[ veclen ];
+  KvMsgQueue & ibx = *this->inbox[ this->ctx_id ];
+  size_t count = 0;
+  uint64_t i, seqno, seqno2;
+
+  this->kctx.set_key( ibx.kbuf );
+  this->kctx.set_hash( ibx.hash1, ibx.hash2 );
+eat_more_time:;
+  if ( this->kctx.find( &this->wrk ) == KEY_OK ) {
+    for (;;) {
+      seqno  = ibx.ibx_seqno,
+      seqno2 = seqno + veclen;
+      if ( this->kctx.msg_value( seqno, seqno2, data, data_sz ) != KEY_OK )
+        break;
+      ibx.ibx_seqno = seqno2;
+      seqno2 -= seqno;
+      for ( i = 0; i < seqno2; i++ ) {
+        if ( data_sz[ i ] >= sizeof( KvMsg ) ) {
+          KvMsg &msg = *(KvMsg *) data[ i ];
+          /* check these, make sure messages are in order ?? */
+          this->inbox[ msg.src ]->src_session_id = msg.session_id;
+          this->inbox[ msg.src ]->src_seqno      = msg.seqno;
+          this->route_msg_from_shm( msg );
+        }
+      }
+      count += seqno2;
+      if ( seqno2 < veclen )
+        break;
+    }
+  }
+  /* remove msgs consumed */
+  if ( count == 0 && time_ns > 0 ) {
+    if ( time_ns > 150 ) {
+      time_ns -= 150;
+      goto eat_more_time;
+    }
+  }
+  else {
+    if ( this->kctx.acquire( &this->wrk ) <= KEY_IS_NEW ) {
+      this->kctx.trim_msg( ibx.ibx_seqno );
+      this->kctx.release();
+    }
+    return true;
+  }
+  return false;
 }
 
 bool

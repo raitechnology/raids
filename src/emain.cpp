@@ -15,6 +15,7 @@
 #include <raids/ev_capr.h>
 #include <raids/ev_rv.h>
 #include <raids/ev_client.h>
+#include <raids/kv_pubsub.h>
 
 using namespace rai;
 using namespace ds;
@@ -46,12 +47,14 @@ main( int argc, char *argv[] )
              * fd = get_arg( argc, argv, 1, "-x", "4096" ),  /* max num fds */
              * fe = get_arg( argc, argv, 1, "-f", "1" ),
              /** si = get_arg( argc, argv, 1, "-s", "0" ),*/
+             * bu = get_arg( argc, argv, 0, "-b", 0 ),
+             * no = get_arg( argc, argv, 0, "-k", 0 ),
              * he = get_arg( argc, argv, 0, "-h", 0 );
 
   if ( he != NULL ) {
     printf( "%s"
 " [-m map] [-p port] [-u unix] [-w web] [-n nats] [-c capr]"
-" [-x mfd] [-f pre]\n" /*"[-s sin]\n"*/
+" [-x mfd] [-f pre] [-b]\n" /*"[-s sin]\n"*/
       "  map  = kv shm map name   (sysv2m:shm.test)\n"
       "  port = listen redis port (8888)\n"
       "  unix = listen unix name  (/tmp/raids.sock)\n"
@@ -61,6 +64,8 @@ main( int argc, char *argv[] )
       "  rv   = listen rv port    (7501)\n"
       "  mfd  = max fds           (4096)\n"
       "  pre  = prefetch keys:  0 = no, 1 = yes (1)\n"
+      "  -k   = don't use signal USR1 pub notification\n"
+      "  -b   = busy poll\n"
       /*"  sin  = single thread:  0 = no, 1 = yes (0)\n"*/, argv[ 0 ] );
     return 0;
   }
@@ -115,8 +120,16 @@ main( int argc, char *argv[] )
     printf( "nats:                 %s\n", np );
     printf( "capr:                 %s\n", cp );
     printf( "rv:                   %s\n", rv );
+    printf( "SIGUSR1 notify:       %s\n", no != NULL ? "false" : "true" );
+    printf( "busy poll:            %s\n", bu != NULL ? "true" : "false" );
     fflush( stdout );
     sighndl.install();
+    if ( bu != NULL ) {
+      poll.pubsub->idle_push( EV_BUSY_POLL );
+    }
+    if ( no != NULL ) {
+      poll.pubsub->flags &= ~KV_DO_NOTIFY;
+    }
     for (;;) {
       if ( poll.quit >= 5 )
         break;

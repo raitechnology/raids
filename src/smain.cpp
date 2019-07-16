@@ -3,11 +3,6 @@
 #include <string.h>
 #include <stdint.h>
 #include <unistd.h>
-#include <raids/shmdp.h>
-
-using namespace rai;
-using namespace ds;
-using namespace kv;
 
 static const char *
 get_arg( int argc, char *argv[], int b, const char *f, const char *def )

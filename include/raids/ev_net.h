@@ -21,18 +21,20 @@ enum EvSockType {
   EV_RV_SOCK     = 7, /* rv pub/sub protocol */
   EV_KV_PUBSUB   = 8, /* route between processes */
   EV_SHM_SOCK    = 9, /* local shm client */
-  EV_TIMER_QUEUE = 10 /* event timers */
+  EV_TIMER_QUEUE = 10,/* event timers */
+  EV_SHM_SVC     = 11 /* pubsub service */
 };
 
 enum EvState {
-  EV_READ_HI  = 0, /* listen port accept */
-  EV_CLOSE    = 1, /* if close set, do that before write/read */
-  EV_WRITE_HI = 2, /* when send buf full at send_highwater or read pressure */
-  EV_READ     = 3, /* use read to fill until no more data or recv_highwater */
-  EV_PROCESS  = 4, /* process read buffers */
-  EV_WRITE    = 5, /* write at low priority, suboptimal send of small buf */
-  EV_SHUTDOWN = 6, /* showdown after writes */
-  EV_READ_LO  = 7  /* read at low priority, back pressure from full write buf */
+  EV_READ_HI   = 0, /* listen port accept */
+  EV_CLOSE     = 1, /* if close set, do that before write/read */
+  EV_WRITE_HI  = 2, /* when send buf full at send_highwater or read pressure */
+  EV_READ      = 3, /* use read to fill until no more data or recv_highwater */
+  EV_PROCESS   = 4, /* process read buffers */
+  EV_WRITE     = 5, /* write at low priority, suboptimal send of small buf */
+  EV_SHUTDOWN  = 6, /* showdown after writes */
+  EV_READ_LO   = 7, /* read at low priority, back pressure from full write buf */
+  EV_BUSY_POLL = 8  /* busy poll, loop and keep checking for new data */
 };
 
 enum EvListFlag {
@@ -211,11 +213,11 @@ struct EvConnection : public EvSocket, public StreamBuf {
     this->nbytes_recv    = 0;
     this->nbytes_sent    = 0;
   }
-  void release_buffers( void ) {
+  void release_buffers( void ) { /* release all buffs */
     this->clear_buffers();
     this->StreamBuf::release();
   }
-  void clear_buffers( void ) {
+  void clear_buffers( void ) {   /* clear any allocations and counters */
     this->StreamBuf::reset();
     this->off = this->len = 0;
     this->nbytes_recv = 0;
@@ -228,7 +230,7 @@ struct EvConnection : public EvSocket, public StreamBuf {
       this->send_highwater = this->recv_size * 2;
     }
   }
-  void adjust_recv( void ) {
+  void adjust_recv( void ) {     /* data is read at this->recv[ this->len ] */
     if ( this->off > 0 ) {
       this->len -= this->off;
       if ( this->len > 0 )
@@ -236,12 +238,12 @@ struct EvConnection : public EvSocket, public StreamBuf {
       this->off = 0;
     }
   }
-  bool resize_recv_buf( void );
-  bool read( void );
-  bool try_read( void );
-  size_t write( void );
-  size_t try_write( void );
-  void close_alloc_error( void );
+  bool resize_recv_buf( void );   /* need more buffer space */
+  bool read( void );              /* fill recv buf, return true if read some */
+  bool try_read( void );          /* try to read and create space */
+  size_t write( void );           /* flush stream buffer */
+  size_t try_write( void );       /* try to flush and create space */
+  void close_alloc_error( void ); /* if stream buf alloc failed or similar */
   void process_shutdown( void ) { this->pushpop( EV_CLOSE, EV_SHUTDOWN ); }
 };
 

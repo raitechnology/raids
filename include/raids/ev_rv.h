@@ -237,7 +237,7 @@ struct EvRvService : public EvConnection {
   void process( bool use_prefetch );
   int recv_data( void *msg,  size_t msg_len );
   int respond_info( void );
-  bool timer_expire( uint64_t tid );
+  bool timer_expire( uint64_t tid ); /* return false if stop or invalid */
   void add_sub( void );
   void rem_sub( void );
   void rem_all_sub( void );

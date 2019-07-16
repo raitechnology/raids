@@ -56,6 +56,23 @@ struct EvShmClient : public EvShm, public EvClient, public StreamBuf,
   }
 };
 
+struct EvShmSvc : public EvShm, public EvSocket {
+  void * operator new( size_t, void *ptr ) { return ptr; }
+  void operator delete( void *ptr ) { ::free( ptr ); }
+  EvShmSvc( EvPoll &p ) : EvSocket( p, EV_SHM_SVC ) {}
+  virtual ~EvShmSvc();
+
+  virtual bool timer_expire( uint64_t tid ); /* return false if stop timer */
+  virtual bool read( void );              /* return true if recv more data */
+  virtual size_t write( void );           /* return amount sent */
+  virtual bool publish( EvPublish &pub ); /* fwd pub message, true if fwded */
+  virtual bool hash_to_sub( uint32_t h,  char *key,  size_t &keylen );
+  virtual void process( bool use_prefetch ); /* process protocol */
+  virtual void process_shutdown( void );  /* start shutdown */
+  virtual void process_close( void );     /* finish close */
+  virtual void release( void );           /* release allocations */
+};
+
 struct EvNetClient : public EvClient, public EvConnection {
   void * operator new( size_t, void *ptr ) { return ptr; }
   void operator delete( void *ptr ) { ::free( ptr ); }
