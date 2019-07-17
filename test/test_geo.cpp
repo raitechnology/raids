@@ -9,7 +9,7 @@
 #include <raikv/work.h>
 #include <raikv/key_hash.h>
 #include <raimd/md_geo.h>
-#include <h3/h3api.h>
+#include <h3api.h>
 
 static const char *
 geo_status_string[] = { "ok", "not found", "full", "updated", "exists" };

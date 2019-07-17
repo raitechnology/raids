@@ -7,6 +7,7 @@
 #include <raimd/md_types.h>
 #define PCRE2_CODE_UNIT_WIDTH 8
 #include <pcre2.h>
+#include <raids/pattern_cvt.h>
 
 using namespace rai;
 using namespace ds;
@@ -99,29 +100,28 @@ RedisExec::exec_keys( void )
   ScanArgs     sa;
   const char * pattern;
   size_t       patlen;
-  uint8_t      buf[ 1024 ],
-             * bf = buf;
-  size_t       erroff,
-               blen = sizeof( buf );
-  int          rc,
-               error;
   ExecStatus   status;
   /* KEYS pattern */
   if ( ! this->msg.get_arg( 1, pattern, patlen ) )
     return ERR_BAD_ARGS;
   /* if not matching everything */
   if ( patlen > 1 || pattern[ 0 ] != '*' ) {
-    rc = pcre2_pattern_convert( (PCRE2_SPTR8) pattern, patlen,
-                                PCRE2_CONVERT_GLOB_NO_WILD_SEPARATOR,
-                                &bf, &blen, 0 );
-    if ( rc != 0 )
+    char       buf[ 1024 ];
+    size_t     erroff;
+    int        error;
+    PatternCvt cvt( buf, sizeof( buf ) );
+
+    if ( cvt.convert_glob( pattern, patlen ) != 0 )
       return ERR_BAD_ARGS;
-    sa.re = pcre2_compile( bf, blen, 0, &error, &erroff, 0 );
-    if ( sa.re == NULL )
+
+    sa.re = pcre2_compile( (uint8_t *) buf, cvt.off, 0, &error, &erroff, 0 );
+    if ( sa.re == NULL ) {
       return ERR_BAD_ARGS;
+    }
     sa.md = pcre2_match_data_create_from_pattern( sa.re, NULL );
     if ( sa.md == NULL ) {
       pcre2_code_free( sa.re );
+      sa.re = NULL;
       return ERR_BAD_ARGS;
     }
   }
@@ -473,12 +473,6 @@ RedisExec::exec_scan( void )
 ExecStatus
 RedisExec::match_scan_args( ScanArgs &sa,  size_t i )
 {
-  uint8_t      buf[ 1024 ],
-             * bf = buf;
-  size_t       erroff,
-               blen = sizeof( buf );
-  int          rc,
-               error;
   const char * pattern = NULL;
   size_t       patlen  = 0;
 
@@ -501,17 +495,22 @@ RedisExec::match_scan_args( ScanArgs &sa,  size_t i )
     }
   }
   if ( pattern != NULL ) {
-    rc = pcre2_pattern_convert( (PCRE2_SPTR8) pattern, patlen,
-                                PCRE2_CONVERT_GLOB_NO_WILD_SEPARATOR,
-                                &bf, &blen, 0 );
-    if ( rc != 0 )
+    char       buf[ 1024 ];
+    size_t     erroff;
+    int        error;
+    PatternCvt cvt( buf, sizeof( buf ) );
+
+    if ( cvt.convert_glob( pattern, patlen ) != 0 )
       return ERR_BAD_ARGS;
-    sa.re = pcre2_compile( bf, blen, 0, &error, &erroff, 0 );
-    if ( sa.re == NULL )
+
+    sa.re = pcre2_compile( (uint8_t *) buf, cvt.off, 0, &error, &erroff, 0 );
+    if ( sa.re == NULL ) {
       return ERR_BAD_ARGS;
+    }
     sa.md = pcre2_match_data_create_from_pattern( sa.re, NULL );
     if ( sa.md == NULL ) {
       pcre2_code_free( sa.re );
+      sa.re = NULL;
       return ERR_BAD_ARGS;
     }
   }

@@ -211,26 +211,22 @@ RedisExec::exec_pubsub( void )
                                    "numpat",   6, NULL ) ) {
     default: return ERR_BAD_CMD;
     case 1: { /* channels [pattern] */
-      uint32_t     pos, h, v;
-      uint8_t      buf[ 1024 ],
-                 * bf = buf;
-      size_t       erroff,
-                   blen = sizeof( buf );
-      int          rc,
-                   error;
-      const char * pattern = NULL;
-      size_t       patlen  = 0;
       pcre2_real_code_8       * re = NULL; /* pcre regex compiled */
       pcre2_real_match_data_8 * md = NULL; /* pcre match context  */
+      const char * pattern = NULL;
+      size_t       patlen  = 0;
+      uint32_t     pos, h, v;
+      int          rc;
 
       if ( this->msg.get_arg( 2, pattern, patlen ) &&
            ( patlen > 1 || pattern[ 0 ] != '*' ) ) {
-        rc = pcre2_pattern_convert( (PCRE2_SPTR8) pattern, patlen,
-                                    PCRE2_CONVERT_GLOB_NO_WILD_SEPARATOR,
-                                    &bf, &blen, 0 );
-        if ( rc != 0 )
+        char       buf[ 1024 ];
+        size_t     erroff;
+        int        error;
+        PatternCvt cvt( buf, sizeof( buf ) );
+        if ( cvt.convert_glob( pattern, patlen ) != 0 )
           return ERR_BAD_ARGS;
-        re = pcre2_compile( bf, blen, 0, &error, &erroff, 0 );
+        re = pcre2_compile( (uint8_t *) buf, cvt.off, 0, &error, &erroff, 0 );
         if ( re == NULL )
           return ERR_BAD_ARGS;
         md = pcre2_match_data_create_from_pattern( re, NULL );

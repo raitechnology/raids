@@ -7,7 +7,7 @@
 #include <raids/redis_exec.h>
 #include <raimd/md_geo.h>
 #include <raids/exec_list_ctx.h>
-#include <h3/h3api.h>
+#include <h3api.h>
 
 using namespace rai;
 using namespace ds;

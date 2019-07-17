@@ -177,7 +177,9 @@ struct NatsIter {
   NatsIter() : buf( 0 ), buflen( 0 ), off( 0 ), curlen( 0 ), rmlen( 0 ) {}
 
   void init( NatsMapRec &rt ) {
-    this->init( rt.value, ((uint16_t *) (void *) rt.value)[ 0 ] + 2, rt.len );
+    uint16_t val;
+    ::memcpy( &val, rt.value, 2 );
+    this->init( rt.value, val + 2, rt.len );
   }
   void init( char *s,  uint16_t o,  uint16_t l ) {
     this->buf    = s;

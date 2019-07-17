@@ -103,10 +103,13 @@ struct RouteHT {
   }
   /* need a marker to iterate over (non-removed) data elems */
   static inline void mark_removed( Data *d ) {
-    *(uint16_t *) (void *) &d->value[ 0 ] = 0;
+    uint16_t val = 0;
+    ::memcpy( d->value, &val, 2 );
   }
   static inline bool is_removed( const Data *d ) {
-    return *(uint16_t *) (void *) &d->value[ 0 ] == 0;
+    uint16_t val;
+    ::memcpy( &val, d->value, 2 );
+    return val == 0;
   }
   /* put data at location in ht */
   Data *inplace( uint32_t h,  const void *s,  uint16_t l,  uint16_t i ) {
