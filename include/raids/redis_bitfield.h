@@ -65,10 +65,9 @@ typedef struct Int72 {
      this->ival |= v;
      return *this;
    }
-   Int72 operator~( void ) {
-     Int72 tmp = *this;
-     tmp.ival = ~tmp.ival;
-     tmp.b[ 8 ] = ~tmp.b[ 8 ];
+   Int72 &notval( Int72 &tmp ) {
+     tmp.ival = ~this->ival;
+     tmp.b[ 8 ] = ~this->b[ 8 ];
      return tmp;
    }
 } int72_t;

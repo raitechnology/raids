@@ -300,8 +300,9 @@ RedisExec::exec_bitfield( RedisKeyCtx &ctx )
     old_val  &= mask;
     /* if need to sign extend */
     if ( tchar == 'I' && ( old_val.ival & signb ) != 0 ) {
+      int72_t tmp;
       msk_val  = mask;
-      old_val |= ~msk_val;
+      old_val |= msk_val.notval( tmp );
     }
     if ( bf[ i ].op == OP_INCRBY ) {
       int64_t incr    = bf[ i ].val,
@@ -348,9 +349,10 @@ RedisExec::exec_bitfield( RedisKeyCtx &ctx )
     }
     /* replace current value with new value */
     if ( bf[ i ].op != OP_GET && ! fail ) {
+      int72_t tmp;
       msk_val   = mask;
       msk_val <<= shift;
-      upd_val  &= ~msk_val; /* upd_val = upd_val & ~( mask << shift ) */
+      upd_val  &= msk_val.notval( tmp ); /* upd_val = upd_val & ~( mask << shift ) */
       msk_val   = (uint64_t) bf[ i ].val & mask;
       msk_val <<= shift;
       upd_val  |= msk_val;/* upd_val = upd_val | ( ( ival & mask ) << shift ) */
