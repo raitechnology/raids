@@ -25,7 +25,6 @@ get_arg( int argc, char *argv[], int b, const char *f, const char *def )
 }
 
 struct PingTest : public EvShmSvc {
-  int          pfd[ 2 ];
   const char * sub,
              * pub,
              * ibx;
@@ -52,14 +51,6 @@ struct PingTest : public EvShmSvc {
       h( 0 ), ph( 0 ), ih( 0 ), per_sec( ps_rate ), ns_ival( 1e9 / ps_rate ),
       sum( 0 ), count( 0 ), print_count( 0 ), last_time( 0 ),
       active_ping( act ), round_trip( round ) {
-    this->pfd[ 0 ] = this->pfd[ 1 ] = -1;
-  }
-  /* add to poll set, pipe is not used, it is just a valid fd */
-  int init_pipe( void ) {
-    if ( ::pipe2( this->pfd, O_NONBLOCK ) < 0 )
-      return -1; 
-    this->fd = this->pfd[ 0 ];
-    return this->poll.add_sock( this );
   }
   /* start subcriptions for sub or inbox */
   void subscribe( void ) {
@@ -72,12 +63,12 @@ struct PingTest : public EvShmSvc {
       if ( this->active_ping && this->ilen > 0 ) {
         rcnt = this->poll.sub_route.add_route( this->ih, this->fd );
         this->poll.pubsub->notify_sub( this->ih, this->ibx, this->ilen,
-                                       this->fd, rcnt, 'V' );
+                                       this->fd, rcnt, 'K' );
       }
       else {
         rcnt = this->poll.sub_route.add_route( this->h, this->fd );
         this->poll.pubsub->notify_sub( this->h, this->sub, this->len,
-                                       this->fd, rcnt, 'V' );
+                                       this->fd, rcnt, 'K' );
       }
     }
   }
@@ -88,18 +79,18 @@ struct PingTest : public EvShmSvc {
       if ( this->active_ping && this->ilen > 0 ) {
         rcnt = this->poll.sub_route.del_route( this->ih, this->fd );
         this->poll.pubsub->notify_unsub( this->ih, this->ibx, this->ilen,
-                                         this->fd, rcnt, 'V' );
+                                         this->fd, rcnt, 'K' );
       }
       else {
         rcnt = this->poll.sub_route.del_route( this->h, this->fd );
         this->poll.pubsub->notify_unsub( this->h, this->sub, this->len,
-                                         this->fd, rcnt, 'V' );
+                                         this->fd, rcnt, 'K' );
       }
     }
   }
   /* recv an incoming message from a subscription above, sent from a peer or
    * myself if subscribing to the same subject as publishing */
-  virtual bool publish( EvPublish &p ) {
+  virtual bool on_msg( EvPublish &p ) {
     const char * out;
     size_t       out_len;
     uint32_t     out_hash;
@@ -119,17 +110,18 @@ struct PingTest : public EvShmSvc {
                     p.msg_len, this->fd, out_hash,
                     p.msg_len_buf, p.msg_len_digits,
                     p.msg_enc, p.pub_type );
-      this->poll.publish( rp, NULL, 0, NULL );
+      this->poll.forward_msg( rp, NULL, 0, NULL );
     }
     /* the active pinger or one way prints */
     else {
       uint64_t s,
-               t = kv_get_rdtsc();
+               /*t = kv_get_rdtsc();*/
+               t = kv_current_monotonic_time_ns();
       if ( p.msg_len == sizeof( s ) && p.msg_enc == MD_UINT ) {
         ::memcpy( &s, p.msg, 8 );
         this->sum += ( t - s );
         if ( this->count++ == this->print_count ) {
-          printf( "recv ping %lu cycles, cnt %lu\n", t - s, this->count );
+          printf( "recv ping %lu nanos, cnt %lu\n", t - s, this->count );
           this->print_count += this->per_sec;
         }
       }
@@ -141,14 +133,6 @@ struct PingTest : public EvShmSvc {
     if ( this->h != 0 ) {
       this->unsubscribe();
       this->h = 0;
-    }
-  }
-  /* close and remove from poll set */
-  virtual void process_close( void ) {
-    if ( this->fd != -1 ) {
-      ::close( this->pfd[ 0 ] );
-      ::close( this->pfd[ 1 ] );
-      this->poll.remove_sock( this );
     }
   }
   /* start a timer at per_sec interval */
@@ -171,11 +155,12 @@ struct PingTest : public EvShmSvc {
     }
     for ( ; this->last_time < now;
           this->last_time += (uint64_t) this->ns_ival ) {
-      uint64_t t = kv_get_rdtsc();
+      uint64_t t = kv_current_monotonic_time_ns();
+      /*uint64_t t = kv_get_rdtsc();*/
       EvPublish p( this->pub, this->plen, this->ibx, this->ilen, &t,
                    sizeof( t ), this->fd, this->ph,
-                   NULL, 0, MD_UINT, 'V' );
-      this->poll.publish( p, NULL, 0, NULL );
+                   NULL, 0, MD_UINT, 'u' );
+      this->poll.forward_msg( p, NULL, 0, NULL );
       if ( this->per_sec < 100 )
         break;
     }
@@ -234,9 +219,8 @@ main( int argc, char *argv[] )
   PingTest shm( poll, su, pu, inbox, active_ping, round_trip, per_sec );
   if ( shm.open( mn ) != 0 )
     return 1;
-  if ( poll.init_shm( shm ) != 0 )
+  if ( poll.init_shm( shm ) != 0 || shm.init_poll() != 0 )
     return 1;
-  shm.init_pipe();
   shm.subscribe();
   sighndl.install();
   if ( active_ping ) {
@@ -256,7 +240,7 @@ main( int argc, char *argv[] )
   }
   shm.close();
   if ( shm.count > 0 ) {
-    printf( "count %lu avg %lu cycles\n", shm.count, shm.sum / shm.count );
+    printf( "count %lu avg %lu nanos\n", shm.count, shm.sum / shm.count );
   }
 
   return 0;

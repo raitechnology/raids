@@ -184,7 +184,9 @@ struct RvMsgIn {
   md::RvMsg       * msg;
   md::RvFieldIter * iter;
   md::MDReference   data;
-  uint32_t          sublen;
+  char            * reply;
+  uint16_t          sublen,
+                    replylen;
   bool              is_wild;
   uint8_t           mtype;
   char              sub[ RV_MAX_SUBJ_LEN ];
@@ -242,7 +244,7 @@ struct EvRvService : public EvConnection {
   void rem_sub( void );
   void rem_all_sub( void );
   bool fwd_pub( void );
-  bool publish( EvPublish &pub );
+  bool on_msg( EvPublish &pub );
   bool hash_to_sub( uint32_t h,  char *key,  size_t &keylen );
   void send( void *hdr,  size_t off,   const void *data,  size_t data_len );
   bool fwd_msg( EvPublish &pub,  const void *sid,  size_t sid_len );

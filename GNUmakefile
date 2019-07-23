@@ -398,6 +398,22 @@ test_ping_lnk   := $(raids_dlnk)
 
 $(bind)/test_ping: $(test_ping_objs) $(test_ping_libs)
 
+test_sub_files := test_sub
+test_sub_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(test_sub_files)))
+test_sub_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(test_sub_files)))
+test_sub_libs  := $(raids_dlib)
+test_sub_lnk   := $(raids_dlnk)
+
+$(bind)/test_sub: $(test_sub_objs) $(test_sub_libs)
+
+test_pub_files := test_pub
+test_pub_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(test_pub_files)))
+test_pub_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(test_pub_files)))
+test_pub_libs  := $(raids_dlib)
+test_pub_lnk   := $(raids_dlnk)
+
+$(bind)/test_pub: $(test_pub_objs) $(test_pub_libs)
+
 all_exes    += $(bind)/client $(bind)/test_msg \
                $(bind)/redis_cmd $(bind)/test_cmd $(bind)/test_list \
 	       $(bind)/test_hash $(bind)/test_set $(bind)/test_zset \
@@ -405,7 +421,7 @@ all_exes    += $(bind)/client $(bind)/test_msg \
 	       $(bind)/test_geo $(bind)/test_routes $(bind)/test_delta \
 	       $(bind)/test_decimal $(bind)/test_cr $(bind)/test_rtht \
 	       $(bind)/test_subht $(bind)/test_wild $(bind)/test_timer \
-	       $(bind)/test_ping
+	       $(bind)/test_ping $(bind)/test_sub $(bind)/test_pub
 all_depends += $(client_deps) $(test_msg_deps) \
                $(redis_cmd_deps) $(test_cmd_deps) $(test_list_deps) \
 	       $(test_hash_deps) $(test_set_deps) $(test_zset_deps) \
@@ -413,7 +429,7 @@ all_depends += $(client_deps) $(test_msg_deps) \
 	       $(test_geo_deps) $(test_routes_deps) $(test_delta_deps) \
 	       $(test_decimal_deps) $(test_cr_deps) $(test_rtht_deps) \
 	       $(test_subht_deps) $(test_wild_deps) $(test_timer_deps) \
-	       $(test_ping_deps)
+	       $(test_ping_deps) $(test_sub_deps) $(test_pub_deps)
 
 all_dirs := $(bind) $(libd) $(objd) $(dependd)
 

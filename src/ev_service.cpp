@@ -68,7 +68,7 @@ EvRedisService::process( bool use_prefetch )
 }
 
 bool
-EvRedisService::publish( EvPublish &pub )
+EvRedisService::on_msg( EvPublish &pub )
 {
   bool flow_good = true;
   if ( this->RedisExec::do_pub( pub ) ) {

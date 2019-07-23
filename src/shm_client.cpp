@@ -83,7 +83,7 @@ EvShmClient::init_exec( void )
 }
 
 bool
-EvShmClient::publish( EvPublish &pub )
+EvShmClient::on_msg( EvPublish &pub )
 {
   if ( this->exec->do_pub( pub ) )
     this->stream_to_msg();
@@ -166,13 +166,26 @@ EvShmClient::stream_to_msg( void )
 
 /* EvShmSvc virtual functions */
 EvShmSvc::~EvShmSvc() {}
+int EvShmSvc::init_poll( void ) {
+  int status;
+  this->fd = 0;
+  if ( (status = this->poll.add_sock( this )) == 0 )
+    return 0;
+  this->fd = -1;
+  return status;
+}
 bool   EvShmSvc::timer_expire( uint64_t ) { return false; }
 bool   EvShmSvc::read( void ) { return false; }
 size_t EvShmSvc::write( void ) { return 0; }
-bool   EvShmSvc::publish( EvPublish & ) { return false; }
+bool   EvShmSvc::on_msg( EvPublish & ) { return false; }
 bool   EvShmSvc::hash_to_sub( uint32_t,  char *,  size_t & ) { return false; }
 void   EvShmSvc::process( bool ) {}
 void   EvShmSvc::process_shutdown( void ) {}
-void   EvShmSvc::process_close( void ) {}
+void   EvShmSvc::process_close( void ) {
+  if ( this->fd != -1 ) {
+    this->poll.remove_sock( this );
+    this->fd = -1;
+  }
+}
 void   EvShmSvc::release( void ) {}
 

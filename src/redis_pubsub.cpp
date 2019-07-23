@@ -306,7 +306,7 @@ RedisExec::exec_publish( void )
   uint32_t h = kv_crc_c( subj, subj_len, 0 );
   EvPublish pub( subj, subj_len, NULL, 0, msg, msg_len,
                  this->sub_id, h, NULL, 0, MD_STRING, 'p' );
-  this->sub_route.rte.publish( pub, &rcount, 0, NULL );
+  this->sub_route.rte.forward_msg( pub, &rcount, 0, NULL );
   rte_digits = RedisMsg::uint_digits( rcount );
   buf = this->strm.alloc( rte_digits + 3 ); 
   if ( buf == NULL )

@@ -46,7 +46,7 @@ struct EvShmClient : public EvShm, public EvClient, public StreamBuf,
 
   int init_exec( void );
   virtual void send_msg( RedisMsg &msg );
-  bool publish( EvPublish &pub );
+  bool on_msg( EvPublish &pub );
   bool hash_to_sub( uint32_t h,  char *key,  size_t &keylen );
   void stream_to_msg( void );
   void process_shutdown( void );
@@ -62,10 +62,11 @@ struct EvShmSvc : public EvShm, public EvSocket {
   EvShmSvc( EvPoll &p ) : EvSocket( p, EV_SHM_SVC ) {}
   virtual ~EvShmSvc();
 
+  int init_poll( void );
   virtual bool timer_expire( uint64_t tid ); /* return false if stop timer */
   virtual bool read( void );              /* return true if recv more data */
   virtual size_t write( void );           /* return amount sent */
-  virtual bool publish( EvPublish &pub ); /* fwd pub message, true if fwded */
+  virtual bool on_msg( EvPublish &pub ); /* fwd pub message, true if fwded */
   virtual bool hash_to_sub( uint32_t h,  char *key,  size_t &keylen );
   virtual void process( bool use_prefetch ); /* process protocol */
   virtual void process_shutdown( void );  /* start shutdown */

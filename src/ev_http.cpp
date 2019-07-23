@@ -308,7 +308,7 @@ EvHttpService::flush_term( void )
 }
 
 bool
-EvHttpService::publish( EvPublish &pub )
+EvHttpService::on_msg( EvPublish &pub )
 {
   bool flow_good = true;
   if ( this->RedisExec::do_pub( pub ) ) {

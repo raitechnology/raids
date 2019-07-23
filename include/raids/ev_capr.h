@@ -174,6 +174,9 @@ struct EvCaprService : public EvConnection {
   uint64_t       ms, bs,  /* msgs sent, bytes sent */
                  mr, br,  /* msgs recv, bytes recv */
                  timer_id;
+  char           inbox[ 32 + 4 ]; /* _INBOX.127-000-000-001.6EB8C0CB.> */
+  uint32_t       inboxlen;
+  uint64_t       sid;
 
   EvCaprService( EvPoll &p ) : EvConnection( p, EV_CAPR_SOCK ) {}
   void initialize_state( uint64_t id ) {
@@ -181,19 +184,24 @@ struct EvCaprService : public EvConnection {
     this->ms = this->bs = 0;
     this->mr = this->br = 0;
     this->timer_id = id;
+    this->inboxlen = 0;
+    this->sid = 0;
   }
   void send( CaprMsgOut &rec,  size_t off,  const void *data, size_t data_len );
   void process( bool use_prefetch );
   bool timer_expire( uint64_t tid );
   void reassert_subs( CaprMsgIn &rec );
   void add_sub( CaprMsgIn &rec );
-  void add_subscription( const char *sub,  uint32_t len,  bool is_wild );
+  void add_subscription( const char *sub,  uint32_t len,
+                         const char *reply,  uint32_t replylen,  bool is_wild );
   void rem_sub( CaprMsgIn &rec );
   void rem_all_sub( void );
   bool fwd_pub( CaprMsgIn &rec );
-  bool publish( EvPublish &pub );
+  bool on_msg( EvPublish &pub );
   bool hash_to_sub( uint32_t h,  char *key,  size_t &keylen );
   bool fwd_msg( EvPublish &pub,  const void *sid,  size_t sid_len );
+  bool fwd_inbox( EvPublish &pub );
+  void get_inbox_addr( EvPublish &pub,  const char *&subj,  uint8_t *addr );
   void process_close( void ) {}
   void release( void );
   void push_free_list( void );
@@ -356,6 +364,7 @@ struct CaprMsgIn {
   /* decode a message, return = 0 success, < 0 error, > 0 bytes needed */
   int32_t decode( uint8_t *capr_pkt,  size_t pkt_size );
   uint32_t get_subscription( char *s,  bool &is_wild );
+  uint32_t get_inbox( char *buf );
   uint32_t get_subject( char *s );
 };
 

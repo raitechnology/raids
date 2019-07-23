@@ -76,8 +76,8 @@ struct EvSocket {
     this->state = ( this->state | ( 1U << s ) ) & ~( 1U << t ); }
   void idle_push( EvState s );
   /* these should be overridden by subclass */
-  bool publish( EvPublish &pub );
-  bool hash_to_sub( uint32_t h,  char *key,  size_t &keylen );
+  /*bool publish( EvPublish &pub );
+  bool hash_to_sub( uint32_t h,  char *key,  size_t &keylen );*/
   /* priority queue test, ordered by first bit set (EV_WRITE > EV_READ).
    * a sock with EV_READ bit set will have a higher priority than one with
    * EV_WRITE */

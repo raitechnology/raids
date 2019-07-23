@@ -596,11 +596,11 @@ EvNatsService::fwd_pub( void )
                  this->fd, xsub.hash(),
                  this->msg_len_ptr, this->msg_len_digits,
                  MD_STRING, 'p' );
-  return this->poll.publish( pub, NULL, 0, NULL );
+  return this->poll.forward_msg( pub, NULL, 0, NULL );
 }
 
 bool
-EvNatsService::publish( EvPublish &pub )
+EvNatsService::on_msg( EvPublish &pub )
 {
   bool flow_good = true;
 

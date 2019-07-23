@@ -59,11 +59,11 @@ make_dsunix_sockname( struct sockaddr_un &un,  uint32_t id )
   un.sun_path[ 8 ] = hdigit( id & 0xf );
   return sizeof( path ) - 1 + offsetof( struct sockaddr_un, sun_path );
 }
-#if 0
-static const char *
-msg_type_string( KvMsgType msg_type )
+
+const char *
+KvPubSub::msg_type_string( uint8_t msg_type )
 {
-  switch ( msg_type ) {
+  switch ( (KvMsgType) msg_type ) {
     case KV_MSG_HELLO:   return "hello";
     case KV_MSG_BYE:     return "bye";
     case KV_MSG_STATUS:  return "status";
@@ -75,7 +75,13 @@ msg_type_string( KvMsgType msg_type )
   }
   return "unknown";
 }
-#endif
+
+const char *
+KvSubMsg::msg_type_string( void ) const
+{
+  return KvPubSub::msg_type_string( this->msg_type );
+}
+
 #if 0
 struct HexDump {
   static const char hex_chars[];
@@ -408,17 +414,18 @@ KvPubSub::create_kvpublish( uint32_t h,  const char *sub,  size_t len,
 
 KvSubMsg *
 KvPubSub::create_kvsubmsg( uint32_t h,  const char *sub,  size_t len,
-                           char src_type,  KvMsgType mtype )
+                           char src_type,  KvMsgType mtype,  const char *rep,
+                           size_t rlen )
 {
   KvSubMsg * msg;
-  size_t     sz = KvSubMsg::calc_size( len, 0, 0, 0 );
+  size_t     sz = KvSubMsg::calc_size( len, rlen, 0, 0 );
   msg = (KvSubMsg *) this->create_kvmsg( mtype, sz );
   msg->hash     = h;
   msg->msg_size = 0;
   msg->code     = CAPR_LISTEN;
   msg->msg_enc  = 0;
   msg->set_subject( sub, len );
-  msg->set_reply( NULL, 0 );
+  msg->set_reply( rep, rlen );
   msg->src_type() = src_type;
   msg->prefix_cnt() = 0;
   return msg;
@@ -448,7 +455,8 @@ KvPubSub::create_kvpsubmsg( uint32_t h,  const char *pattern,  size_t len,
 
 void
 KvPubSub::notify_sub( uint32_t h,  const char *sub,  size_t len,
-                      uint32_t sub_id,  uint32_t rcnt,  char src_type )
+                      uint32_t sub_id,  uint32_t rcnt,  char src_type,
+                      const char *rep,  size_t rlen )
 {
   bool use_find = true;
   if ( rcnt == 1 ) /* first route added */
@@ -462,9 +470,12 @@ KvPubSub::notify_sub( uint32_t h,  const char *sub,  size_t len,
    * collision, the route count will be for both subjects */
   this->subscribe_mcast( sub, len, true, use_find );
 
-  this->create_kvsubmsg( h, sub, len, src_type, KV_MSG_SUB );
+  KvSubMsg *submsg =
+    this->create_kvsubmsg( h, sub, len, src_type, KV_MSG_SUB, rep, rlen );
   printf( "subscribe %x %.*s %u:%c\n", h, (int) len, sub, sub_id, src_type );
   this->idle_push( EV_WRITE );
+  if ( ! this->sub_notifyq.is_empty() )
+    this->forward_sub( *submsg );
 }
 
 void
@@ -481,9 +492,12 @@ KvPubSub::notify_unsub( uint32_t h,  const char *sub,  size_t len,
   if ( do_unsubscribe )
     this->subscribe_mcast( sub, len, false, false );
 
-  this->create_kvsubmsg( h, sub, len, src_type, KV_MSG_UNSUB );
+  KvSubMsg *submsg =
+    this->create_kvsubmsg( h, sub, len, src_type, KV_MSG_UNSUB, NULL, 0 );
   printf( "unsubscribe %x %.*s %u:%c\n", h, (int) len, sub, sub_id, src_type );
   this->idle_push( EV_WRITE );
+  if ( ! this->sub_notifyq.is_empty() )
+    this->forward_sub( *submsg );
 }
 
 void
@@ -504,11 +518,14 @@ KvPubSub::notify_psub( uint32_t h,  const char *pattern,  size_t len,
   SysWildSub w( prefix, prefix_len );
   this->subscribe_mcast( w.sub, w.len, true, use_find );
 
-  this->create_kvpsubmsg( h, pattern, len, prefix, prefix_len, src_type,
-                          KV_MSG_PSUB );
+  KvSubMsg *submsg =
+    this->create_kvpsubmsg( h, pattern, len, prefix, prefix_len, src_type,
+                            KV_MSG_PSUB );
   this->idle_push( EV_WRITE );
   printf( "psubscribe %x %.*s %s %u:%c rcnt=%u\n",
           h, (int) len, pattern, w.sub, sub_id, src_type, rcnt );
+  if ( ! this->sub_notifyq.is_empty() )
+    this->forward_sub( *submsg );
 }
 
 void
@@ -526,11 +543,14 @@ KvPubSub::notify_punsub( uint32_t h,  const char *pattern,  size_t len,
   SysWildSub w( prefix, prefix_len );
   if ( do_unsubscribe )
     this->subscribe_mcast( w.sub, w.len, false, false );
-  this->create_kvpsubmsg( h, pattern, len, prefix, prefix_len, src_type,
-                          KV_MSG_PUNSUB );
+  KvSubMsg *submsg =
+    this->create_kvpsubmsg( h, pattern, len, prefix, prefix_len, src_type,
+                            KV_MSG_PUNSUB );
   this->idle_push( EV_WRITE );
   printf( "punsubscribe %x %.*s %s %u:%c rcnt=%u\n",
           h, (int) len, pattern, w.sub, sub_id, src_type, rcnt );
+  if ( ! this->sub_notifyq.is_empty() )
+    this->forward_sub( *submsg );
 }
 
 void
@@ -785,8 +805,7 @@ KvPubSub::write( void )
         } while ( used.next_set( dest ) );
       }
     }
-    else
-    { /* no vectors, send each msg one at a time */
+    else { /* no vectors, send each msg one at a time */
       for ( l = this->sendq.hd; l != NULL; l = l->next ) {
         for ( i = 0; i < 8; i += 2 ) {
           if ( l->range.b[ i ] == 0 )
@@ -879,6 +898,18 @@ KvPubSub::get_sub_mcast( const char *sub,  size_t len,  CubeRoute128 &cr )
 }
 
 void
+KvSubNotifyList::on_sub( KvSubMsg & )
+{
+}
+
+void
+KvPubSub::forward_sub( KvSubMsg &submsg )
+{
+  for ( KvSubNotifyList * l = this->sub_notifyq.hd; l != NULL; l = l->next )
+    l->on_sub( submsg );
+}
+
+void
 KvPubSub::route_msg_from_shm( KvMsg &msg ) /* inbound from shm */
 {
   /*print_msg( msg );*/
@@ -898,7 +929,7 @@ KvPubSub::route_msg_from_shm( KvMsg &msg ) /* inbound from shm */
       CubeRoute128 cr;
 
       this->get_sub_mcast( submsg.subject(), submsg.sublen, cr );
-      cr.clear( this->ctx_id );
+      cr.clear( this->ctx_id ); /* remove my subscriber id */
       /* if no more routes to shm exist, then remove */
       if ( cr.is_empty() ) {
         this->sub_tab.remove( submsg.hash, submsg.subject(), submsg.sublen );
@@ -913,6 +944,8 @@ KvPubSub::route_msg_from_shm( KvMsg &msg ) /* inbound from shm */
         cr.copy_to( rt->rt_bits );
         this->poll.sub_route.add_route( submsg.hash, this->fd );
       }
+      if ( ! this->sub_notifyq.is_empty() )
+        this->forward_sub( submsg );
       break;
     }
     case KV_MSG_PSUB:
@@ -941,6 +974,8 @@ KvPubSub::route_msg_from_shm( KvMsg &msg ) /* inbound from shm */
                                                   pf.pref );
         }
       }
+      if ( ! this->sub_notifyq.is_empty() )
+        this->forward_sub( submsg );
       break;
     }
     /* forward message from publisher to shm */
@@ -951,8 +986,8 @@ KvPubSub::route_msg_from_shm( KvMsg &msg ) /* inbound from shm */
                      submsg.msg_data(), submsg.msg_size,
                      this->fd, submsg.hash, NULL, 0,
                      submsg.msg_enc, submsg.code );
-      this->poll.publish( pub, NULL, submsg.prefix_cnt(),
-                          submsg.prefix_array() );
+      this->poll.forward_msg( pub, NULL, submsg.prefix_cnt(),
+                              submsg.prefix_array() );
       break;
     }
 
@@ -1066,7 +1101,7 @@ eat_more_time:;
 }
 
 bool
-KvPubSub::publish( EvPublish &pub )
+KvPubSub::on_msg( EvPublish &pub )
 {
   /* no publish to self */
   if ( (uint32_t) this->fd != pub.src_route ) {

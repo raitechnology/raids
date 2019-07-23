@@ -18,7 +18,7 @@ struct EvRedisService : public EvConnection, public RedisExec {
   void process_close( void ) {
     this->RedisExec::release();
   }
-  bool publish( EvPublish &pub );
+  bool on_msg( EvPublish &pub );
   bool hash_to_sub( uint32_t h,  char *key,  size_t &keylen );
   void debug( void );
   void release( void );

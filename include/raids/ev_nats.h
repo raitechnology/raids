@@ -77,7 +77,7 @@ struct EvNatsService : public EvConnection {
   void rem_wild( NatsStr &xsubj );
   void rem_all_sub( void );
   bool fwd_pub( void );
-  bool publish( EvPublish &pub );
+  bool on_msg( EvPublish &pub );
   bool hash_to_sub( uint32_t h,  char *key,  size_t &keylen );
   bool fwd_msg( EvPublish &pub,  const void *sid,  size_t sid_len );
   void parse_connect( const char *buf,  size_t sz );

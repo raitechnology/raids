@@ -92,8 +92,8 @@ typedef struct kv::PrioQueue<RoutePublishData *, RoutePublishData::is_greater>
 
 struct KvPrefHash;
 struct RoutePublish {
-  bool publish( EvPublish &pub,  uint32_t *rcount_total,  uint8_t pref_cnt,
-                KvPrefHash *ph );
+  bool forward_msg( EvPublish &pub,  uint32_t *rcount_total,  uint8_t pref_cnt,
+                    KvPrefHash *ph );
   bool hash_to_sub( uint32_t r,  uint32_t h,  char *key,  size_t &keylen );
 };
 

@@ -203,6 +203,13 @@ EvCaprService::process( bool /*use_prefetch*/ )
     if ( status != 0 )
       goto break_loop;
 
+    if ( this->inboxlen == 0 ) {
+      if ( ( rec.flags & CAPR_SID_PRESENT ) != 0 ) {
+        this->sid = rec.sid;
+        this->inboxlen = rec.get_inbox( this->inbox );
+        this->add_subscription( this->inbox, this->inboxlen, NULL, 0, true );
+      }
+    }
     if ( is_capr_pub( rec.code ) ) {
       this->fwd_pub( rec );
     }
@@ -251,9 +258,9 @@ EvCaprService::timer_expire( uint64_t tid )
 void
 EvCaprService::reassert_subs( CaprMsgIn &rec )
 {
-  MDMsgMem      mem;
-  MDMsg       * m = MDMsg::unpack( rec.msg_data, 0, rec.msg_data_len, 0, NULL,
-                                   &mem );
+  MDMsgMem  mem;
+  MDMsg   * m = MDMsg::unpack( rec.msg_data, 0, rec.msg_data_len, 0, NULL,
+                               &mem );
   MDFieldIter * iter;
 
   if ( m != NULL && m->get_field_iter( iter ) == 0 ) {
@@ -283,7 +290,7 @@ EvCaprService::reassert_subs( CaprMsgIn &rec )
                   }
                   if ( ! is_wild )
                     is_wild = ::memmem( sub, len, ".*.", 3 ) != NULL;
-                  this->add_subscription( sub, len, is_wild );
+                  this->add_subscription( sub, len, NULL, 0, is_wild );
                 }
               }
             }
@@ -294,24 +301,54 @@ EvCaprService::reassert_subs( CaprMsgIn &rec )
   }
 }
 
-void
-EvCaprService::add_sub( CaprMsgIn &rec )
-{
-  char     sub[ CAPR_MAX_SUBJ_LEN ];
-  bool     is_wild;
-  uint32_t len = rec.get_subscription( sub, is_wild );
-  this->add_subscription( sub, len, is_wild );
+static inline char
+to_hex_char( uint8_t b ) {
+  return ( b < 0xa ) ? ( b + '0' ) : ( b - 0xa + 'A' );
+}
+
+static inline uint32_t
+from_hex_char( char b ) {
+  return ( b <= '9' ) ? ( b - '0' ) : ( b - 'A' + 0xa );
 }
 
 void
-EvCaprService::add_subscription( const char *sub,  uint32_t len,  bool is_wild )
+EvCaprService::add_sub( CaprMsgIn &rec )
+{
+  char     sub[ CAPR_MAX_SUBJ_LEN ],
+           reply[ CAPR_MAX_SUBJ_LEN * 2 ];
+  bool     is_wild;
+  uint32_t len  = rec.get_subscription( sub, is_wild ),
+           rlen = 0;
+
+  if ( ! is_wild && ( rec.flags & CAPR_IBX_PRESENT ) != 0 ) {
+    if ( this->inboxlen > 0 ) {
+      rlen = this->inboxlen - 1;
+      ::memcpy( reply, this->inbox, rlen );
+      for ( uint32_t k = 8; k < 12; k++ ) {
+        reply[ rlen ]   = to_hex_char( ( rec.addr[ k ] >> 4 ) & 0xfU );
+        reply[ rlen+1 ] = to_hex_char( rec.addr[ k ] & 0xfU );
+        rlen += 2;
+      }
+      reply[ rlen++ ] = '.';
+      ::strcpy( &reply[ rlen ], sub );
+      rlen += len;
+    }
+  }
+  this->add_subscription( sub, len, reply, rlen, is_wild );
+}
+
+void
+EvCaprService::add_subscription( const char *sub,  uint32_t len,
+                                 const char *reply,  uint32_t replylen,
+                                 bool is_wild )
 {
   if ( ! is_wild ) {
     uint32_t h = kv_crc_c( sub, len, 0 ),
              rcnt;
     if ( this->sub_tab.put( h, sub, len ) == CAPR_SUB_OK ) {
       rcnt = this->poll.sub_route.add_route( h, this->fd );
-      this->poll.pubsub->notify_sub( h, sub, len, this->fd, rcnt, 'C' );
+      this->poll.pubsub->notify_sub( h, sub, len, this->fd, rcnt, 'C',
+                                     reply, replylen );
     }
   }
   else {
@@ -357,7 +394,8 @@ EvCaprService::rem_sub( CaprMsgIn &rec )
 {
   char     sub[ CAPR_MAX_SUBJ_LEN ];
   bool     is_wild;
-  uint32_t len  = rec.get_subscription( sub, is_wild );
+  uint32_t len = rec.get_subscription( sub, is_wild );
+
   if ( ! is_wild ) {
     uint32_t h    = kv_crc_c( sub, len, 0 ),
              rcnt = 0;
@@ -403,6 +441,7 @@ EvCaprService::rem_all_sub( void )
   CaprSubRoutePos     pos;
   CaprPatternRoutePos ppos;
   uint32_t            rcnt;
+
   if ( this->sub_tab.first( pos ) ) {
     do {
       rcnt = this->poll.sub_route.del_route( pos.rt->hash, this->fd );
@@ -433,11 +472,11 @@ EvCaprService::fwd_pub( CaprMsgIn &rec )
            h   = kv_crc_c( sub, len, 0 );
   EvPublish pub( sub, len, NULL, 0, rec.msg_data, rec.msg_data_len,
                  this->fd, h, NULL, 0, rec.msg_enc, rec.code );
-  return this->poll.publish( pub, NULL, 0, NULL );
+  return this->poll.forward_msg( pub, NULL, 0, NULL );
 }
 
 bool
-EvCaprService::publish( EvPublish &pub )
+EvCaprService::on_msg( EvPublish &pub )
 {
   uint32_t pub_cnt = 0;
   for ( uint8_t cnt = 0; cnt < pub.prefix_cnt; cnt++ ) {
@@ -459,9 +498,17 @@ EvCaprService::publish( EvPublish &pub )
           break;
         if ( pcre2_match( rt->re, (const uint8_t *) pub.subject,
                           pub.subject_len, 0, 0, rt->md, 0 ) == 1 ) {
-          rt->msg_cnt++;
-          if ( pub_cnt == 0 )
-            this->fwd_msg( pub, NULL, 0 );
+          if ( pub.subject[ 0 ] == '_' &&
+               pub.subject_len > this->inboxlen &&
+               ::memcmp( pub.subject, this->inbox, this->inboxlen - 1 ) == 0 ) {
+            rt->msg_cnt++;
+            this->fwd_inbox( pub );
+          }
+          else {
+            rt->msg_cnt++;
+            if ( pub_cnt == 0 )
+              this->fwd_msg( pub, NULL, 0 );
+          }
           pub_cnt++;
         }
         rt = this->pat_tab.tab.find_next_by_hash( pub.hash[ cnt ], loc );
@@ -497,6 +544,34 @@ EvCaprService::fwd_msg( EvPublish &pub,  const void *,  size_t )
 {
   CaprMsgOut rec;
   size_t off = rec.encode_publish( *this->sess, 0, pub.subject, pub.pub_type,
+                                   pub.msg_len, pub.msg_enc );
+  this->send( rec, off, pub.msg, pub.msg_len );
+  bool flow_good = ( this->pending() <= this->send_highwater );
+  this->idle_push( flow_good ? EV_WRITE : EV_WRITE_HI );
+  return flow_good;
+}
+
+void
+EvCaprService::get_inbox_addr( EvPublish &pub,  const char *&subj,
+                               uint8_t *addr )
+{
+  const char * i = &pub.subject[ this->inboxlen - 1 ];
+  ::memcpy( addr, &this->sid, 8 );
+  addr[ 8 ]  = ( from_hex_char( i[ 0 ] ) << 4 ) | from_hex_char( i[ 1 ] );
+  addr[ 9 ]  = ( from_hex_char( i[ 2 ] ) << 4 ) | from_hex_char( i[ 3 ] );
+  addr[ 10 ] = ( from_hex_char( i[ 4 ] ) << 4 ) | from_hex_char( i[ 5 ] );
+  addr[ 11 ] = ( from_hex_char( i[ 6 ] ) << 4 ) | from_hex_char( i[ 7 ] );
+  subj = &i[ 9 ];
+}
+
+bool
+EvCaprService::fwd_inbox( EvPublish &pub )
+{
+  CaprMsgOut rec;
+  uint8_t addr[ 12 ];
+  const char *subj;
+  this->get_inbox_addr( pub, subj, addr );
+  size_t off = rec.encode_publish( *this->sess, addr, subj, pub.pub_type,
                                    pub.msg_len, pub.msg_enc );
   this->send( rec, off, pub.msg, pub.msg_len );
   bool flow_good = ( this->pending() <= this->send_highwater );
@@ -778,6 +853,34 @@ uint32_t
 CaprMsgIn::get_subject( char *s )
 {
   return copy_subj_in2( this->subj, s );
+}
+
+uint32_t
+CaprMsgIn::get_inbox( char *buf )
+{
+  uint8_t * byt = (uint8_t *) (void *) &this->sid;
+  uint32_t j = 7, k;
+
+  ::memcpy( buf, "_INBOX.", 7 );
+  for ( k = 0; k < 4; k++ ) {
+    if ( byt[ k ] >= 100 )
+      buf[ j++ ] = ( byt[ k ] / 100 ) + '0';
+    if ( byt[ k ] >= 10 )
+      buf[ j++ ] = ( byt[ k ] / 10 ) % 10 + '0';
+    buf[ j++ ] = byt[ k ] % 10 + '0';
+    buf[ j++ ] = '-';
+  }
+  if ( buf[ j - 1 ] == '-' )
+    buf[ j - 1 ] = '.';
+  for ( ; k < 8; k++ ) {
+    buf[ j ]     = to_hex_char( ( byt[ k ] >> 4 ) & 0xfU );
+    buf[ j + 1 ] = to_hex_char( byt[ k ] & 0xfU );
+    j += 2;
+  }
+  buf[ j ] = '.';
+  buf[ j + 1 ] = '>';
+  buf[ j + 2 ] = '\0';
+  return j + 2;
 }
 
 uint32_t

@@ -46,7 +46,7 @@ struct EvHttpService : public EvConnection, public RedisExec {
   void process_close( void ) {
     this->RedisExec::release();
   }
-  bool publish( EvPublish &pub );
+  bool on_msg( EvPublish &pub );
   bool hash_to_sub( uint32_t h,  char *key,  size_t &keylen );
 #if 0
   void cook_string( char *s,  size_t len ); /* expand '\r' to '\r\n' */

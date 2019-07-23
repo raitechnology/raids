@@ -426,7 +426,8 @@ EvRvService::add_sub( void )
              rcnt;
     if ( this->sub_tab.put( h, sub, len ) == RV_SUB_OK ) {
       rcnt = this->poll.sub_route.add_route( h, this->fd );
-      this->poll.pubsub->notify_sub( h, sub, len, this->fd, rcnt, 'C' );
+      this->poll.pubsub->notify_sub( h, sub, len, this->fd, rcnt, 'V',
+                                    this->msg_in.reply, this->msg_in.replylen );
     }
   }
   else {
@@ -460,7 +461,7 @@ EvRvService::add_sub( void )
           rcnt = this->poll.sub_route.add_pattern_route( h, this->fd,
                                                          cvt.prefixlen );
           this->poll.pubsub->notify_psub( h, buf, cvt.off, sub, cvt.prefixlen,
-                                          this->fd, rcnt, 'C' );
+                                          this->fd, rcnt, 'V' );
         }
       }
     }
@@ -470,16 +471,17 @@ EvRvService::add_sub( void )
 void
 EvRvService::rem_sub( void )
 {
-  char   * sub  = this->msg_in.sub;
-  uint32_t len  = this->msg_in.sublen;
+  char   * sub = this->msg_in.sub;
+  uint32_t len = this->msg_in.sublen;
+
   if ( ! this->msg_in.is_wild ) {
-    uint32_t h = kv_crc_c( sub, len, 0 ),
+    uint32_t h    = kv_crc_c( sub, len, 0 ),
              rcnt = 0;
     if ( this->sub_tab.rem( h, sub, len ) == RV_SUB_OK ) {
       printf( "rem sub %s\n", sub );
       if ( this->sub_tab.tab.find_by_hash( h ) == NULL )
         rcnt = this->poll.sub_route.del_route( h, this->fd );
-      this->poll.pubsub->notify_unsub( h, sub, len, this->fd, rcnt, 'C' );
+      this->poll.pubsub->notify_unsub( h, sub, len, this->fd, rcnt, 'V' );
     }
   }
   else {
@@ -505,7 +507,7 @@ EvRvService::rem_sub( void )
         rcnt = this->poll.sub_route.del_pattern_route( h, this->fd,
                                                        cvt.prefixlen );
         this->poll.pubsub->notify_punsub( h, buf, cvt.off, sub, cvt.prefixlen,
-                                          this->fd, rcnt, 'C' );
+                                          this->fd, rcnt, 'V' );
       }
     }
   }
@@ -517,11 +519,12 @@ EvRvService::rem_all_sub( void )
   RvSubRoutePos     pos;
   RvPatternRoutePos ppos;
   uint32_t          rcnt;
+
   if ( this->sub_tab.first( pos ) ) {
     do {
       rcnt = this->poll.sub_route.del_route( pos.rt->hash, this->fd );
       this->poll.pubsub->notify_unsub( pos.rt->hash, pos.rt->value, pos.rt->len,
-                                       this->fd, rcnt, 'C' );
+                                       this->fd, rcnt, 'V' );
     } while ( this->sub_tab.next( pos ) );
   }
   if ( this->pat_tab.first( ppos ) ) {
@@ -533,7 +536,7 @@ EvRvService::rem_all_sub( void )
                                                   cvt.prefixlen );
         this->poll.pubsub->notify_punsub( ppos.rt->hash, buf, cvt.off,
                                           ppos.rt->value, cvt.prefixlen,
-                                          this->fd, rcnt, 'C' );
+                                          this->fd, rcnt, 'V' );
       }
     } while ( this->pat_tab.next( ppos ) );
   }
@@ -542,8 +545,10 @@ EvRvService::rem_all_sub( void )
 bool
 EvRvService::fwd_pub( void )
 {
-  char   * sub     = this->msg_in.sub;
-  size_t   sublen  = this->msg_in.sublen;
+  char   * sub     = this->msg_in.sub,
+         * rep     = this->msg_in.reply;
+  size_t   sublen  = this->msg_in.sublen,
+           replen  = this->msg_in.replylen;
   uint32_t h       = kv_crc_c( sub, sublen, 0 );
   void   * msg     = this->msg_in.data.fptr;
   uint32_t msg_len = this->msg_in.data.fsize;
@@ -564,13 +569,13 @@ EvRvService::fwd_pub( void )
     if ( m != NULL )
       ftype = (uint8_t) m->get_type_id();
   }
-  EvPublish pub( sub, sublen, NULL, 0, msg, msg_len,
+  EvPublish pub( sub, sublen, rep, replen, msg, msg_len,
                  this->fd, h, NULL, 0, ftype, 'p' );
-  return this->poll.publish( pub, NULL, 0, NULL );
+  return this->poll.forward_msg( pub, NULL, 0, NULL );
 }
 
 bool
-EvRvService::publish( EvPublish &pub )
+EvRvService::on_msg( EvPublish &pub )
 {
   uint32_t pub_cnt = 0;
   for ( uint8_t cnt = 0; cnt < pub.prefix_cnt; cnt++ ) {
@@ -825,26 +830,45 @@ RvMsgIn::unpack( void *msgbuf,  size_t msglen )
         if ( this->iter->get_name( nm ) != 0 ||
              this->iter->get_reference( mref ) != 0 )
           return ERR_RV_REF;
-        if ( nm.fnamelen == 4 && ::memcmp( nm.fname, "sub", 4 ) == 0 ) {
-          this->sublen = copy_subj_in( mref.fptr, this->sub, this->is_wild );
-          cnt |= 1;
-        }
-        else if ( nm.fnamelen == 6 && ::memcmp( nm.fname, "mtype", 6 ) == 0 ) {
-          if ( mref.ftype == MD_STRING && mref.fsize == 2 ) {
-            this->mtype = mref.fptr[ 0 ];
-            if ( this->mtype >= 'C' && this->mtype <= 'L' ) {
-              static const uint32_t valid =
-                1 /* C */ | 2 /* D */ | 64 /* I */ | 512 /* L */;
-              if ( ( ( 1 << ( this->mtype - 'C' ) ) & valid ) != 0 )
-                cnt |= 2;
+        switch ( nm.fnamelen ) {
+          case 4:
+            if ( ::memcmp( nm.fname, "sub", 4 ) == 0 ) {
+              this->sublen = copy_subj_in( mref.fptr, this->sub, this->is_wild );
+              cnt |= 1;
             }
-          }
+            break;
+          case 5:
+            if ( ::memcmp( nm.fname, "data", 5 ) == 0 ) {
+              this->data = mref;
+              cnt |= 8;
+            }
+            break;
+          case 6:
+            if ( ::memcmp( nm.fname, "mtype", 6 ) == 0 ) {
+              if ( mref.ftype == MD_STRING && mref.fsize == 2 ) {
+                this->mtype = mref.fptr[ 0 ];
+                if ( this->mtype >= 'C' && this->mtype <= 'L' ) {
+                  static const uint32_t valid =
+                    1 /* C */ | 2 /* D */ | 64 /* I */ | 512 /* L */;
+                  if ( ( ( 1 << ( this->mtype - 'C' ) ) & valid ) != 0 )
+                    cnt |= 2;
+                }
+              }
+            }
+            break;
+          case 7:
+            if ( ::memcmp( nm.fname, "return", 7 ) == 0 ) {
+              this->reply    = (char *) mref.fptr;
+              this->replylen = mref.fsize;
+              if ( this->replylen > 0 && this->reply[ this->replylen ] == '\0' )
+                this->replylen--;
+              cnt |= 4;
+            }
+            break;
+          default:
+            break;
         }
-        else if ( nm.fnamelen == 5 && ::memcmp( nm.fname, "data", 5 ) == 0 ) {
-          this->data = mref;
-          cnt |= 4;
-        }
-      } while ( cnt < 7 && this->iter->next() == 0 );
+      } while ( cnt < 15 && this->iter->next() == 0 );
     }
     if ( ( cnt & 2 ) == 0 )
       status = ERR_RV_MTYPE; /* no mtype */
@@ -855,7 +879,11 @@ RvMsgIn::unpack( void *msgbuf,  size_t msglen )
   }
   if ( ( cnt & 2 ) == 0 )
     this->mtype = 0;
-  if ( ( cnt & 4 ) == 0 )
+  if ( ( cnt & 4 ) == 0 ) {
+    this->reply    = NULL;
+    this->replylen = 0;
+  }
+  if ( ( cnt & 8 ) == 0 )
     this->data.zero();
   return status;
 }
