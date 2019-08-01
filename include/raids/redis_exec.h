@@ -1,9 +1,7 @@
 #ifndef __rai_raids__redis_exec_h__
 #define __rai_raids__redis_exec_h__
 
-#include <raikv/shm_ht.h>
-#include <raikv/key_buf.h>
-#include <raikv/prio_queue.h>
+#include <raids/ev_key.h>
 #include <raids/redis_cmd.h>
 #include <raids/redis_msg.h>
 #include <raids/stream_buf.h>
@@ -50,12 +48,12 @@ enum ExecStatus {
   ERR_BAD_DISCARD       /* no transaction active to discard */
 };
 
-inline static bool exec_status_success( ExecStatus status ) {
-  return (int) status <= EXEC_SUCCESS;
+inline static bool exec_status_success( int status ) {
+  return status <= EXEC_SUCCESS;
 }
 
-inline static bool exec_status_fail( ExecStatus status ) {
-  return (int) status > EXEC_SUCCESS;
+inline static bool exec_status_fail( int status ) {
+  return status > EXEC_SUCCESS;
 }
 
 struct EvSocket;
@@ -70,67 +68,6 @@ struct ScanArgs {
   pcre2_real_code_8       * re; /* pcre regex compiled */
   pcre2_real_match_data_8 * md; /* pcre match context  */
   ScanArgs() : pos( 0 ), maxcnt( 10 ), re( 0 ), md( 0 ) {}
-};
-
-struct RedisKeyTempResult {
-  size_t  mem_size, /* alloc size */
-          size;     /* data size */
-  uint8_t type;     /* type of data */
-  char * data( size_t x ) const {
-    return &((char *) (void *) &this[ 1 ])[ x ];
-  }
-};
-
-struct RedisKeyCtx {
-  void * operator new( size_t, void *ptr ) { return ptr; }
-  static bool is_greater( RedisKeyCtx *ctx,  RedisKeyCtx *ctx2 );
-  uint64_t             hash1,  /* 128 bit hash of key */
-                       hash2;
-  RedisExec          & exec;   /* parent context */
-  EvSocket           * owner;  /* parent connection */
-  int64_t              ival;   /* if it returns int */
-  RedisKeyTempResult * part;   /* saved data for key */
-  const int            argn;   /* which arg number of command */
-  uint8_t              dep,    /* depends on another key */
-                       type;   /* value type, string, list, hash, etc */
-  ExecStatus           status; /* result of exec for this key */
-  kv::KeyStatus        kstatus;/* result of key lookup */
-  bool                 is_new, /* if the key does not exist */
-                       is_read;/* if the key is read only */
-  kv::KeyFragment      kbuf;   /* key material, extends past structure */
-
-  RedisKeyCtx( RedisExec &ex,  EvSocket *own,  const char *key,  size_t keylen,
-               const int n,  const uint64_t seed,  const uint64_t seed2 )
-     : hash1( seed ), hash2( seed2 ), exec( ex ), owner( own ), ival( 0 ),
-       part( 0 ), argn( n ), dep( 0 ), type( 0 ), status( EXEC_SETUP_OK ),
-       kstatus( KEY_OK ), is_new( false ), is_read( true ) {
-    uint16_t * p = (uint16_t *) (void *) this->kbuf.u.buf,
-             * k = (uint16_t *) (void *) key,
-             * e = (uint16_t *) (void *) &key[ keylen ];
-    do {
-      *p++ = *k++;
-    } while ( k < e );
-    this->kbuf.u.buf[ keylen ] = '\0'; /* string keys terminate with nul char */
-    this->kbuf.keylen = keylen + 1;
-    this->kbuf.hash( this->hash1, this->hash2 );
-  }
-  static size_t size( size_t keylen ) {
-    return sizeof( RedisKeyCtx ) + keylen; /* alloc size of *this */
-  }
-  void prefetch( void );             /* prefetch the key */
-  ExecStatus run( EvSocket *&svc ); /* execute key operation */
-  const char *get_type_str( void ) const;
-};
-
-struct EvPrefetchQueue :
-    public kv::PrioQueue<RedisKeyCtx *, RedisKeyCtx::is_greater> {
-  void * operator new( size_t, void *ptr ) { return ptr; }
-  void operator delete( void *ptr ) { ::free( ptr ); }
-
-  static EvPrefetchQueue *create( void ) {
-    void *p = ::malloc( sizeof( EvPrefetchQueue ) );
-    return new ( p ) EvPrefetchQueue();
-  }
 };
 
 struct RedisMsgList {
@@ -180,7 +117,7 @@ struct RedisExec {
   kv::WorkAllocT< 1024 > wrk; /* kv work buffer, reset before each key lookup */
   StreamBuf      & strm;      /* output buffer, result of command execution */
   RedisMsg         msg;       /* current command msg */
-  RedisKeyCtx    * key,       /* currently executing key */
+  EvKeyCtx       * key,       /* currently executing key */
                 ** keys;      /* all of the keys in command */
   uint32_t         key_cnt,   /* total keys[] size */
                    key_done;  /* number of keys processed */
@@ -221,21 +158,18 @@ struct RedisExec {
   size_t calc_key_count( void );
   /* set up a single key, there may be multiple in a command */
   ExecStatus exec_key_setup( EvSocket *svc,  EvPrefetchQueue *q,
-                             RedisKeyCtx *&ctx,  int n );
+                             EvKeyCtx *&ctx,  int n );
   void exec_run_to_completion( void );
   /* parse set up a command */
   ExecStatus exec( EvSocket *svc,  EvPrefetchQueue *q );
   /* execute a key operation */
-  ExecStatus exec_key_continue( RedisKeyCtx &ctx );
+  ExecStatus exec_key_continue( EvKeyCtx &ctx );
   /* compute the hash and prefetch the ht[] location */
-  void exec_key_prefetch( RedisKeyCtx &ctx ) {
-    this->key = &ctx;
-    this->kctx.set_key( ctx.kbuf );
-    this->kctx.set_hash( ctx.hash1, ctx.hash2 );
-    this->kctx.prefetch( 1 );
+  void exec_key_prefetch( EvKeyCtx &ctx ) {
+    this->key = ctx.prefetch( this->kctx );
   }
   /* fetch key for write and check type matches or is not set */
-  kv::KeyStatus get_key_write( RedisKeyCtx &ctx,  uint8_t type ) {
+  kv::KeyStatus get_key_write( EvKeyCtx &ctx,  uint8_t type ) {
     kv::KeyStatus status = this->exec_key_fetch( ctx, false );
     if ( status == KEY_OK && ctx.type != type ) {
       if ( ctx.type == 0 ) {
@@ -247,14 +181,14 @@ struct RedisExec {
     return status;
   }
   /* fetch key for read and check type matches or is not set */
-  kv::KeyStatus get_key_read( RedisKeyCtx &ctx,  uint8_t type ) {
+  kv::KeyStatus get_key_read( EvKeyCtx &ctx,  uint8_t type ) {
     kv::KeyStatus status = this->exec_key_fetch( ctx, true );
     if ( status == KEY_OK && ctx.type != type )
       return ( ctx.type == 0 ) ? KEY_NOT_FOUND : KEY_NO_VALUE;
     return status;
   }
   /* fetch a read key value or acquire it for write */
-  kv::KeyStatus exec_key_fetch( RedisKeyCtx &ctx,  bool force_read = false );
+  kv::KeyStatus exec_key_fetch( EvKeyCtx &ctx,  bool force_read = false );
 
   /* CLUSTER */
   ExecStatus exec_cluster( void );
@@ -268,96 +202,96 @@ struct RedisExec {
   ExecStatus exec_select( void );
   ExecStatus exec_swapdb( void );
   /* GEO */
-  ExecStatus exec_geoadd( RedisKeyCtx &ctx );
-  ExecStatus exec_geohash( RedisKeyCtx &ctx );
-  ExecStatus exec_geopos( RedisKeyCtx &ctx );
-  ExecStatus exec_geodist( RedisKeyCtx &ctx );
-  ExecStatus exec_georadius( RedisKeyCtx &ctx );
-  ExecStatus exec_georadiusbymember( RedisKeyCtx &ctx );
-  ExecStatus do_gread( RedisKeyCtx &ctx,  int flags );
-  ExecStatus do_gradius( RedisKeyCtx &ctx,  int flags );
-  ExecStatus do_gradius_store( RedisKeyCtx &ctx );
+  ExecStatus exec_geoadd( EvKeyCtx &ctx );
+  ExecStatus exec_geohash( EvKeyCtx &ctx );
+  ExecStatus exec_geopos( EvKeyCtx &ctx );
+  ExecStatus exec_geodist( EvKeyCtx &ctx );
+  ExecStatus exec_georadius( EvKeyCtx &ctx );
+  ExecStatus exec_georadiusbymember( EvKeyCtx &ctx );
+  ExecStatus do_gread( EvKeyCtx &ctx,  int flags );
+  ExecStatus do_gradius( EvKeyCtx &ctx,  int flags );
+  ExecStatus do_gradius_store( EvKeyCtx &ctx );
   /* HASH */
-  ExecStatus exec_happend( RedisKeyCtx &ctx );
-  ExecStatus exec_hdel( RedisKeyCtx &ctx );
-  ExecStatus exec_hdiff( RedisKeyCtx &ctx );
-  ExecStatus exec_hdiffstore( RedisKeyCtx &ctx );
-  ExecStatus exec_hexists( RedisKeyCtx &ctx );
-  ExecStatus exec_hget( RedisKeyCtx &ctx );
-  ExecStatus exec_hgetall( RedisKeyCtx &ctx );
-  ExecStatus exec_hincrby( RedisKeyCtx &ctx );
-  ExecStatus exec_hincrbyfloat( RedisKeyCtx &ctx );
-  ExecStatus exec_hinter( RedisKeyCtx &ctx );
-  ExecStatus exec_hinterstore( RedisKeyCtx &ctx );
-  ExecStatus exec_hkeys( RedisKeyCtx &ctx );
-  ExecStatus exec_hlen( RedisKeyCtx &ctx );
-  ExecStatus exec_hmget( RedisKeyCtx &ctx );
-  ExecStatus exec_hmset( RedisKeyCtx &ctx );
-  ExecStatus exec_hset( RedisKeyCtx &ctx );
-  ExecStatus exec_hsetnx( RedisKeyCtx &ctx );
-  ExecStatus exec_hstrlen( RedisKeyCtx &ctx );
-  ExecStatus exec_hvals( RedisKeyCtx &ctx );
-  ExecStatus exec_hscan( RedisKeyCtx &ctx );
-  ExecStatus exec_hunion( RedisKeyCtx &ctx );
-  ExecStatus exec_hunionstore( RedisKeyCtx &ctx );
-  ExecStatus do_hmultiscan( RedisKeyCtx &ctx,  int flags,  ScanArgs *hs );
-  ExecStatus do_hread( RedisKeyCtx &ctx,  int flags );
-  ExecStatus do_hwrite( RedisKeyCtx &ctx,  int flags );
+  ExecStatus exec_happend( EvKeyCtx &ctx );
+  ExecStatus exec_hdel( EvKeyCtx &ctx );
+  ExecStatus exec_hdiff( EvKeyCtx &ctx );
+  ExecStatus exec_hdiffstore( EvKeyCtx &ctx );
+  ExecStatus exec_hexists( EvKeyCtx &ctx );
+  ExecStatus exec_hget( EvKeyCtx &ctx );
+  ExecStatus exec_hgetall( EvKeyCtx &ctx );
+  ExecStatus exec_hincrby( EvKeyCtx &ctx );
+  ExecStatus exec_hincrbyfloat( EvKeyCtx &ctx );
+  ExecStatus exec_hinter( EvKeyCtx &ctx );
+  ExecStatus exec_hinterstore( EvKeyCtx &ctx );
+  ExecStatus exec_hkeys( EvKeyCtx &ctx );
+  ExecStatus exec_hlen( EvKeyCtx &ctx );
+  ExecStatus exec_hmget( EvKeyCtx &ctx );
+  ExecStatus exec_hmset( EvKeyCtx &ctx );
+  ExecStatus exec_hset( EvKeyCtx &ctx );
+  ExecStatus exec_hsetnx( EvKeyCtx &ctx );
+  ExecStatus exec_hstrlen( EvKeyCtx &ctx );
+  ExecStatus exec_hvals( EvKeyCtx &ctx );
+  ExecStatus exec_hscan( EvKeyCtx &ctx );
+  ExecStatus exec_hunion( EvKeyCtx &ctx );
+  ExecStatus exec_hunionstore( EvKeyCtx &ctx );
+  ExecStatus do_hmultiscan( EvKeyCtx &ctx,  int flags,  ScanArgs *hs );
+  ExecStatus do_hread( EvKeyCtx &ctx,  int flags );
+  ExecStatus do_hwrite( EvKeyCtx &ctx,  int flags );
   /* HYPERLOGLOG */
-  ExecStatus exec_pfadd( RedisKeyCtx &ctx );
-  ExecStatus exec_pfcount( RedisKeyCtx &ctx );
-  ExecStatus exec_pfmerge( RedisKeyCtx &ctx );
+  ExecStatus exec_pfadd( EvKeyCtx &ctx );
+  ExecStatus exec_pfcount( EvKeyCtx &ctx );
+  ExecStatus exec_pfmerge( EvKeyCtx &ctx );
   /* KEY */
-  ExecStatus exec_del( RedisKeyCtx &ctx );
-  ExecStatus exec_dump( RedisKeyCtx &ctx );
-  ExecStatus exec_exists( RedisKeyCtx &ctx );
-  ExecStatus exec_expire( RedisKeyCtx &ctx );
-  ExecStatus exec_expireat( RedisKeyCtx &ctx );
+  ExecStatus exec_del( EvKeyCtx &ctx );
+  ExecStatus exec_dump( EvKeyCtx &ctx );
+  ExecStatus exec_exists( EvKeyCtx &ctx );
+  ExecStatus exec_expire( EvKeyCtx &ctx );
+  ExecStatus exec_expireat( EvKeyCtx &ctx );
   ExecStatus exec_keys( void );
-  ExecStatus exec_migrate( RedisKeyCtx &ctx );
-  ExecStatus exec_move( RedisKeyCtx &ctx );
-  ExecStatus exec_object( RedisKeyCtx &ctx );
-  ExecStatus exec_persist( RedisKeyCtx &ctx );
-  ExecStatus exec_pexpire( RedisKeyCtx &ctx );
-  ExecStatus exec_pexpireat( RedisKeyCtx &ctx );
-  ExecStatus do_pexpire( RedisKeyCtx &ctx,  uint64_t units );
-  ExecStatus do_pexpireat( RedisKeyCtx &ctx,  uint64_t units );
-  ExecStatus exec_pttl( RedisKeyCtx &ctx );
-  ExecStatus do_pttl( RedisKeyCtx &ctx,  int64_t units );
+  ExecStatus exec_migrate( EvKeyCtx &ctx );
+  ExecStatus exec_move( EvKeyCtx &ctx );
+  ExecStatus exec_object( EvKeyCtx &ctx );
+  ExecStatus exec_persist( EvKeyCtx &ctx );
+  ExecStatus exec_pexpire( EvKeyCtx &ctx );
+  ExecStatus exec_pexpireat( EvKeyCtx &ctx );
+  ExecStatus do_pexpire( EvKeyCtx &ctx,  uint64_t units );
+  ExecStatus do_pexpireat( EvKeyCtx &ctx,  uint64_t units );
+  ExecStatus exec_pttl( EvKeyCtx &ctx );
+  ExecStatus do_pttl( EvKeyCtx &ctx,  int64_t units );
   ExecStatus exec_randomkey( void );
-  ExecStatus exec_rename( RedisKeyCtx &ctx );
-  ExecStatus exec_renamenx( RedisKeyCtx &ctx );
-  ExecStatus exec_restore( RedisKeyCtx &ctx );
-  ExecStatus exec_sort( RedisKeyCtx &ctx );
-  ExecStatus exec_touch( RedisKeyCtx &ctx );
-  ExecStatus exec_ttl( RedisKeyCtx &ctx );
-  ExecStatus exec_type( RedisKeyCtx &ctx );
-  ExecStatus exec_unlink( RedisKeyCtx &ctx );
+  ExecStatus exec_rename( EvKeyCtx &ctx );
+  ExecStatus exec_renamenx( EvKeyCtx &ctx );
+  ExecStatus exec_restore( EvKeyCtx &ctx );
+  ExecStatus exec_sort( EvKeyCtx &ctx );
+  ExecStatus exec_touch( EvKeyCtx &ctx );
+  ExecStatus exec_ttl( EvKeyCtx &ctx );
+  ExecStatus exec_type( EvKeyCtx &ctx );
+  ExecStatus exec_unlink( EvKeyCtx &ctx );
   ExecStatus exec_wait( void );
   ExecStatus exec_scan( void );
   ExecStatus match_scan_args( ScanArgs &sa,  size_t i );
   void release_scan_args( ScanArgs &sa );
   ExecStatus scan_keys( ScanArgs &sa );
   /* LIST */
-  ExecStatus exec_blpop( RedisKeyCtx &ctx );
-  ExecStatus exec_brpop( RedisKeyCtx &ctx );
-  ExecStatus exec_brpoplpush( RedisKeyCtx &ctx );
-  ExecStatus exec_lindex( RedisKeyCtx &ctx );
-  ExecStatus exec_linsert( RedisKeyCtx &ctx );
-  ExecStatus exec_llen( RedisKeyCtx &ctx );
-  ExecStatus exec_lpop( RedisKeyCtx &ctx );
-  ExecStatus exec_lpush( RedisKeyCtx &ctx );
-  ExecStatus exec_lpushx( RedisKeyCtx &ctx );
-  ExecStatus exec_lrange( RedisKeyCtx &ctx );
-  ExecStatus exec_lrem( RedisKeyCtx &ctx );
-  ExecStatus exec_lset( RedisKeyCtx &ctx );
-  ExecStatus exec_ltrim( RedisKeyCtx &ctx );
-  ExecStatus exec_rpop( RedisKeyCtx &ctx );
-  ExecStatus exec_rpoplpush( RedisKeyCtx &ctx );
-  ExecStatus exec_rpush( RedisKeyCtx &ctx );
-  ExecStatus exec_rpushx( RedisKeyCtx &ctx );
-  ExecStatus do_push( RedisKeyCtx &ctx,  int flags );
-  ExecStatus do_pop( RedisKeyCtx &ctx,  int flags );
+  ExecStatus exec_blpop( EvKeyCtx &ctx );
+  ExecStatus exec_brpop( EvKeyCtx &ctx );
+  ExecStatus exec_brpoplpush( EvKeyCtx &ctx );
+  ExecStatus exec_lindex( EvKeyCtx &ctx );
+  ExecStatus exec_linsert( EvKeyCtx &ctx );
+  ExecStatus exec_llen( EvKeyCtx &ctx );
+  ExecStatus exec_lpop( EvKeyCtx &ctx );
+  ExecStatus exec_lpush( EvKeyCtx &ctx );
+  ExecStatus exec_lpushx( EvKeyCtx &ctx );
+  ExecStatus exec_lrange( EvKeyCtx &ctx );
+  ExecStatus exec_lrem( EvKeyCtx &ctx );
+  ExecStatus exec_lset( EvKeyCtx &ctx );
+  ExecStatus exec_ltrim( EvKeyCtx &ctx );
+  ExecStatus exec_rpop( EvKeyCtx &ctx );
+  ExecStatus exec_rpoplpush( EvKeyCtx &ctx );
+  ExecStatus exec_rpush( EvKeyCtx &ctx );
+  ExecStatus exec_rpushx( EvKeyCtx &ctx );
+  ExecStatus do_push( EvKeyCtx &ctx,  int flags );
+  ExecStatus do_pop( EvKeyCtx &ctx,  int flags );
   /* PUBSUB */
   ExecStatus exec_psubscribe( void );
   ExecStatus exec_pubsub( void );
@@ -374,9 +308,9 @@ struct RedisExec {
   bool do_pub( EvPublish &pub );
   bool do_hash_to_sub( uint32_t h,  char *key,  size_t &keylen );
   /* SCRIPT */
-  ExecStatus exec_eval( RedisKeyCtx &ctx );
-  ExecStatus exec_evalsha( RedisKeyCtx &ctx );
-  ExecStatus exec_script( RedisKeyCtx &ctx );
+  ExecStatus exec_eval( EvKeyCtx &ctx );
+  ExecStatus exec_evalsha( EvKeyCtx &ctx );
+  ExecStatus exec_script( EvKeyCtx &ctx );
   /* SERVER */
   ExecStatus exec_bgrewriteaof( void );
   ExecStatus exec_bgsave( void );
@@ -399,82 +333,82 @@ struct RedisExec {
   ExecStatus exec_sync( void );
   ExecStatus exec_time( void );
   /* SET */
-  ExecStatus exec_sadd( RedisKeyCtx &ctx );
-  ExecStatus exec_scard( RedisKeyCtx &ctx );
-  ExecStatus exec_sdiff( RedisKeyCtx &ctx );
-  ExecStatus exec_sdiffstore( RedisKeyCtx &ctx );
-  ExecStatus exec_sinter( RedisKeyCtx &ctx );
-  ExecStatus exec_sinterstore( RedisKeyCtx &ctx );
-  ExecStatus exec_sismember( RedisKeyCtx &ctx );
-  ExecStatus exec_smembers( RedisKeyCtx &ctx );
-  ExecStatus exec_smove( RedisKeyCtx &ctx );
-  ExecStatus exec_spop( RedisKeyCtx &ctx );
-  ExecStatus exec_srandmember( RedisKeyCtx &ctx );
-  ExecStatus exec_srem( RedisKeyCtx &ctx );
-  ExecStatus exec_sunion( RedisKeyCtx &ctx );
-  ExecStatus exec_sunionstore( RedisKeyCtx &ctx );
-  ExecStatus exec_sscan( RedisKeyCtx &ctx );
-  ExecStatus do_sread( RedisKeyCtx &ctx,  int flags );
-  ExecStatus do_swrite( RedisKeyCtx &ctx,  int flags );
-  ExecStatus do_smultiscan( RedisKeyCtx &ctx,  int flags,  ScanArgs *sa );
-  ExecStatus do_ssetop( RedisKeyCtx &ctx,  int flags );
+  ExecStatus exec_sadd( EvKeyCtx &ctx );
+  ExecStatus exec_scard( EvKeyCtx &ctx );
+  ExecStatus exec_sdiff( EvKeyCtx &ctx );
+  ExecStatus exec_sdiffstore( EvKeyCtx &ctx );
+  ExecStatus exec_sinter( EvKeyCtx &ctx );
+  ExecStatus exec_sinterstore( EvKeyCtx &ctx );
+  ExecStatus exec_sismember( EvKeyCtx &ctx );
+  ExecStatus exec_smembers( EvKeyCtx &ctx );
+  ExecStatus exec_smove( EvKeyCtx &ctx );
+  ExecStatus exec_spop( EvKeyCtx &ctx );
+  ExecStatus exec_srandmember( EvKeyCtx &ctx );
+  ExecStatus exec_srem( EvKeyCtx &ctx );
+  ExecStatus exec_sunion( EvKeyCtx &ctx );
+  ExecStatus exec_sunionstore( EvKeyCtx &ctx );
+  ExecStatus exec_sscan( EvKeyCtx &ctx );
+  ExecStatus do_sread( EvKeyCtx &ctx,  int flags );
+  ExecStatus do_swrite( EvKeyCtx &ctx,  int flags );
+  ExecStatus do_smultiscan( EvKeyCtx &ctx,  int flags,  ScanArgs *sa );
+  ExecStatus do_ssetop( EvKeyCtx &ctx,  int flags );
   /* SORTED_SET */
-  ExecStatus exec_zadd( RedisKeyCtx &ctx );
-  ExecStatus exec_zcard( RedisKeyCtx &ctx );
-  ExecStatus exec_zcount( RedisKeyCtx &ctx );
-  ExecStatus exec_zincrby( RedisKeyCtx &ctx );
-  ExecStatus exec_zinterstore( RedisKeyCtx &ctx );
-  ExecStatus exec_zlexcount( RedisKeyCtx &ctx );
-  ExecStatus exec_zrange( RedisKeyCtx &ctx );
-  ExecStatus exec_zrangebylex( RedisKeyCtx &ctx );
-  ExecStatus exec_zrevrangebylex( RedisKeyCtx &ctx );
-  ExecStatus exec_zrangebyscore( RedisKeyCtx &ctx );
-  ExecStatus exec_zrank( RedisKeyCtx &ctx );
-  ExecStatus exec_zrem( RedisKeyCtx &ctx );
-  ExecStatus exec_zremrangebylex( RedisKeyCtx &ctx );
-  ExecStatus exec_zremrangebyrank( RedisKeyCtx &ctx );
-  ExecStatus exec_zremrangebyscore( RedisKeyCtx &ctx );
-  ExecStatus exec_zrevrange( RedisKeyCtx &ctx );
-  ExecStatus exec_zrevrangebyscore( RedisKeyCtx &ctx );
-  ExecStatus exec_zrevrank( RedisKeyCtx &ctx );
-  ExecStatus exec_zscore( RedisKeyCtx &ctx );
-  ExecStatus exec_zunionstore( RedisKeyCtx &ctx );
-  ExecStatus exec_zscan( RedisKeyCtx &ctx );
-  ExecStatus do_zread( RedisKeyCtx &ctx,  int flags );
-  ExecStatus do_zwrite( RedisKeyCtx &ctx,  int flags );
-  ExecStatus do_zmultiscan( RedisKeyCtx &ctx,  int flags,  ScanArgs *sa );
-  ExecStatus do_zremrange( RedisKeyCtx &ctx,  int flags );
-  ExecStatus do_zsetop( RedisKeyCtx &ctx,  int flags );
-  ExecStatus do_zsetop_store( RedisKeyCtx &ctx,  int flags );
+  ExecStatus exec_zadd( EvKeyCtx &ctx );
+  ExecStatus exec_zcard( EvKeyCtx &ctx );
+  ExecStatus exec_zcount( EvKeyCtx &ctx );
+  ExecStatus exec_zincrby( EvKeyCtx &ctx );
+  ExecStatus exec_zinterstore( EvKeyCtx &ctx );
+  ExecStatus exec_zlexcount( EvKeyCtx &ctx );
+  ExecStatus exec_zrange( EvKeyCtx &ctx );
+  ExecStatus exec_zrangebylex( EvKeyCtx &ctx );
+  ExecStatus exec_zrevrangebylex( EvKeyCtx &ctx );
+  ExecStatus exec_zrangebyscore( EvKeyCtx &ctx );
+  ExecStatus exec_zrank( EvKeyCtx &ctx );
+  ExecStatus exec_zrem( EvKeyCtx &ctx );
+  ExecStatus exec_zremrangebylex( EvKeyCtx &ctx );
+  ExecStatus exec_zremrangebyrank( EvKeyCtx &ctx );
+  ExecStatus exec_zremrangebyscore( EvKeyCtx &ctx );
+  ExecStatus exec_zrevrange( EvKeyCtx &ctx );
+  ExecStatus exec_zrevrangebyscore( EvKeyCtx &ctx );
+  ExecStatus exec_zrevrank( EvKeyCtx &ctx );
+  ExecStatus exec_zscore( EvKeyCtx &ctx );
+  ExecStatus exec_zunionstore( EvKeyCtx &ctx );
+  ExecStatus exec_zscan( EvKeyCtx &ctx );
+  ExecStatus do_zread( EvKeyCtx &ctx,  int flags );
+  ExecStatus do_zwrite( EvKeyCtx &ctx,  int flags );
+  ExecStatus do_zmultiscan( EvKeyCtx &ctx,  int flags,  ScanArgs *sa );
+  ExecStatus do_zremrange( EvKeyCtx &ctx,  int flags );
+  ExecStatus do_zsetop( EvKeyCtx &ctx,  int flags );
+  ExecStatus do_zsetop_store( EvKeyCtx &ctx,  int flags );
   /* STRING */
-  ExecStatus exec_append( RedisKeyCtx &ctx );
-  ExecStatus exec_bitcount( RedisKeyCtx &ctx );
-  ExecStatus exec_bitfield( RedisKeyCtx &ctx );
-  ExecStatus exec_bitop( RedisKeyCtx &ctx );
-  ExecStatus exec_bitpos( RedisKeyCtx &ctx );
-  ExecStatus exec_decr( RedisKeyCtx &ctx );
-  ExecStatus exec_decrby( RedisKeyCtx &ctx );
-  ExecStatus exec_get( RedisKeyCtx &ctx );
-  ExecStatus exec_getbit( RedisKeyCtx &ctx );
-  ExecStatus exec_getrange( RedisKeyCtx &ctx );
-  ExecStatus exec_getset( RedisKeyCtx &ctx );
-  ExecStatus exec_incr( RedisKeyCtx &ctx );
-  ExecStatus exec_incrby( RedisKeyCtx &ctx );
-  ExecStatus exec_incrbyfloat( RedisKeyCtx &ctx );
-  ExecStatus exec_mget( RedisKeyCtx &ctx );
-  ExecStatus exec_mset( RedisKeyCtx &ctx );
-  ExecStatus exec_msetnx( RedisKeyCtx &ctx );
-  ExecStatus exec_psetex( RedisKeyCtx &ctx );
-  ExecStatus exec_set( RedisKeyCtx &ctx );
-  ExecStatus exec_setbit( RedisKeyCtx &ctx );
-  ExecStatus exec_setex( RedisKeyCtx &ctx );
-  ExecStatus exec_setnx( RedisKeyCtx &ctx );
-  ExecStatus exec_setrange( RedisKeyCtx &ctx );
-  ExecStatus exec_strlen( RedisKeyCtx &ctx );
+  ExecStatus exec_append( EvKeyCtx &ctx );
+  ExecStatus exec_bitcount( EvKeyCtx &ctx );
+  ExecStatus exec_bitfield( EvKeyCtx &ctx );
+  ExecStatus exec_bitop( EvKeyCtx &ctx );
+  ExecStatus exec_bitpos( EvKeyCtx &ctx );
+  ExecStatus exec_decr( EvKeyCtx &ctx );
+  ExecStatus exec_decrby( EvKeyCtx &ctx );
+  ExecStatus exec_get( EvKeyCtx &ctx );
+  ExecStatus exec_getbit( EvKeyCtx &ctx );
+  ExecStatus exec_getrange( EvKeyCtx &ctx );
+  ExecStatus exec_getset( EvKeyCtx &ctx );
+  ExecStatus exec_incr( EvKeyCtx &ctx );
+  ExecStatus exec_incrby( EvKeyCtx &ctx );
+  ExecStatus exec_incrbyfloat( EvKeyCtx &ctx );
+  ExecStatus exec_mget( EvKeyCtx &ctx );
+  ExecStatus exec_mset( EvKeyCtx &ctx );
+  ExecStatus exec_msetnx( EvKeyCtx &ctx );
+  ExecStatus exec_psetex( EvKeyCtx &ctx );
+  ExecStatus exec_set( EvKeyCtx &ctx );
+  ExecStatus exec_setbit( EvKeyCtx &ctx );
+  ExecStatus exec_setex( EvKeyCtx &ctx );
+  ExecStatus exec_setnx( EvKeyCtx &ctx );
+  ExecStatus exec_setrange( EvKeyCtx &ctx );
+  ExecStatus exec_strlen( EvKeyCtx &ctx );
   /* string extras */
-  ExecStatus do_add( RedisKeyCtx &ctx,  int64_t incr );
-  ExecStatus do_set_value( RedisKeyCtx &ctx,  int n,  int flags );
-  ExecStatus do_set_value_expire( RedisKeyCtx &ctx,  int n,  uint64_t ns,
+  ExecStatus do_add( EvKeyCtx &ctx,  int64_t incr );
+  ExecStatus do_set_value( EvKeyCtx &ctx,  int n,  int flags );
+  ExecStatus do_set_value_expire( EvKeyCtx &ctx,  int n,  uint64_t ns,
                                   int flags );
   /* TRANSACTION */
   bool make_multi( void );
@@ -483,23 +417,23 @@ struct RedisExec {
   ExecStatus exec_exec( void );
   ExecStatus exec_multi( void );
   ExecStatus exec_unwatch( void );
-  ExecStatus exec_watch( RedisKeyCtx &ctx );
+  ExecStatus exec_watch( EvKeyCtx &ctx );
   /* STREAM */
-  ExecStatus exec_xadd( RedisKeyCtx &ctx );
-  ExecStatus exec_xlen( RedisKeyCtx &ctx );
-  ExecStatus exec_xrange( RedisKeyCtx &ctx );
-  ExecStatus exec_xrevrange( RedisKeyCtx &ctx );
-  ExecStatus exec_xread( RedisKeyCtx &ctx );
-  ExecStatus exec_xreadgroup( RedisKeyCtx &ctx );
-  ExecStatus exec_xgroup( RedisKeyCtx &ctx );
-  ExecStatus exec_xack( RedisKeyCtx &ctx );
-  ExecStatus exec_xpending( RedisKeyCtx &ctx );
-  ExecStatus exec_xclaim( RedisKeyCtx &ctx );
-  ExecStatus exec_xinfo( RedisKeyCtx &ctx );
-  ExecStatus exec_xdel( RedisKeyCtx &ctx );
+  ExecStatus exec_xadd( EvKeyCtx &ctx );
+  ExecStatus exec_xlen( EvKeyCtx &ctx );
+  ExecStatus exec_xrange( EvKeyCtx &ctx );
+  ExecStatus exec_xrevrange( EvKeyCtx &ctx );
+  ExecStatus exec_xread( EvKeyCtx &ctx );
+  ExecStatus exec_xreadgroup( EvKeyCtx &ctx );
+  ExecStatus exec_xgroup( EvKeyCtx &ctx );
+  ExecStatus exec_xack( EvKeyCtx &ctx );
+  ExecStatus exec_xpending( EvKeyCtx &ctx );
+  ExecStatus exec_xclaim( EvKeyCtx &ctx );
+  ExecStatus exec_xinfo( EvKeyCtx &ctx );
+  ExecStatus exec_xdel( EvKeyCtx &ctx );
 
   /* result senders */
-  void send_err( ExecStatus status,  kv::KeyStatus kstatus = KEY_OK );
+  void send_err( int status,  kv::KeyStatus kstatus = KEY_OK );
   void send_err_string( const char *s,  size_t slen );
   void send_ok( void );
   void send_nil( void );
@@ -525,36 +459,11 @@ struct RedisExec {
   void send_err_key_exists( void );
   void send_err_key_doesnt_exist( void );
 
-  bool save_string_result( RedisKeyCtx &ctx,  const void *data,  size_t size );
-  bool save_data( RedisKeyCtx &ctx,  const void *data,  size_t size,
+  bool save_string_result( EvKeyCtx &ctx,  const void *data,  size_t size );
+  bool save_data( EvKeyCtx &ctx,  const void *data,  size_t size,
                   uint8_t type );
   void array_string_result( void );
 };
-
-inline void
-RedisKeyCtx::prefetch( void )
-{
-  this->exec.exec_key_prefetch( *this );
-}
-
-inline ExecStatus
-RedisKeyCtx::run( EvSocket *&svc )
-{
-  svc = this->owner;
-  return this->exec.exec_key_continue( *this );
-}
-
-inline bool
-RedisKeyCtx::is_greater( RedisKeyCtx *ctx,  RedisKeyCtx *ctx2 )
-{
-  if ( ctx->dep > ctx2->dep )
-    return true;
-  if ( ctx->dep == ctx2->dep ) {
-    kv::HashTab &ht = ctx->exec.kctx.ht;
-    return ht.hdr.ht_mod( ctx->hash1 ) > ht.hdr.ht_mod( ctx2->hash1 );
-  }
-  return false;
-}
 
 static inline void
 str_to_upper( const char *in,  char *out,  size_t len )

@@ -85,13 +85,13 @@ RedisExec::send_concat_string( const void *data,  size_t size,
 }
 
 bool
-RedisExec::save_string_result( RedisKeyCtx &ctx,  const void *data,
+RedisExec::save_string_result( EvKeyCtx &ctx,  const void *data,
                                size_t size )
 {
-  size_t msz = sizeof( RedisKeyTempResult ) + size + 24;
+  size_t msz = sizeof( EvKeyTempResult ) + size + 24;
   if ( ctx.part == NULL || msz > ctx.part->mem_size ) {
-    RedisKeyTempResult *part;
-    part = (RedisKeyTempResult *) this->strm.alloc_temp( msz );
+    EvKeyTempResult *part;
+    part = (EvKeyTempResult *) this->strm.alloc_temp( msz );
     if ( part != NULL ) {
       part->mem_size = msz;
       part->type = 0; /* no type */
@@ -112,13 +112,13 @@ RedisExec::save_string_result( RedisKeyCtx &ctx,  const void *data,
 }
 
 bool
-RedisExec::save_data( RedisKeyCtx &ctx,  const void *data,  size_t size,
+RedisExec::save_data( EvKeyCtx &ctx,  const void *data,  size_t size,
                       uint8_t type )
 {
-  size_t msz = sizeof( RedisKeyTempResult ) + size;
+  size_t msz = sizeof( EvKeyTempResult ) + size;
   if ( ctx.part == NULL || msz > ctx.part->mem_size ) {
-    RedisKeyTempResult *part;
-    part = (RedisKeyTempResult *) this->strm.alloc_temp( msz );
+    EvKeyTempResult *part;
+    part = (EvKeyTempResult *) this->strm.alloc_temp( msz );
     if ( part != NULL ) {
       part->mem_size = msz;
       ctx.part = part;
@@ -136,9 +136,9 @@ RedisExec::save_data( RedisKeyCtx &ctx,  const void *data,  size_t size,
 void
 RedisExec::array_string_result( void )
 {
-  char               * str = this->strm.alloc( 32 );
-  RedisKeyTempResult * part;
-  size_t               sz;
+  char            * str = this->strm.alloc( 32 );
+  EvKeyTempResult * part;
+  size_t            sz;
   if ( str == NULL )
     return;
   str[ 0 ] = '*';
@@ -168,17 +168,17 @@ RedisExec::array_string_result( void )
 
 ExecStatus
 RedisExec::exec_key_setup( EvSocket *own,  EvPrefetchQueue *q,
-                           RedisKeyCtx *&ctx,  int n )
+                           EvKeyCtx *&ctx,  int n )
 {
   const char * key;
   size_t       keylen;
   if ( ! this->msg.get_arg( n, key, keylen ) )
     return ERR_BAD_ARGS;
-  void *p = this->strm.alloc_temp( RedisKeyCtx::size( keylen ) );
+  void *p = this->strm.alloc_temp( EvKeyCtx::size( keylen ) );
   if ( p == NULL )
     return ERR_ALLOC_FAIL;
-  ctx = new ( p ) RedisKeyCtx( *this, own, key, keylen, n,
-                               this->seed, this->seed2 );
+  ctx = new ( p ) EvKeyCtx( this->kctx.ht, own, key, keylen, n,
+                            this->seed, this->seed2 );
   if ( q != NULL && ! q->push( ctx ) )
     return ERR_ALLOC_FAIL;
   ctx->status = EXEC_CONTINUE;
@@ -353,7 +353,7 @@ RedisExec::exec( EvSocket *svc,  EvPrefetchQueue *q )
         size_t key_count = this->calc_key_count();
         if ( key_count == 0 )
           return ERR_BAD_ARGS;
-        this->keys = (RedisKeyCtx **)
+        this->keys = (EvKeyCtx **)
           this->strm.alloc_temp( sizeof( this->keys[ 0 ] ) * key_count );
         if ( this->keys == NULL )
           status = ERR_ALLOC_FAIL;
@@ -366,9 +366,9 @@ RedisExec::exec( EvSocket *svc,  EvPrefetchQueue *q )
         }
       }
     }
-    return status;
+    return status; /* cmds with keys return setup ok */
   }
-  /* has no key when first == 0 */
+  /* cmd has no key when first == 0 */
   switch ( this->cmd ) {
     /* CLUSTER */
     case CLUSTER_CMD:      return this->exec_cluster();
@@ -424,7 +424,7 @@ RedisExec::exec( EvSocket *svc,  EvPrefetchQueue *q )
 }
 
 kv::KeyStatus
-RedisExec::exec_key_fetch( RedisKeyCtx &ctx,  bool force_read )
+RedisExec::exec_key_fetch( EvKeyCtx &ctx,  bool force_read )
 {
   if ( test_cmd_mask( this->flags, CMD_READONLY_FLAG ) || force_read ) {
     ctx.kstatus = this->kctx.find( &this->wrk );
@@ -446,7 +446,7 @@ RedisExec::exec_key_fetch( RedisKeyCtx &ctx,  bool force_read )
 }
 
 ExecStatus
-RedisExec::exec_key_continue( RedisKeyCtx &ctx )
+RedisExec::exec_key_continue( EvKeyCtx &ctx )
 {
   if ( ctx.status != EXEC_CONTINUE && ctx.status != EXEC_DEPENDS ) {
     if ( ++this->key_done < this->key_cnt )
@@ -673,6 +673,7 @@ RedisExec::exec_key_continue( RedisKeyCtx &ctx )
         }
         if ( type != MD_NODATA )
           this->kctx.set_type( type );
+        this->kctx.set_val( 0 );
       }
       this->kctx.release();
     }
@@ -1121,9 +1122,9 @@ RedisExec::send_int( int64_t ival )
 }
 
 void
-RedisExec::send_err( ExecStatus status,  KeyStatus kstatus )
+RedisExec::send_err( int status,  KeyStatus kstatus )
 {
-  switch ( status ) {
+  switch ( (ExecStatus) status ) {
     case EXEC_OK:               break;
     case EXEC_SETUP_OK:         break;
     case EXEC_SEND_OK:          this->send_ok(); break;
@@ -1341,40 +1342,7 @@ RedisExec::send_err_key_doesnt_exist( void )
 }
 
 const char *
-RedisKeyCtx::get_type_str( void ) const
+EvKeyCtx::get_type_str( void ) const
 {
   return md_type_str( (MDType) this->type, 0 );
-#if 0
-  switch ( this->type ) {
-    default:
-    case MD_NODATA: return "nodata";
-    case MD_MESSAGE: return "message";
-    case MD_STRING: return "string";
-    case MD_OPAQUE: return "opaque";
-    case MD_BOOLEAN: return "boolean";
-    case MD_INT: return "int";
-    case MD_UINT: return "uint";
-    case MD_REAL: return "real";
-    case MD_ARRAY: return "array";
-    case MD_PARTIAL: return "partial";
-    case MD_IPDATA: return "ipdata";
-    case MD_SUBJECT: return "subject";
-    case MD_ENUM: return "enum";
-    case MD_TIME: return "time";
-    case MD_DATE: return "date";
-    case MD_DATETIME: return "datetime";
-    case MD_STAMP: return "stamp";
-    case MD_DECIMAL: return "decimal";
-    case MD_LIST: return "list";
-    case MD_HASH: return "hash";
-    case MD_SET: return "set";
-    case MD_SORTEDSET: return "sortedset";
-    case MD_STREAM: return "stream";
-    case MD_GEO: return "geo";
-    case MD_HYPERLOGLOG: return "hyperloglog";
-    case MD_PUBSUB: return "pubsub";
-    case MD_SCRIPT: return "script";
-    case MD_TRANSACTION: return "transaction";
-  }
-#endif
 }

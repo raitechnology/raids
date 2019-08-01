@@ -60,12 +60,6 @@ EvShmClient::process_shutdown( void )
   this->pushpop( EV_CLOSE, EV_SHUTDOWN );
 }
 
-void
-EvShmClient::process_close( void )
-{
-  this->poll.remove_sock( this );
-}
-
 int
 EvShmClient::init_exec( void )
 {
@@ -181,11 +175,6 @@ bool   EvShmSvc::on_msg( EvPublish & ) { return false; }
 bool   EvShmSvc::hash_to_sub( uint32_t,  char *,  size_t & ) { return false; }
 void   EvShmSvc::process( bool ) {}
 void   EvShmSvc::process_shutdown( void ) {}
-void   EvShmSvc::process_close( void ) {
-  if ( this->fd != -1 ) {
-    this->poll.remove_sock( this );
-    this->fd = -1;
-  }
-}
+void   EvShmSvc::process_close( void ) {}
 void   EvShmSvc::release( void ) {}
 

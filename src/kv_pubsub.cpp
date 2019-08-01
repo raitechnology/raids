@@ -615,8 +615,8 @@ KvPubSub::process_shutdown( void )
 {
   if ( this->register_mcast( false ) )
     this->push( EV_WRITE );
-  else if ( this->test( EV_WRITE ) == 0 )
-    this->pushpop( EV_CLOSE, EV_SHUTDOWN );
+  /*else if ( this->test( EV_WRITE ) == 0 )
+    this->pushpop( EV_CLOSE, EV_SHUTDOWN );*/
 }
 
 void
@@ -627,7 +627,6 @@ KvPubSub::process_close( void )
     make_dsunix_sockname( un, this->ctx_id );
     ::unlink( un.sun_path );
   }
-  this->poll.remove_sock( this );
 }
 
 bool

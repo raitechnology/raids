@@ -248,7 +248,6 @@ struct EvRvService : public EvConnection {
   bool hash_to_sub( uint32_t h,  char *key,  size_t &keylen );
   void send( void *hdr,  size_t off,   const void *data,  size_t data_len );
   bool fwd_msg( EvPublish &pub,  const void *sid,  size_t sid_len );
-  void process_close( void ) {}
   void release( void );
   void push_free_list( void );
   void pop_free_list( void );

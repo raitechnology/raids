@@ -27,7 +27,7 @@ enum {
 };
 
 ExecStatus
-RedisExec::exec_blpop( RedisKeyCtx &/*ctx*/ )
+RedisExec::exec_blpop( EvKeyCtx &/*ctx*/ )
 {
   /* BLPOP key [key...] timeout */
   //return this->do_pop( ctx, DO_LPOP );
@@ -35,7 +35,7 @@ RedisExec::exec_blpop( RedisKeyCtx &/*ctx*/ )
 }
 
 ExecStatus
-RedisExec::exec_brpop( RedisKeyCtx &/*ctx*/ )
+RedisExec::exec_brpop( EvKeyCtx &/*ctx*/ )
 {
   /* BRPOP key [key...] timeout */
   //return this->do_pop( ctx, DO_LPOP );
@@ -43,14 +43,14 @@ RedisExec::exec_brpop( RedisKeyCtx &/*ctx*/ )
 }
 
 ExecStatus
-RedisExec::exec_brpoplpush( RedisKeyCtx &/*ctx*/ )
+RedisExec::exec_brpoplpush( EvKeyCtx &/*ctx*/ )
 {
   /* BRPOPLPUSH src dest */
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_lindex( RedisKeyCtx &ctx )
+RedisExec::exec_lindex( EvKeyCtx &ctx )
 {
   ExecListCtx<ListData, MD_LIST> list( *this, ctx );
   ListVal    lv;
@@ -87,14 +87,14 @@ RedisExec::exec_lindex( RedisKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::exec_linsert( RedisKeyCtx &ctx )
+RedisExec::exec_linsert( EvKeyCtx &ctx )
 {
   /* LINSERT key [before|after] piv val */
   return this->do_push( ctx, DO_LINSERT );
 }
 
 ExecStatus
-RedisExec::exec_llen( RedisKeyCtx &ctx )
+RedisExec::exec_llen( EvKeyCtx &ctx )
 {
   ExecListCtx<ListData, MD_LIST> list( *this, ctx );
   /* LLEN key */
@@ -113,28 +113,28 @@ RedisExec::exec_llen( RedisKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::exec_lpop( RedisKeyCtx &ctx )
+RedisExec::exec_lpop( EvKeyCtx &ctx )
 {
   /* LPOP key */
   return this->do_pop( ctx, DO_LPOP );
 }
 
 ExecStatus
-RedisExec::exec_lpush( RedisKeyCtx &ctx )
+RedisExec::exec_lpush( EvKeyCtx &ctx )
 {
   /* LPUSH key val [val..] */
   return this->do_push( ctx, DO_LPUSH );
 }
 
 ExecStatus
-RedisExec::exec_lpushx( RedisKeyCtx &ctx )
+RedisExec::exec_lpushx( EvKeyCtx &ctx )
 {
   /* LPUSHX key val [val..] */
   return this->do_push( ctx, DO_LPUSH | L_MUST_EXIST );
 }
 
 ExecStatus
-RedisExec::exec_lrange( RedisKeyCtx &ctx )
+RedisExec::exec_lrange( EvKeyCtx &ctx )
 {
   ExecListCtx<ListData, MD_LIST> list( *this, ctx );
   StreamBuf::BufQueue q( this->strm );
@@ -185,56 +185,56 @@ finished:;
 }
 
 ExecStatus
-RedisExec::exec_lrem( RedisKeyCtx &ctx )
+RedisExec::exec_lrem( EvKeyCtx &ctx )
 {
   /* LREM key count value */
   return this->do_pop( ctx, DO_LREM );
 }
 
 ExecStatus
-RedisExec::exec_lset( RedisKeyCtx &ctx )
+RedisExec::exec_lset( EvKeyCtx &ctx )
 {
   /* LSET key idx value */
   return this->do_push( ctx, DO_LSET );
 }
 
 ExecStatus
-RedisExec::exec_ltrim( RedisKeyCtx &ctx )
+RedisExec::exec_ltrim( EvKeyCtx &ctx )
 {
   /* LTRIM key start stop */
   return this->do_pop( ctx, DO_LTRIM );
 }
 
 ExecStatus
-RedisExec::exec_rpop( RedisKeyCtx &ctx )
+RedisExec::exec_rpop( EvKeyCtx &ctx )
 {
   /* RPOP key */
   return this->do_pop( ctx, DO_RPOP );
 }
 
 ExecStatus
-RedisExec::exec_rpoplpush( RedisKeyCtx &/*ctx*/ )
+RedisExec::exec_rpoplpush( EvKeyCtx &/*ctx*/ )
 {
   /* RPOPLPUSH src dest */
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_rpush( RedisKeyCtx &ctx )
+RedisExec::exec_rpush( EvKeyCtx &ctx )
 {
   /* RPUSH key [val..] */
   return this->do_push( ctx, DO_RPUSH );
 }
 
 ExecStatus
-RedisExec::exec_rpushx( RedisKeyCtx &ctx )
+RedisExec::exec_rpushx( EvKeyCtx &ctx )
 {
   /* RPUSHX key [val..] */
   return this->do_push( ctx, DO_RPUSH | L_MUST_EXIST );
 }
 
 ExecStatus
-RedisExec::do_push( RedisKeyCtx &ctx,  int flags )
+RedisExec::do_push( EvKeyCtx &ctx,  int flags )
 {
   ExecListCtx<ListData, MD_LIST> list( *this, ctx );
   const char * value    = NULL,
@@ -336,7 +336,7 @@ RedisExec::do_push( RedisKeyCtx &ctx,  int flags )
 }
 
 ExecStatus
-RedisExec::do_pop( RedisKeyCtx &ctx,  int flags )
+RedisExec::do_pop( EvKeyCtx &ctx,  int flags )
 {
   ExecListCtx<ListData, MD_LIST> list( *this, ctx );
   ListVal      lv;

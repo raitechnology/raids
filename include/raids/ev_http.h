@@ -43,9 +43,6 @@ struct EvHttpService : public EvConnection, public RedisExec {
     this->term.zero();
   }
   void process( bool use_prefetch );
-  void process_close( void ) {
-    this->RedisExec::release();
-  }
   bool on_msg( EvPublish &pub );
   bool hash_to_sub( uint32_t h,  char *key,  size_t &keylen );
 #if 0

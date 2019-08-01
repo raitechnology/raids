@@ -50,7 +50,6 @@ struct EvShmClient : public EvShm, public EvClient, public StreamBuf,
   bool hash_to_sub( uint32_t h,  char *key,  size_t &keylen );
   void stream_to_msg( void );
   void process_shutdown( void );
-  void process_close( void );
   void release( void ) {
     this->StreamBuf::reset();
   }

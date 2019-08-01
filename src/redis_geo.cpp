@@ -23,7 +23,7 @@ enum {
 };
 
 ExecStatus
-RedisExec::exec_geoadd( RedisKeyCtx &ctx )
+RedisExec::exec_geoadd( EvKeyCtx &ctx )
 {
   ExecListCtx<GeoData, MD_GEO> geo( *this, ctx );
   GeoCoord     coord  = {0,0};
@@ -198,28 +198,28 @@ parse_units( RedisMsg &msg,  size_t i,  double base,  double &u,  bool inv )
 }
 
 ExecStatus
-RedisExec::exec_geohash( RedisKeyCtx &ctx )
+RedisExec::exec_geohash( EvKeyCtx &ctx )
 {
   /* GEOHASH key mem [mem ...] */
   return this->do_gread( ctx, DO_GEOHASH );
 }
 
 ExecStatus
-RedisExec::exec_geopos( RedisKeyCtx &ctx )
+RedisExec::exec_geopos( EvKeyCtx &ctx )
 {
   /* GEOPOS key mem [mem ...] */
   return this->do_gread( ctx, DO_GEOPOS );
 }
 
 ExecStatus
-RedisExec::exec_geodist( RedisKeyCtx &ctx )
+RedisExec::exec_geodist( EvKeyCtx &ctx )
 {
   /* GEODIST key mem1 mem2 [units] */
   return this->do_gread( ctx, DO_GEODIST );
 }
 
 ExecStatus
-RedisExec::do_gread( RedisKeyCtx &ctx,  int flags )
+RedisExec::do_gread( EvKeyCtx &ctx,  int flags )
 {
   ExecListCtx<GeoData, MD_GEO> geo( *this, ctx );
   StreamBuf::BufQueue q( this->strm );
@@ -330,13 +330,13 @@ RedisExec::do_gread( RedisKeyCtx &ctx,  int flags )
 }
 
 ExecStatus
-RedisExec::exec_georadius( RedisKeyCtx &ctx )
+RedisExec::exec_georadius( EvKeyCtx &ctx )
 {
   return this->do_gradius( ctx, DO_GEORADIUS );
 }
 
 ExecStatus
-RedisExec::exec_georadiusbymember( RedisKeyCtx &ctx )
+RedisExec::exec_georadiusbymember( EvKeyCtx &ctx )
 {
   return this->do_gradius( ctx, DO_GEORADIUSBYMEMBER );
 }
@@ -440,7 +440,7 @@ append_place( StreamBuf::BufQueue &q,  GeoVal &gv,  int withflags,
 }
 
 ExecStatus
-RedisExec::do_gradius( RedisKeyCtx &ctx,  int flags )
+RedisExec::do_gradius( EvKeyCtx &ctx,  int flags )
 {
   /* if store key */
   if ( ctx.argn != 1 ) {
@@ -704,7 +704,7 @@ finished:;
 }
 
 ExecStatus
-RedisExec::do_gradius_store( RedisKeyCtx &ctx )
+RedisExec::do_gradius_store( EvKeyCtx &ctx )
 {
   if ( this->keys[ 0 ]->part == NULL )
     return EXEC_SEND_ZERO;

@@ -31,10 +31,11 @@ enum EvState {
   EV_WRITE_HI  = 2, /* when send buf full at send_highwater or read pressure */
   EV_READ      = 3, /* use read to fill until no more data or recv_highwater */
   EV_PROCESS   = 4, /* process read buffers */
-  EV_WRITE     = 5, /* write at low priority, suboptimal send of small buf */
-  EV_SHUTDOWN  = 6, /* showdown after writes */
-  EV_READ_LO   = 7, /* read at low priority, back pressure from full write buf */
-  EV_BUSY_POLL = 8  /* busy poll, loop and keep checking for new data */
+  EV_PREFETCH  = 5, /* process key prefetch */
+  EV_WRITE     = 6, /* write at low priority, suboptimal send of small buf */
+  EV_SHUTDOWN  = 7, /* showdown after writes */
+  EV_READ_LO   = 8, /* read at low priority, back pressure from full write buf */
+  EV_BUSY_POLL = 9  /* busy poll, loop and keep checking for new data */
 };
 
 enum EvListFlag {
@@ -119,7 +120,8 @@ struct EvPoll : public RoutePublish {
                        quit;            /* when > 0, wants to exit */
   static const size_t  ALLOC_INCR    = 64, /* alloc size of poll socket ar */
                        PREFETCH_SIZE = 8;  /* pipe size of number of pref */
-  size_t               prefetch_cnt[ PREFETCH_SIZE + 1 ];
+  size_t               prefetch_pending,
+                       prefetch_cnt[ PREFETCH_SIZE + 1 ];
   RouteDB              sub_route;       /* subscriptions */
   RoutePublishQueue    pub_queue;       /* temp routing queue: */
      /* this causes a message matching multiple wildcards to be sent once */
@@ -137,8 +139,8 @@ struct EvPoll : public RoutePublish {
   EvPoll()
     : sock( 0 ), ev( 0 ), map( 0 ), prefetch_queue( 0 ), pubsub( 0 ),
       timer_queue( 0 ), prio_tick( 0 ), ctx_id( 0 ), fdcnt( 0 ), efd( -1 ),
-      nfds( -1 ), maxfd( -1 ), quit( 0 ), sub_route( *this )
-      /*, single_thread( false )*/ {
+      nfds( -1 ), maxfd( -1 ), quit( 0 ), prefetch_pending( 0 ),
+      sub_route( *this ) /*, single_thread( false )*/ {
     ::memset( this->prefetch_cnt, 0, sizeof( this->prefetch_cnt ) );
   }
 
@@ -146,7 +148,7 @@ struct EvPoll : public RoutePublish {
   int init_shm( EvShm &shm );    /* open shm pubsub */
   int wait( int ms );            /* call epoll() with ms timeout */
   bool dispatch( void );         /* process any sock in the queues */
-  void drain_prefetch( EvPrefetchQueue &q ); /* process prefetches */
+  void drain_prefetch( void );   /* process prefetches */
   bool publish_one( EvPublish &pub,  uint32_t *rcount_total,
                     RoutePublishData &rpd );
   template<uint8_t N>
@@ -160,17 +162,6 @@ struct EvPoll : public RoutePublish {
   void process_quit( void );     /* quit state close socks */
 };
 
-inline void
-EvSocket::idle_push( EvState s )
-{
-  bool mt = ( this->state == 0 );
-  this->push( s );
-  if ( mt ) { /* add to queue if already there */
-    this->prio_cnt = this->poll.prio_tick;
-    this->poll.queue.push( this );
-  }
-}
-
 struct EvListen : public EvSocket {
   void * operator new( size_t, void *ptr ) { return ptr; }
   void operator delete( void *ptr ) { ::free( ptr ); }
@@ -178,7 +169,6 @@ struct EvListen : public EvSocket {
   EvListen( EvPoll &p ) : EvSocket( p, EV_LISTEN_SOCK ) {}
 
   virtual void accept( void ) {}
-  void process_close( void );
   void process_shutdown( void ) { this->pushpop( EV_CLOSE, EV_SHUTDOWN ); }
 };
 

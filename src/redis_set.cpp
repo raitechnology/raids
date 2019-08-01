@@ -35,63 +35,63 @@ enum {
 };
 
 ExecStatus
-RedisExec::exec_sadd( RedisKeyCtx &ctx )
+RedisExec::exec_sadd( EvKeyCtx &ctx )
 {
   /* SADD key member [member ...] */
   return this->do_swrite( ctx, DO_SADD );
 }
 
 ExecStatus
-RedisExec::exec_scard( RedisKeyCtx &ctx )
+RedisExec::exec_scard( EvKeyCtx &ctx )
 {
   /* SCARD key */
   return this->do_sread( ctx, DO_SCARD );
 }
 
 ExecStatus
-RedisExec::exec_sdiff( RedisKeyCtx &ctx )
+RedisExec::exec_sdiff( EvKeyCtx &ctx )
 {
   /* SDIFF key [key ...] */
   return this->do_ssetop( ctx, DO_SDIFF );
 }
 
 ExecStatus
-RedisExec::exec_sdiffstore( RedisKeyCtx &ctx )
+RedisExec::exec_sdiffstore( EvKeyCtx &ctx )
 {
   /* SDIFFSTORE dest key [key ...] */
   return this->do_ssetop( ctx, DO_SDIFFSTORE );
 }
 
 ExecStatus
-RedisExec::exec_sinter( RedisKeyCtx &ctx )
+RedisExec::exec_sinter( EvKeyCtx &ctx )
 {
   /* SINTER key [key ...] */
   return this->do_ssetop( ctx, DO_SINTER );
 }
 
 ExecStatus
-RedisExec::exec_sinterstore( RedisKeyCtx &ctx )
+RedisExec::exec_sinterstore( EvKeyCtx &ctx )
 {
   /* SINTERSTORE dest key [key ...] */
   return this->do_ssetop( ctx, DO_SINTERSTORE );
 }
 
 ExecStatus
-RedisExec::exec_sismember( RedisKeyCtx &ctx )
+RedisExec::exec_sismember( EvKeyCtx &ctx )
 {
   /* SISMEMBER key member */
   return this->do_sread( ctx, DO_SISMEMBER );
 }
 
 ExecStatus
-RedisExec::exec_smembers( RedisKeyCtx &ctx )
+RedisExec::exec_smembers( EvKeyCtx &ctx )
 {
   /* SMEMBERS key */
   return this->do_smultiscan( ctx, DO_SMEMBERS, NULL );
 }
 
 ExecStatus
-RedisExec::exec_smove( RedisKeyCtx &ctx )
+RedisExec::exec_smove( EvKeyCtx &ctx )
 {
   /* SMOVE src dest member */
   if ( ctx.argn == 2 && this->key_done == 0 )
@@ -100,42 +100,42 @@ RedisExec::exec_smove( RedisKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::exec_spop( RedisKeyCtx &ctx )
+RedisExec::exec_spop( EvKeyCtx &ctx )
 {
   /* SPOP key [count] */
   return this->do_smultiscan( ctx, DO_SPOP, NULL );
 }
 
 ExecStatus
-RedisExec::exec_srandmember( RedisKeyCtx &ctx )
+RedisExec::exec_srandmember( EvKeyCtx &ctx )
 {
   /* SRANDMEMBER key [count] */
   return this->do_smultiscan( ctx, DO_SRANDMEMBER, NULL );
 }
 
 ExecStatus
-RedisExec::exec_srem( RedisKeyCtx &ctx )
+RedisExec::exec_srem( EvKeyCtx &ctx )
 {
   /* SREM key member [member ...] */
   return this->do_swrite( ctx, DO_SREM );
 }
 
 ExecStatus
-RedisExec::exec_sunion( RedisKeyCtx &ctx )
+RedisExec::exec_sunion( EvKeyCtx &ctx )
 {
   /* SUNION key [key  ...] */
   return this->do_ssetop( ctx, DO_SUNION );
 }
 
 ExecStatus
-RedisExec::exec_sunionstore( RedisKeyCtx &ctx )
+RedisExec::exec_sunionstore( EvKeyCtx &ctx )
 {
   /* SUNIONSTORE dest key [key ...] */
   return this->do_ssetop( ctx, DO_SUNIONSTORE );
 }
 
 ExecStatus
-RedisExec::exec_sscan( RedisKeyCtx &ctx )
+RedisExec::exec_sscan( EvKeyCtx &ctx )
 {
   /* SSCAN key curs [match pat] [count cnt] */
   ScanArgs   sa;
@@ -148,7 +148,7 @@ RedisExec::exec_sscan( RedisKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::do_sread( RedisKeyCtx &ctx,  int flags )
+RedisExec::do_sread( EvKeyCtx &ctx,  int flags )
 {
   ExecListCtx<SetData, MD_SET> set( *this, ctx );
   const char * arg    = NULL;
@@ -189,7 +189,7 @@ RedisExec::do_sread( RedisKeyCtx &ctx,  int flags )
 }
 
 ExecStatus
-RedisExec::do_swrite( RedisKeyCtx &ctx,  int flags )
+RedisExec::do_swrite( EvKeyCtx &ctx,  int flags )
 {
   ExecListCtx<SetData, MD_SET> set( *this, ctx );
   const char * arg     = NULL;
@@ -287,7 +287,7 @@ RedisExec::do_swrite( RedisKeyCtx &ctx,  int flags )
 }
 
 ExecStatus
-RedisExec::do_smultiscan( RedisKeyCtx &ctx,  int flags,  ScanArgs *sa )
+RedisExec::do_smultiscan( EvKeyCtx &ctx,  int flags,  ScanArgs *sa )
 {
   ExecListCtx<SetData, MD_SET> set( *this, ctx );
   StreamBuf::BufQueue q( this->strm );
@@ -438,7 +438,7 @@ finished:;
 }
 
 ExecStatus
-RedisExec::do_ssetop( RedisKeyCtx &ctx,  int flags )
+RedisExec::do_ssetop( EvKeyCtx &ctx,  int flags )
 {
   void * data;
   size_t datalen,

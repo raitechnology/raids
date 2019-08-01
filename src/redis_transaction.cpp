@@ -163,7 +163,7 @@ RedisExec::exec_unwatch( void )
 }
 
 ExecStatus
-RedisExec::exec_watch( RedisKeyCtx &ctx )
+RedisExec::exec_watch( EvKeyCtx &ctx )
 {
   uint64_t sn = 0, k1, k2, pos;
 

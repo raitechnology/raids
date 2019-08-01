@@ -44,7 +44,6 @@ struct EvTimerQueue : public EvSocket {
   bool read( void );
   bool set_timer( void );
   void process( void );
-  void process_close( void ) {}
   void process_shutdown( void ) {}
   uint64_t busy_delta( void ) {
     return this->delta > MAX_DELTA ? MAX_DELTA : this->delta;

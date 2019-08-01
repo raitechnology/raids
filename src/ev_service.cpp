@@ -32,10 +32,13 @@ EvRedisService::process( bool use_prefetch )
         fprintf( stderr, "protocol error(%d/%s), ignoring %lu bytes\n",
                  mstatus, redis_msg_status_string( mstatus ), buflen );
         this->off = this->len;
+        /*this->pushpop( EV_CLOSE, EV_PROCESS );*/
+        this->pop( EV_PROCESS );
         break;
       }
-      /* need more data, switch to read */
-      this->pushpop( EV_READ, EV_READ_LO );
+      /* need more data, switch to read (wait for poll)*/
+      /*this->pushpop( EV_READ, EV_READ_LO );*/
+      this->pop( EV_PROCESS );
       break;
     }
     this->off += buflen;
@@ -45,8 +48,10 @@ EvRedisService::process( bool use_prefetch )
         status = ERR_ALLOC_FAIL;
     switch ( status ) {
       case EXEC_SETUP_OK:
-        if ( q != NULL )
+        if ( q != NULL ) {
+          this->pushpop( EV_PREFETCH, EV_PROCESS ); /* prefetch keys */
           return;
+        }
         this->exec_run_to_completion();
         if ( ! strm.alloc_fail )
           break;

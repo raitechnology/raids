@@ -24,7 +24,7 @@ get_arg( int argc, char *argv[], int b, const char *f, const char *def )
   return def; /* default value */
 }
 
-struct PingTest : public EvShmSvc {
+struct PingTest : public EvShmSvc, public KvSubNotifyList {
   const char * sub,
              * pub,
              * ibx;
@@ -35,6 +35,7 @@ struct PingTest : public EvShmSvc {
                ph,
                ih,
                per_sec,
+               pub_left,
                ns_ival;
   uint64_t     sum,
                count,
@@ -44,17 +45,18 @@ struct PingTest : public EvShmSvc {
                round_trip;
 
   PingTest( EvPoll &poll,  const char *s,  const char *p,  const char *i,
-            bool act,  bool round,  uint32_t ps_rate )
+            bool act,  bool round,  uint32_t ps_rate,  uint32_t pub_cnt )
     : EvShmSvc( poll ), sub( s ), pub( p ), ibx( i ),
       len( ::strlen( s ) ), plen( ::strlen( p ) ),
       ilen( i ? ::strlen( i ) : 0 ),
-      h( 0 ), ph( 0 ), ih( 0 ), per_sec( ps_rate ), ns_ival( 1e9 / ps_rate ),
-      sum( 0 ), count( 0 ), print_count( 0 ), last_time( 0 ),
-      active_ping( act ), round_trip( round ) {
+      h( 0 ), ph( 0 ), ih( 0 ), per_sec( ps_rate ), pub_left( pub_cnt ),
+      ns_ival( 1e9 / ps_rate ), sum( 0 ), count( 0 ), print_count( 0 ),
+      last_time( 0 ), active_ping( act ), round_trip( round ) {
   }
   /* start subcriptions for sub or inbox */
   void subscribe( void ) {
     uint32_t rcnt;
+    this->poll.pubsub->sub_notifyq.push_tl( this );
     this->h  = kv_crc_c( this->sub, this->len, 0 );
     this->ph = kv_crc_c( this->pub, this->plen, 0 );
     this->ih = kv_crc_c( this->ibx, this->ilen, 0 );
@@ -94,6 +96,7 @@ struct PingTest : public EvShmSvc {
     const char * out;
     size_t       out_len;
     uint32_t     out_hash;
+    /*printf( "on_msg\n" );*/
     /* first case is the reflecter, just sending what was recved */
     if ( this->round_trip && ! this->active_ping ) {
       if ( p.reply_len > 0 ) {
@@ -128,11 +131,22 @@ struct PingTest : public EvShmSvc {
     }
     return true;
   }
+  virtual void on_sub( KvSubMsg &submsg ) {
+    printf( "on_sub ctx_%u %s %.*s", submsg.src, submsg.msg_type_string(),
+            (int) submsg.sublen, submsg.subject() );
+    if ( submsg.replylen != 0 )
+      printf( " reply %.*s", (int) submsg.replylen , submsg.reply() );
+    printf( "\n" );
+  }
   /* shutdown before close */
   virtual void process_shutdown( void ) {
     if ( this->h != 0 ) {
       this->unsubscribe();
       this->h = 0;
+    }
+    if ( this->KvSubNotifyList::in_list ) {
+      this->KvSubNotifyList::in_list = false;
+      this->poll.pubsub->sub_notifyq.pop( this );
     }
   }
   /* start a timer at per_sec interval */
@@ -164,6 +178,10 @@ struct PingTest : public EvShmSvc {
       if ( this->per_sec < 100 )
         break;
     }
+    if ( this->pub_left > 0 ) {
+      if ( --this->pub_left == 0 )
+        this->poll.quit++;
+    }
     return true;
   }
 };
@@ -178,6 +196,7 @@ main( int argc, char *argv[] )
              * su = get_arg( argc, argv, 1, "-s", "PONG" ),
              * pu = get_arg( argc, argv, 1, "-p", "PING" ),
              * xx = get_arg( argc, argv, 1, "-x", "1" ),
+             * cn = get_arg( argc, argv, 1, "-n", "0" ),
              * ib = get_arg( argc, argv, 0, "-i", 0 ),
              * _1 = get_arg( argc, argv, 0, "-1", 0 ),
              * re = get_arg( argc, argv, 0, "-r", 0 ),
@@ -186,17 +205,19 @@ main( int argc, char *argv[] )
              * he = get_arg( argc, argv, 0, "-h", 0 ),
              * inbox = NULL;
   char     inbox_buf[ 24 ];
-  uint32_t per_sec = atoi( xx );
+  uint32_t per_sec = atoi( xx ),
+           pub_cnt = atoi( cn );
   bool     active_ping = ( re == NULL ),
            round_trip  = ( _1 == NULL );
 
   if ( he != NULL ) {
     printf( "%s"
-      " [-m map] [-s sub] [-p pub] [-x rate] [-i] [-r] [-k] [-b]\n"
+      " [-m map] [-s sub] [-p pub] [-x rate] [-n cnt] [-i] [-r] [-k] [-b]\n"
       "  map  = kv shm map name      (sysv2m:shm.test)\n"
       "  sub  = subject to subscribe (PONG)\n"
       "  pub  = subject to publish   (PING)\n"
       "  rate = publish rate per sec (1)\n"
+      "  cnt  = count of publish     (inf)\n"
       "  -i   = use inbox reply instead\n"
       "  -1   = time one way, not round trip\n"
       "  -r   = passively reflect/reverse pub/sub\n"
@@ -214,14 +235,15 @@ main( int argc, char *argv[] )
     inbox = inbox_buf;
   }
 
-  printf( "listening on subject %s publish %s\n", su, pu );
   poll.init( 5, false );
-  PingTest shm( poll, su, pu, inbox, active_ping, round_trip, per_sec );
+  PingTest shm( poll, su, pu, inbox, active_ping, round_trip, per_sec, pub_cnt);
   if ( shm.open( mn ) != 0 )
     return 1;
   if ( poll.init_shm( shm ) != 0 || shm.init_poll() != 0 )
     return 1;
   shm.subscribe();
+  printf( "listening on subject %s %x publish %s %x\n", shm.sub, shm.h,
+          shm.pub, shm.ph );
   sighndl.install();
   if ( active_ping ) {
     shm.start_timer();

@@ -43,147 +43,147 @@ enum {
 };
 
 ExecStatus
-RedisExec::exec_zadd( RedisKeyCtx &ctx )
+RedisExec::exec_zadd( EvKeyCtx &ctx )
 {
   /* ZADD key [NX|XX] [CH] [INCR] score mem */
   return this->do_zwrite( ctx, DO_ZADD );
 }
 
 ExecStatus
-RedisExec::exec_zcard( RedisKeyCtx &ctx )
+RedisExec::exec_zcard( EvKeyCtx &ctx )
 {
   /* ZCARD key */
   return this->do_zread( ctx, DO_ZCARD );
 }
 
 ExecStatus
-RedisExec::exec_zcount( RedisKeyCtx &ctx )
+RedisExec::exec_zcount( EvKeyCtx &ctx )
 {
   /* ZCOUNT key min max */
   return this->do_zread( ctx, DO_ZCOUNT );
 }
 
 ExecStatus
-RedisExec::exec_zincrby( RedisKeyCtx &ctx )
+RedisExec::exec_zincrby( EvKeyCtx &ctx )
 {
   /* ZINCRBY key incr mem */
   return this->do_zwrite( ctx, DO_ZINCRBY );
 }
 
 ExecStatus
-RedisExec::exec_zinterstore( RedisKeyCtx &ctx )
+RedisExec::exec_zinterstore( EvKeyCtx &ctx )
 {
   /* ZINTERSTORE dest num key1 keyN */
   return this->do_zsetop( ctx, DO_ZINTERSTORE );
 }
 
 ExecStatus
-RedisExec::exec_zlexcount( RedisKeyCtx &ctx )
+RedisExec::exec_zlexcount( EvKeyCtx &ctx )
 {
   /* ZLEXCOUNT key min max */
   return this->do_zread( ctx, DO_ZLEXCOUNT );
 }
 
 ExecStatus
-RedisExec::exec_zrange( RedisKeyCtx &ctx )
+RedisExec::exec_zrange( EvKeyCtx &ctx )
 {
   /* ZRANGE key start stop [WITHSCORES] */
   return this->do_zmultiscan( ctx, DO_ZRANGE, NULL );
 }
 
 ExecStatus
-RedisExec::exec_zrangebylex( RedisKeyCtx &ctx )
+RedisExec::exec_zrangebylex( EvKeyCtx &ctx )
 {
   /* ZRANGEBYLEX key min max [LIMIT off cnt] */
   return this->do_zmultiscan( ctx, DO_ZRANGEBYLEX, NULL );
 }
 
 ExecStatus
-RedisExec::exec_zrevrangebylex( RedisKeyCtx &ctx )
+RedisExec::exec_zrevrangebylex( EvKeyCtx &ctx )
 {
   /* ZREVRANGEBYLEX key min max [LIMIT off cnt] */
   return this->do_zmultiscan( ctx, DO_ZREVRANGEBYLEX, NULL );
 }
 
 ExecStatus
-RedisExec::exec_zrangebyscore( RedisKeyCtx &ctx )
+RedisExec::exec_zrangebyscore( EvKeyCtx &ctx )
 {
   /* ZRANGEBYSCORE key min max [WITHSCORES] */
   return this->do_zmultiscan( ctx, DO_ZRANGEBYSCORE, NULL );
 }
 
 ExecStatus
-RedisExec::exec_zrank( RedisKeyCtx &ctx )
+RedisExec::exec_zrank( EvKeyCtx &ctx )
 {
   /* ZRANK key mem */
   return this->do_zread( ctx, DO_ZRANK );
 }
 
 ExecStatus
-RedisExec::exec_zrem( RedisKeyCtx &ctx )
+RedisExec::exec_zrem( EvKeyCtx &ctx )
 {
   /* ZREM key mem [mem] */
   return this->do_zwrite( ctx, DO_ZREM );
 }
 
 ExecStatus
-RedisExec::exec_zremrangebylex( RedisKeyCtx &ctx )
+RedisExec::exec_zremrangebylex( EvKeyCtx &ctx )
 {
   /* ZREMRANGEBYLEX key start stop */
   return this->do_zremrange( ctx, DO_ZREMRANGEBYLEX );
 }
 
 ExecStatus
-RedisExec::exec_zremrangebyrank( RedisKeyCtx &ctx )
+RedisExec::exec_zremrangebyrank( EvKeyCtx &ctx )
 {
   /* ZREMRANGEBYRANK key start stop */
   return this->do_zremrange( ctx, DO_ZREMRANGEBYRANK );
 }
 
 ExecStatus
-RedisExec::exec_zremrangebyscore( RedisKeyCtx &ctx )
+RedisExec::exec_zremrangebyscore( EvKeyCtx &ctx )
 {
   /* ZREMRANGEBYSCORE key start stop */
   return this->do_zremrange( ctx, DO_ZREMRANGEBYSCORE );
 }
 
 ExecStatus
-RedisExec::exec_zrevrange( RedisKeyCtx &ctx )
+RedisExec::exec_zrevrange( EvKeyCtx &ctx )
 {
   /* ZREVRANGE key start stop [WITHSCORES] */
   return this->do_zmultiscan( ctx, DO_ZREVRANGE, NULL );
 }
 
 ExecStatus
-RedisExec::exec_zrevrangebyscore( RedisKeyCtx &ctx )
+RedisExec::exec_zrevrangebyscore( EvKeyCtx &ctx )
 {
   /* ZREVRANGEBYLEX key min max [LIMIT off cnt] */
   return this->do_zmultiscan( ctx, DO_ZREVRANGEBYSCORE, NULL );
 }
 
 ExecStatus
-RedisExec::exec_zrevrank( RedisKeyCtx &ctx )
+RedisExec::exec_zrevrank( EvKeyCtx &ctx )
 {
   /* ZREVRANK key mem */
   return this->do_zread( ctx, DO_ZREVRANK );
 }
 
 ExecStatus
-RedisExec::exec_zscore( RedisKeyCtx &ctx )
+RedisExec::exec_zscore( EvKeyCtx &ctx )
 {
   /* ZSCORE key mem */
   return this->do_zread( ctx, DO_ZSCORE );
 }
 
 ExecStatus
-RedisExec::exec_zunionstore( RedisKeyCtx &ctx )
+RedisExec::exec_zunionstore( EvKeyCtx &ctx )
 {
   /* ZUNIONSTORE dest num key1 keyN [WEIGHTS for-each key] [AGGR sum|min|max] */
   return this->do_zsetop( ctx, DO_ZUNIONSTORE );
 }
 
 ExecStatus
-RedisExec::exec_zscan( RedisKeyCtx &ctx )
+RedisExec::exec_zscan( EvKeyCtx &ctx )
 {
   /* ZSCAN key curs [MATCH pat] [COUNT cnt] */
   ScanArgs   sa;
@@ -202,7 +202,7 @@ str_to_score( const char *score,  size_t scorelen )
 }
 
 ExecStatus
-RedisExec::do_zread( RedisKeyCtx &ctx,  int flags )
+RedisExec::do_zread( EvKeyCtx &ctx,  int flags )
 {
   const char * arg    = NULL;
   size_t       arglen = 0;
@@ -380,7 +380,7 @@ RedisExec::do_zread( RedisKeyCtx &ctx,  int flags )
 
 
 ExecStatus
-RedisExec::do_zwrite( RedisKeyCtx &ctx,  int flags )
+RedisExec::do_zwrite( EvKeyCtx &ctx,  int flags )
 {
   const char * arg    = NULL;
   size_t       arglen = 0,
@@ -529,7 +529,7 @@ RedisExec::do_zwrite( RedisKeyCtx &ctx,  int flags )
 }
 
 ExecStatus
-RedisExec::do_zmultiscan( RedisKeyCtx &ctx,  int flags,  ScanArgs *sa )
+RedisExec::do_zmultiscan( EvKeyCtx &ctx,  int flags,  ScanArgs *sa )
 {
   const char * lo         = NULL,
              * hi         = NULL;
@@ -819,7 +819,7 @@ finished:;
 }
 
 ExecStatus
-RedisExec::do_zremrange( RedisKeyCtx &ctx,  int flags )
+RedisExec::do_zremrange( EvKeyCtx &ctx,  int flags )
 {
   const char * lo         = NULL,
              * hi         = NULL;
@@ -960,7 +960,7 @@ RedisExec::do_zremrange( RedisKeyCtx &ctx,  int flags )
 }
 
 ExecStatus
-RedisExec::do_zsetop( RedisKeyCtx &ctx,  int flags )
+RedisExec::do_zsetop( EvKeyCtx &ctx,  int flags )
 {
   /* ZINTERSTORE dest nkeys key [key ...] */
   /* ZUNIONSTORE dest nkeys key [key  ...] */
@@ -1001,7 +1001,7 @@ RedisExec::do_zsetop( RedisKeyCtx &ctx,  int flags )
 }
 
 ExecStatus
-RedisExec::do_zsetop_store( RedisKeyCtx &ctx,  int flags )
+RedisExec::do_zsetop_store( EvKeyCtx &ctx,  int flags )
 {
   void         * data2,
                * data;

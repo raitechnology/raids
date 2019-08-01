@@ -15,9 +15,6 @@ struct EvRedisService : public EvConnection, public RedisExec {
   EvRedisService( EvPoll &p ) : EvConnection( p, EV_REDIS_SOCK ),
       RedisExec( *p.map, p.ctx_id, *this, p.sub_route, *p.pubsub ) {}
   void process( bool use_prefetch );
-  void process_close( void ) {
-    this->RedisExec::release();
-  }
   bool on_msg( EvPublish &pub );
   bool hash_to_sub( uint32_t h,  char *key,  size_t &keylen );
   void debug( void );

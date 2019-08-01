@@ -21,7 +21,7 @@ enum {
 };
 
 ExecStatus
-RedisExec::exec_append( RedisKeyCtx &ctx )
+RedisExec::exec_append( EvKeyCtx &ctx )
 {
   void       * data    = NULL;
   const char * value;
@@ -49,7 +49,7 @@ RedisExec::exec_append( RedisKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::exec_bitcount( RedisKeyCtx &ctx )
+RedisExec::exec_bitcount( EvKeyCtx &ctx )
 {
   int64_t start = 0, end = -1;
 
@@ -112,7 +112,7 @@ RedisExec::exec_bitcount( RedisKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::exec_bitfield( RedisKeyCtx &ctx )
+RedisExec::exec_bitfield( EvKeyCtx &ctx )
 {
   Bitfield     * bf;
   void         * data;
@@ -429,7 +429,7 @@ static void not_bits( void *x,  size_t sz ) {
 }
 
 ExecStatus
-RedisExec::exec_bitop( RedisKeyCtx &ctx )
+RedisExec::exec_bitop( EvKeyCtx &ctx )
 {
   enum { BIT_AND_OP = 0, BIT_OR_OP = 1, BIT_XOR_OP = 3, BIT_NOT_OP = 4 } op;
   void * data,
@@ -520,7 +520,7 @@ RedisExec::exec_bitop( RedisKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::exec_bitpos( RedisKeyCtx &ctx )
+RedisExec::exec_bitpos( EvKeyCtx &ctx )
 {
   int64_t  bit,
            start_off = 0,
@@ -594,13 +594,13 @@ RedisExec::exec_bitpos( RedisKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::exec_decr( RedisKeyCtx &ctx )
+RedisExec::exec_decr( EvKeyCtx &ctx )
 {
   return this->do_add( ctx, -1 );
 }
 
 ExecStatus
-RedisExec::exec_decrby( RedisKeyCtx &ctx )
+RedisExec::exec_decrby( EvKeyCtx &ctx )
 {
   int64_t decr;
   if ( ! this->msg.get_arg( 2, decr ) )
@@ -609,7 +609,7 @@ RedisExec::exec_decrby( RedisKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::exec_get( RedisKeyCtx &ctx )
+RedisExec::exec_get( EvKeyCtx &ctx )
 {
   void * data;
   size_t size;
@@ -633,7 +633,7 @@ RedisExec::exec_get( RedisKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::exec_getbit( RedisKeyCtx &ctx )
+RedisExec::exec_getbit( EvKeyCtx &ctx )
 {
   int64_t off;
   void  * data;
@@ -668,7 +668,7 @@ RedisExec::exec_getbit( RedisKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::exec_getrange( RedisKeyCtx &ctx )
+RedisExec::exec_getrange( EvKeyCtx &ctx )
 {
   int64_t start = 0,
           end = -1;
@@ -713,7 +713,7 @@ RedisExec::exec_getrange( RedisKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::exec_getset( RedisKeyCtx &ctx )
+RedisExec::exec_getset( EvKeyCtx &ctx )
 {
   const char * value;
   size_t       valuelen,
@@ -748,13 +748,13 @@ RedisExec::exec_getset( RedisKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::exec_incr( RedisKeyCtx &ctx )
+RedisExec::exec_incr( EvKeyCtx &ctx )
 {
   return this->do_add( ctx, 1 ); /* INCR key */
 }
 
 ExecStatus
-RedisExec::exec_incrby( RedisKeyCtx &ctx )
+RedisExec::exec_incrby( EvKeyCtx &ctx )
 {
   int64_t incr;
   if ( ! this->msg.get_arg( 2, incr ) ) /* INCRBY key incr */
@@ -763,7 +763,7 @@ RedisExec::exec_incrby( RedisKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::do_add( RedisKeyCtx &ctx,  int64_t incr ) /* incr/decr value */
+RedisExec::do_add( EvKeyCtx &ctx,  int64_t incr ) /* incr/decr value */
 {
   void * data;
   char * str;
@@ -801,7 +801,7 @@ RedisExec::do_add( RedisKeyCtx &ctx,  int64_t incr ) /* incr/decr value */
 }
 
 ExecStatus
-RedisExec::exec_incrbyfloat( RedisKeyCtx &ctx )
+RedisExec::exec_incrbyfloat( EvKeyCtx &ctx )
 {
   char         fpdata[ 64 ];
   Decimal128   fp;
@@ -850,7 +850,7 @@ RedisExec::exec_incrbyfloat( RedisKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::exec_mget( RedisKeyCtx &ctx )
+RedisExec::exec_mget( EvKeyCtx &ctx )
 {
   void   * data;
   uint64_t size;
@@ -873,13 +873,13 @@ RedisExec::exec_mget( RedisKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::exec_mset( RedisKeyCtx &ctx )
+RedisExec::exec_mset( EvKeyCtx &ctx )
 {
   return this->do_set_value( ctx, ctx.argn+1, 0 );
 }
 
 ExecStatus
-RedisExec::exec_msetnx( RedisKeyCtx &ctx )
+RedisExec::exec_msetnx( EvKeyCtx &ctx )
 {
   if ( ctx.dep == 0 ) {
     /* if a key already exists, send zero and make no changes */
@@ -894,7 +894,7 @@ RedisExec::exec_msetnx( RedisKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::exec_psetex( RedisKeyCtx &ctx )
+RedisExec::exec_psetex( EvKeyCtx &ctx )
 {
   int64_t  ival;
   uint64_t ns;
@@ -909,7 +909,7 @@ RedisExec::exec_psetex( RedisKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::exec_set( RedisKeyCtx &ctx )
+RedisExec::exec_set( EvKeyCtx &ctx )
 {
   const char * op;
   size_t       oplen;
@@ -960,7 +960,7 @@ RedisExec::exec_set( RedisKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::do_set_value_expire( RedisKeyCtx &ctx,  int n,  uint64_t ns,
+RedisExec::do_set_value_expire( EvKeyCtx &ctx,  int n,  uint64_t ns,
                                 int flags )
 {
   const char * value;
@@ -995,7 +995,7 @@ RedisExec::do_set_value_expire( RedisKeyCtx &ctx,  int n,  uint64_t ns,
 }
 
 ExecStatus
-RedisExec::do_set_value( RedisKeyCtx &ctx,  int n,  int flags )
+RedisExec::do_set_value( EvKeyCtx &ctx,  int n,  int flags )
 {
   const char * value;
   size_t       valuelen;
@@ -1029,7 +1029,7 @@ RedisExec::do_set_value( RedisKeyCtx &ctx,  int n,  int flags )
 }
 
 ExecStatus
-RedisExec::exec_setbit( RedisKeyCtx &ctx )
+RedisExec::exec_setbit( EvKeyCtx &ctx )
 {
   int64_t  off,
            bitval;
@@ -1072,7 +1072,7 @@ RedisExec::exec_setbit( RedisKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::exec_setex( RedisKeyCtx &ctx )
+RedisExec::exec_setex( EvKeyCtx &ctx )
 {
   int64_t  ival;
   uint64_t ns;
@@ -1086,13 +1086,13 @@ RedisExec::exec_setex( RedisKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::exec_setnx( RedisKeyCtx &ctx )
+RedisExec::exec_setnx( EvKeyCtx &ctx )
 {
   return this->do_set_value( ctx, 2, K_MUST_NOT_EXIST ); /* SETNX key value */
 }
 
 ExecStatus
-RedisExec::exec_setrange( RedisKeyCtx &ctx )
+RedisExec::exec_setrange( EvKeyCtx &ctx )
 {
   void       * data    = NULL;
   int64_t      off;
@@ -1128,7 +1128,7 @@ RedisExec::exec_setrange( RedisKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::exec_strlen( RedisKeyCtx &ctx )
+RedisExec::exec_strlen( EvKeyCtx &ctx )
 {
   uint64_t data_sz = 0;
   /* STRLEN key */

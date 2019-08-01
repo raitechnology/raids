@@ -75,7 +75,7 @@ struct TimerQueue : public PrioQueue<TimeElem, TimeElem::is_greater> {
     el.next = current_ns() + ( (uint64_t) ival * (uint64_t) ival_ns[ u ] );
     this->push( el );
   }
-  void wait( void );
+  int wait( void );
 
   int dispatch( void );
 
@@ -86,21 +86,24 @@ struct TimerQueue : public PrioQueue<TimeElem, TimeElem::is_greater> {
   }
 };
 
-void
+int
 TimerQueue::wait( void )
 {
+  int cnt = 0;
   epoll_event ev;
   for (;;) {
     this->now = current_ns();
     if ( this->heap[ 0 ].next <= this->now )
-      return;
+      break;
     set_timer( this->tfd, this->heap[ 0 ].next - this->now );
     int n = epoll_wait( this->epfd, &ev, 1, 1000 );
     if ( n > 0 ) {
       uint64_t res;
-      ::read( this->tfd, &res, 8 );
+      if ( ::read( this->tfd, &res, 8 ) > 0 )
+        cnt++;
     }
   }
+  return cnt;
 }
 
 int

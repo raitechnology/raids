@@ -102,25 +102,164 @@ sock_type_string( EvSockType t )
   return "unknown";
 }
 
+void
+EvPoll::drain_prefetch( void )
+{
+  EvPrefetchQueue & pq = *this->prefetch_queue;
+  EvKeyCtx * ctx[ PREFETCH_SIZE ];
+  EvSocket * s;
+  size_t i, j, sz, cnt = 0;
+
+  sz = PREFETCH_SIZE;
+  if ( sz > pq.count() )
+    sz = pq.count();
+  for ( i = 0; i < sz; i++ ) {
+    ctx[ i ] = pq.pop();
+    EvKeyCtx & k = *ctx[ i ];
+    s = k.owner;
+    switch ( s->type ) {
+      case EV_REDIS_SOCK:
+        ((EvRedisService *) s)->exec_key_prefetch( k ); break;
+      case EV_HTTP_SOCK:
+        ((EvHttpService *) s)->exec_key_prefetch( k ); break;
+      case EV_SHM_SOCK:
+        /*((EvShmClient *) s)->exec->exec_key_prefetch( k );*/ break;
+      case EV_NATS_SOCK:   break;
+      case EV_CAPR_SOCK:   break;
+      case EV_RV_SOCK:     break;
+      case EV_KV_PUBSUB:   break;
+      case EV_SHM_SVC:     break;
+      case EV_LISTEN_SOCK: break;
+      case EV_CLIENT_SOCK: break;
+      case EV_TERMINAL:    break;
+      case EV_TIMER_QUEUE: break;
+    }
+    /*ctx[ i ]->prefetch();*/
+  }
+  this->prefetch_cnt[ sz ]++;
+  i &= ( PREFETCH_SIZE - 1 );
+  for ( j = 0; ; ) {
+    int status = 0;
+    EvKeyCtx & k = *ctx[ j ];
+    s = k.owner;
+    switch ( s->type ) {
+      case EV_REDIS_SOCK:
+        status = ((EvRedisService *) s)->exec_key_continue( k ); break;
+      case EV_HTTP_SOCK:
+        status = ((EvHttpService *) s)->exec_key_continue( k ); break;
+      case EV_SHM_SOCK:
+        /*status = ((EvShmClient *) s)->exec->exec_key_continue( k );*/ break;
+      case EV_NATS_SOCK:   break;
+      case EV_CAPR_SOCK:   break;
+      case EV_RV_SOCK:     break;
+      case EV_KV_PUBSUB:   break;
+      case EV_SHM_SVC:     break;
+      case EV_LISTEN_SOCK: break;
+      case EV_CLIENT_SOCK: break;
+      case EV_TERMINAL:    break;
+      case EV_TIMER_QUEUE: break;
+    }
+    switch ( status ) {
+      default:
+      case EXEC_SUCCESS:
+        switch ( s->type ) {
+          case EV_REDIS_SOCK:  ((EvRedisService *) s)->process( true ); break;
+          case EV_HTTP_SOCK:   ((EvHttpService *) s)->process( true ); break;
+          case EV_CLIENT_SOCK: break;
+          case EV_TERMINAL:    break;
+          case EV_NATS_SOCK:   break;
+          case EV_CAPR_SOCK:   break;
+          case EV_RV_SOCK:     break;
+          case EV_KV_PUBSUB:   break;
+          case EV_TIMER_QUEUE: break;
+          case EV_SHM_SVC:     break;
+          case EV_LISTEN_SOCK: break;
+          case EV_SHM_SOCK:    break;
+        }
+        if ( s->test( EV_PREFETCH ) != 0 ) {
+          s->pop( EV_PREFETCH ); /* continue prefetching */
+        }
+        else { /* push back into queue if has an event for read or write */
+          if ( s->state != 0 )
+            this->queue.push( s );
+        }
+        break;
+      case EXEC_DEPENDS:   /* incomplete, depends on another key */
+        pq.push( &k );
+        break;
+      case EXEC_CONTINUE:  /* key complete, more keys to go */
+        break;
+    }
+    cnt++;
+    if ( --sz == 0 && pq.is_empty() ) {
+      this->prefetch_cnt[ 0 ] += cnt;
+      return;
+    }
+    j = ( j + 1 ) & ( PREFETCH_SIZE - 1 );
+    if ( ! pq.is_empty() ) {
+      do {
+        ctx[ i ] = pq.pop();
+        EvKeyCtx & k = *ctx[ i ];
+        s = k.owner;
+        switch ( s->type ) {
+          case EV_REDIS_SOCK:
+            ((EvRedisService *) s)->exec_key_prefetch( k ); break;
+          case EV_HTTP_SOCK:
+            ((EvHttpService *) s)->exec_key_prefetch( k ); break;
+          case EV_SHM_SOCK:
+            /*((EvShmClient *) s)->exec->exec_key_prefetch( k );*/ break;
+          case EV_NATS_SOCK:   break;
+          case EV_CAPR_SOCK:   break;
+          case EV_RV_SOCK:     break;
+          case EV_KV_PUBSUB:   break;
+          case EV_SHM_SVC:     break;
+          case EV_LISTEN_SOCK: break;
+          case EV_CLIENT_SOCK: break;
+          case EV_TERMINAL:    break;
+          case EV_TIMER_QUEUE: break;
+        }
+        /*ctx[ i ]->prefetch();*/
+        i = ( i + 1 ) & ( PREFETCH_SIZE - 1 );
+      } while ( ++sz < PREFETCH_SIZE && ! pq.is_empty() );
+      this->prefetch_cnt[ sz ]++;
+    }
+  }
+}
+
 bool
 EvPoll::dispatch( void )
 {
   EvSocket * s;
-  uint64_t   busy_ns = this->timer_queue->busy_delta();
+  uint64_t busy_ns = this->timer_queue->busy_delta();
+  uint64_t start   = this->prio_tick;
+  int      state;
 
   if ( this->quit )
     this->process_quit();
-  for ( uint64_t start = this->prio_tick++;
-        start + 1000 > this->prio_tick && busy_ns > 0;
-        this->prio_tick++ ) {
+  for (;;) {
+  next_tick:;
+    if ( start + 1000 < this->prio_tick ) /* run poll() at least every 1000 */
+      break;
+    if ( busy_ns == 0 ) /* if a timer may expire, run poll() */
+      break;
     if ( this->queue.is_empty() ) {
-      if ( this->quit )
-        this->process_quit();
-      if ( this->queue.is_empty() )
-        return true;
+      if ( this->prefetch_pending > 0 ) {
+      do_prefetch:;
+        this->prefetch_pending = 0;
+        this->drain_prefetch(); /* run prefetch */
+        if ( ! this->queue.is_empty() )
+          goto next_tick;
+      }
+      break;
     }
-    s = this->queue.pop();
-    switch ( __builtin_ffs( s->state ) - 1 ) {
+    s     = this->queue.heap[ 0 ];
+    state = __builtin_ffs( s->state ) - 1;
+    this->prio_tick++;
+    if ( state > EV_PREFETCH && this->prefetch_pending > 0 )
+      goto do_prefetch;
+    this->queue.pop();
+    /*printf( "dispatch %u %u (%x)\n", s->type, state, s->state );*/
+    switch ( state ) {
       case EV_READ:
       case EV_READ_LO:
       case EV_READ_HI:
@@ -141,7 +280,7 @@ EvPoll::dispatch( void )
         break;
       case EV_PROCESS:
         switch ( s->type ) {
-          case EV_REDIS_SOCK:  ((EvRedisService *) s)->process( false ); break;
+          case EV_REDIS_SOCK:  ((EvRedisService *) s)->process( true ); break;
           case EV_HTTP_SOCK:   ((EvHttpService *) s)->process( false ); break;
           case EV_CLIENT_SOCK: ((EvNetClient *) s)->process(); break;
           case EV_TERMINAL:    ((EvTerminal *) s)->process(); break;
@@ -155,6 +294,10 @@ EvPoll::dispatch( void )
           case EV_SHM_SOCK:    break;
         }
         break;
+      case EV_PREFETCH:
+        s->pop( EV_PREFETCH );
+        this->prefetch_pending++;
+        goto next_tick; /* skip putting s back into event queue */
       case EV_WRITE:
       case EV_WRITE_HI:
         switch ( s->type ) {
@@ -187,22 +330,23 @@ EvPoll::dispatch( void )
           case EV_TIMER_QUEUE: ((EvTimerQueue *) s)->process_shutdown(); break;
           case EV_SHM_SVC:     ((EvShmSvc *) s)->process_shutdown(); break;
         }
+        s->pop( EV_SHUTDOWN );
         break;
       case EV_CLOSE:
         s->popall();
         this->remove_sock( s );
         switch ( s->type ) {
-          case EV_REDIS_SOCK:  ((EvRedisService *) s)->process_close(); break;
-          case EV_HTTP_SOCK:   ((EvHttpService *) s)->process_close(); break;
-          case EV_LISTEN_SOCK: ((EvListen *) s)->process_close(); break;
+          case EV_REDIS_SOCK:  break;
+          case EV_HTTP_SOCK:   break;
+          case EV_LISTEN_SOCK: break;
           case EV_CLIENT_SOCK: ((EvNetClient *) s)->process_close(); break;
           case EV_TERMINAL:    ((EvTerminal *) s)->process_close(); break;
-          case EV_NATS_SOCK:   ((EvNatsService *) s)->process_close(); break;
-          case EV_CAPR_SOCK:   ((EvCaprService *) s)->process_close(); break;
-          case EV_RV_SOCK:     ((EvRvService *) s)->process_close(); break;
+          case EV_NATS_SOCK:   break;
+          case EV_CAPR_SOCK:   break;
+          case EV_RV_SOCK:     break;
           case EV_KV_PUBSUB:   ((KvPubSub *) s)->process_close(); break;
-          case EV_SHM_SOCK:    ((EvShmClient *) s)->process_close(); break;
-          case EV_TIMER_QUEUE: ((EvTimerQueue *) s)->process_close(); break;
+          case EV_SHM_SOCK:    break;
+          case EV_TIMER_QUEUE: break;
           case EV_SHM_SVC:     ((EvShmSvc *) s)->process_close(); break;
         }
         break;
@@ -235,7 +379,7 @@ EvPoll::dispatch( void )
       this->queue.push( s );
     }
   }
-  return false;
+  return start == this->prio_tick;
 #if 0
     use_pref = ( this->prefetch_queue != NULL &&
                  this->queue[ EV_PROCESS ].cnt > 1 );
@@ -574,63 +718,6 @@ EvSocket::hash_to_sub( uint32_t,  char *,  size_t & )
 }
 #endif
 void
-EvPoll::drain_prefetch( EvPrefetchQueue &q )
-{
-  RedisKeyCtx * ctx[ PREFETCH_SIZE ];
-  EvSocket    * svc;
-  size_t i, j, sz, cnt = 0;
-
-  sz = PREFETCH_SIZE;
-  if ( sz > q.count() )
-    sz = q.count();
-  this->prefetch_cnt[ sz ]++;
-  for ( i = 0; i < sz; i++ ) {
-    ctx[ i ] = q.pop();
-    ctx[ i ]->prefetch();
-  }
-  i &= ( PREFETCH_SIZE - 1 );
-  for ( j = 0; ; ) {
-    switch ( ctx[ j ]->run( svc ) ) {
-      default:
-      case EXEC_SUCCESS:  /* transaction complete, all keys done */
-        switch ( svc->type ) {
-          case EV_REDIS_SOCK:  ((EvRedisService *) svc)->process( true ); break;
-          case EV_HTTP_SOCK:   ((EvHttpService *) svc)->process( true ); break;
-          case EV_NATS_SOCK:   ((EvNatsService *) svc)->process( true ); break;
-          case EV_CAPR_SOCK:   ((EvCaprService *) svc)->process( true ); break;
-          case EV_RV_SOCK:     ((EvRvService *) svc)->process( true ); break;
-          case EV_KV_PUBSUB:   ((KvPubSub *) svc)->process( true ); break;
-          case EV_SHM_SVC:     ((EvShmSvc *) svc)->process( true ); break;
-          case EV_LISTEN_SOCK: break;
-          case EV_CLIENT_SOCK: break;
-          case EV_TERMINAL:    break;
-          case EV_SHM_SOCK:    break;
-          case EV_TIMER_QUEUE: break;
-        }
-        break;
-      case EXEC_DEPENDS:   /* incomplete, depends on another key */
-        q.push( ctx[ j ] );
-        break;
-      case EXEC_CONTINUE:  /* key complete, more keys to go */
-        break;
-    }
-    cnt++;
-    if ( --sz == 0 && q.is_empty() ) {
-      this->prefetch_cnt[ 0 ] += cnt;
-      return;
-    }
-    j = ( j + 1 ) & ( PREFETCH_SIZE - 1 );
-    if ( ! q.is_empty() ) {
-      do {
-        ctx[ i ] = q.pop();
-        ctx[ i ]->prefetch();
-        i = ( i + 1 ) & ( PREFETCH_SIZE - 1 );
-      } while ( ++sz < PREFETCH_SIZE && ! q.is_empty() );
-    }
-  }
-}
-
-void
 EvPoll::process_quit( void )
 {
   if ( this->quit ) {
@@ -735,6 +822,8 @@ void
 EvPoll::remove_sock( EvSocket *s )
 {
   struct epoll_event event;
+  if ( s->fd < 0 )
+    return;
   /* remove poll set */
   if ( s->fd <= this->maxfd && this->sock[ s->fd ] == s ) {
     if ( s->type != EV_SHM_SVC ) {
@@ -748,8 +837,12 @@ EvPoll::remove_sock( EvSocket *s )
     this->fdcnt--;
   }
   /* terms are stdin, stdout */
-  if ( s->type != EV_TERMINAL && s->type != EV_SHM_SVC )
-    ::close( s->fd );
+  if ( s->type != EV_TERMINAL && s->type != EV_SHM_SVC ) {
+    if ( ::close( s->fd ) != 0 ) {
+      fprintf( stderr, "close: errno %d/%s, fd %d type %d\n",
+               errno, strerror( errno ), s->fd, s->type );
+    }
+  }
   if ( s->listfl == IN_ACTIVE_LIST ) {
     s->listfl = IN_NO_LIST;
     this->active_list.pop( s );
@@ -769,12 +862,7 @@ EvPoll::remove_sock( EvSocket *s )
     case EV_KV_PUBSUB:   break;
     case EV_TIMER_QUEUE: break;
   }
-}
-
-void
-EvListen::process_close( void )
-{
-  this->poll.remove_sock( this );
+  s->fd = -1;
 }
 
 bool
@@ -868,14 +956,14 @@ EvConnection::write( void )
   h.msg_iovlen = strm.idx - strm.woff;
   if ( h.msg_iovlen == 1 ) {
     nbytes = ::send( this->fd, h.msg_iov[ 0 ].iov_base,
-                     h.msg_iov[ 0 ].iov_len, 0 );
+                     h.msg_iov[ 0 ].iov_len, MSG_NOSIGNAL );
   }
   else {
-    nbytes = ::sendmsg( this->fd, &h, 0 );
+    nbytes = ::sendmsg( this->fd, &h, MSG_NOSIGNAL );
     while ( nbytes < 0 && errno == EMSGSIZE ) {
       if ( (h.msg_iovlen /= 2) == 0 )
         break;
-      nbytes = ::sendmsg( this->fd, &h, 0 );
+      nbytes = ::sendmsg( this->fd, &h, MSG_NOSIGNAL );
     }
   }
   if ( nbytes > 0 ) {
@@ -905,10 +993,12 @@ EvConnection::write( void )
     return nb;
   }
   if ( errno != EAGAIN && errno != EINTR ) {
+    if ( errno != ECONNRESET && errno != EPIPE ) {
+      fprintf( stderr, "sendmsg: errno %d/%s, fd %d, state %d\n",
+               errno, strerror( errno ), this->fd, this->state );
+    }
     this->popall();
     this->push( EV_CLOSE );
-    if ( errno != ECONNRESET )
-      perror( "sendmsg" );
   }
   return 0;
 }
@@ -936,4 +1026,29 @@ EvConnection::close_alloc_error( void )
   fprintf( stderr, "Allocation failed! Closing connection\n" );
   this->popall();
   this->push( EV_CLOSE );
+}
+
+void
+EvSocket::idle_push( EvState s )
+{
+  if ( this->state == 0 ) {
+  do_push:;
+    this->push( s );
+    /*printf( "idle_push %d %x\n", this->type, this->state );*/
+    this->prio_cnt = this->poll.prio_tick;
+    this->poll.queue.push( this );
+  }
+  else { /* check if added state requires queue to be rearranged */
+    int x1 = __builtin_ffs( this->state ),
+        x2 = __builtin_ffs( this->state | ( 1 << s ) );
+    if ( x1 > x2 ) {
+      /*printf( "remove %d\n", this->type );*/
+      this->poll.queue.remove( this );
+      goto do_push;
+    }
+    else {
+      this->push( s );
+      /*printf( "idle_push2 %d %x\n", this->type, this->state );*/
+    }
+  }
 }

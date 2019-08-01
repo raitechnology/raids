@@ -8,13 +8,13 @@ template <class LIST_CLASS, md::MDType LIST_TYPE>
 struct ExecListCtx {
   RedisExec   & exec;
   kv::KeyCtx  & kctx;
-  RedisKeyCtx & ctx;
+  EvKeyCtx    & ctx;
   LIST_CLASS  * x,
                 tmp[ 2 ];
   size_t        retry;
   int           n;
 
-  ExecListCtx( RedisExec &e,  RedisKeyCtx &c )
+  ExecListCtx( RedisExec &e,  EvKeyCtx &c )
     : exec( e ), kctx( e.kctx ), ctx( c ), x( 0 ), retry( 0 ), n( 0 ) {}
 
   kv::KeyStatus get_key_read( void )  { return this->do_key_fetch( true ); }

@@ -208,6 +208,8 @@ struct CubeRoute {
   bool next_set( size_t &i ) const {
     size_t off = i / 64,
            shft = i % 64;
+    if ( off >= BITS_W )
+      return false;
     for (;;) {
       if ( next_ffs( this->w[ off ], shft ) ) {
         i = off * 64 + shft;

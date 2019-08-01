@@ -202,7 +202,6 @@ struct EvCaprService : public EvConnection {
   bool fwd_msg( EvPublish &pub,  const void *sid,  size_t sid_len );
   bool fwd_inbox( EvPublish &pub );
   void get_inbox_addr( EvPublish &pub,  const char *&subj,  uint8_t *addr );
-  void process_close( void ) {}
   void release( void );
   void push_free_list( void );
   void pop_free_list( void );
