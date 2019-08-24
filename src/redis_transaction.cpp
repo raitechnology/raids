@@ -60,7 +60,7 @@ RedisExec::exec_exec( void )
   if ( str == NULL )
     return ERR_ALLOC_FAIL;
   str[ 0 ] = '*';
-  sz = 1 + RedisMsg::uint_to_str( mul->msg_count, &str[ 1 ] );
+  sz = 1 + uint_to_str( mul->msg_count, &str[ 1 ] );
   this->strm.sz += crlf( str, sz );
   for ( RedisMsgList * ml = mul->msg_list.hd; ml != NULL; ml = ml->next ) {
     this->msg.ref( *ml->msg );

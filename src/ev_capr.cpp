@@ -108,6 +108,7 @@ EvCaprListen::EvCaprListen( EvPoll &p )
 {
   if ( uptime_stamp == 0 )
     uptime_stamp = kv_current_realtime_ns();
+  md_init_auto_unpack();
 }
 
 void
@@ -159,9 +160,6 @@ EvCaprListen::accept( void )
     this->poll.map->hdr.get_hash_seed( KV_DB_COUNT-1, h1, h2 );
     ::gethostname( host, sizeof( host ) );
     this->sess = CaprSession::create( "localhost", user, host, "ds", h1 );
-    RvMsg::init_auto_unpack();
-    TibMsg::init_auto_unpack();
-    JsonMsg::init_auto_unpack();
   }
   c->fd = sock;
   c->initialize_state( this->timer_id );

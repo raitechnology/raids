@@ -11,18 +11,19 @@ namespace rai {
 namespace ds {
 
 enum EvSockType {
-  EV_REDIS_SOCK  = 0, /* redis protocol */
-  EV_HTTP_SOCK   = 1, /* http / websock protocol */
-  EV_LISTEN_SOCK = 2, /* any type of listener (tcp or unix sock stream) */
-  EV_CLIENT_SOCK = 3, /* redis client protocol */
-  EV_TERMINAL    = 4, /* redis terminal (converts redis proto to/from json) */
-  EV_NATS_SOCK   = 5, /* nats pub/sub protocol */
-  EV_CAPR_SOCK   = 6, /* capr pub/sub protocol */
-  EV_RV_SOCK     = 7, /* rv pub/sub protocol */
-  EV_KV_PUBSUB   = 8, /* route between processes */
-  EV_SHM_SOCK    = 9, /* local shm client */
-  EV_TIMER_QUEUE = 10,/* event timers */
-  EV_SHM_SVC     = 11 /* pubsub service */
+  EV_REDIS_SOCK     = 0, /* redis protocol */
+  EV_HTTP_SOCK      = 1, /* http / websock protocol */
+  EV_LISTEN_SOCK    = 2, /* any type of listener (tcp or unix sock stream) */
+  EV_CLIENT_SOCK    = 3, /* redis client protocol */
+  EV_TERMINAL       = 4, /* redis terminal (converts redis proto to json) */
+  EV_NATS_SOCK      = 5, /* nats pub/sub protocol */
+  EV_CAPR_SOCK      = 6, /* capr pub/sub protocol */
+  EV_RV_SOCK        = 7, /* rv pub/sub protocol */
+  EV_KV_PUBSUB      = 8, /* route between processes */
+  EV_SHM_SOCK       = 9, /* local shm client */
+  EV_TIMER_QUEUE    = 10,/* event timers */
+  EV_SHM_SVC        = 11,/* pubsub service */
+  EV_MEMCACHED_SOCK = 12 /* memcached protocol */
 };
 
 enum EvState {
@@ -98,6 +99,7 @@ struct KvPubSub;
 struct EvShm;
 struct EvTimerQueue;
 struct EvTimerEvent;
+struct EvMemcachedService;
 
 /* route_db.h has RoutePublish which contains the function for publishing -
  *   bool publish( pub, rcount, pref_cnt, ph )
@@ -119,7 +121,7 @@ struct EvPoll : public RoutePublish {
                        maxfd,           /* current maximum fd number */
                        quit;            /* when > 0, wants to exit */
   static const size_t  ALLOC_INCR    = 64, /* alloc size of poll socket ar */
-                       PREFETCH_SIZE = 8;  /* pipe size of number of pref */
+                       PREFETCH_SIZE = 4;  /* pipe size of number of pref */
   size_t               prefetch_pending,
                        prefetch_cnt[ PREFETCH_SIZE + 1 ];
   RouteDB              sub_route;       /* subscriptions */
@@ -128,12 +130,13 @@ struct EvPoll : public RoutePublish {
 
   /* socket lists, active and free lists, multiple socks are allocated at a
    * time to speed up accept and connection setup */
-  kv::DLinkList<EvSocket>       active_list;/* active socks in poll */
-  kv::DLinkList<EvRedisService> free_redis; /* EvRedisService free */
-  kv::DLinkList<EvHttpService>  free_http;  /* EvHttpService free */
-  kv::DLinkList<EvNatsService>  free_nats;  /* EvNatsService free */
-  kv::DLinkList<EvCaprService>  free_capr;  /* EvCaprService free */
-  kv::DLinkList<EvRvService>    free_rv;    /* EvRvService free */
+  kv::DLinkList<EvSocket>           active_list;    /* active socks in poll */
+  kv::DLinkList<EvRedisService>     free_redis;     /* EvRedisService free */
+  kv::DLinkList<EvHttpService>      free_http;      /* EvHttpService free */
+  kv::DLinkList<EvNatsService>      free_nats;      /* EvNatsService free */
+  kv::DLinkList<EvCaprService>      free_capr;      /* EvCaprService free */
+  kv::DLinkList<EvRvService>        free_rv;        /* EvRvService free */
+  kv::DLinkList<EvMemcachedService> free_memcached; /* EvMemcached free */
   /*bool single_thread; (if kv single threaded) */
 
   EvPoll()

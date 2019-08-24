@@ -271,7 +271,7 @@ RedisExec::exec_bitfield( EvKeyCtx &ctx )
     return ERR_ALLOC_FAIL;
 
   str[ 0 ] = '*';
-  sz = 1 + RedisMsg::uint_to_str( k, &str[ 1 ] );
+  sz = 1 + uint_to_str( k, &str[ 1 ] );
   sz = crlf( str, sz );
   for ( i = 0; i < k; i++ ) {
     const uint8_t  width = bf[ i ].type_width;
@@ -364,8 +364,8 @@ RedisExec::exec_bitfield( EvKeyCtx &ctx )
     if ( ! fail ) {
       str[ sz ] = ':';
       sz += 1 + ( tchar == 'I' ?
-                  RedisMsg::int_to_str( old_val.ival, &str[ sz + 1 ] ) :
-                  RedisMsg::uint_to_str( old_val.ival, &str[ sz + 1 ] ) );
+                  int_to_str( old_val.ival, &str[ sz + 1 ] ) :
+                  uint_to_str( old_val.ival, &str[ sz + 1 ] ) );
     }
     /* incrby overflow fail failed */
     else { /* $-1 */
@@ -786,7 +786,7 @@ RedisExec::do_add( EvKeyCtx &ctx,  int64_t incr ) /* incr/decr value */
       ctx.ival += incr;
       str = this->strm.alloc( 32 );
       str[ 0 ] = ':';
-      sz = 1 + RedisMsg::int_to_str( ctx.ival, &str[ 1 ] );
+      sz = 1 + int_to_str( ctx.ival, &str[ 1 ] );
       sz = crlf( str, sz );
       ctx.kstatus = this->kctx.resize( &data, sz - 3 );
       if ( ctx.kstatus == KEY_OK ) {
@@ -833,7 +833,7 @@ RedisExec::exec_incrbyfloat( EvKeyCtx &ctx )
       sz = 32 + fvallen * 2;
       str = this->strm.alloc( sz );
       str[ 0 ] = '$';
-      sz = 1 + RedisMsg::int_to_str( fvallen, &str[ 1 ] );
+      sz = 1 + int_to_str( fvallen, &str[ 1 ] );
       sz = crlf( str, sz );
       ::memcpy( &str[ sz ], fpdata, fvallen );
       sz = crlf( str, sz + fvallen );

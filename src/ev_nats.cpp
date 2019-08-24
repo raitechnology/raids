@@ -13,7 +13,7 @@
 #include <netdb.h>
 #include <arpa/inet.h>
 #include <raids/ev_nats.h>
-#include <raids/redis_msg.h>
+#include <raids/int_str.h>
 #include <raikv/key_hash.h>
 #include <raikv/util.h>
 #include <raids/ev_publish.h>
@@ -690,7 +690,7 @@ EvNatsService::fwd_msg( EvPublish &pub,  const void *sid,  size_t sid_len )
 {
   size_t msg_len_digits =
            ( pub.msg_len_digits > 0 ? pub.msg_len_digits :
-             RedisMsg::uint_digits( pub.msg_len ) );
+             uint_digits( pub.msg_len ) );
   size_t len = 4 +                                  /* MSG */
                pub.subject_len + 1 +                /* <subject> */
                sid_len + 1 +                        /* <sid> */
@@ -709,7 +709,7 @@ EvNatsService::fwd_msg( EvPublish &pub,  const void *sid,  size_t sid_len )
     *p++ = ' ';
   }
   if ( pub.msg_len_digits == 0 ) {
-    RedisMsg::uint_to_str( pub.msg_len, p, msg_len_digits );
+    uint_to_str( pub.msg_len, p, msg_len_digits );
     p = &p[ msg_len_digits ];
   }
   else {

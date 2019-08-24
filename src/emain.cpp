@@ -10,6 +10,7 @@
 #include <netdb.h>
 #include <raids/ev_tcp.h>
 #include <raids/ev_unix.h>
+#include <raids/ev_memcached.h>
 #include <raids/ev_http.h>
 #include <raids/ev_nats.h>
 #include <raids/ev_capr.h>
@@ -38,7 +39,8 @@ main( int argc, char *argv[] )
   int           status = 0;
 
   const char * mn = get_arg( argc, argv, 1, "-m", "sysv2m:shm.test" ),
-             * pt = get_arg( argc, argv, 1, "-p", "8888" ),  /* redis */
+             * pt = get_arg( argc, argv, 1, "-p", "7379" ),  /* redis */
+             * mc = get_arg( argc, argv, 1, "-m", "21211" ), /* memcached */
              * sn = get_arg( argc, argv, 1, "-u", "/tmp/raids.sock" ),/* unix */
              * hp = get_arg( argc, argv, 1, "-w", "48080" ), /* http/websock */
              * np = get_arg( argc, argv, 1, "-n", "42222" ), /* nats */
@@ -53,19 +55,20 @@ main( int argc, char *argv[] )
 
   if ( he != NULL ) {
     printf( "%s"
-" [-m map] [-p port] [-u unix] [-w web] [-n nats] [-c capr]"
+" [-m map] [-p redis] [-m memcd] [-u unix] [-w web] [-n nats] [-c capr]"
 " [-x mfd] [-f pre] [-b]\n" /*"[-s sin]\n"*/
-      "  map  = kv shm map name   (sysv2m:shm.test)\n"
-      "  port = listen redis port (8888)\n"
-      "  unix = listen unix name  (/tmp/raids.sock)\n"
-      "  web  = listen websocket  (48080)\n"
-      "  nats = listen nats port  (42222)\n"
-      "  capr = listen capr port  (8866)\n"
-      "  rv   = listen rv port    (7501)\n"
-      "  mfd  = max fds           (4096)\n"
-      "  pre  = prefetch keys:  0 = no, 1 = yes (1)\n"
-      "  -k   = don't use signal USR1 pub notification\n"
-      "  -b   = busy poll\n"
+      "  map   = kv shm map name       (sysv2m:shm.test)\n"
+      "  redis = listen redis port     (7379)\n"
+      "  memcd = listen memcached port (21211)\n"
+      "  unix  = listen unix name      (/tmp/raids.sock)\n"
+      "  web   = listen websocket      (48080)\n"
+      "  nats  = listen nats port      (42222)\n"
+      "  capr  = listen capr port      (8866)\n"
+      "  rv    = listen rv port        (7501)\n"
+      "  mfd   = max fds               (4096)\n"
+      "  pre   = prefetch keys:      0 = no, 1 = yes (1)\n"
+      "  -k    = don't use signal USR1 pub notification\n"
+      "  -b    = busy poll\n"
       /*"  sin  = single thread:  0 = no, 1 = yes (0)\n"*/, argv[ 0 ] );
     return 0;
   }
@@ -77,6 +80,7 @@ main( int argc, char *argv[] )
   EvPoll            poll;
   EvRedisListen     redis_sv( poll );
   EvRedisUnixListen redis_un( poll );
+  EvMemcachedListen memcached_sv( poll );
   EvHttpListen      http_sv( poll );
   EvNatsListen      nats_sv( poll );
   EvCaprListen      capr_sv( poll );
@@ -93,6 +97,9 @@ main( int argc, char *argv[] )
   if ( redis_sv.listen( NULL, atoi( pt ) ) != 0 ) {
     fprintf( stderr, "unable to open tcp listen socket on %s\n", pt );
     status = 2; /* bad port or network error */
+  }
+  if ( memcached_sv.listen( NULL, atoi( mc ) ) != 0 ) {
+    fprintf( stderr, "unable to open memcached listen socket on %s\n", mc );
   }
   if ( http_sv.listen( NULL, atoi( hp ) ) != 0 ) {
     fprintf( stderr, "unable to open http listen socket on %s\n", hp );
@@ -116,6 +123,7 @@ main( int argc, char *argv[] )
     /*printf( "single_thread:        %s\n", si[ 0 ] == '1' ? "true" : "false" );*/
     printf( "redis:                %s\n", pt );
     printf( "unix/redis:           %s\n", sn );
+    printf( "memcached:            %s\n", mc );
     printf( "websocket:            %s\n", hp );
     printf( "nats:                 %s\n", np );
     printf( "capr:                 %s\n", cp );
@@ -138,11 +146,16 @@ main( int argc, char *argv[] )
       if ( sighndl.signaled && ! poll.quit )
         poll.quit++;
     }
-    if ( fe[ 0 ] == '1' )
-      for ( size_t i = 0; i < EvPoll::PREFETCH_SIZE; i++ ) {
-        if ( poll.prefetch_cnt[ i ] != 0 )
-          printf( "pre[%lu] = %lu\n", i, poll.prefetch_cnt[ i ] );
+    if ( fe[ 0 ] == '1' ) {
+      size_t j = 0;
+      for ( size_t i = 0; i <= EvPoll::PREFETCH_SIZE; i++ ) {
+        if ( poll.prefetch_cnt[ i ] != 0 ) {
+          printf( "pre[%lu] = %lu (=%lu) (t:%lu)\n", i, poll.prefetch_cnt[ i ],
+                                      i * poll.prefetch_cnt[ i ],
+                                      j += i * poll.prefetch_cnt[ i ] );
+        }
       }
+    }
     printf( "bye\n" );
   }
   shm.close();

@@ -3,6 +3,7 @@
 
 #include <raikv/util.h>
 #include <raikv/work.h>
+#include <raids/int_str.h>
 
 namespace rai {
 namespace ds {
@@ -12,14 +13,14 @@ struct BulkArr;
 
 enum RedisMsgStatus {
   REDIS_MSG_OK             = 0,
-  REDIS_MSG_BAD_TYPE       = 1,
-  REDIS_MSG_PARTIAL        = 2,
-  REDIS_MSG_ALLOC_FAIL     = 3,
-  REDIS_MSG_BAD_JSON       = 4,
-  REDIS_MSG_BAD_INT        = 5,
-  REDIS_MSG_INT_OVERFLOW   = 6,
-  REDIS_MSG_BAD_FLOAT      = 7,
-  REDIS_MSG_FLOAT_OVERFLOW = 8
+  REDIS_MSG_INT_OVERFLOW   = STR_CVT_INT_OVERFLOW,
+  REDIS_MSG_BAD_INT        = STR_CVT_BAD_INT,
+  REDIS_MSG_FLOAT_OVERFLOW = STR_CVT_FLOAT_OVERFLOW,
+  REDIS_MSG_BAD_FLOAT      = STR_CVT_BAD_FLOAT,
+  REDIS_MSG_BAD_TYPE,
+  REDIS_MSG_PARTIAL,
+  REDIS_MSG_ALLOC_FAIL,
+  REDIS_MSG_BAD_JSON
 };
 
 const char *redis_msg_status_string( RedisMsgStatus status );
@@ -142,57 +143,21 @@ struct RedisMsg {
    *   if ( n == 0 ) matched none */
   int match_arg( int n,  const char *str,  size_t sz,  ... );
 
-  /* integer to string routines */
-  static uint64_t neg( int64_t v ) {
-    if ( (uint64_t) v == ( (uint64_t) 1 << 63 ) )
-      return ( (uint64_t) 1 << 63 );
-    return (uint64_t) -v;
-  }
-  static size_t uint_digits( uint64_t v ) {
-    for ( size_t n = 1; ; n += 4 ) {
-      if ( v < 10 )    return n;
-      if ( v < 100 )   return n + 1;
-      if ( v < 1000 )  return n + 2;
-      if ( v < 10000 ) return n + 3;
-      v /= 10000;
-    }
-  }
-  static size_t int_digits( int64_t v ) {
-    if ( v < 0 ) return 1 + uint_digits( neg( v ) );
-    return uint_digits( v );
-  }
-  /* does not null terminate (most strings have lengths, not nulls) */
-  static size_t uint_to_str( uint64_t v,  char *buf,  size_t len ) {
-    for ( size_t pos = len; v >= 10; ) {
-      const uint64_t q = v / 10, r = v % 10;
-      buf[ --pos ] = '0' + r;
-      v = q;
-    }
-    buf[ 0 ] = '0' + v;
-    return len;
-  }
-  static size_t uint_to_str( uint64_t v,  char *buf ) {
-    return uint_to_str( v, buf, uint_digits( v ) );
-  }
-  static size_t int_to_str( int64_t v,  char *buf,  size_t len ) {
-    if ( v < 0 ) {
-      buf[ 0 ] = '-';
-      return 1 + uint_to_str( neg( v ), &buf[ 1 ], len - 1 );
-    }
-    return uint_to_str( v, buf, len );
-  }
-  static size_t int_to_str( int64_t v,  char *buf ) {
-    return int_to_str( v, buf, int_digits( v ) );
-  }
   /* str length sz to int */
   static RedisMsgStatus str_to_int( const char *str,  size_t sz,
-                                    int64_t &ival );
+                                    int64_t &ival ) {
+    return (RedisMsgStatus) rai::ds::string_to_int( str, sz, ival );
+  }
   /* str length sz to uint */
   static RedisMsgStatus str_to_uint( const char *str,  size_t sz,
-                                     uint64_t &ival );
+                                     uint64_t &ival ) {
+    return (RedisMsgStatus) rai::ds::string_to_uint( str, sz, ival );
+  }
   /* str length sz to double */
   static RedisMsgStatus str_to_dbl( const char *str,  size_t sz,
-                                    double &fval );
+                                    double &fval ) {
+    return (RedisMsgStatus) rai::ds::string_to_dbl( str, sz, fval );
+  }
   /* various simple encodings used by redis */
   void set_nil( void ) {
     this->type   = BULK_STRING;

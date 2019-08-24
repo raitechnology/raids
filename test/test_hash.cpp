@@ -284,7 +284,7 @@ main( int, char ** )
           if ( mstatus == REDIS_MSG_OK )
             ival += jval;
         }
-        sz = RedisMsg::int_to_str( ival, ibuf );
+        sz = int_to_str( ival, ibuf );
         for (;;) {
           hstat = hk->ht->hupdate( arg, arglen, ibuf, sz, pos );
           if ( hstat != HASH_FULL ) {

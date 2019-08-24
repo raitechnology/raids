@@ -3,7 +3,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <raids/stream_buf.h>
-#include <raids/redis_msg.h>
+#include <raids/int_str.h>
 
 using namespace rai;
 using namespace ds;
@@ -75,14 +75,14 @@ StreamBuf::BufQueue::append_string( const void *str,  size_t len,
                                     const void *str2,  size_t len2 )
 {
   size_t itemlen = len + len2,
-         d       = RedisMsg::uint_digits( itemlen );
+         d       = uint_digits( itemlen );
 
   if ( itemlen + d + 5 > this->buflen - this->used )
     if ( ! this->append_buf( itemlen + d + 5 ) )
       return 0;
 
   this->bufp[ this->used++ ] = '$';
-  this->used += RedisMsg::uint_to_str( itemlen, &this->bufp[ this->used ], d );
+  this->used += uint_to_str( itemlen, &this->bufp[ this->used ], d );
   this->used = crlf( this->bufp, this->used );
   ::memcpy( &this->bufp[ this->used ], str, len );
   if ( len2 > 0 )
@@ -120,12 +120,12 @@ StreamBuf::BufQueue::append_bytes( const void *buf,  size_t len )
 size_t
 StreamBuf::BufQueue::append_uint( uint64_t val )
 {
-  size_t d = RedisMsg::uint_digits( val );
+  size_t d = uint_digits( val );
   if ( d + 3 > this->buflen - this->used )
     if ( ! this->append_buf( d + 3 ) )
       return 0;
   this->bufp[ this->used++ ] = ':';
-  this->used += RedisMsg::uint_to_str( val, &this->bufp[ this->used ], d );
+  this->used += uint_to_str( val, &this->bufp[ this->used ], d );
   this->used = crlf( this->bufp, this->used );
   return this->total + this->used;
 }
@@ -133,7 +133,7 @@ StreamBuf::BufQueue::append_uint( uint64_t val )
 size_t
 StreamBuf::BufQueue::prepend_array( size_t nitems )
 {
-  size_t    itemlen = RedisMsg::uint_digits( nitems ),
+  size_t    itemlen = uint_digits( nitems ),
                  /*  '*'   4      '\r\n' (nitems = 1234) */
             len     = 1 + itemlen + 2;
   char    * hdr;
@@ -152,7 +152,7 @@ StreamBuf::BufQueue::prepend_array( size_t nitems )
   }
   hdr = p->buf( 0 );
   hdr[ 0 ] = '*';
-  RedisMsg::uint_to_str( nitems, &hdr[ 1 ], itemlen );
+  uint_to_str( nitems, &hdr[ 1 ], itemlen );
   crlf( hdr, len - 2 );
 
   if ( p != this->hd ) {
@@ -169,9 +169,9 @@ StreamBuf::BufQueue::prepend_array( size_t nitems )
 size_t
 StreamBuf::BufQueue::prepend_cursor_array( size_t curs,  size_t nitems )
 {
-  size_t    curslen = RedisMsg::uint_digits( curs ),
-            clenlen = RedisMsg::uint_digits( curslen ),
-            itemlen = RedisMsg::uint_digits( nitems ),
+  size_t    curslen = uint_digits( curs ),
+            clenlen = uint_digits( curslen ),
+            itemlen = uint_digits( nitems ),
             len     = /* '*2\r\n$'    1    '\r\n'  0     '\r\n' (curs=0) */
                            5      + clenlen + 2 + curslen + 2 +
                       /* '*'    4     '\r\n'  (nitems = 1234) */
@@ -196,12 +196,12 @@ StreamBuf::BufQueue::prepend_cursor_array( size_t curs,  size_t nitems )
   hdr[ 1 ] = '2';
   crlf( hdr, 2 );
   hdr[ 4 ] = '$';
-  i  = 5 + RedisMsg::uint_to_str( curslen, &hdr[ 5 ], clenlen );
+  i  = 5 + uint_to_str( curslen, &hdr[ 5 ], clenlen );
   i  = crlf( hdr, i );
-  i += RedisMsg::uint_to_str( curs, &hdr[ i ], curslen );
+  i += uint_to_str( curs, &hdr[ i ], curslen );
   i  = crlf( hdr, i );
   hdr[ i ] = '*';
-  i += 1 + RedisMsg::uint_to_str( nitems, &hdr[ 1 + i ], itemlen );
+  i += 1 + uint_to_str( nitems, &hdr[ 1 + i ], itemlen );
   crlf( hdr, i );
 
   if ( p != this->hd ) {

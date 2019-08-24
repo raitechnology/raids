@@ -95,10 +95,10 @@ RedisMsg::pack2( void *buf,  size_t &buflen ) const
     ::memcpy( &ptr[ 1 ], this->strval, this->len );
   }
   else if ( is_int_type( type_bit ) ) {
-    i = 1 + RedisMsg::int_to_str( this->ival, &ptr[ 1 ] );
+    i = 1 + int_to_str( this->ival, &ptr[ 1 ] );
   }
   else {
-    i = 1 + RedisMsg::int_to_str( this->len, &ptr[ 1 ] );
+    i = 1 + int_to_str( this->len, &ptr[ 1 ] );
     if ( is_bulk_string( type_bit ) ) {
       if ( this->len >= 0 ) {
         ptr[ i ] = '\r';
@@ -147,10 +147,10 @@ RedisMsg::pack( void *buf ) const
     ::memcpy( &ptr[ 1 ], this->strval, this->len );
   }
   else if ( is_int_type( type_bit ) ) {
-    i = 1 + RedisMsg::int_to_str( this->ival, &ptr[ 1 ] );
+    i = 1 + int_to_str( this->ival, &ptr[ 1 ] );
   }
   else {
-    i = 1 + RedisMsg::int_to_str( this->len, &ptr[ 1 ] );
+    i = 1 + int_to_str( this->len, &ptr[ 1 ] );
     if ( is_bulk_string( type_bit ) ) {
       if ( this->len >= 0 ) {
         ptr[ i ] = '\r';
@@ -187,10 +187,10 @@ RedisMsg::pack_size( void ) const
     i = 1 + this->len;
   }
   else if ( is_int_type( type_bit ) ) {
-    i = 1 + RedisMsg::int_digits( this->ival );
+    i = 1 + int_digits( this->ival );
   }
   else {
-    i = 1 + RedisMsg::int_digits( this->len );
+    i = 1 + int_digits( this->len );
     if ( is_bulk_string( type_bit ) ) {
       if ( this->len >= 0 )
         i += 2 + this->len;
@@ -444,8 +444,8 @@ break_loop:;
   return k;
 }
 
-RedisMsgStatus
-RedisMsg::str_to_int( const char *str,  size_t sz,  int64_t &ival )
+int
+rai::ds::string_to_int( const char *str,  size_t sz,  int64_t &ival )
 {
   /* max is 1844674407,3709551615, this table doesnn't overflow 32bits */
   static const uint32_t pow10[] = {     10000U * 10000U * 10,
@@ -516,8 +516,8 @@ RedisMsg::str_to_int( const char *str,  size_t sz,  int64_t &ival )
   return REDIS_MSG_OK;
 }
 
-RedisMsgStatus
-RedisMsg::str_to_dbl( const char *str,  size_t sz,  double &fval )
+int
+rai::ds::string_to_dbl( const char *str,  size_t sz,  double &fval )
 {
   char buf[ 64 ], *endptr = NULL;
   /* null terminate string */
@@ -533,8 +533,8 @@ RedisMsg::str_to_dbl( const char *str,  size_t sz,  double &fval )
   return REDIS_MSG_OK;
 }
 
-RedisMsgStatus
-RedisMsg::str_to_uint( const char *str,  size_t sz,  uint64_t &ival )
+int
+rai::ds::string_to_uint( const char *str,  size_t sz,  uint64_t &ival )
 {
   char buf[ 64 ], *endptr = NULL;
   /* null terminate string */
@@ -649,7 +649,7 @@ RedisMsg::to_almost_json( char *buf,  bool be_weird ) const
       return 4;
 
     case INTEGER_VALUE:
-      return RedisMsg::int_to_str( this->ival, buf );
+      return int_to_str( this->ival, buf );
 
     case BULK_ARRAY:
       if ( this->len >= 0 ) {
@@ -692,7 +692,7 @@ RedisMsg::to_almost_json_size( bool be_weird ) const
       return 4; /* null */
 
     case INTEGER_VALUE:
-      return RedisMsg::int_digits( this->ival );
+      return int_digits( this->ival );
 
     case BULK_ARRAY:
       if ( this->len >= 0 ) {

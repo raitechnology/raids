@@ -84,9 +84,7 @@ EvRvListen::EvRvListen( EvPoll &p )
 {
   if ( uptime_stamp == 0 )
     uptime_stamp = kv_current_realtime_ns();
-  RvMsg::init_auto_unpack();
-  TibMsg::init_auto_unpack();
-  JsonMsg::init_auto_unpack();
+  md_init_auto_unpack();
 
   char host[ 1024 ];
   if ( ::gethostname( host, sizeof( host ) ) == 0 ) {

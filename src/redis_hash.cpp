@@ -505,7 +505,7 @@ RedisExec::do_hwrite( EvKeyCtx &ctx,  int flags )
         }
         str = this->strm.alloc( 32 );
         str[ 0 ] = ':';
-        sz = 1 + RedisMsg::int_to_str( ival, &str[ 1 ] );
+        sz = 1 + int_to_str( ival, &str[ 1 ] );
         sz = crlf( str, sz );
         hstatus = hash.x->hupdate( arg, arglen, &str[ 1 ], sz - 3, pos );
         break;
@@ -523,7 +523,7 @@ RedisExec::do_hwrite( EvKeyCtx &ctx,  int flags )
         sz = 32 + fvallen * 2;
         str = this->strm.alloc( sz );
         str[ 0 ] = '$';
-        sz = 1 + RedisMsg::int_to_str( fvallen, &str[ 1 ] );
+        sz = 1 + int_to_str( fvallen, &str[ 1 ] );
         sz = crlf( str, sz ); 
         ::memcpy( &str[ sz ], ibuf, fvallen );
         sz = crlf( str, sz + fvallen );

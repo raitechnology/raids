@@ -19,6 +19,12 @@ struct EvKeyTempResult {
   }
 };
 
+enum EvKeyState {
+  EK_SUCCESS  = 20, /* statement finished */
+  EK_DEPENDS  = 21, /* key depends on another */
+  EK_CONTINUE = 22  /* more keys to process */
+};
+
 struct EvKeyCtx {
   void * operator new( size_t, void *ptr ) { return ptr; }
 
@@ -60,7 +66,7 @@ struct EvKeyCtx {
   EvKeyCtx *prefetch( kv::KeyCtx &kctx ) {
     kctx.set_key( this->kbuf );
     kctx.set_hash( this->hash1, this->hash2 );
-    kctx.prefetch( 1 );
+    kctx.prefetch( 2 );
     return this;
   }
 };

@@ -161,8 +161,9 @@ all_libs    :=
 all_dlls    :=
 all_depends :=
 gen_files   :=
-emain_defines      := -DDS_VER=$(ver_build)
-redis_exec_defines := -DDS_VER=$(ver_build)
+emain_defines          := -DDS_VER=$(ver_build)
+redis_exec_defines     := -DDS_VER=$(ver_build)
+memcached_exec_defines := -DDS_VER=$(ver_build)
 
 redis_geo_includes        = -Ih3/src/h3lib/include -I/usr/include/h3lib
 redis_sortedset_includes  = -Ih3/src/h3lib/include -I/usr/include/h3lib
@@ -174,7 +175,8 @@ libraids_files := ev_net ev_service ev_http term ev_client ev_tcp ev_unix \
   ev_nats ev_capr ev_rv shm_client stream_buf route_db redis_msg redis_cmd_db \
   redis_exec redis_geo redis_hash redis_hyperloglog redis_key redis_list \
   redis_pubsub redis_script redis_set redis_sortedset redis_stream \
-  redis_string redis_transaction kv_pubsub timer_queue
+  redis_string redis_transaction kv_pubsub timer_queue ev_memcached \
+  memcached_exec
 libraids_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(libraids_files)))
 libraids_dbjs  := $(addprefix $(objd)/, $(addsuffix .fpic.o, $(libraids_files)))
 libraids_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(libraids_files))) \
@@ -244,6 +246,14 @@ test_msg_libs  := $(raids_dlib)
 test_msg_lnk   := $(raids_dlnk)
 
 $(bind)/test_msg: $(test_msg_objs) $(test_msg_libs)
+
+test_mcmsg_files := test_mcmsg
+test_mcmsg_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(test_mcmsg_files)))
+test_mcmsg_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(test_mcmsg_files)))
+test_mcmsg_libs  := $(raids_dlib)
+test_mcmsg_lnk   := $(raids_dlnk)
+
+$(bind)/test_mcmsg: $(test_mcmsg_objs) $(test_mcmsg_libs)
 
 test_cmd_files := test_cmd
 test_cmd_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(test_cmd_files)))
@@ -414,7 +424,7 @@ test_pub_lnk   := $(raids_dlnk)
 
 $(bind)/test_pub: $(test_pub_objs) $(test_pub_libs)
 
-all_exes    += $(bind)/client $(bind)/test_msg \
+all_exes    += $(bind)/client $(bind)/test_msg $(bind)/test_mcmsg \
                $(bind)/redis_cmd $(bind)/test_cmd $(bind)/test_list \
 	       $(bind)/test_hash $(bind)/test_set $(bind)/test_zset \
 	       $(bind)/test_hllnum $(bind)/test_hllw $(bind)/test_hllsub \
@@ -422,7 +432,7 @@ all_exes    += $(bind)/client $(bind)/test_msg \
 	       $(bind)/test_decimal $(bind)/test_cr $(bind)/test_rtht \
 	       $(bind)/test_subht $(bind)/test_wild $(bind)/test_timer \
 	       $(bind)/test_ping $(bind)/test_sub $(bind)/test_pub
-all_depends += $(client_deps) $(test_msg_deps) \
+all_depends += $(client_deps) $(test_msg_deps) $(test_mcmsg_deps) \
                $(redis_cmd_deps) $(test_cmd_deps) $(test_list_deps) \
 	       $(test_hash_deps) $(test_set_deps) $(test_zset_deps) \
 	       $(test_hllnum_deps) $(test_hllw_deps) $(test_hllsub_deps) \

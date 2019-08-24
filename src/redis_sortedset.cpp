@@ -324,7 +324,7 @@ RedisExec::do_zread( EvKeyCtx &ctx,  int flags )
         if ( geo.x->geoexists( arg, arglen, pos, score ) == GEO_OK ) {
           /* return the score */
           if ( ( flags & DO_ZSCORE ) != 0 ) {
-            fvallen = RedisMsg::uint_to_str( score, fpdata );
+            fvallen = uint_to_str( score, fpdata );
             sz      = this->send_string( fpdata, fvallen );
             status  = EXEC_OK;
           }
@@ -797,7 +797,7 @@ RedisExec::do_zmultiscan( EvKeyCtx &ctx,  int flags,  ScanArgs *sa )
         return ERR_ALLOC_FAIL;
       itemcnt++;
       if ( withscores ) {
-        fvallen = RedisMsg::uint_to_str( gv.score, fpdata );
+        fvallen = uint_to_str( gv.score, fpdata );
         if ( q.append_string( fpdata, fvallen ) == 0 )
           return ERR_ALLOC_FAIL;
         itemcnt++;

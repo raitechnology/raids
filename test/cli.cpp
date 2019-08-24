@@ -170,7 +170,7 @@ main( int argc, char *argv[] )
   MyClient     my( poll );
 
   const char * ho = get_arg( argc, argv, 1, "-x", NULL ),
-             * pt = get_arg( argc, argv, 1, "-p", "8888" ),
+             * pt = get_arg( argc, argv, 1, "-p", "7379" ),
              * pa = get_arg( argc, argv, 1, "-a", NULL ),
              * ma = get_arg( argc, argv, 1, "-m", NULL ),
              * fi = get_arg( argc, argv, 1, "-f", NULL ),

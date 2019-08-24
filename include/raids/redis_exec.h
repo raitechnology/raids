@@ -26,9 +26,9 @@ enum ExecStatus {
   EXEC_SEND_ONE,         /* send :1 */
   EXEC_SEND_NEG_ONE,     /* send :-1 */
   EXEC_SEND_ZERO_STRING, /* send $0 */
-  EXEC_SUCCESS,          /* <= success = good */
-  EXEC_DEPENDS,          /* key depends (dest) on another key arg (src) */
-  EXEC_CONTINUE,         /* continue working, more keys */
+  EXEC_SUCCESS  = EK_SUCCESS,  /* <= success = good */
+  EXEC_DEPENDS  = EK_DEPENDS,  /* key depends (dest) on another key arg (src) */
+  EXEC_CONTINUE = EK_CONTINUE, /* continue working, more keys */
   EXEC_QUIT,             /* quit/shutdown command */
   EXEC_DEBUG,            /* debug command */
   EXEC_ABORT_SEND_ZERO,  /* abort multiple key operation and return 0 */
@@ -49,11 +49,11 @@ enum ExecStatus {
 };
 
 inline static bool exec_status_success( int status ) {
-  return status <= EXEC_SUCCESS;
+  return status <= EXEC_SUCCESS; /* the OK and SEND_xxx status */
 }
 
 inline static bool exec_status_fail( int status ) {
-  return status > EXEC_SUCCESS;
+  return status > EXEC_SUCCESS;  /* the bad status */
 }
 
 struct EvSocket;
@@ -482,11 +482,6 @@ get_upper_cmd( const char *name,  size_t len )
     return get_redis_cmd( tmp, len );
   }   
   return NO_CMD;
-}
-
-static inline size_t
-crlf( char *b,  size_t i ) {
-  b[ i ] = '\r'; b[ i + 1 ] = '\n'; return i + 2;
 }
 
 }

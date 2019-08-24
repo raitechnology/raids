@@ -51,7 +51,7 @@ RedisExec::exec_dump( EvKeyCtx &ctx )
         ctx.kstatus = this->kctx.validate_value();
         if ( ctx.kstatus == KEY_OK ) {
           buf[ 0 ] = '$';
-          off = 1 + RedisMsg::int_to_str( size, &buf[ 1 ] );
+          off = 1 + int_to_str( size, &buf[ 1 ] );
           off = crlf( buf, off );
           ::memmove( &buf[ 32 - off ], buf, off );
           off = crlf( buf, 32 + size );
