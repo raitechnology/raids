@@ -9,8 +9,11 @@ namespace rai {
 namespace ds {
 
 struct EvCallback {
+  virtual bool on_data( char *buf,  size_t &buflen );
+#if 0
   virtual void on_msg( RedisMsg &msg );
   virtual void on_err( char *buf,  size_t buflen,  RedisMsgStatus status );
+#endif
   virtual void on_close( void );
 };
 
@@ -18,7 +21,8 @@ struct EvClient {
   EvCallback &cb;
 
   EvClient( EvCallback &callback ) : cb( callback ) {}
-  virtual void send_msg( RedisMsg &msg );
+  /*virtual void send_msg( RedisMsg &msg );*/
+  virtual void send_data( char *buf,  size_t size );
 };
 
 struct EvShm {
@@ -45,7 +49,8 @@ struct EvShmClient : public EvShm, public EvClient, public StreamBuf,
   ~EvShmClient();
 
   int init_exec( void );
-  virtual void send_msg( RedisMsg &msg );
+  /*virtual void send_msg( RedisMsg &msg );*/
+  virtual void send_data( char *buf,  size_t size );
   bool on_msg( EvPublish &pub );
   bool hash_to_sub( uint32_t h,  char *key,  size_t &keylen );
   void stream_to_msg( void );
@@ -80,8 +85,8 @@ struct EvNetClient : public EvClient, public EvConnection {
 
   EvNetClient( EvPoll &p, EvCallback &callback,  EvSockType t = EV_CLIENT_SOCK )
     : EvClient( callback ), EvConnection( p, t ) {}
-  virtual void send_msg( RedisMsg &msg );
-  RedisMsgStatus process_msg( char *buf,  size_t &buflen );
+  /*virtual void send_msg( RedisMsg &msg );*/
+  virtual void send_data( char *buf,  size_t size );
   void process( void );
   void process_close( void );
   void release( void ) {
@@ -109,6 +114,24 @@ struct EvTerminal : public EvNetClient {
       ;
 #endif
   void process_line( const char *line );
+};
+
+struct EvMemcachedMerge;
+struct EvUdpClient : public EvClient, public EvUdp {
+  void * operator new( size_t, void *ptr ) { return ptr; }
+  void operator delete( void *ptr ) { ::free( ptr ); }
+
+  EvMemcachedMerge * sav;
+  uint16_t req_id;
+
+  EvUdpClient( EvPoll &p, EvCallback &callback,
+               EvSockType t = EV_CLIENTUDP_SOCK )
+    : EvClient( callback ), EvUdp( p, t ), sav( 0 ), req_id( 0 ) {}
+  void process( void );
+  void process_close( void );
+  void release( void );
+  virtual void send_data( char *buf,  size_t size );
+  void write( void );
 };
 
 }

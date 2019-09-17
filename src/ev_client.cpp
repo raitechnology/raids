@@ -6,52 +6,25 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <sys/socket.h>
 #include <raids/ev_client.h>
 #include <linecook/linecook.h>
 #include <linecook/ttycook.h>
+#include <raids/ev_memcached.h>
 
 using namespace rai;
 using namespace ds;
 
 void
-EvClient::send_msg( RedisMsg & )
+EvClient::send_data( char *,  size_t )
 {
 }
 
 void
-EvNetClient::send_msg( RedisMsg &msg )
+EvNetClient::send_data( char *data,  size_t size )
 {
-  void *tmp = this->tmp.alloc( msg.pack_size() );
-  if ( tmp != NULL ) {
-    this->append_iov( tmp, msg.pack( tmp ) );
-    this->idle_push( EV_WRITE );
-  }
-}
-
-RedisMsgStatus
-EvNetClient::process_msg( char *buf,  size_t &buflen )
-{
-  switch ( buf[ 0 ] ) {
-    default:
-    case RedisMsg::SIMPLE_STRING: /* + */
-    case RedisMsg::ERROR_STRING:  /* - */
-    case RedisMsg::INTEGER_VALUE: /* : */
-    case RedisMsg::BULK_STRING:   /* $ */
-    case RedisMsg::BULK_ARRAY:    /* * */
-      return this->msg.unpack( buf, buflen, this->tmp );
-    case ' ':
-    case '\t':
-    case '\r':
-    case '\n':
-      buflen = 1;
-      return REDIS_MSG_PARTIAL;
-    case '"':
-    case '\'':
-    case '[':
-    case '0': case '1': case '2': case '3': case '4':
-    case '5': case '6': case '7': case '8': case '9':
-      return this->msg.unpack_json( buf, buflen, this->tmp );
-  }
+  this->append_iov( data, size );
+  this->idle_push( EV_WRITE );
 }
 
 void
@@ -60,28 +33,14 @@ EvNetClient::process( void )
   for (;;) {
     char * buf    = &this->recv[ this->off ];
     size_t buflen = this->len - this->off;
-    RedisMsgStatus status;
-    if ( buflen == 0 ) {
-      this->pop( EV_PROCESS );
+    if ( buflen == 0 )
       break;
-    }
-    if ( this->idx + this->vlen / 4 >= this->vlen ) {
-      if ( this->try_write() == 0 || this->idx + 8 >= this->vlen )
-        break;
-    }
-    status = this->process_msg( buf, buflen );
-    if ( status != REDIS_MSG_OK ) {
-      if ( status != REDIS_MSG_PARTIAL ) {
-        this->cb.on_err( &this->recv[ this->off ], buflen, status );
-        this->off = this->len;
-        break;
-      }
-    }
-    else {
-      this->cb.on_msg( this->msg );
-    }
-    this->off += buflen;
+    if ( this->cb.on_data( buf, buflen ) )
+      this->off += buflen;
+    else
+      break;
   }
+  this->pop( EV_PROCESS );
   if ( this->pending() > 0 )
     this->push( EV_WRITE );
 }
@@ -93,22 +52,101 @@ EvNetClient::process_close( void )
 }
 
 void
-EvCallback::on_msg( RedisMsg &msg )
+EvUdpClient::send_data( char *data,  size_t size )
 {
-  char buf[ 64 * 1024 ];
-  size_t sz;
-  if ( (sz = msg.to_almost_json_size()) < sizeof( buf ) ) {
-    if ( sz > 0 )
-      msg.to_almost_json( buf );
-    fprintf( stderr, "on_msg: %*s", (int) sz, buf );
+  if ( ! this->pending() ) {
+    MemcachedHdr hdr;
+    hdr.req_id = __builtin_bswap16( this->req_id++ );
+    hdr.seqno  = 0;
+    hdr.total  = __builtin_bswap16( 1 );
+    hdr.opaque = 0;
+    this->append( &hdr, sizeof( hdr ) );
   }
+  this->append_iov( data, size );
+  this->idle_push( EV_WRITE );
 }
 
 void
-EvCallback::on_err( char *,  size_t buflen,  RedisMsgStatus status )
+EvUdpClient::write( void )
 {
-  fprintf( stderr, "protocol error(%d/%s), ignoring %lu bytes\n",
-	   status, redis_msg_status_string( status ), buflen );
+  StreamBuf & strm = *this;
+  uint32_t    out_idx[ 2 ];
+  MemcachedUdpFraming g( out_idx, NULL, strm, 1 );
+  if ( strm.sz > 0 )
+    strm.flush();
+  out_idx[ 0 ] = 0;
+  out_idx[ 1 ] = strm.idx; /* extent of iov[] array */
+  g.construct_frames();
+  this->out_nmsgs = g.out_nmsgs;
+  this->out_mhdr  = g.out_mhdr;
+  this->EvUdp::write();
+}
+
+void
+EvUdpClient::process( void )
+{
+  StreamBuf & strm = *this;
+  /* for each UDP message recvd */
+  while ( this->in_moff < this->in_nmsgs ) {
+    uint32_t i   = this->in_moff,
+             len = this->in_mhdr[ i ].msg_len;
+
+    if ( len > MC_HDR_SIZE ) {
+      char         * buf = (char *)
+                           this->in_mhdr[ i ].msg_hdr.msg_iov[ 0 ].iov_base;
+      MemcachedHdr * h   = (MemcachedHdr *) (void *) buf;
+      uint16_t       total;
+
+      total = __builtin_bswap16( h->total );
+      if ( total != 1 ) {
+        if ( this->sav == NULL ) {
+          this->sav = new ( ::malloc( sizeof( EvMemcachedMerge ) ) )
+            EvMemcachedMerge();
+        }
+        if ( this->sav->merge_frames( strm, this->in_mhdr, this->in_nmsgs,
+                                      h->req_id, i, total, len ) )
+          continue; /* retry the same buffer */
+        /* otherwise, drop the request for now, could be completed later */
+      }
+      else {
+        size_t buflen;
+        for ( uint32_t off = MC_HDR_SIZE; off < len; ) {
+          buflen = len - off;
+          if ( this->cb.on_data( &buf[ off ], buflen ) )
+            off += buflen;
+          else
+            break;
+        }
+      }
+    }
+    this->in_moff++; /* next buffer */
+  }
+  this->pop( EV_PROCESS );
+  if ( this->pending() > 0 )
+    this->push( EV_WRITE );
+}
+
+void
+EvUdpClient::process_close( void )
+{
+  this->cb.on_close();
+}
+
+void
+EvUdpClient::release( void )
+{
+  if ( this->sav != NULL ) {
+    this->sav->release();
+    ::free( this->sav );
+    this->sav = NULL;
+  }
+  this->EvUdp::release_buffers();
+}
+
+bool
+EvCallback::on_data( char *,  size_t & )
+{
+  return true;
 }
 
 void
@@ -122,7 +160,7 @@ EvTerminal::process( void )
 {
   size_t buflen = this->len - this->off;
   size_t msgcnt = 0;
-  RedisMsgStatus status;
+  int cnt = this->term.interrupt + this->term.suspend;
   this->term.tty_input( &this->recv[ this->off ], buflen );
   this->off = this->len;
 
@@ -131,33 +169,23 @@ EvTerminal::process( void )
     if ( buflen == 0 )
       break;
     char * buf = &this->term.line_buf[ this->term.line_off ];
-    status = this->process_msg( buf, buflen );
-    if ( status != REDIS_MSG_OK ) {
-      if ( status != REDIS_MSG_PARTIAL ) {
-        this->cb.on_err( buf, buflen, status );
-        this->term.line_off = this->term.line_len;
-        msgcnt++;
-      }
-    }
-    else {
-      this->cb.on_msg( this->msg );
+    if ( this->cb.on_data( buf, buflen ) ) {
+      this->term.line_off += buflen;
       msgcnt++;
     }
-    this->term.line_off += buflen;
+    else
+      break;
   }
-  if ( msgcnt > 0 )
+  if ( msgcnt > 0 || cnt != this->term.interrupt + this->term.suspend )
     this->term.tty_prompt();
   this->flush_out();
 
   if ( this->line_len > 0 ) {
-    status = this->process_msg( this->line, this->line_len );
-    if ( status == REDIS_MSG_OK )
-      this->cb.on_msg( this->msg );
-    else if ( status != REDIS_MSG_PARTIAL )
-      this->cb.on_err( this->line, this->line_len, status );
-    ::free( this->line );
-    this->line = NULL;
-    this->line_len = 0;
+    if ( this->cb.on_data( this->line, this->line_len ) ) {
+      ::free( this->line );
+      this->line = NULL;
+      this->line_len = 0;
+    }
   }
   this->pop( EV_PROCESS );
 }

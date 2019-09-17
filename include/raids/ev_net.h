@@ -23,7 +23,9 @@ enum EvSockType {
   EV_SHM_SOCK       = 9, /* local shm client */
   EV_TIMER_QUEUE    = 10,/* event timers */
   EV_SHM_SVC        = 11,/* pubsub service */
-  EV_MEMCACHED_SOCK = 12 /* memcached protocol */
+  EV_MEMCACHED_SOCK = 12,/* memcached protocol */
+  EV_MEMUDP_SOCK    = 13,/* memcached udp protocol */
+  EV_CLIENTUDP_SOCK = 14 /* udp client */
 };
 
 enum EvState {
@@ -60,6 +62,11 @@ struct EvSocket {
   uint16_t   state;    /* bit mask of states, the queues the sock is in */
   EvSockType type;     /* listen or cnnection */
   EvListFlag listfl;   /* in active list or free list */
+  uint64_t   pad[ 3 ];
+#if __cplusplus > 201103L
+  /* 64b align */
+  static_assert( 64 == sizeof( EvSocket ), "socket size" );
+#endif
 
   EvSocket( EvPoll &p,  EvSockType t )
     : next( 0 ), back( 0 ), poll( p ), prio_cnt( 0 ), fd( -1 ),
@@ -193,7 +200,7 @@ struct EvConnection : public EvSocket, public StreamBuf {
            pad;
   uint64_t nbytes_recv,
            nbytes_sent;
-  char     recv_buf[ 4 * 4096 ] __attribute__((__aligned__( 64 )));
+  char     recv_buf[ 4 * 1024 ] __attribute__((__aligned__( 64 )));
 
   EvConnection( EvPoll &p, EvSockType t ) : EvSocket( p, t ) {
     this->recv           = this->recv_buf;
@@ -233,10 +240,46 @@ struct EvConnection : public EvSocket, public StreamBuf {
   }
   bool resize_recv_buf( void );   /* need more buffer space */
   bool read( void );              /* fill recv buf, return true if read some */
-  bool try_read( void );          /* try to read and create space */
-  size_t write( void );           /* flush stream buffer */
-  size_t try_write( void );       /* try to flush and create space */
+  void write( void );             /* flush stream buffer */
   void close_alloc_error( void ); /* if stream buf alloc failed or similar */
+  void process_shutdown( void ) { this->pushpop( EV_CLOSE, EV_SHUTDOWN ); }
+};
+
+struct EvUdp : public EvSocket, public StreamBuf {
+  uint64_t  nbytes_recv,
+            nbytes_sent;
+  struct    mmsghdr * in_mhdr,
+                    * out_mhdr;
+  uint32_t  in_moff,
+            in_nmsgs,
+            in_size,
+            in_nsize,
+            out_nmsgs;
+  uint32_t  pad[ 3 ];
+
+  EvUdp( EvPoll &p, EvSockType t ) : EvSocket( p, t ),
+    nbytes_recv( 0 ), nbytes_sent( 0 ),
+    in_mhdr( 0 ), out_mhdr( 0 ), in_moff( 0 ), in_nmsgs( 0 ), in_size( 0 ),
+    in_nsize( 1 ), out_nmsgs( 0 ) {}
+  void zero( void ) {
+    this->in_mhdr = this->out_mhdr = NULL;
+    this->in_moff = this->in_nmsgs = 0;
+    this->out_nmsgs = this->in_size = 0;
+  }
+  bool alloc_mmsg( void );
+  int listen( const char *ip,  int port );
+  int connect( const char *ip,  int port );
+
+  void release_buffers( void ) { /* release all buffs */
+    this->clear_buffers();
+    this->StreamBuf::release();
+  }
+  void clear_buffers( void ) {   /* clear any allocations and counters */
+    this->zero();
+    this->StreamBuf::reset();
+  }
+  bool read( void );             /* fill recv buf, return true if read some */
+  void write( void );            /* flush stream buffer */
   void process_shutdown( void ) { this->pushpop( EV_CLOSE, EV_SHUTDOWN ); }
 };
 

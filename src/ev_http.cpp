@@ -107,6 +107,7 @@ EvHttpService::process( bool /*use_prefetch*/ )
       }
       this->off += used;
       if ( this->is_using_term ) {
+        this->term_int = this->term.interrupt + this->term.suspend;
         this->term.tty_input( &this->wsbuf[ this->wsoff ],
                               this->wslen - this->wsoff );
         this->wsoff = this->wslen;
@@ -149,11 +150,12 @@ EvHttpService::process( bool /*use_prefetch*/ )
               break;
             status = ERR_ALLOC_FAIL;
             /* FALLTHRU */
+          case EXEC_QUIT:
+            if ( status == EXEC_QUIT )
+              this->push( EV_SHUTDOWN );
+            /* FALLTHRU */
           default:
             this->send_err( status );
-            break;
-          case EXEC_QUIT:
-            this->poll.quit++;
             break;
           case EXEC_DEBUG:
             break;
@@ -361,7 +363,7 @@ EvHttpService::cook_string( char *s,  size_t len )
   }
 }
 #endif
-
+#if 0
 size_t
 EvHttpService::try_write( void )
 {
@@ -371,14 +373,14 @@ EvHttpService::try_write( void )
       return 0;
   return this->EvConnection::try_write();
 }
-
-size_t
+#endif
+void
 EvHttpService::write( void )
 {
   if ( this->websock_off != 0 &&
        this->websock_off < this->nbytes_sent + this->pending() )
     if ( ! this->frame_websock() )
-      return 0;
+      return;
   return this->EvConnection::write();
 }
 
@@ -388,10 +390,14 @@ EvHttpService::frame_websock( void )
   size_t msgcnt = this->wsmsgcnt;
   bool b = this->frame_websock2();
   /* if a message was output, push another prompt out */
-  if ( msgcnt != this->wsmsgcnt && this->is_using_term ) {
-    if ( this->term.tty_prompt() ) {
-      this->flush_term();
-      this->frame_websock2();
+  if ( this->is_using_term ) {
+    if ( msgcnt != this->wsmsgcnt ||
+         this->term_int != this->term.interrupt + this->term.suspend ) {
+      this->term_int = this->term.interrupt + this->term.suspend;
+      if ( this->term.tty_prompt() ) {
+        this->flush_term();
+        this->frame_websock2();
+      }
     }
   }
   return b;

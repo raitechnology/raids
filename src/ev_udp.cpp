@@ -6,16 +6,14 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <sys/socket.h>
-#include <netinet/tcp.h>
 #include <netdb.h>
-#include <raids/ev_tcp.h>
-#include <raids/ev_service.h>
+#include <raids/ev_net.h>
 
 using namespace rai;
 using namespace ds;
 
 int
-EvTcpListen::listen( const char *ip,  int port )
+EvUdp::listen( const char *ip,  int port )
 {
   static int on = 1, off = 0;
   int  status = 0,
@@ -40,7 +38,7 @@ EvTcpListen::listen( const char *ip,  int port )
   for ( int fam = AF_INET6; ; ) {
     for ( p = ai; p != NULL; p = p->ai_next ) {
       if ( fam == p->ai_family ) {
-	sock = ::socket( p->ai_family, p->ai_socktype, p->ai_protocol );
+	sock = ::socket( p->ai_family, SOCK_DGRAM, IPPROTO_UDP );
 	if ( sock < 0 )
 	  continue;
         if ( fam == AF_INET6 ) {
@@ -75,11 +73,6 @@ break_loop:;
     status = -1;
     goto fail;
   }
-  status = ::listen( sock, 256 );
-  if ( status != 0 ) {
-    perror( "error: listen" );
-    goto fail;
-  }
   this->fd = sock;
   ::fcntl( sock, F_SETFL, O_NONBLOCK | ::fcntl( sock, F_GETFL ) );
   if ( (status = this->poll.add_sock( this )) < 0 ) {
@@ -94,10 +87,9 @@ fail:;
 }
 
 int
-EvTcpClient::connect( const char *ip,  int port )
+EvUdp::connect( const char *ip,  int port )
 {
-  /* for setsockopt() */
-  static int on = 1, off = 0;
+  static int off = 0;
   int  status = 0,
        sock;
   char svc[ 16 ];
@@ -108,6 +100,7 @@ EvTcpClient::connect( const char *ip,  int port )
   hints.ai_family   = AF_UNSPEC;
   hints.ai_socktype = SOCK_STREAM;
   hints.ai_protocol = IPPROTO_TCP;
+  hints.ai_flags    = AI_PASSIVE;
 
   status = ::getaddrinfo( ip, svc, &hints, &ai );
   if ( status != 0 ) {
@@ -119,7 +112,7 @@ EvTcpClient::connect( const char *ip,  int port )
   for ( int fam = AF_INET6; ; ) {
     for ( p = ai; p != NULL; p = p->ai_next ) {
       if ( fam == p->ai_family ) {
-	sock = ::socket( p->ai_family, p->ai_socktype, p->ai_protocol );
+	sock = ::socket( p->ai_family, SOCK_DGRAM, IPPROTO_UDP );
 	if ( sock < 0 )
 	  continue;
         if ( fam == AF_INET6 ) {
@@ -127,15 +120,6 @@ EvTcpClient::connect( const char *ip,  int port )
 	                     sizeof( off ) ) != 0 )
 	    perror( "warning: IPV6_V6ONLY" );
         }
-	if ( ::setsockopt( sock, SOL_SOCKET, SO_REUSEADDR, &on,
-                           sizeof( on ) ) != 0 )
-          perror( "warning: SO_REUSEADDR" );
-	if ( ::setsockopt( sock, SOL_SOCKET, SO_REUSEPORT, &on,
-                           sizeof( on ) ) != 0 )
-          perror( "warning: SO_REUSEPORT" );
-	if ( ::setsockopt( sock, SOL_TCP, TCP_NODELAY, &on,
-                           sizeof( on ) ) != 0 )
-          perror( "warning: TCP_NODELAY" );
 	status = ::connect( sock, p->ai_addr, p->ai_addrlen );
 	if ( status == 0 )
 	  goto break_loop;
@@ -159,8 +143,7 @@ break_loop:;
   }
   this->fd = sock;
   ::fcntl( sock, F_SETFL, O_NONBLOCK | ::fcntl( sock, F_GETFL ) );
-
-  if ( this->poll.add_sock( this ) < 0 ) {
+  if ( (status = this->poll.add_sock( this )) < 0 ) {
     this->fd = -1;
 fail:;
     if ( sock != -1 )

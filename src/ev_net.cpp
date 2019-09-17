@@ -89,7 +89,7 @@ sock_type_string( EvSockType t )
   switch ( t ) {
     case EV_REDIS_SOCK:     return "redis";
     case EV_HTTP_SOCK:      return "http";
-    case EV_LISTEN_SOCK:    return "listen";
+    case EV_LISTEN_SOCK:    return "listen"; /* virtual accept */
     case EV_CLIENT_SOCK:    return "client";
     case EV_TERMINAL:       return "term";
     case EV_NATS_SOCK:      return "nats";
@@ -100,6 +100,8 @@ sock_type_string( EvSockType t )
     case EV_TIMER_QUEUE:    return "timer";
     case EV_SHM_SVC:        return "svc";
     case EV_MEMCACHED_SOCK: return "memcached";
+    case EV_MEMUDP_SOCK:    return "memcached_udp";
+    case EV_CLIENTUDP_SOCK: return "client_udp";
   }
   return "unknown";
 }
@@ -126,17 +128,20 @@ EvPoll::drain_prefetch( void )
         ((EvHttpService *) s)->exec_key_prefetch( k ); break;
       case EV_MEMCACHED_SOCK:
         ((EvMemcachedService *) s)->exec_key_prefetch( k ); break;
+      case EV_MEMUDP_SOCK:
+        ((EvMemcachedUdp *) s)->exec->exec_key_prefetch( k ); break;
       case EV_SHM_SOCK:
         /*((EvShmClient *) s)->exec->exec_key_prefetch( k );*/ break;
-      case EV_NATS_SOCK:   break;
-      case EV_CAPR_SOCK:   break;
-      case EV_RV_SOCK:     break;
-      case EV_KV_PUBSUB:   break;
-      case EV_SHM_SVC:     break;
-      case EV_LISTEN_SOCK: break;
-      case EV_CLIENT_SOCK: break;
-      case EV_TERMINAL:    break;
-      case EV_TIMER_QUEUE: break;
+      case EV_NATS_SOCK:      break;
+      case EV_CAPR_SOCK:      break;
+      case EV_RV_SOCK:        break;
+      case EV_KV_PUBSUB:      break;
+      case EV_SHM_SVC:        break;
+      case EV_LISTEN_SOCK:    break;
+      case EV_CLIENT_SOCK:    break;
+      case EV_TERMINAL:       break;
+      case EV_TIMER_QUEUE:    break;
+      case EV_CLIENTUDP_SOCK: break;
     }
     /*ctx[ i ]->prefetch();*/
   }
@@ -153,17 +158,20 @@ EvPoll::drain_prefetch( void )
         status = ((EvHttpService *) s)->exec_key_continue( k ); break;
       case EV_MEMCACHED_SOCK:
         status = ((EvMemcachedService *) s)->exec_key_continue( k ); break;
+      case EV_MEMUDP_SOCK:
+        status = ((EvMemcachedUdp *) s)->exec->exec_key_continue( k ); break;
       case EV_SHM_SOCK:
         /*status = ((EvShmClient *) s)->exec->exec_key_continue( k );*/ break;
-      case EV_NATS_SOCK:   break;
-      case EV_CAPR_SOCK:   break;
-      case EV_RV_SOCK:     break;
-      case EV_KV_PUBSUB:   break;
-      case EV_SHM_SVC:     break;
-      case EV_LISTEN_SOCK: break;
-      case EV_CLIENT_SOCK: break;
-      case EV_TERMINAL:    break;
-      case EV_TIMER_QUEUE: break;
+      case EV_NATS_SOCK:      break;
+      case EV_CAPR_SOCK:      break;
+      case EV_RV_SOCK:        break;
+      case EV_KV_PUBSUB:      break;
+      case EV_SHM_SVC:        break;
+      case EV_LISTEN_SOCK:    break;
+      case EV_CLIENT_SOCK:    break;
+      case EV_TERMINAL:       break;
+      case EV_TIMER_QUEUE:    break;
+      case EV_CLIENTUDP_SOCK: break;
     }
     switch ( status ) {
       default:
@@ -175,16 +183,19 @@ EvPoll::drain_prefetch( void )
             ((EvHttpService *) s)->process( true ); break;
           case EV_MEMCACHED_SOCK:
             ((EvMemcachedService *) s)->process( true ); break;
-          case EV_CLIENT_SOCK: break;
-          case EV_TERMINAL:    break;
-          case EV_NATS_SOCK:   break;
-          case EV_CAPR_SOCK:   break;
-          case EV_RV_SOCK:     break;
-          case EV_KV_PUBSUB:   break;
-          case EV_TIMER_QUEUE: break;
-          case EV_SHM_SVC:     break;
-          case EV_LISTEN_SOCK: break;
-          case EV_SHM_SOCK:    break;
+          case EV_MEMUDP_SOCK:
+            ((EvMemcachedUdp *) s)->process( true ); break;
+          case EV_CLIENT_SOCK:    break;
+          case EV_TERMINAL:       break;
+          case EV_NATS_SOCK:      break;
+          case EV_CAPR_SOCK:      break;
+          case EV_RV_SOCK:        break;
+          case EV_KV_PUBSUB:      break;
+          case EV_TIMER_QUEUE:    break;
+          case EV_SHM_SVC:        break;
+          case EV_LISTEN_SOCK:    break;
+          case EV_SHM_SOCK:       break;
+          case EV_CLIENTUDP_SOCK: break;
         }
         if ( s->test( EV_PREFETCH ) != 0 ) {
           s->pop( EV_PREFETCH ); /* continue prefetching */
@@ -218,17 +229,20 @@ EvPoll::drain_prefetch( void )
             ((EvHttpService *) s)->exec_key_prefetch( k ); break;
           case EV_MEMCACHED_SOCK:
             ((EvMemcachedService *) s)->exec_key_prefetch( k ); break;
+          case EV_MEMUDP_SOCK:
+            ((EvMemcachedUdp *) s)->exec->exec_key_prefetch( k ); break;
           case EV_SHM_SOCK:
             /*((EvShmClient *) s)->exec->exec_key_prefetch( k );*/ break;
-          case EV_NATS_SOCK:   break;
-          case EV_CAPR_SOCK:   break;
-          case EV_RV_SOCK:     break;
-          case EV_KV_PUBSUB:   break;
-          case EV_SHM_SVC:     break;
-          case EV_LISTEN_SOCK: break;
-          case EV_CLIENT_SOCK: break;
-          case EV_TERMINAL:    break;
-          case EV_TIMER_QUEUE: break;
+          case EV_NATS_SOCK:      break;
+          case EV_CAPR_SOCK:      break;
+          case EV_RV_SOCK:        break;
+          case EV_KV_PUBSUB:      break;
+          case EV_SHM_SVC:        break;
+          case EV_LISTEN_SOCK:    break;
+          case EV_CLIENT_SOCK:    break;
+          case EV_TERMINAL:       break;
+          case EV_TIMER_QUEUE:    break;
+          case EV_CLIENTUDP_SOCK: break;
         }
         /*ctx[ i ]->prefetch();*/
         i = ( i + 1 ) & ( PREFETCH_SIZE - 1 );
@@ -288,6 +302,8 @@ EvPoll::dispatch( void )
           case EV_TIMER_QUEUE:    ((EvTimerQueue *) s)->read(); break;
           case EV_SHM_SVC:        ((EvShmSvc *) s)->read(); break;
           case EV_MEMCACHED_SOCK: ((EvMemcachedService *) s)->read(); break;
+          case EV_MEMUDP_SOCK:    ((EvMemcachedUdp *) s)->read(); break;
+          case EV_CLIENTUDP_SOCK: ((EvUdpClient *) s)->read(); break;
           case EV_SHM_SOCK:       break;
         }
         break;
@@ -304,6 +320,8 @@ EvPoll::dispatch( void )
           case EV_TIMER_QUEUE:    ((EvTimerQueue *) s)->process(); break;
           case EV_SHM_SVC:        ((EvShmSvc *) s)->process( false ); break;
           case EV_MEMCACHED_SOCK: ((EvMemcachedService *) s)->process( true ); break;
+          case EV_MEMUDP_SOCK:    ((EvMemcachedUdp *) s)->process( true ); break;
+          case EV_CLIENTUDP_SOCK: ((EvUdpClient *) s)->process(); break;
           case EV_LISTEN_SOCK:    break;
           case EV_SHM_SOCK:       break;
         }
@@ -325,6 +343,8 @@ EvPoll::dispatch( void )
           case EV_KV_PUBSUB:      ((KvPubSub *) s)->write(); break;
           case EV_SHM_SVC:        ((EvShmSvc *) s)->write(); break;
           case EV_MEMCACHED_SOCK: ((EvMemcachedService *) s)->write(); break;
+          case EV_MEMUDP_SOCK:    ((EvMemcachedUdp *) s)->write(); break;
+          case EV_CLIENTUDP_SOCK: ((EvUdpClient *) s)->write(); break;
           case EV_LISTEN_SOCK:    break;
           case EV_SHM_SOCK:       break;
           case EV_TIMER_QUEUE:    break;
@@ -345,6 +365,8 @@ EvPoll::dispatch( void )
           case EV_TIMER_QUEUE:    ((EvTimerQueue *) s)->process_shutdown(); break;
           case EV_SHM_SVC:        ((EvShmSvc *) s)->process_shutdown(); break;
           case EV_MEMCACHED_SOCK: ((EvMemcachedService *) s)->process_shutdown(); break;
+          case EV_MEMUDP_SOCK:    ((EvMemcachedUdp *) s)->process_shutdown(); break;
+          case EV_CLIENTUDP_SOCK: ((EvUdpClient *) s)->process_shutdown(); break;
         }
         s->pop( EV_SHUTDOWN );
         break;
@@ -365,6 +387,8 @@ EvPoll::dispatch( void )
           case EV_TIMER_QUEUE:    break;
           case EV_SHM_SVC:        ((EvShmSvc *) s)->process_close(); break;
           case EV_MEMCACHED_SOCK: break;
+          case EV_MEMUDP_SOCK:    break;
+          case EV_CLIENTUDP_SOCK: ((EvUdpClient *) s)->process_close(); break;
         }
         break;
       case EV_BUSY_POLL:
@@ -380,7 +404,9 @@ EvPoll::dispatch( void )
           case EV_SHM_SOCK:
           case EV_TIMER_QUEUE:
           case EV_SHM_SVC:
-          case EV_MEMCACHED_SOCK: break;
+          case EV_MEMCACHED_SOCK:
+          case EV_MEMUDP_SOCK:
+          case EV_CLIENTUDP_SOCK: break;
           case EV_KV_PUBSUB: {
             uint64_t ns = ( busy_ns > 300 ? 300 : busy_ns );
             if ( ! ((KvPubSub *) s)->busy_poll( ns ) )
@@ -457,6 +483,8 @@ EvPoll::publish_one( EvPublish &pub,  uint32_t *rcount_total,
         case EV_LISTEN_SOCK:    break;
         case EV_TIMER_QUEUE:    break;
         case EV_MEMCACHED_SOCK: break;
+        case EV_MEMUDP_SOCK:    break;
+        case EV_CLIENTUDP_SOCK: break;
       }
     }
   }
@@ -536,6 +564,8 @@ EvPoll::publish_multi( EvPublish &pub,  uint32_t *rcount_total,
         case EV_LISTEN_SOCK:    break;
         case EV_TIMER_QUEUE:    break;
         case EV_MEMCACHED_SOCK: break;
+        case EV_MEMUDP_SOCK:    break;
+        case EV_CLIENTUDP_SOCK: break;
       }
     }
   }
@@ -617,6 +647,8 @@ EvPoll::publish_queue( EvPublish &pub,  uint32_t *rcount_total )
         case EV_LISTEN_SOCK:    break;
         case EV_TIMER_QUEUE:    break;
         case EV_MEMCACHED_SOCK: break;
+        case EV_MEMUDP_SOCK:    break;
+        case EV_CLIENTUDP_SOCK: break;
       }
     }
   }
@@ -720,6 +752,8 @@ RoutePublish::hash_to_sub( uint32_t r,  uint32_t h,  char *key,
       case EV_LISTEN_SOCK:    break;
       case EV_TIMER_QUEUE:    break;
       case EV_MEMCACHED_SOCK: break;
+      case EV_MEMUDP_SOCK:    break;
+      case EV_CLIENTUDP_SOCK: break;
     }
   }
   return false;
@@ -830,6 +864,8 @@ EvPoll::timer_expire( EvTimerEvent &ev )
       case EV_KV_PUBSUB:      break;
       case EV_TIMER_QUEUE:    break;
       case EV_MEMCACHED_SOCK: break;
+      case EV_MEMUDP_SOCK:    break;
+      case EV_CLIENTUDP_SOCK: break;
       case EV_CAPR_SOCK:
         return ((EvCaprService *) s)->timer_expire( ev.timer_id );
       case EV_RV_SOCK:
@@ -882,6 +918,8 @@ EvPoll::remove_sock( EvSocket *s )
     case EV_SHM_SOCK:       ((EvShmClient *) s)->release(); break;
     case EV_SHM_SVC:        ((EvShmSvc *) s)->release(); break;
     case EV_MEMCACHED_SOCK: ((EvMemcachedService *) s)->release(); break;
+    case EV_MEMUDP_SOCK:    ((EvMemcachedUdp *) s)->release(); break;
+    case EV_CLIENTUDP_SOCK: ((EvUdpClient *) s)->release(); break;
     case EV_LISTEN_SOCK:    break;
     case EV_KV_PUBSUB:      break;
     case EV_TIMER_QUEUE:    break;
@@ -956,17 +994,7 @@ EvConnection::resize_recv_buf( void )
   return true;
 }
 
-bool
-EvConnection::try_read( void )
-{
-  /* XXX: check of write side is full and return false */
-  this->adjust_recv();
-  if ( this->len + 1024 >= this->recv_size )
-    this->resize_recv_buf();
-  return this->read();
-}
-
-size_t
+void
 EvConnection::write( void )
 {
   struct msghdr h;
@@ -1014,9 +1042,140 @@ EvConnection::write( void )
         }
       }
     }
-    return nb;
+    return;
   }
-  if ( errno != EAGAIN && errno != EINTR ) {
+  if ( nbytes == 0 || ( nbytes < 0 && errno != EAGAIN && errno != EINTR ) ) {
+    if ( nbytes < 0 && errno != ECONNRESET && errno != EPIPE ) {
+      fprintf( stderr, "sendmsg: errno %d/%s, fd %d, state %d\n",
+               errno, strerror( errno ), this->fd, this->state );
+    }
+    this->popall();
+    this->push( EV_CLOSE );
+  }
+}
+
+bool
+EvUdp::alloc_mmsg( void )
+{
+  static const size_t gsz = sizeof( struct sockaddr_storage ) +
+                            sizeof( struct iovec ),
+                      psz = 64 * 1024 + gsz;
+  StreamBuf      & strm     = *this;
+  uint32_t         i,
+                   new_size = this->in_nsize - this->in_size;
+  struct mmsghdr * sav      = this->in_mhdr;
+
+  if ( this->in_nsize <= this->in_size )
+    return false;
+  /* allocate new_size buffers, and in_nsize headers */
+  this->in_mhdr = (struct mmsghdr *) strm.alloc_temp( psz * new_size +
+                                    sizeof( struct mmsghdr ) * this->in_nsize );
+  if ( this->in_mhdr == NULL )
+    return false;
+  i = this->in_size;
+  /* if any existing buffers exist, the pointers will be copied to the head */
+  if ( i > 0 )
+    ::memcpy( this->in_mhdr, sav, sizeof( sav[ 0 ] ) * i );
+  /* initialize the rest of the buffers at the tail */
+  void *p = (void *) &this->in_mhdr[ this->in_nsize ]/*,
+       *g = (void *) &((uint8_t *) p)[ gsz * this->in_size ]*/ ;
+  for ( ; i < this->in_nsize; i++ ) {
+    this->in_mhdr[ i ].msg_hdr.msg_name    = (struct sockaddr *) p;
+    this->in_mhdr[ i ].msg_hdr.msg_namelen = sizeof( struct sockaddr_storage );
+    p = &((uint8_t *) p)[ sizeof( struct sockaddr_storage ) ];
+
+    this->in_mhdr[ i ].msg_hdr.msg_iov    = (struct iovec *) p;
+    this->in_mhdr[ i ].msg_hdr.msg_iovlen = 1;
+    p = &((uint8_t *) p)[ sizeof( struct iovec ) ];
+
+    this->in_mhdr[ i ].msg_hdr.msg_iov[ 0 ].iov_base = p;
+    this->in_mhdr[ i ].msg_hdr.msg_iov[ 0 ].iov_len  = 64 * 1024;
+    p = &((uint8_t *) p)[ 64 * 1024 ];
+
+    this->in_mhdr[ i ].msg_hdr.msg_control    = NULL;
+    this->in_mhdr[ i ].msg_hdr.msg_controllen = 0;
+    this->in_mhdr[ i ].msg_hdr.msg_flags      = 0;
+
+    this->in_mhdr[ i ].msg_len = 0;
+  }
+  /* in_nsize can expand if we need more udp frames */
+  this->in_size = this->in_nsize;
+  return true;
+}
+
+bool
+EvUdp::read( void )
+{
+  int nmsgs = 0;
+  if ( this->in_moff == this->in_size ) {
+    if ( ! this->alloc_mmsg() ) {
+      perror( "alloc" );
+      this->popall();
+      this->push( EV_CLOSE );
+      return false;
+    }
+  }
+  if ( this->in_moff + 1 < this->in_size ) {
+    nmsgs = ::recvmmsg( this->fd, &this->in_mhdr[ this->in_moff ],
+                        this->in_size - this->in_moff, 0, NULL );
+  }
+  else {
+    ssize_t nbytes = ::recvmsg( this->fd,
+                                &this->in_mhdr[ this->in_moff ].msg_hdr, 0 );
+    if ( nbytes > 0 ) {
+      this->in_mhdr[ this->in_moff ].msg_len = nbytes;
+      nmsgs = 1;
+    }
+  }
+  if ( nmsgs > 0 ) {
+    this->in_nmsgs += nmsgs;
+    for ( int i = 0; i < nmsgs; i++ )
+      this->nbytes_recv += this->in_mhdr[ this->in_moff + i ].msg_len;
+    this->in_nsize = ( ( this->in_nmsgs < 8 ) ? this->in_nmsgs + 1 : 8 );
+    this->push( EV_PROCESS );
+    this->pushpop( EV_READ_LO, EV_READ );
+    return true;
+  }
+  this->in_nsize = 1;
+  /* wait for epoll() to set EV_READ again */
+  this->pop3( EV_READ, EV_READ_LO, EV_READ_HI );
+  if ( nmsgs < 0 && errno != EINTR ) {
+    if ( errno != EAGAIN ) {
+      if ( errno != ECONNRESET )
+        perror( "recvmmsg" );
+      this->popall();
+      this->push( EV_CLOSE );
+    }
+  }
+  return false;
+}
+
+void
+EvUdp::write( void )
+{
+  int nmsgs = 0;
+  if ( this->out_nmsgs > 1 ) {
+    nmsgs = ::sendmmsg( this->fd, this->out_mhdr, this->out_nmsgs, 0 );
+    if ( nmsgs > 0 ) {
+      for ( uint32_t i = 0; i < this->out_nmsgs; i++ )
+        this->nbytes_sent += this->out_mhdr[ i ].msg_len;
+      this->clear_buffers();
+      this->pop2( EV_WRITE, EV_WRITE_HI );
+      return;
+    }
+  }
+  else {
+    ssize_t nbytes = ::sendmsg( this->fd, &this->out_mhdr[ 0 ].msg_hdr, 0 );
+    if ( nbytes > 0 ) {
+      this->nbytes_sent += nbytes;
+      this->clear_buffers();
+      this->pop2( EV_WRITE, EV_WRITE_HI );
+      return;
+    }
+    if ( nbytes < 0 )
+      nmsgs = -1;
+  }
+  if ( nmsgs < 0 && errno != EAGAIN && errno != EINTR ) {
     if ( errno != ECONNRESET && errno != EPIPE ) {
       fprintf( stderr, "sendmsg: errno %d/%s, fd %d, state %d\n",
                errno, strerror( errno ), this->fd, this->state );
@@ -1024,24 +1183,6 @@ EvConnection::write( void )
     this->popall();
     this->push( EV_CLOSE );
   }
-  return 0;
-}
-
-size_t
-EvConnection::try_write( void )
-{
-  StreamBuf & strm = *this;
-  size_t nb = 0;
-  if ( strm.woff < strm.idx )
-    nb = this->write();
-  if ( strm.woff > strm.vlen / 2 ) {
-    uint32_t i = 0;
-    while ( strm.woff < strm.vlen )
-      strm.iov[ i++ ] = strm.iov[ strm.woff++ ];
-    strm.woff = 0;
-    strm.idx  = i;
-  }
-  return nb;
 }
 
 void

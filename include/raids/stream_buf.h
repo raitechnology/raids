@@ -56,19 +56,23 @@ struct StreamBuf {
     size_t prepend_cursor_array( size_t curs,  size_t nitems );
   };
 
-  static const size_t BUFSIZE = 1024;
+  static const size_t BUFSIZE = 1600;
   size_t wr_pending;  /* how much is in send buffers total */
   char * out_buf;     /* current buffer to fill, up to BUFSIZE */
   size_t sz,          /* sz bytes in out_buf */
          idx,         /* head data in iov[] to send */
          woff;        /* offset of iov[] sent, tail, idx >= woff */
   bool   alloc_fail;  /* if alloc send buffers below failed */
+  struct iovec * iov;
+  size_t vlen;
 
-  //static const size_t vlen = 4096;
-  kv::WorkAllocT< 64 * 1024 > tmp;
-  struct iovec iovbuf[ 2 * 1024 ], /* vec of send buffers */
-             * iov;
-  size_t       vlen;
+  kv::WorkAllocT< 8 * 1024 > tmp;
+  struct iovec iovbuf[ 128 ]; /* vec of send buffers */
+
+#if __cplusplus > 201103L
+  /* 64b align */
+  static_assert( 0 == sizeof( StreamBuf ) % 64, "stream buf size" );
+#endif
 
   StreamBuf() { this->reset(); }
 

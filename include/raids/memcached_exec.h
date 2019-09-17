@@ -22,12 +22,14 @@ enum MemcachedStatus {
   MEMCACHED_BAD_ARGS,     /* bad argument parse */
   MEMCACHED_INT_OVERFLOW, /* int overflows */
   MEMCACHED_BAD_INT,      /* integer is malformed */
+  MEMCACHED_BAD_INCR,     /* cannot increment or decrement non-numeric */
   MEMCACHED_ERR_KV,       /* kstatus != ok */
   MEMCACHED_BAD_TYPE,     /* key exists, but is not a string type */
   MEMCACHED_NOT_IMPL,     /* cmd exists, but not wired */
   MEMCACHED_BAD_PAD,      /* sentinal not set */
   MEMCACHED_BAD_BIN_ARGS, /* binary message format error */
-  MEMCACHED_BAD_BIN_CMD   /* binary message command error */
+  MEMCACHED_BAD_BIN_CMD,  /* binary message command error */
+  MEMCACHED_BAD_RESULT    /* parsing result status failed */
 };
 
 inline static bool memcached_status_success( int status ) {
@@ -39,6 +41,7 @@ inline static bool memcached_status_fail( int status ) {
 }
 
 const char * memcached_status_string( MemcachedStatus status );
+const char * memcached_status_description( MemcachedStatus status );
 
 enum MemcachedCmd {
   MC_NONE = 0,
@@ -97,6 +100,31 @@ enum MemcachedCmd {
   MC_BINARY   = 128
 };
 
+enum MemcachedResult {
+  MR_NONE = 0,
+  MR_END,          /* terminates a get/gets */
+  MR_DELETED,      /* if delete sucess (otherwise not_found) */
+  MR_STORED,       /* if set/add/repl/.. success (otherwise not_stored) */
+  MR_VALUE,        /* if get/gets success */
+  MR_INT,          /* if incr/decr success (otherwise NOT_FOUND) */
+  MR_TOUCHED,      /* if touch success (otherwise NOT_FOUND) */
+  MR_NOT_FOUND,    /* if some op did not find the key */
+  MR_NOT_STORED,   /* if a storage op did not find the key */
+  MR_EXISTS,       /* if a cas op fails */
+  MR_ERROR,        /* a command parse error */
+  MR_CLIENT_ERROR, /* a protocol error */
+  MR_SERVER_ERROR, /* a server execution error */
+  MR_BUSY,         /* slabs, try later */
+  MR_BADCLASS,     /* slabs, class id error */
+  MR_NOSPARE,      /* slabs, no spare page */
+  MR_NOTFULL,      /* slabs, dest class must be full to move it */
+  MR_UNSAFE,       /* slabs, source cant move page right now */
+  MR_SAME,         /* slabs, source dest must be different */
+  MR_OK,           /* lru, others, ok */
+  MR_STAT,         /* stats, some stat name/value*/
+  MR_VERSION       /* version # */
+};
+
 #define B( e ) ( (uint64_t) 1 << ( e ) )
 static const uint64_t
   read_only = B( MC_GET )   | B( MC_GETS ),
@@ -114,33 +142,59 @@ static inline bool test_mutator( uint8_t c ) {
 #undef B
 
 const char *memcached_cmd_string( uint8_t cmd );
+const char *memcached_res_string( uint8_t res );
 
 /* presumes little endian, 0xdf masks out 0x20 for toupper() */
-#define MC_KW( c1, c2, c3, c4 ) ( ( (uint32_t) ( c4 & 0xdf ) << 24 ) | \
+#define C4_KW( c1, c2, c3, c4 ) ( ( (uint32_t) ( c4 & 0xdf ) << 24 ) | \
                                   ( (uint32_t) ( c3 & 0xdf ) << 16 ) | \
                                   ( (uint32_t) ( c2 & 0xdf ) << 8 ) | \
                                   ( (uint32_t) ( c1 & 0xdf ) ) )
-#define MC_KW_SET           MC_KW( 'S', 'E', 'T', ' ' )
-#define MC_KW_ADD           MC_KW( 'A', 'D', 'D', ' ' )
-#define MC_KW_APPEND        MC_KW( 'A', 'P', 'P', 'E' )
-#define MC_KW_REPLACE       MC_KW( 'R', 'E', 'P', 'L' )
-#define MC_KW_PREPEND       MC_KW( 'P', 'R', 'E', 'P' )
-#define MC_KW_CAS           MC_KW( 'C', 'A', 'S', ' ' )
-#define MC_KW_GET           MC_KW( 'G', 'E', 'T', ' ' )
-#define MC_KW_GETS          MC_KW( 'G', 'E', 'T', 'S' )
-#define MC_KW_GAT           MC_KW( 'G', 'A', 'T', ' ' )
-#define MC_KW_GATS          MC_KW( 'G', 'A', 'T', 'S' )
-#define MC_KW_DELETE        MC_KW( 'D', 'E', 'L', 'E' )
-#define MC_KW_DECR          MC_KW( 'D', 'E', 'C', 'R' )
-#define MC_KW_INCR          MC_KW( 'I', 'N', 'C', 'R' )
-#define MC_KW_TOUCH         MC_KW( 'T', 'O', 'U', 'C' )
-#define MC_KW_SLABS         MC_KW( 'S', 'L', 'A', 'B' )
-#define MC_KW_WATCH         MC_KW( 'W', 'A', 'T', 'C' )
-#define MC_KW_STATS         MC_KW( 'S', 'T', 'A', 'T' )
-#define MC_KW_FLUSH_ALL     MC_KW( 'F', 'L', 'U', 'S' )
-#define MC_KW_CACHE_MEMLIST MC_KW( 'C', 'A', 'C', 'H' )
-#define MC_KW_VERSION       MC_KW( 'V', 'E', 'R', 'S' )
-#define MC_KW_QUIT          MC_KW( 'Q', 'U', 'I', 'T' )
+#define MC_KW_SET             C4_KW( 'S', 'E', 'T', ' ' )
+#define MC_KW_ADD             C4_KW( 'A', 'D', 'D', ' ' )
+#define MC_KW_APPEND          C4_KW( 'A', 'P', 'P', 'E' )
+#define MC_KW_REPLACE         C4_KW( 'R', 'E', 'P', 'L' )
+#define MC_KW_PREPEND         C4_KW( 'P', 'R', 'E', 'P' )
+#define MC_KW_CAS             C4_KW( 'C', 'A', 'S', ' ' )
+#define MC_KW_GET             C4_KW( 'G', 'E', 'T', ' ' )
+#define MC_KW_GETS            C4_KW( 'G', 'E', 'T', 'S' )
+#define MC_KW_GAT             C4_KW( 'G', 'A', 'T', ' ' )
+#define MC_KW_GATS            C4_KW( 'G', 'A', 'T', 'S' )
+#define MC_KW_DELETE          C4_KW( 'D', 'E', 'L', 'E' )
+#define MC_KW_DECR            C4_KW( 'D', 'E', 'C', 'R' )
+#define MC_KW_INCR            C4_KW( 'I', 'N', 'C', 'R' )
+#define MC_KW_TOUCH           C4_KW( 'T', 'O', 'U', 'C' )
+#define MC_KW_SLABS           C4_KW( 'S', 'L', 'A', 'B' )
+#define MC_KW_LRU             C4_KW( 'L', 'R', 'U', ' ' )
+#define MC_KW_LRU_CRAWLER     C4_KW( 'L', 'R', 'U', '_' )
+#define MC_KW_WATCH           C4_KW( 'W', 'A', 'T', 'C' )
+#define MC_KW_STATS           C4_KW( 'S', 'T', 'A', 'T' )
+#define MC_KW_FLUSH_ALL       C4_KW( 'F', 'L', 'U', 'S' )
+#define MC_KW_CACHE_MEMLIMIT  C4_KW( 'C', 'A', 'C', 'H' )
+#define MC_KW_VERSION         C4_KW( 'V', 'E', 'R', 'S' )
+#define MC_KW_QUIT            C4_KW( 'Q', 'U', 'I', 'T' )
+#define MC_KW_NO_OP           C4_KW( 'N', 'O', '_', 'O' )
+
+/* missing: NOT_STORED, INT */
+#define MR_KW_OK              C4_KW( 'O', 'K',  0,   0  )
+#define MR_KW_END             C4_KW( 'E', 'N', 'D',  0  )
+#define MR_KW_DELETED         C4_KW( 'D', 'E', 'L', 'E' )
+#define MR_KW_STORED          C4_KW( 'S', 'T', 'O', 'R' )
+#define MR_KW_VALUE           C4_KW( 'V', 'A', 'L', 'U' )
+#define MR_KW_TOUCHED         C4_KW( 'T', 'O', 'U', 'C' )
+#define MR_KW_NOT_FOUND       C4_KW( 'N', 'O', 'T', '_' )
+#define MR_KW_EXISTS          C4_KW( 'E', 'X', 'I', 'S' )
+#define MR_KW_ERROR           C4_KW( 'E', 'R', 'R', 'O' )
+#define MR_KW_CLIENT_ERROR    C4_KW( 'C', 'L', 'I', 'E' )
+#define MR_KW_SERVER_ERROR    C4_KW( 'S', 'E', 'R', 'V' )
+#define MR_KW_BUSY            C4_KW( 'B', 'U', 'S', 'Y' )
+#define MR_KW_BADCLASS        C4_KW( 'B', 'A', 'D', 'C' )
+#define MR_KW_NOSPARE         C4_KW( 'N', 'O', 'S', 'P' )
+#define MR_KW_NOTFULL         C4_KW( 'N', 'O', 'T', 'F' )
+#define MR_KW_UNSAFE          C4_KW( 'U', 'N', 'S', 'A' )
+#define MR_KW_SAME            C4_KW( 'S', 'A', 'M', 'E' )
+#define MR_KW_STAT            C4_KW( 'S', 'T', 'A', 'T' )
+#define MR_KW_VERSION         C4_KW( 'V', 'E', 'R', 'S' )
+
 
 /* Request (magic=0x80) / Response (0x81) header
  * (https://github.com/memcached/memcached/wiki/BinaryProtocolRevamped):
@@ -293,6 +347,15 @@ struct MemcachedMsg { /* both ASCII and binary */
     ::memset( this, 0, sizeof( *this ) );
     this->cmd = c;
   }
+  bool match_arg( const char *name,  size_t namelen ) const {
+    if ( this->argcnt < 1 )
+      return false;
+    if ( namelen != this->args[ 0 ].len )
+      return false;
+    if ( ::strncasecmp( name, this->args[ 0 ].str, namelen ) != 0 )
+      return false;
+    return true;
+  }
   void print( void ); /* use only after unpack() successful */
   /* parse a memcached command and initialize this structure */
   MemcachedStatus unpack( void *buf,  size_t &buflen,  kv::ScratchMem &wrk );
@@ -317,6 +380,45 @@ struct MemcachedMsg { /* both ASCII and binary */
                                 size_t &buflen,  size_t extra_sz );
 };
 
+struct MemcachedRes {
+  MemcachedArgs * args;    /* not including cmd string */
+  uint32_t        argcnt,  /* args[] size */
+                  flags;
+  uint64_t        ival,
+                  cas,
+                  msglen;
+  char          * msg,
+                * key;
+  MemcachedArgs   xarg;    /* one arg buffer */
+  uint8_t         res; /* MemcachedResult */
+  bool            is_err;
+  uint16_t        keylen;
+
+  void zero( uint8_t r ) {
+    ::memset( this, 0, sizeof( *this ) );
+    this->res = r;
+  }
+  void print( void );
+  MemcachedStatus unpack( void *buf,  size_t &buflen,  kv::ScratchMem &wrk );
+  MemcachedStatus parse_value_result( void );
+};
+
+struct MemcachedStats {
+  char     interface[ 44 ];
+  uint16_t tcpport, udpport;
+  uint32_t max_connections, curr_connections, total_connections, conn_structs;
+  uint64_t boot_time,
+           get_cnt, set_cnt, flush_cnt, touch_cnt,
+           get_hit, get_miss, get_expired, get_flushed,
+           delete_miss, delete_hit,
+           incr_miss, incr_hit,
+           decr_miss, decr_hit,
+           cas_miss, cas_hit, cas_badval,
+           touch_hit, touch_miss,
+           auth_cmds, auth_errors,
+           bytes_read, bytes_written;
+};
+
 struct MemcachedExec {
   void * operator new( size_t, void *ptr ) { return ptr; }
   void operator delete( void *ptr ) { ::free( ptr ); }
@@ -330,10 +432,12 @@ struct MemcachedExec {
                 ** keys;      /* all of the keys in command */
   uint32_t         key_cnt,   /* total keys[] size */
                    key_done;  /* number of keys processed */
+  MemcachedStats & stat;
 
-  MemcachedExec( kv::HashTab &map,  uint32_t ctx_id,  StreamBuf &s ) :
+  MemcachedExec( kv::HashTab &map,  uint32_t ctx_id,  StreamBuf &s,
+                 MemcachedStats &st ) :
       kctx( map, ctx_id, NULL ), strm( s ), msg( 0 ),
-      key( 0 ), keys( 0 ), key_cnt( 0 ), key_done( 0 ) {
+      key( 0 ), keys( 0 ), key_cnt( 0 ), key_done( 0 ), stat( st ) {
     this->kctx.ht.hdr.get_hash_seed( this->kctx.db_num, this->seed,
                                      this->seed2 );
     this->kctx.set( kv::KEYCTX_NO_COPY_ON_READ );
@@ -392,9 +496,22 @@ struct MemcachedExec {
   size_t send_bin_status_key( uint16_t status, EvKeyCtx &ctx );
   size_t send_string( const void *s,  size_t slen );
   size_t send_err_kv( kv::KeyStatus kstatus );
+  void put_stats( void );
+  void put_stats_settings( void );
+  void put_stats_items( void );
+  void put_stats_sizes( void );
+  void put_stats_slabs( void );
+  void put_stats_conns( void );
   void release( void ) {
     this->wrk.release_all();
   }
+  bool do_slabs( void );
+  bool do_lru( void );
+  bool do_lru_crawler( void );
+  bool do_watch( void );
+  bool do_flush_all( void );
+  bool do_memlimit( void );
+  void do_no_op( void );
 };
 
 }

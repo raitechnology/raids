@@ -81,6 +81,7 @@ main( int argc, char *argv[] )
   EvRedisListen     redis_sv( poll );
   EvRedisUnixListen redis_un( poll );
   EvMemcachedListen memcached_sv( poll );
+  EvMemcachedUdp    memcached_udp_sv( poll );
   EvHttpListen      http_sv( poll );
   EvNatsListen      nats_sv( poll );
   EvCaprListen      capr_sv( poll );
@@ -101,6 +102,10 @@ main( int argc, char *argv[] )
   if ( memcached_sv.listen( NULL, atoi( mc ) ) != 0 ) {
     fprintf( stderr, "unable to open memcached listen socket on %s\n", mc );
   }
+  if ( memcached_udp_sv.listen( NULL, atoi( mc ) ) != 0 ) {
+    fprintf( stderr, "unable to open memcached udp listen socket on %s\n", mc );
+  }
+  memcached_udp_sv.init();
   if ( http_sv.listen( NULL, atoi( hp ) ) != 0 ) {
     fprintf( stderr, "unable to open http listen socket on %s\n", hp );
   }

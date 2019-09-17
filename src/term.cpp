@@ -117,8 +117,13 @@ Term::tty_input( const void *buf,  size_t buflen )
 
   while ( this->in_off < this->in_len ||
           this->tty->lc_status == LINE_STATUS_COMPLETE ) {
-    if ( lc_tty_get_line( this->tty ) > 0 ) {
-      if ( this->tty->lc_status == LINE_STATUS_INTERRUPT ) {
+    if ( lc_tty_get_line( this->tty ) >= 0 ) {
+      if ( this->tty->lc_status == LINE_STATUS_INTERRUPT ||
+           this->tty->lc_status == LINE_STATUS_SUSPEND ) {
+        if ( this->tty->lc_status == LINE_STATUS_INTERRUPT )
+          this->interrupt++;
+        else
+          this->suspend++;
         lc_tty_set_continue( tty, 0 ); /* cancel continue */
         lc_tty_break_history( tty );   /* cancel buffered line */
         continue;

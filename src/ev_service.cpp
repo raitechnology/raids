@@ -3,13 +3,69 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <netdb.h>
+#include <errno.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <errno.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <raids/ev_service.h>
+#include <raids/ev_tcp.h>
 
 using namespace rai;
 using namespace ds;
 using namespace kv;
+
+void
+EvRedisListen::accept( void )
+{
+  static int on = 1;
+  struct sockaddr_storage addr;
+  socklen_t addrlen = sizeof( addr );
+  int sock = ::accept( this->fd, (struct sockaddr *) &addr, &addrlen );
+  if ( sock < 0 ) {
+    if ( errno != EINTR ) {
+      if ( errno != EAGAIN )
+	perror( "accept" );
+      this->pop3( EV_READ, EV_READ_LO, EV_READ_HI );
+    }
+    return;
+  }
+  EvRedisService * c = this->poll.free_redis.hd;
+  if ( c != NULL )
+    c->pop_free_list();
+  else {
+    void * m = aligned_malloc( sizeof( EvRedisService ) * EvPoll::ALLOC_INCR );
+    if ( m == NULL ) {
+      perror( "accept: no memory" );
+      ::close( sock );
+      return;
+    }
+    c = new ( m ) EvRedisService( this->poll );
+    for ( int i = EvPoll::ALLOC_INCR - 1; i >= 1; i-- ) {
+      new ( (void *) &c[ i ] ) EvRedisService( this->poll );
+      c[ i ].push_free_list();
+    }
+  }
+  struct linger lin;
+  lin.l_onoff  = 1;
+  lin.l_linger = 10; /* 10 secs */
+  if ( ::setsockopt( sock, SOL_SOCKET, SO_KEEPALIVE, &on, sizeof( on ) ) != 0 )
+    perror( "warning: SO_KEEPALIVE" );
+  if ( ::setsockopt( sock, SOL_SOCKET, SO_LINGER, &lin, sizeof( lin ) ) != 0 )
+    perror( "warning: SO_LINGER" );
+  if ( ::setsockopt( sock, SOL_TCP, TCP_NODELAY, &on, sizeof( on ) ) != 0 )
+    perror( "warning: TCP_NODELAY" );
+
+  ::fcntl( sock, F_SETFL, O_NONBLOCK | ::fcntl( sock, F_GETFL ) );
+  c->fd = sock;
+  c->sub_id = sock;
+  if ( this->poll.add_sock( c ) < 0 ) {
+    ::close( sock );
+    c->push_free_list();
+  }
+}
 
 void
 EvRedisService::process( bool use_prefetch )
@@ -56,12 +112,13 @@ EvRedisService::process( bool use_prefetch )
         if ( ! strm.alloc_fail )
           break;
         status = ERR_ALLOC_FAIL;
-        /* fall through */
+        /* FALLTHRU */
+      case EXEC_QUIT:
+        if ( status == EXEC_QUIT )
+          this->push( EV_SHUTDOWN );
+        /* FALLTHRU */
       default:
         this->send_err( status );
-        break;
-      case EXEC_QUIT:
-        this->poll.quit++;
         break;
       case EXEC_DEBUG:
         this->debug();

@@ -2,9 +2,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <stdarg.h>
 #include <unistd.h>
 #include <ctype.h>
 #include <sys/time.h>
+#include <sys/resource.h>
 #include <raikv/util.h>
 #include <raids/memcached_exec.h>
 #include <raids/int_str.h>
@@ -32,6 +34,10 @@ static const char   mc_not_stored[]   = "NOT_STORED";
 static const size_t mc_not_stored_len = sizeof( mc_not_stored ) - 1;
 static const char   mc_exists[]       = "EXISTS";
 static const size_t mc_exists_len     = sizeof( mc_exists ) - 1;
+static const char   mc_ok[]           = "OK";
+static const size_t mc_ok_len         = sizeof( mc_ok ) - 1;
+static const char   mc_error[]        = "ERROR";
+static const size_t mc_error_len      = sizeof( mc_error ) - 1;
 
 enum {
   /* add = must not exist, replace = must exist */
@@ -148,6 +154,54 @@ MemcachedMsg::print( void )
   printf( "\n" );
 }
 
+const char *
+rai::ds::memcached_res_string( uint8_t res )
+{
+  switch ( (MemcachedResult) res ) {
+    case MR_NONE: return "NONE";
+    case MR_END: return "END";
+    case MR_DELETED: return "DELETED";
+    case MR_STORED: return "STORED";
+    case MR_VALUE: return "VALUE";
+    case MR_INT: return "INT";
+    case MR_TOUCHED: return "TOUCHED";
+    case MR_NOT_FOUND: return "NOT_FOUND";
+    case MR_NOT_STORED: return "NOT_STORED";
+    case MR_EXISTS: return "EXISTS";
+    case MR_ERROR: return "ERROR";
+    case MR_CLIENT_ERROR: return "CLIENT_ERROR";
+    case MR_SERVER_ERROR: return "SERVER_ERROR";
+    case MR_BUSY: return "BUSY";
+    case MR_BADCLASS: return "BADCLASS";
+    case MR_NOSPARE: return "NOSPARE";
+    case MR_NOTFULL: return "NOTFULL";
+    case MR_UNSAFE: return "UNSAFE";
+    case MR_SAME: return "SAME";
+    case MR_OK: return "OK";
+    case MR_STAT: return "STAT";
+    case MR_VERSION: return "VERSION";
+  }
+  return "unknown";
+}
+
+void
+MemcachedRes::print( void )
+{
+  if ( this->res == MR_INT ) {
+    printf( "%lu", this->ival );
+  }
+  else {
+    printf( "%s", memcached_res_string( this->res ) );
+    if ( this->res == MR_VALUE ) { /* VALUE key flags msglen [cas] */
+      printf( " %.*s %u %lu",
+              (int) this->keylen, this->key, this->flags, this->msglen );
+      if ( this->argcnt == 4 )
+        printf( " %lu", this->cas );
+    }
+  }
+  printf( "\n" );
+}
+
 static void init_op_cmd( uint8_t *oc )
 {
   oc[ OP_GET ]        = MC_GET;
@@ -202,6 +256,77 @@ static void init_op_cmd( uint8_t *oc )
   oc[ OP_RINCRQ ]     = MC_NONE;
   oc[ OP_RDECR ]      = MC_NONE;
   oc[ OP_RDECRQ ]     = MC_NONE;
+}
+
+static inline MemcachedResult
+str_to_result( const char *s,  size_t sz )
+{
+  if ( sz > 0 && s[ 0 ] >= '0' && s[ 1 ] <= '9' )
+    return MR_INT;
+  if ( sz < 4 ) {
+    if ( sz == 2 && C4_KW( s[ 0 ], s[ 1 ], 0, 0 ) == MR_KW_OK )
+      return MR_OK;
+    if ( sz == 3 && C4_KW( s[ 0 ], s[ 1 ], s[ 2 ], 0 ) == MR_KW_END )
+      return MR_END;
+    return MR_NONE;
+  }
+  switch ( C4_KW( s[ 0 ], s[ 1 ], s[ 2 ], s[ 3 ] ) ) {
+    case MR_KW_NOT_FOUND:
+      if ( s[ 4 ] == 'F' || s[ 4 ] == 'f' )
+        return MR_NOT_FOUND;
+      return MR_NOT_STORED;
+    case MR_KW_DELETED:      return MR_DELETED;
+    case MR_KW_STORED:       return MR_STORED;
+    case MR_KW_VALUE:        return MR_VALUE;
+    case MR_KW_TOUCHED:      return MR_TOUCHED;
+    case MR_KW_EXISTS:       return MR_EXISTS;
+    case MR_KW_ERROR:        return MR_ERROR;
+    case MR_KW_CLIENT_ERROR: return MR_CLIENT_ERROR;
+    case MR_KW_SERVER_ERROR: return MR_SERVER_ERROR;
+    case MR_KW_BUSY:         return MR_BUSY;
+    case MR_KW_BADCLASS:     return MR_BADCLASS;
+    case MR_KW_NOSPARE:      return MR_NOSPARE;
+    case MR_KW_NOTFULL:      return MR_NOTFULL;
+    case MR_KW_UNSAFE:       return MR_UNSAFE;
+    case MR_KW_SAME:         return MR_SAME;
+    case MR_KW_STAT:         return MR_STAT;
+    case MR_KW_VERSION:      return MR_VERSION;
+    default:                 return MR_NONE;
+  }
+}
+
+static inline size_t
+parse_mcargs( char *ptr,  char *end,  ScratchMem &wrk,  MemcachedArgs *&args )
+{
+  size_t incr = 1,
+         cnt  = 0;
+
+  while ( ptr < end && *ptr == ' ' )
+    ptr++;
+  if ( ptr == end )
+    return 0;
+  args[ 0 ].str = ptr;
+  for (;;) {
+    if ( ++ptr == end || *ptr == ' ' ) {
+      args[ cnt ].len = ptr - args[ cnt ].str;
+      cnt++;
+      while ( ptr < end && *ptr == ' ' )
+        ptr++; 
+      if ( ptr == end )
+        return cnt;
+      if ( cnt == incr ) {
+        size_t len = ( end - ptr ) / 8;
+        incr += ( ( incr == 1 ) ? ( ( len | 3 ) + 1 ) : 16 );
+        MemcachedArgs * args2 = (MemcachedArgs *)
+          wrk.alloc( sizeof( MemcachedArgs ) * incr );
+        if ( args2 == NULL )
+          return 0;
+        ::memcpy( args2, args, sizeof( MemcachedArgs ) * cnt );
+        args = args2;
+      }
+      args[ cnt ].str = ptr;
+    }
+  }
 }
 
 MemcachedStatus
@@ -301,42 +426,10 @@ not_an_empty_line:;
     if ( *ptr == ' ' )
       break;
   }
-  uint32_t kw = MC_KW( s[ 0 ], s[ 1 ], s[ 2 ], s[ 3 ] );
+  uint32_t kw = C4_KW( s[ 0 ], s[ 1 ], s[ 2 ], s[ 3 ] );
   
-  size_t          incr = 1,
-                  cnt  = 0;
-  MemcachedArgs * tmp  = &this->xarg;
-  if ( tmp == NULL )
-    return MEMCACHED_ALLOC_FAIL;
-
-  while ( ptr < end && *ptr == ' ' )
-    ptr++;
-  if ( ptr < end ) {
-    tmp[ 0 ].str = ptr;
-    for (;;) {
-      if ( ++ptr == end || *ptr == ' ' ) {
-        tmp[ cnt ].len = ptr - tmp[ cnt ].str;
-        cnt++;
-        while ( ptr < end && *ptr == ' ' )
-          ptr++; 
-        if ( ptr == end )
-          goto break_loop;
-        if ( cnt == incr ) {
-          incr += ( ( incr == 1 ) ? ( ( ( j / 8 ) | 3 ) + 1 ) : 16 );
-          MemcachedArgs * tmp2 = (MemcachedArgs *)
-            wrk.alloc( sizeof( MemcachedArgs ) * incr );
-          if ( tmp2 == NULL )
-            return MEMCACHED_ALLOC_FAIL;
-          ::memcpy( tmp2, tmp, sizeof( MemcachedArgs ) * cnt );
-          tmp = tmp2;
-        }
-        tmp[ cnt ].str = ptr;
-      }
-    }
-  }
-break_loop:;
-  this->args   = tmp;
-  this->argcnt = cnt;
+  this->args   = &this->xarg;
+  this->argcnt = parse_mcargs( ptr, end, wrk, this->args );
   size_t bytes_left = buflen - j;
   buflen = j;
 
@@ -355,8 +448,16 @@ break_loop:;
     case MC_KW_TOUCH:   this->cmd = MC_TOUCH;     return this->parse_touch();
     case MC_KW_DECR:    this->cmd = MC_DECR;      return this->parse_incr();
     case MC_KW_INCR:    this->cmd = MC_INCR;      return this->parse_incr();
+    case MC_KW_SLABS:   this->cmd = MC_SLABS;     return MEMCACHED_OK;
+    case MC_KW_LRU:     this->cmd = MC_LRU;       return MEMCACHED_OK;
+    case MC_KW_LRU_CRAWLER: this->cmd = MC_LRU_CRAWLER; return MEMCACHED_OK;
+    case MC_KW_WATCH:   this->cmd = MC_WATCH;     return MEMCACHED_OK;
+    case MC_KW_STATS:   this->cmd = MC_STATS;     return MEMCACHED_OK;
+    case MC_KW_FLUSH_ALL: this->cmd = MC_FLUSH_ALL; return MEMCACHED_OK;
+    case MC_KW_CACHE_MEMLIMIT: this->cmd = MC_CACHE_MEMLIMIT; return MEMCACHED_OK;
     case MC_KW_VERSION: this->cmd = MC_VERSION;   return MEMCACHED_OK;
     case MC_KW_QUIT:    this->cmd = MC_QUIT;      return MEMCACHED_OK;
+    case MC_KW_NO_OP:   this->cmd = MC_NO_OP;     return MEMCACHED_OK;
     default:            this->cmd = MC_NONE;      return MEMCACHED_BAD_CMD;
   }
   if ( kw != MC_KW_CAS )
@@ -402,6 +503,85 @@ get_u32( const char *str,  size_t len,  uint32_t &val )
     val = (uint32_t) u64;
   }
   return r;
+}
+
+MemcachedStatus
+MemcachedRes::unpack( void *buf,  size_t &buflen,  ScratchMem &wrk )
+{
+  char  * s = (char *) buf,
+        * eol;
+  size_t  i, j, n;
+  MemcachedStatus r = MEMCACHED_OK;
+
+  n = buflen;
+  if ( n == 0 )
+    return MEMCACHED_MSG_PARTIAL;
+  eol = (char *) ::memchr( s, '\n', n );
+  if ( eol == NULL )
+    return MEMCACHED_MSG_PARTIAL;
+
+  i = eol - s;
+  j = i + 1;
+  if ( i > 0 && s[ i - 1 ] == '\r' )
+    i--;
+  MemcachedResult result = str_to_result( s, i );
+  if ( result != MR_NONE ) {
+    #define b( x ) ( (uint64_t) 1 << (int) x )
+    static uint64_t has_args = b( MR_VALUE ) | b( MR_STAT ) | b( MR_VERSION ),
+                    is_error = b( MR_ERROR ) | b( MR_CLIENT_ERROR ) |
+                               b( MR_SERVER_ERROR );
+    this->zero( (uint8_t) result );
+
+    if ( ( has_args & b( result ) ) != 0 ) {
+      char * ptr = &s[ 4 ],
+           * end = &s[ i ];
+      while ( ptr < end )
+        if ( *ptr++ == ' ' )
+          break;
+      this->args   = &this->xarg;
+      this->argcnt = parse_mcargs( ptr, end, wrk, this->args );
+      if ( result == MR_VALUE ) {
+        r = this->parse_value_result();
+        if ( r == MEMCACHED_OK ) {
+          if ( j + this->msglen + 2 > n )
+            return MEMCACHED_MSG_PARTIAL;
+          this->msg = &eol[ 1 ];
+          j += this->msglen + 2;
+        }
+      }
+    }
+    else if ( result == MR_INT ) {
+      r = get_u64( s, i, this->ival );
+    }
+    else {
+      this->is_err = ( ( is_error & b( result ) ) != 0 );
+    }
+    #undef b
+  }
+  else {
+    r = MEMCACHED_BAD_RESULT;
+  }
+  buflen = j;
+  return r;
+}
+
+MemcachedStatus
+MemcachedRes::parse_value_result( void )
+{
+  MemcachedStatus r;
+  /* VALUE key flags msglen [cas] */
+  if ( this->argcnt != 3 && this->argcnt != 4 )
+    return MEMCACHED_BAD_ARGS;
+  this->key    = this->args[ 0 ].str;
+  this->keylen = this->args[ 0 ].len;
+  r = get_u32( this->args[ 1 ].str, this->args[ 1 ].len, this->flags );
+  if ( r == MEMCACHED_OK )
+    r = get_u64( this->args[ 2 ].str, this->args[ 2 ].len, this->msglen );
+  if ( this->argcnt == 4 )
+    r = get_u64( this->args[ 3 ].str, this->args[ 3 ].len, this->cas );
+  if ( r != MEMCACHED_OK )
+    return r;
+  return MEMCACHED_OK;
 }
 
 MemcachedStatus
@@ -747,6 +927,7 @@ MemcachedExec::send_err( int status,  KeyStatus kstatus )
     case MEMCACHED_DEPENDS:     break;
     case MEMCACHED_QUIT:        break;
     case MEMCACHED_VERSION:     break;
+    case MEMCACHED_BAD_RESULT:  break;
     case MEMCACHED_ALLOC_FAIL: {
       static const char fail[] = "SERVER_ERROR alloc failed";
       if ( this->msg != NULL && this->msg->is_binary() )
@@ -786,6 +967,12 @@ MemcachedExec::send_err( int status,  KeyStatus kstatus )
         sz = this->send_bin_status( MS_NOT_SUPPORTED );
       else
         sz = this->send_string( bad, sizeof( bad ) - 1 );
+      break;
+    }
+    case MEMCACHED_BAD_INCR: {
+      static const char bad[] = "CLIENT_ERROR cannot increment or decrement "
+                                "non-numeric value";
+      sz = this->send_string( bad, sizeof( bad ) - 1 );
       break;
     }
     case MEMCACHED_BAD_PAD: {
@@ -968,7 +1155,37 @@ MemcachedExec::exec( EvSocket *svc,  EvPrefetchQueue *q )
     }
     return status; /* cmds with keys return setup ok */
   }
+  bool ( MemcachedExec::*fptr )( void ) = NULL;
   switch ( this->msg->command() ) {
+    case MC_STATS:
+      if ( this->msg->argcnt == 0 )
+        this->put_stats();
+      else if ( this->msg->match_arg( "settings", 8 ) )
+        this->put_stats_settings();
+      else if ( this->msg->match_arg( "items", 5 ) )
+        this->put_stats_items();
+      else if ( this->msg->match_arg( "sizes", 5 ) )
+        this->put_stats_sizes();
+      else if ( this->msg->match_arg( "slabs", 5 ) )
+        this->put_stats_slabs();
+      else if ( this->msg->match_arg( "conns", 5 ) )
+        this->put_stats_conns();
+      if ( this->strm.sz == 0 )
+        this->strm.sz += this->send_string( mc_error, mc_error_len );
+      else
+        this->strm.sz += this->send_string( mc_end, mc_end_len );
+      return MEMCACHED_OK;
+
+    case MC_SLABS:          fptr = &MemcachedExec::do_slabs; break;
+    case MC_LRU:            fptr = &MemcachedExec::do_lru; break;
+    case MC_LRU_CRAWLER:    fptr = &MemcachedExec::do_lru_crawler; break;
+    case MC_WATCH:          fptr = &MemcachedExec::do_watch; break;
+    case MC_FLUSH_ALL:      fptr = &MemcachedExec::do_flush_all; break;
+    case MC_CACHE_MEMLIMIT: fptr = &MemcachedExec::do_memlimit; break;
+    case MC_NO_OP:
+      this->do_no_op();
+      break;
+
     case MC_VERSION: {
       const char *ver = kv_stringify( DS_VER );
       this->strm.sz += ( this->msg->is_binary() ?
@@ -987,6 +1204,18 @@ MemcachedExec::exec( EvSocket *svc,  EvPrefetchQueue *q )
     default:
       return MEMCACHED_NOT_IMPL; /* otherwise ERROR */
   }
+  if ( fptr != NULL ) {
+    if ( ( this->*fptr )() ) {
+      if ( this->msg->is_binary() )
+        this->strm.sz += this->send_bin_status( MS_OK, "", 0 );
+      else
+        this->strm.sz += this->send_string( mc_ok, mc_ok_len );
+    }
+    else {
+      this->strm.sz += this->send_string( mc_error, mc_error_len );
+    }
+  }
+  return MEMCACHED_OK;
 }
 
 kv::KeyStatus
@@ -1148,6 +1377,7 @@ MemcachedExec::exec_store( EvKeyCtx &ctx )
                cnt   = 0;
   int          flags = 0;
 
+  this->stat.set_cnt++;
   switch ( this->msg->command() ) {
     default:         break;
     case MC_ADD:     flags = MC_MUST_NOT_EXIST;
@@ -1177,10 +1407,13 @@ MemcachedExec::exec_store( EvKeyCtx &ctx )
         int status = 0;
         if ( ctx.is_new ) {
           if ( ( flags & MC_MUST_EXIST ) != 0 ) {
-            if ( ( flags & MC_DO_CAS ) != 0 )
+            if ( ( flags & MC_DO_CAS ) != 0 ) {
+              this->stat.cas_miss++;
               status = not_found;
-            else
+            }
+            else {
               status = not_stored;
+            }
           }
         }
         /* if ( ! ctx.is_new ) */
@@ -1189,8 +1422,13 @@ MemcachedExec::exec_store( EvKeyCtx &ctx )
         if ( status == 0 && ( flags & MC_DO_CAS ) != 0 ) {
           cnt = 1ULL + this->kctx.serial -
                 ( this->kctx.key & ValueCtr::SERIAL_MASK );
-          if ( cnt != this->msg->cas )
+          if ( cnt != this->msg->cas ) {
+            this->stat.cas_badval++;
             status = exists;
+          }
+          else {
+            this->stat.cas_hit++;
+          }
         }
         if ( status != 0 ) {
           if ( ! this->msg->is_quiet() ) {
@@ -1258,6 +1496,7 @@ MemcachedExec::exec_bin_store( EvKeyCtx &ctx )
                cnt   = 0;
   int          flags = 0;
 
+  this->stat.set_cnt++;
   switch ( this->msg->command() ) {
     default:         break;
     case MC_ADD:     flags = MC_MUST_NOT_EXIST;
@@ -1287,8 +1526,10 @@ MemcachedExec::exec_bin_store( EvKeyCtx &ctx )
         int status = 0;
         if ( ctx.is_new ) {
           if ( ( flags & MC_MUST_EXIST ) != 0 ) {
-            if ( ( flags & MC_DO_CAS ) != 0 )
+            if ( ( flags & MC_DO_CAS ) != 0 ) {
+              this->stat.cas_miss++;
               status = not_found;
+            }
             else
               status = not_stored;
           }
@@ -1299,8 +1540,13 @@ MemcachedExec::exec_bin_store( EvKeyCtx &ctx )
         if ( status == 0 && ( flags & MC_DO_CAS ) != 0 ) {
           cnt = 1ULL + this->kctx.serial -
                 ( this->kctx.key & ValueCtr::SERIAL_MASK );
-          if ( cnt != this->msg->cas )
+          if ( cnt != this->msg->cas ) {
+            this->stat.cas_badval++;
             status = exists;
+          }
+          else {
+            this->stat.cas_hit++;
+          }
         }
         if ( status != 0 ) {
           if ( ! this->msg->is_quiet() ) {
@@ -1497,8 +1743,10 @@ MemcachedExec::exec_retr( EvKeyCtx &ctx )
   void * data;
   size_t size;
   /* GET key */
+  this->stat.get_cnt++;
   switch ( this->get_key_read( ctx, MD_STRING ) )
     case KEY_OK: {
+      this->stat.get_hit++;
       ctx.kstatus = this->kctx.value( &data, size );
       if ( ctx.kstatus == KEY_OK ) {
         size_t sz = 0;
@@ -1514,9 +1762,11 @@ MemcachedExec::exec_retr( EvKeyCtx &ctx )
         }
       }
       /* FALLTHRU */
-    default:            return MEMCACHED_ERR_KV; /* may retry */
-    case KEY_NOT_FOUND: /*NOT_EXIST*/ break;
-    case KEY_NO_VALUE:  /*BAD_TYPE*/ break;
+    default: return MEMCACHED_ERR_KV; /* may retry */
+    case KEY_NOT_FOUND: /*NOT_EXIST*/
+    case KEY_NO_VALUE:  /*BAD_TYPE*/
+      this->stat.get_miss++;
+      break;
   }
   if ( this->key_cnt == 1 ) {
     this->strm.sz += this->send_string( mc_end, mc_end_len );
@@ -1530,8 +1780,10 @@ MemcachedExec::exec_bin_retr( EvKeyCtx &ctx )
   void * data;
   size_t size;
   /* GET / GETQ / GETK / GETKQ key */
+  this->stat.get_cnt++;
   switch ( this->get_key_read( ctx, MD_STRING ) )
     case KEY_OK: {
+    this->stat.get_hit++;
       ctx.kstatus = this->kctx.value( &data, size );
       if ( ctx.kstatus == KEY_OK ) {
         size_t sz = this->send_bin_value( ctx, data, size );
@@ -1542,10 +1794,10 @@ MemcachedExec::exec_bin_retr( EvKeyCtx &ctx )
         }
       }
       /* FALLTHRU */
-    default:
-      return MEMCACHED_ERR_KV; /* may retry */
+    default: return MEMCACHED_ERR_KV; /* may retry */
     case KEY_NOT_FOUND:
     case KEY_NO_VALUE:
+      this->stat.get_miss++;
       if ( ! this->msg->is_quiet() ) {
         if ( this->msg->wants_key() )
           this->strm.sz += this->send_bin_status_key( MS_NOT_FOUND, ctx );
@@ -1564,8 +1816,10 @@ MemcachedExec::exec_retr_touch( EvKeyCtx &ctx )
   size_t   size;
   uint64_t ns;
   /* GAT ttl key */
+  this->stat.touch_cnt++;
   switch ( this->get_key_write( ctx, MD_STRING ) )
     case KEY_OK: {
+      this->stat.touch_hit++;
       ctx.kstatus = this->kctx.value( &data, size );
       if ( ctx.kstatus == KEY_OK ) {
         if ( (ns = this->msg->ttl) != 0 ) {
@@ -1585,9 +1839,11 @@ MemcachedExec::exec_retr_touch( EvKeyCtx &ctx )
           return MEMCACHED_ALLOC_FAIL;
       }
       /* FALLTHRU */
-    default:            return MEMCACHED_ERR_KV; /* may retry */
-    case KEY_IS_NEW:    /*NOT_EXIST*/ break;
-    case KEY_NO_VALUE:  /*BAD_TYPE*/ break;
+    default: return MEMCACHED_ERR_KV; /* may retry */
+    case KEY_IS_NEW:    /*NOT_EXIST*/
+    case KEY_NO_VALUE:  /*BAD_TYPE*/
+      this->stat.touch_miss++;
+      break;
   }
   if ( this->key_cnt == 1 ) {
     this->strm.sz += this->send_string( mc_end, mc_end_len );
@@ -1602,8 +1858,10 @@ MemcachedExec::exec_bin_retr_touch( EvKeyCtx &ctx )
   size_t   size;
   uint64_t ns;
   /* GAT ttl key */
+  this->stat.touch_cnt++;
   switch ( this->get_key_write( ctx, MD_STRING ) )
     case KEY_OK: {
+      this->stat.touch_hit++;
       ctx.kstatus = this->kctx.value( &data, size );
       if ( ctx.kstatus == KEY_OK ) {
         if ( (ns = this->msg->ttl) != 0 ) {
@@ -1619,10 +1877,10 @@ MemcachedExec::exec_bin_retr_touch( EvKeyCtx &ctx )
         return MEMCACHED_OK;
       }
       /* FALLTHRU */
-    default:
-      return MEMCACHED_ERR_KV; /* may retry */
+    default: return MEMCACHED_ERR_KV; /* may retry */
     case KEY_IS_NEW:
     case KEY_NO_VALUE:
+      this->stat.touch_miss++;
       if ( ! this->msg->is_quiet() ) {
         if ( this->msg->wants_key() )
           this->strm.sz += this->send_bin_status_key( MS_NOT_FOUND, ctx );
@@ -1645,6 +1903,8 @@ MemcachedExec::exec_del( EvKeyCtx &ctx )
       del = true;
     }
   }
+  if ( del ) this->stat.delete_hit++;
+  else       this->stat.delete_miss++;
   if ( ! this->msg->is_quiet() ) {
     if ( del )
       this->strm.sz += this->send_string( mc_del, mc_del_len );
@@ -1665,6 +1925,8 @@ MemcachedExec::exec_bin_del( EvKeyCtx &ctx )
       del = true;
     }
   }
+  if ( del ) this->stat.delete_hit++;
+  else       this->stat.delete_miss++;
   if ( ! this->msg->is_quiet() ) {
     if ( del ) {
       char * buf = this->strm.alloc( sizeof( MemcachedBinHdr ) );
@@ -1679,8 +1941,9 @@ MemcachedExec::exec_bin_del( EvKeyCtx &ctx )
         this->strm.sz += sizeof( hdr );
       }
     }
-    else
+    else {
       this->strm.sz += this->send_bin_status( MS_NOT_FOUND );
+    }
   }
   return MEMCACHED_OK;
 }
@@ -1691,8 +1954,10 @@ MemcachedExec::exec_touch( EvKeyCtx &ctx )
   uint64_t ns;
   bool not_found = false;
   /* TOUCH key ttl [noreply] */
+  this->stat.touch_cnt++;
   switch ( this->get_key_write( ctx, MD_STRING ) )
     case KEY_OK: {
+      this->stat.touch_hit++;
       if ( (ns = this->msg->ttl) != 0 ) {
         ns *= (uint64_t) 1000 * 1000 * 1000;
         if ( ns < this->kctx.ht.hdr.current_stamp )
@@ -1704,9 +1969,12 @@ MemcachedExec::exec_touch( EvKeyCtx &ctx )
       }
       break;
       /* FALLTHRU */
-    default:            return MEMCACHED_ERR_KV; /* may retry */
-    case KEY_IS_NEW:    not_found = true; /*NOT_EXIST*/ break;
-    case KEY_NO_VALUE:  not_found = true; /*BAD_TYPE*/ break;
+    default: return MEMCACHED_ERR_KV; /* may retry */
+    case KEY_IS_NEW:   /*NOT_EXIST*/
+    case KEY_NO_VALUE: /*BAD_TYPE*/
+      not_found = true;
+      this->stat.touch_miss++;
+      break;
   }
   if ( ! this->msg->is_quiet() ) {
     if ( not_found )
@@ -1723,8 +1991,10 @@ MemcachedExec::exec_bin_touch( EvKeyCtx &ctx )
   uint64_t ns;
   bool not_found = false;
   /* TOUCH key ttl [noreply] */
+  this->stat.touch_cnt++;
   switch ( this->get_key_write( ctx, MD_STRING ) )
     case KEY_OK: {
+      this->stat.touch_hit++;
       if ( (ns = this->msg->ttl) != 0 ) {
         ns *= (uint64_t) 1000 * 1000 * 1000;
         if ( ns < this->kctx.ht.hdr.current_stamp )
@@ -1736,9 +2006,12 @@ MemcachedExec::exec_bin_touch( EvKeyCtx &ctx )
       }
       break;
       /* FALLTHRU */
-    default:            return MEMCACHED_ERR_KV; /* may retry */
-    case KEY_IS_NEW:    not_found = true; /*NOT_EXIST*/ break;
-    case KEY_NO_VALUE:  not_found = true; /*BAD_TYPE*/ break;
+    default:  return MEMCACHED_ERR_KV; /* may retry */
+    case KEY_IS_NEW:   /*NOT_EXIST*/
+    case KEY_NO_VALUE: /*BAD_TYPE*/
+      not_found = true;
+      this->stat.touch_miss++;
+      break;
   }
   if ( ! this->msg->is_quiet() ) {
     if ( not_found )
@@ -1764,15 +2037,16 @@ MemcachedExec::exec_incr( EvKeyCtx &ctx )
       ctx.kstatus = this->kctx.value( &data, size );
       if ( ctx.kstatus != KEY_OK )
         return MEMCACHED_ERR_KV;
-      if ( size > 0 ) {
-        string_to_uint( (char *) data, size, ival );
+      if ( string_to_uint( (char *) data, size, ival ) != 0 ) {
+        this->send_err( MEMCACHED_BAD_INCR );
+        break;
       }
-      /* FALLTHRU */
-    case KEY_IS_NEW:
-    case KEY_NO_VALUE:
-      if ( this->msg->command() == MC_INCR )
+      if ( this->msg->command() == MC_INCR ) {
+        this->stat.incr_hit++;
         ival += this->msg->inc;
+      }
       else {
+        this->stat.decr_hit++;
         if ( ival > this->msg->inc )
           ival -= this->msg->inc;
         else
@@ -1789,6 +2063,14 @@ MemcachedExec::exec_incr( EvKeyCtx &ctx )
       }
       /* FALLTHRU */
     default: return MEMCACHED_ERR_KV;
+    case KEY_IS_NEW:
+    case KEY_NO_VALUE:
+      this->send_string( mc_not_found, mc_not_found_len );
+      if ( this->msg->command() == MC_INCR )
+        this->stat.incr_miss++;
+      else
+        this->stat.decr_miss++;
+      break;
   }
   return MEMCACHED_OK;
 }
@@ -1807,13 +2089,16 @@ MemcachedExec::exec_bin_incr( EvKeyCtx &ctx )
       ctx.kstatus = this->kctx.value( &data, size );
       if ( ctx.kstatus != KEY_OK )
         return MEMCACHED_ERR_KV;
-      if ( size == 0 || string_to_uint( (char *) data, size, ival ) != 0 ) {
+      if ( string_to_uint( (char *) data, size, ival ) != 0 ) {
         this->strm.sz += this->send_bin_status( MS_BAD_INCR_VALUE );
         break;
       }
-      if ( this->msg->command() == MC_INCR )
+      if ( this->msg->command() == MC_INCR ) {
+        this->stat.incr_hit++;
         ival += this->msg->inc;
+      }
       else {
+        this->stat.decr_hit++;
         if ( ival > this->msg->inc )
           ival -= this->msg->inc;
         else
@@ -1824,6 +2109,10 @@ MemcachedExec::exec_bin_incr( EvKeyCtx &ctx )
     case KEY_IS_NEW:
     case KEY_NO_VALUE:
         /* key is new, use ini value */
+        if ( this->msg->command() == MC_INCR ) /* is it a miss? */
+          this->stat.incr_miss++;
+        else
+          this->stat.decr_miss++;
         ival = this->msg->ini;
       }
       sz = uint_to_str( ival, str );
@@ -1853,3 +2142,211 @@ MemcachedExec::exec_bin_incr( EvKeyCtx &ctx )
   }
   return MEMCACHED_OK;
 }
+
+struct StatFmt {
+  char * b;
+  size_t off, sz;
+
+  StatFmt( char *s,  size_t len ) : b( s ), off( 0 ), sz( len ) {}
+
+  void printf( const char *fmt, ... ) {
+    if ( this->sz > 20 ) {
+      va_list args;
+      va_start( args, fmt );
+      size_t n = vsnprintf( &b[ off ], sz, fmt, args );
+      this->off += n; this->sz -= n;
+      va_end( args );
+    }
+  }
+};
+
+void
+MemcachedExec::put_stats( void )
+{
+  uint64_t now = kv_current_realtime_ns();
+  StatFmt fmt( this->strm.alloc( 4 * 1024 ), 4 * 1024 );
+  fmt.printf( "STAT pid %u\r\n", getpid() );
+  fmt.printf( "STAT uptime %lu\r\n",
+              ( now - this->stat.boot_time ) / 1000000000 );
+  fmt.printf( "STAT time %lu\r\n", now / 1000000000 );
+  fmt.printf( "STAT version %s\r\n", kv_stringify( DS_VER ) );
+
+  struct rusage usage;
+  ::getrusage( RUSAGE_SELF, &usage );
+  fmt.printf( "STAT rusage_user %.6f\r\n",
+              (double) usage.ru_utime.tv_sec +
+              (double) usage.ru_utime.tv_usec / 1000000.0 );
+  fmt.printf( "STAT rusage_system %.6f\r\n",
+              (double) usage.ru_stime.tv_sec +
+              (double) usage.ru_stime.tv_usec / 1000000.0 );
+  fmt.printf( "STAT max_connections %u\r\n", this->stat.max_connections );
+  fmt.printf( "STAT curr_connections %u\r\n", this->stat.curr_connections );
+  fmt.printf( "STAT total_connections %u\r\n", this->stat.total_connections );
+  fmt.printf( "STAT rejected_connections 0\r\n" );
+  fmt.printf( "STAT connection_structures %u\r\n", this->stat.conn_structs );
+  fmt.printf( "STAT reserved_fds 0\r\n" );
+
+  fmt.printf( "STAT cmd_get %lu\r\n", this->stat.get_cnt );
+  fmt.printf( "STAT cmd_set %lu\r\n", this->stat.set_cnt );
+  fmt.printf( "STAT cmd_flush %lu\r\n", this->stat.flush_cnt );
+  fmt.printf( "STAT cmd_touch %lu\r\n", this->stat.touch_cnt );
+  fmt.printf( "STAT get_hits %lu\r\n", this->stat.get_hit );
+  fmt.printf( "STAT get_misses %lu\r\n", this->stat.get_miss );
+  fmt.printf( "STAT get_expired %lu\r\n", this->stat.get_expired );
+  fmt.printf( "STAT get_flushed %lu\r\n", this->stat.get_flushed );
+  fmt.printf( "STAT delete_misses %lu\r\n", this->stat.delete_miss );
+  fmt.printf( "STAT delete_hits %lu\r\n", this->stat.delete_hit );
+  fmt.printf( "STAT incr_misses %lu\r\n", this->stat.incr_miss );
+  fmt.printf( "STAT incr_hits %lu\r\n", this->stat.incr_hit );
+  fmt.printf( "STAT decr_misses %lu\r\n", this->stat.decr_miss );
+  fmt.printf( "STAT decr_hits %lu\r\n", this->stat.decr_hit );
+  fmt.printf( "STAT cas_misses %lu\r\n", this->stat.cas_miss );
+  fmt.printf( "STAT cas_hits %lu\r\n", this->stat.cas_miss );
+  fmt.printf( "STAT cas_badval %lu\r\n", this->stat.cas_badval );
+  fmt.printf( "STAT touch_hits %lu\r\n", this->stat.touch_hit );
+  fmt.printf( "STAT touch_misses %lu\r\n", this->stat.touch_miss );
+  fmt.printf( "STAT auth_cmds %lu\r\n", this->stat.auth_cmds );
+  fmt.printf( "STAT auth_errors %lu\r\n", this->stat.auth_errors );
+  fmt.printf( "STAT bytes_read %lu\r\n", this->stat.bytes_read );
+  fmt.printf( "STAT bytes_written %lu\r\n", this->stat.bytes_written );
+  fmt.printf( "STAT limit_maxbytes %lu\r\n", this->kctx.ht.hdr.map_size );
+
+  this->strm.sz += fmt.off;
+}
+
+void
+MemcachedExec::put_stats_settings( void )
+{
+  StatFmt fmt( this->strm.alloc( 4 * 1024 ), 4 * 1024 );
+
+  fmt.printf( "STAT maxbytes %lu\r\n", this->kctx.ht.hdr.map_size );
+  fmt.printf( "STAT maxconns %u\r\n", this->stat.max_connections );
+  fmt.printf( "STAT tcpport %u\r\n", this->stat.tcpport );
+  fmt.printf( "STAT udpport %u\r\n", this->stat.udpport );
+  fmt.printf( "STAT inter %s\r\n",
+              this->stat.interface[ 0 ] != '\0' ? this->stat.interface : "*" );
+  fmt.printf( "STAT evictions on\r\n" );
+
+  this->strm.sz += fmt.off;
+}
+
+void
+MemcachedExec::put_stats_items( void )
+{
+/*
+STAT items:12:number 311074
+STAT items:12:number_hot 0
+STAT items:12:number_warm 124429
+STAT items:12:number_cold 186645
+ */
+}
+
+void
+MemcachedExec::put_stats_sizes( void )
+{
+/*
+histogram of sizes
+ */
+}
+
+void
+MemcachedExec::put_stats_slabs( void )
+{
+/*
+STAT 12:chunk_size 1184
+STAT 12:chunks_per_page 885
+STAT 12:total_pages 352
+STAT 12:total_chunks 311520
+STAT 12:used_chunks 311074
+STAT 12:free_chunks 446
+STAT 12:free_chunks_end 0
+STAT 12:mem_requested 343114622
+STAT 12:get_hits 2799600
+STAT 12:cmd_set 311074
+STAT 12:delete_hits 0
+STAT 12:incr_hits 0
+STAT 12:decr_hits 0
+STAT 12:cas_hits 0
+STAT 12:cas_badval 0
+STAT 12:touch_hits 0
+STAT active_slabs 1
+STAT total_malloced 369098752
+ */
+}
+
+void
+MemcachedExec::put_stats_conns( void )
+{
+/*
+STAT 28:addr tcp:127.0.0.1:11211
+STAT 28:state conn_listening
+STAT 28:secs_since_last_cmd 268101
+STAT 29:addr tcp6:[::1]:11211
+STAT 29:state conn_listening
+STAT 29:secs_since_last_cmd 268101
+STAT 30:addr udp:127.0.0.1:11211
+STAT 30:state conn_read
+STAT 30:secs_since_last_cmd 268087
+STAT 31:addr udp6:[::1]:11211
+STAT 31:state conn_read
+STAT 31:secs_since_last_cmd 268101
+*/
+}
+
+bool
+MemcachedExec::do_slabs( void )
+{
+/*
+slabs reassign <source class> <dest class>
+ */
+  return true;
+}
+bool
+MemcachedExec::do_lru( void )
+{
+/*
+lru <tune|mode|temp_ttl> <option list>
+ */
+  return true;
+}
+bool
+MemcachedExec::do_lru_crawler( void )
+{
+/*
+lru_crawler <enable|disable>
+lru_crawler sleep <microseconds>
+lru_crawler tocrawl <32u>
+ */
+  return true;
+}
+bool
+MemcachedExec::do_watch( void )
+{
+/*
+watch <fetchers|mutations|evictions>
+ */
+  return true;
+}
+bool
+MemcachedExec::do_flush_all( void )
+{
+/*
+flush_all [delay_secs]
+ */
+  return true;
+}
+bool
+MemcachedExec::do_memlimit( void )
+{
+/*
+cache_memlimit  <nbytes>
+ */
+  return true;
+}
+void
+MemcachedExec::do_no_op( void )
+{
+  static const uint8_t no_op[ 24 ] = { 0x80, 0x0a };
+  this->strm.append( no_op, 24 );
+}
+

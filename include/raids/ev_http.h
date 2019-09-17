@@ -22,6 +22,7 @@ struct EvHttpService : public EvConnection, public RedisExec {
            wsalloc, /* sizeof wsbuf alloc */
            wsmsgcnt;
   uint64_t websock_off;  /* on output pointer that frames msgs with ws */
+  int      term_int;
   bool     is_not_found, /* a 404 page closes socket */
            is_using_term;
   Term     term;
@@ -30,7 +31,7 @@ struct EvHttpService : public EvConnection, public RedisExec {
   EvHttpService( EvPoll &p ) : EvConnection( p, EV_HTTP_SOCK ),
     RedisExec( *p.map, p.ctx_id, *this, p.sub_route, *p.pubsub ),
     wsbuf( 0 ), wsoff( 0 ), wslen( 0 ), websock_off( 0 ),
-    is_not_found( false ) {}
+    term_int( 0 ), is_not_found( false ), is_using_term( false ) {}
   void initialize_state( void ) {
     this->wsbuf         = NULL;
     this->wsoff         = 0;
@@ -38,6 +39,7 @@ struct EvHttpService : public EvConnection, public RedisExec {
     this->wsalloc       = 0;
     this->wsmsgcnt      = 0;
     this->websock_off   = 0;
+    this->term_int      = 0;
     this->is_not_found  = false;
     this->is_using_term = false;
     this->term.zero();
@@ -49,8 +51,7 @@ struct EvHttpService : public EvConnection, public RedisExec {
   void cook_string( char *s,  size_t len ); /* expand '\r' to '\r\n' */
 #endif
   bool flush_term( void );
-  size_t write( void ); /* override write() in EvConnection */
-  size_t try_write( void );
+  void write( void ); /* override write() in EvConnection */
   bool frame_websock( void );
   bool frame_websock2( void );
   bool send_file( const char *get,  size_t hdrlen );

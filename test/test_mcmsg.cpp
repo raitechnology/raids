@@ -20,6 +20,13 @@ static char ex_incr_str[]  = "INCR key 1\r\n";
 static char ex_vers_str[]  = "VERSION\r\n";
 static char ex_quit_str[]  = "QUIT\r\n";
 
+static char ex_ok_str[]    = "OK\r\n";
+static char ex_int_str[]   = "53\r\n";
+static char ex_end_str[]   = "END\r\n";
+static char ex_value_str[] = "VALUE key 0 11 1\r\nhello world\r\n";
+static char ex_valu2_str[] = "VALUE key2 0 11\r\nworld hello\r\n";
+static char ex_err_str[]   = "CLIENT_ERROR bad args\r\n";
+
 static struct {
   char * ex;
   size_t len;
@@ -32,6 +39,13 @@ static struct {
   { ex_incr_str,  sizeof( ex_incr_str )  - 1 },
   { ex_vers_str,  sizeof( ex_vers_str )  - 1 },
   { ex_quit_str,  sizeof( ex_quit_str )  - 1 }
+}, results[] = {
+  { ex_ok_str, sizeof( ex_ok_str ) - 1 },
+  { ex_int_str, sizeof( ex_int_str ) - 1 },
+  { ex_end_str, sizeof( ex_end_str ) - 1 },
+  { ex_value_str, sizeof( ex_value_str ) - 1 },
+  { ex_valu2_str, sizeof( ex_valu2_str ) - 1 },
+  { ex_err_str, sizeof( ex_err_str ) - 1 }
 };
 
 int
@@ -39,11 +53,12 @@ main( int, char ** )
 {
   size_t sz;
   MemcachedMsg m;
+  MemcachedRes r;
   kv::ScratchMem wrk;
   MemcachedStatus x;
+  size_t i;
 
-  for ( size_t i = 0; i < sizeof( examples ) /
-                          sizeof( examples[ 0 ] ); i++ ) {
+  for ( i = 0; i < sizeof( examples ) / sizeof( examples[ 0 ] ); i++ ) {
     sz = examples[ i ].len;
     x = m.unpack( examples[ i ].ex, sz, wrk );
     printf( "unpack=%d/%s sz %lu len %lu \"%.*s\"\n",
@@ -53,6 +68,17 @@ main( int, char ** )
       m.print();
     wrk.reset();
   }
+  for ( i = 0; i < sizeof( results ) / sizeof( results[ 0 ] ); i++ ) {
+    sz = results[ i ].len;
+    x = r.unpack( results[ i ].ex, sz, wrk );
+    printf( "unpack=%d/%s sz %lu len %lu \"%.*s\"\n",
+            x, memcached_status_string( x ), sz, results[ i ].len,
+            (int) r.msglen, r.msg );
+    if ( x == MEMCACHED_OK )
+      r.print();
+    wrk.reset();
+  }
+
   return 0;
 }
 

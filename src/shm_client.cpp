@@ -91,11 +91,12 @@ EvShmClient::hash_to_sub( uint32_t h,  char *key,  size_t &keylen )
 }
 
 void
-EvShmClient::send_msg( RedisMsg &msg )
+EvShmClient::send_data( char *buf,  size_t size )
 {
   ExecStatus status;
 
-  this->exec->msg.ref( msg );
+  if ( this->exec->msg.unpack( buf, size, this->tmp ) != REDIS_MSG_OK )
+    return;
   if ( (status = this->exec->exec( NULL, NULL )) == EXEC_OK )
     if ( this->alloc_fail )
       status = ERR_ALLOC_FAIL;
@@ -124,7 +125,6 @@ EvShmClient::stream_to_msg( void )
   if ( this->idx >= 1 ) {
     void * buf = this->iov[ 0 ].iov_base;
     size_t len = this->iov[ 0 ].iov_len;
-    RedisMsg out;
     if ( this->idx > 1 ) {
       size_t i;
       for ( i = 1; i < this->idx; i++ )
@@ -141,18 +141,12 @@ EvShmClient::stream_to_msg( void )
     }
     for ( size_t off = 0; ; ) {
       size_t buflen = len - off;
-      RedisMsgStatus mstatus;
       if ( buflen == 0 )
         break;
-      mstatus = out.unpack( &((uint8_t *) buf)[ off ], buflen, this->tmp );
-      if ( mstatus == REDIS_MSG_OK )
-        this->cb.on_msg( out );
-      else {
-        fprintf( stderr, "protocol error(%d/%s), ignoring %lu bytes\n",
-                 mstatus, redis_msg_status_string( mstatus ), buflen );
+      if ( this->cb.on_data( &((char *) buf)[ off ], buflen ) )
+        off += buflen;
+      else
         break;
-      }
-      off += buflen;
     }
   }
   this->reset();

@@ -22,6 +22,8 @@ struct Term {
   const void * in_buf;     /* line input data */
   size_t       in_off,
                in_len;
+  int          interrupt, /* if LINE_STATUS_INTERRUPT */
+               suspend;   /* if LINE_STATUS_SUSPEND */
 
   Term() {
     this->zero();
