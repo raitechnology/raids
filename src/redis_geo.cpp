@@ -85,9 +85,11 @@ RedisExec::exec_geoadd( EvKeyCtx &ctx )
     }
     if ( gstatus == GEO_UPDATED ) /* incr when geo updated */
       ctx.ival++;
-    if ( this->argc == argi ) /* no more elements to add */
+    if ( this->argc == argi ) { /* no more elements to add */
+      if ( ctx.ival > 0 )
+        ctx.flags |= EKF_KEYSPACE_EVENT;
       return EXEC_SEND_INT;
-
+    }
     /* get the next coords and hash */
     if ( ! this->msg.get_arg( argi, coord.lon ) ||
          ! this->msg.get_arg( argi+1, coord.lat ) )

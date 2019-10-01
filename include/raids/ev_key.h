@@ -25,6 +25,15 @@ enum EvKeyState {
   EK_CONTINUE = 22  /* more keys to process */
 };
 
+enum EvKeyFlags {
+  EKF_IS_READ_ONLY   = 1, /* key is read only (no write access) */
+  EKF_IS_NEW         = 2, /* key doesn't exist */
+  EKF_KEYSPACE_FWD   = 4, /* operation resulted in a keyspace modification */
+  EKF_KEYEVENT_FWD   = 8, /* operation resulted in a keyevent modification */
+  EKF_KEYSPACE_EVENT = 12, /* both the above bits together */
+  EKF_KEYSPACE_DEL   = 16  /* keyspace event (pop, srem, etc) caused a key del */
+};
+
 struct EvKeyCtx {
   void * operator new( size_t, void *ptr ) { return ptr; }
 
@@ -36,19 +45,18 @@ struct EvKeyCtx {
   int64_t           ival;   /* if it returns int */
   EvKeyTempResult * part;   /* saved data for key */
   const int         argn;   /* which arg number of command */
-  uint8_t           dep,    /* depends on another key */
-                    type;   /* value type, string, list, hash, etc */
   int               status; /* result of exec for this key */
   kv::KeyStatus     kstatus;/* result of key lookup */
-  bool              is_new, /* if the key does not exist */
-                    is_read;/* if the key is read only */
+  uint8_t           dep,    /* depends on another key */
+                    type,   /* value type, string, list, hash, etc */
+                    flags;  /* is new, is read only */
   kv::KeyFragment   kbuf;   /* key material, extends past structure */
 
   EvKeyCtx( kv::HashTab &h,  EvSocket *own,  const char *key,  size_t keylen,
             const int n,  const uint64_t seed,  const uint64_t seed2 )
      : ht( h ), owner( own ), hash1( seed ), hash2( seed2 ), ival( 0 ),
-       part( 0 ), argn( n ), dep( 0 ), type( 0 ), status( 0 ),
-       kstatus( KEY_OK ), is_new( false ), is_read( true ) {
+       part( 0 ), argn( n ), status( 0 ), kstatus( KEY_OK ), dep( 0 ),
+       type( 0 ), flags( EKF_IS_READ_ONLY ) {
     uint16_t * p = (uint16_t *) (void *) this->kbuf.u.buf,
              * k = (uint16_t *) (void *) key,
              * e = (uint16_t *) (void *) &key[ keylen ];
@@ -68,6 +76,12 @@ struct EvKeyCtx {
     kctx.set_hash( this->hash1, this->hash2 );
     kctx.prefetch( 2 );
     return this;
+  }
+  bool is_new( void ) const {
+    return ( this->flags & EKF_IS_NEW ) != 0;
+  }
+  bool is_read_only( void ) const {
+    return ( this->flags & EKF_IS_READ_ONLY ) != 0;
   }
 };
 

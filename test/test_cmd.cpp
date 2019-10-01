@@ -42,7 +42,7 @@ int
 main( int, char ** )
 {
   uint32_t readonly = 0, write = 0, arity_cnt[ 8 ];
-  int arity, first, last, step;
+  int16_t arity, first, last, step;
   double start, end;
   RedisCmd cmd;
 

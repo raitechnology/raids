@@ -111,8 +111,8 @@ gen_enums( void )
           (int) cmd_category_cnt + 1, (int) cmd_db_cnt );
 
   printf( "static inline void\n"
-          "get_cmd_arity( RedisCmd cmd,  int &arity,  int &first,  int &last,  "
-                         "int &step ) {\n"
+          "get_cmd_arity( RedisCmd cmd,  int16_t &arity,  int16_t &first,  "
+                         "int16_t &last,  int16_t &step ) {\n"
           "  /* Arity of commands indexed by cmd */\n"
           "  static const uint16_t redis_cmd_arity[] = {\n    0" );
   for ( i = 1; i < cmd_db_cnt; i++ ) {

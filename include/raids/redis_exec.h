@@ -32,6 +32,7 @@ enum ExecStatus {
   EXEC_QUIT,             /* quit/shutdown command */
   EXEC_DEBUG,            /* debug command */
   EXEC_ABORT_SEND_ZERO,  /* abort multiple key operation and return 0 */
+  EXEC_ABORT_SEND_NIL,   /* abort multiple key operation and return nil */
   EXEC_QUEUED,           /* cmd queued for multi transaction */
   /* errors v v v / ok ^ ^ ^ */
   ERR_KV_STATUS,        /* kstatus != ok */
@@ -124,8 +125,11 @@ struct RedisExec {
   RedisMultiExec * multi;     /* MULTI .. EXEC block */
   RedisCmd         cmd;       /* current command (GET_CMD) */
   RedisMsgStatus   mstatus;   /* command message parse status */
-  uint16_t         flags;     /* command flags (CMD_READONLY_FLAG) */
-  int              arity,     /* number of command args */
+  uint8_t          key_flags, /* EvKeyFlags, if a key has a keyspace event */
+                   pad1;
+  uint16_t         cmd_flags, /* command flags (CMD_READONLY_FLAG) */
+                   pad2;
+  int16_t          arity,     /* number of command args */
                    first,     /* first key in args */
                    last,      /* last key in args */
                    step;      /* incr between keys */
@@ -134,14 +138,13 @@ struct RedisExec {
   RedisSubMap      sub_tab;   /* pub/sub subscription table */
   RedisPatternMap  pat_tab;   /* pub/sub pattern sub table */
   RouteDB        & sub_route; /* map subject to sub_id */
-  KvPubSub       & pubsub;    /* notify subscribe and unsubscribe */
   uint32_t         sub_id;    /* fd, set this after accept() */
 
   RedisExec( kv::HashTab &map,  uint32_t ctx_id,  StreamBuf &s,
-             RouteDB &rdb,  KvPubSub &ps ) :
+             RouteDB &rdb ) :
       kctx( map, ctx_id, NULL ), strm( s ),
       key( 0 ), keys( 0 ), key_cnt( 0 ), key_done( 0 ),
-      sub_route( rdb ), pubsub( ps ), sub_id( ~0U ) {
+      sub_route( rdb ), sub_id( ~0U ) {
     this->kctx.ht.hdr.get_hash_seed( this->kctx.db_num, this->seed,
                                      this->seed2 );
     this->kctx.set( kv::KEYCTX_NO_COPY_ON_READ );
@@ -164,6 +167,8 @@ struct RedisExec {
   ExecStatus exec( EvSocket *svc,  EvPrefetchQueue *q );
   /* execute a key operation */
   ExecStatus exec_key_continue( EvKeyCtx &ctx );
+  /* publish keyspace events */
+  void pub_keyspace_events( void );
   /* compute the hash and prefetch the ht[] location */
   void exec_key_prefetch( EvKeyCtx &ctx ) {
     this->key = ctx.prefetch( this->kctx );
@@ -173,7 +178,7 @@ struct RedisExec {
     kv::KeyStatus status = this->exec_key_fetch( ctx, false );
     if ( status == KEY_OK && ctx.type != type ) {
       if ( ctx.type == 0 ) {
-        ctx.is_new = true;
+        ctx.flags |= EKF_IS_NEW;
         return KEY_IS_NEW;
       }
       return KEY_NO_VALUE;
@@ -290,7 +295,8 @@ struct RedisExec {
   ExecStatus exec_rpoplpush( EvKeyCtx &ctx );
   ExecStatus exec_rpush( EvKeyCtx &ctx );
   ExecStatus exec_rpushx( EvKeyCtx &ctx );
-  ExecStatus do_push( EvKeyCtx &ctx,  int flags );
+  ExecStatus do_push( EvKeyCtx &ctx,  int flags,  const char *value = NULL,
+                      size_t valuelen = 0 );
   ExecStatus do_pop( EvKeyCtx &ctx,  int flags );
   /* PUBSUB */
   ExecStatus exec_psubscribe( void );

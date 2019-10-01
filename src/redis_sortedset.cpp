@@ -436,7 +436,7 @@ RedisExec::do_zwrite( EvKeyCtx &ctx,  int flags )
     case KEY_IS_NEW:
       if ( ( flags & DO_ZREM ) != 0 ) /* no data to move or remove */
         return EXEC_SEND_ZERO;
-      ctx.is_new = true;
+      ctx.flags |= EKF_IS_NEW;
       if ( ( flags & ( DO_ZADD | DO_ZINCRBY ) ) != 0 ) {
         count = this->argc / 2; /* set by alloc_size() */
         ndata = 2 + arglen + sizeof( ZScore ); /* length of all zadd args */
@@ -463,17 +463,34 @@ RedisExec::do_zwrite( EvKeyCtx &ctx,  int flags )
     for (;;) {
       if ( geo.x->georem( arg, arglen, pos ) == GEO_OK )
         ctx.ival++;
-      if ( this->argc == argi )
+      if ( this->argc == argi ) {
+        if ( ctx.ival > 0 ) {
+          ctx.flags |= EKF_KEYSPACE_EVENT;
+          if ( geo.x->hcount() == 0 ) {
+            ctx.flags |= EKF_KEYSPACE_DEL;
+            if ( ! geo.tombstone() )
+              return ERR_KV_STATUS;
+          }
+        }
         return EXEC_SEND_INT;
+      }
       if ( ! this->msg.get_arg( argi++, arg, arglen ) )
         return ERR_BAD_ARGS;
       pos.init( arg, arglen );
+    }
+    if ( ctx.ival > 0 ) {
+      ctx.flags |= EKF_KEYSPACE_EVENT;
+      if ( geo.x->hcount() == 0 ) {
+        ctx.flags |= EKF_KEYSPACE_DEL;
+        if ( ! geo.tombstone() )
+          return ERR_KV_STATUS;
+      }
     }
     return EXEC_SEND_INT;
   }
 
   ExecListCtx<ZSetData, MD_ZSET> zset( *this, ctx );
-  if ( ctx.is_new ) {
+  if ( ctx.is_new() ) {
     if ( ! zset.create( count, ndata ) )
       return ERR_KV_STATUS;
   }
@@ -524,6 +541,14 @@ RedisExec::do_zwrite( EvKeyCtx &ctx,  int flags )
       return EXEC_OK;
     }
     /* return number members updated */
+    if ( ctx.ival > 0 ) {
+      ctx.flags |= EKF_KEYSPACE_EVENT;
+      if ( zset.x->hcount() == 0 ) {
+        ctx.flags |= EKF_KEYSPACE_DEL;
+        if ( ! zset.tombstone() )
+          return ERR_KV_STATUS;
+      }
+    }
     return EXEC_SEND_INT;
   }
 }
@@ -920,6 +945,14 @@ RedisExec::do_zremrange( EvKeyCtx &ctx,  int flags )
         j -= 1;
       }
     }
+    if ( ctx.ival > 0 ) {
+      ctx.flags |= EKF_KEYSPACE_EVENT;
+      if ( zset.x->hcount() == 0 ) {
+        ctx.flags |= EKF_KEYSPACE_DEL;
+        if ( ! zset.tombstone() )
+          return ERR_KV_STATUS;
+      }
+    }
   }
   else { /* MD_GEO */
     ExecListCtx<GeoData, MD_GEO> geo( *this, ctx );
@@ -953,6 +986,14 @@ RedisExec::do_zremrange( EvKeyCtx &ctx,  int flags )
       while ( i < j ) {
         geo.x->georem_index( j );
         j -= 1;
+      }
+    }
+    if ( ctx.ival > 0 ) {
+      ctx.flags |= EKF_KEYSPACE_EVENT;
+      if ( geo.x->hcount() == 0 ) {
+        ctx.flags |= EKF_KEYSPACE_DEL;
+        if ( ! geo.tombstone() )
+          return ERR_KV_STATUS;
       }
     }
   }
@@ -1181,7 +1222,7 @@ RedisExec::do_zsetop_store( EvKeyCtx &ctx,  int flags )
         ::memcpy( data2, data, datalen );
         ctx.ival   = count;
         ctx.type   = type;
-        ctx.is_new = true;
+        ctx.flags |= EKF_IS_NEW | EKF_KEYSPACE_EVENT;
         return EXEC_SEND_INT;
       }
     /* FALLTHRU */

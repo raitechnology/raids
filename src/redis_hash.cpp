@@ -110,6 +110,15 @@ RedisExec::exec_hdel( EvKeyCtx &ctx )
       return ERR_BAD_ARGS;
     pos.init( arg, arglen );
   }
+  /* XXX: need to delete hash if empty */
+  if ( ctx.ival > 0 ) {
+    ctx.flags |= EKF_KEYSPACE_EVENT;
+    if ( hash.x->hcount() == 0 ) {
+      ctx.flags |= EKF_KEYSPACE_DEL;
+      if ( ! hash.tombstone() )
+        return ERR_KV_STATUS;
+    }
+  }
   return EXEC_SEND_INT;
 }
 
@@ -539,12 +548,14 @@ RedisExec::do_hwrite( EvKeyCtx &ctx,  int flags )
     switch ( flags & ( DO_HSET | DO_HSETNX | DO_HMSET |
                        DO_HINCRBYFLOAT | DO_HINCRBY | DO_HAPPEND ) ) {
       case DO_HSET:
+        ctx.flags |= EKF_KEYSPACE_EVENT;
         if ( hstatus == HASH_OK )
           return EXEC_SEND_ONE; /* new item indicated with 1 */
         return EXEC_SEND_ZERO; /* HASH_UPDATED, replaced old item */
       case DO_HSETNX:
         if ( hstatus == HASH_EXISTS )
           return EXEC_SEND_ZERO; /* did not update, already exists */
+        ctx.flags |= EKF_KEYSPACE_EVENT;
         return EXEC_SEND_ONE; /* new item */
       case DO_HMSET:
         if ( this->argc > argi ) {
@@ -555,6 +566,7 @@ RedisExec::do_hwrite( EvKeyCtx &ctx,  int flags )
           pos.init( arg, arglen );
           break;
         }
+        ctx.flags |= EKF_KEYSPACE_EVENT;
         return EXEC_SEND_OK; /* send OK status */
       case DO_HAPPEND:
         if ( hstatus == HASH_OK )
@@ -574,12 +586,14 @@ RedisExec::do_hwrite( EvKeyCtx &ctx,  int flags )
           }
           break;
         }
+        ctx.flags |= EKF_KEYSPACE_EVENT;
         if ( is_new )
           return EXEC_SEND_ONE; /* new item indicated with 1 */
         return EXEC_SEND_ZERO; /* HASH_UPDATED, appended existing item */
       case DO_HINCRBYFLOAT:
       case DO_HINCRBY:
         this->strm.sz += sz;
+        ctx.flags |= EKF_KEYSPACE_EVENT;
         return EXEC_OK;
     }
   }

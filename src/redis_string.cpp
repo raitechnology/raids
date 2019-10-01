@@ -38,9 +38,11 @@ RedisExec::exec_append( EvKeyCtx &ctx )
     case KEY_IS_NEW:
         ctx.ival    = data_sz + valuelen;
         ctx.kstatus = this->kctx.resize( &data, ctx.ival, true );
-        if ( ctx.kstatus == KEY_OK )
+        if ( ctx.kstatus == KEY_OK ) {
           ::memcpy( &((uint8_t *) data)[ data_sz ], value, valuelen );
-        return EXEC_SEND_INT;
+          ctx.flags |= EKF_KEYSPACE_EVENT;
+          return EXEC_SEND_INT;
+        }
       }
     /* FALLTHRU */
     default:           return ERR_KV_STATUS;
@@ -245,8 +247,10 @@ RedisExec::exec_bitfield( EvKeyCtx &ctx )
           ctx.kstatus = this->kctx.resize( &data, size );
 	  if ( old_size < size )
 	    ::memset( &((uint8_t *) data)[ old_size ], 0, size - old_size );
-          if ( ctx.kstatus == KEY_OK )
+          if ( ctx.kstatus == KEY_OK ) {
+            ctx.flags |= EKF_KEYSPACE_EVENT;
 	    break;
+          }
         }
         /* FALLTHRU */
       default:            return ERR_KV_STATUS;
@@ -374,7 +378,7 @@ RedisExec::exec_bitfield( EvKeyCtx &ctx )
     }
     sz = crlf( str, sz );
   }
-  if ( ctx.is_read ) {
+  if ( ctx.is_read_only() ) {
     ctx.kstatus = this->kctx.validate_value();
     if ( ctx.kstatus != KEY_OK )
       return ERR_KV_STATUS;
@@ -495,6 +499,7 @@ RedisExec::exec_bitop( EvKeyCtx &ctx )
               case BIT_NOT_OP: break;
             }
           }
+          ctx.flags |= EKF_KEYSPACE_EVENT;
           return EXEC_SEND_INT;
         }
         /* FALLTHRU */
@@ -736,7 +741,8 @@ RedisExec::exec_getset( EvKeyCtx &ctx )
       ctx.kstatus = this->kctx.resize( &data, valuelen );
       if ( ctx.kstatus == KEY_OK ) {
         ::memcpy( data, value, valuelen );
-        if ( ctx.is_new )
+        ctx.flags |= EKF_KEYSPACE_EVENT;
+        if ( ctx.is_new() )
           return EXEC_SEND_NIL;
         this->strm.sz += sz;
         return EXEC_OK;
@@ -792,6 +798,7 @@ RedisExec::do_add( EvKeyCtx &ctx,  int64_t incr ) /* incr/decr value */
       if ( ctx.kstatus == KEY_OK ) {
         ::memcpy( data, &str[ 1 ], sz - 3 );
         this->strm.sz += sz;
+        ctx.flags |= EKF_KEYSPACE_EVENT;
         return EXEC_OK;
       }
       /* FALLTHRU */
@@ -841,6 +848,7 @@ RedisExec::exec_incrbyfloat( EvKeyCtx &ctx )
       if ( ctx.kstatus == KEY_OK ) {
         ::memcpy( data, fpdata, fvallen );
         this->strm.sz += sz;
+        ctx.flags |= EKF_KEYSPACE_EVENT;
         return EXEC_OK;
       }
       /* FALLTHRU */
@@ -972,21 +980,22 @@ RedisExec::do_set_value_expire( EvKeyCtx &ctx,  int n,  uint64_t ns,
 
   switch ( this->get_key_write( ctx, MD_STRING ) ) {
     case KEY_NO_VALUE: /* overwrite key */
-      ctx.is_new = true;
+      ctx.flags |= EKF_IS_NEW;
       ctx.type   = MD_STRING;
       /* FALLTHRU */
     case KEY_OK:
     case KEY_IS_NEW:
       if ( ( flags & ( K_MUST_NOT_EXIST | K_MUST_EXIST ) ) != 0 ) {
-        if ( ctx.is_new && ( flags & K_MUST_EXIST ) != 0 )
+        if ( ctx.is_new() && ( flags & K_MUST_EXIST ) != 0 )
           return EXEC_SEND_NIL;
-        if ( ! ctx.is_new && ( flags & K_MUST_NOT_EXIST ) != 0 )
+        if ( ! ctx.is_new() && ( flags & K_MUST_NOT_EXIST ) != 0 )
           return EXEC_SEND_NIL;
       }
       this->kctx.update_stamps( ns, 0 );
       ctx.kstatus = this->kctx.resize( &data, valuelen );
       if ( ctx.kstatus == KEY_OK ) {
         ::memcpy( data, value, valuelen );
+        ctx.flags |= EKF_KEYSPACE_EVENT;
         return EXEC_SEND_OK;
       }
       /* FALLTHRU */
@@ -1006,21 +1015,22 @@ RedisExec::do_set_value( EvKeyCtx &ctx,  int n,  int flags )
 
   switch ( this->get_key_write( ctx, MD_STRING ) ) {
     case KEY_NO_VALUE: /* overwrite key */
-      ctx.is_new = true;
+      ctx.flags |= EKF_IS_NEW;
       ctx.type   = MD_STRING;
       /* FALLTHRU */
     case KEY_OK:
     case KEY_IS_NEW:
       if ( ( flags & ( K_MUST_NOT_EXIST | K_MUST_EXIST ) ) != 0 ) {
-        if ( ctx.is_new && ( flags & K_MUST_EXIST ) != 0 )
+        if ( ctx.is_new() && ( flags & K_MUST_EXIST ) != 0 )
           return EXEC_SEND_NIL;
-        if ( ! ctx.is_new && ( flags & K_MUST_NOT_EXIST ) != 0 )
+        if ( ! ctx.is_new() && ( flags & K_MUST_NOT_EXIST ) != 0 )
           return EXEC_SEND_NIL;
       }
       this->kctx.clear_stamps( true, false );
       ctx.kstatus = this->kctx.resize( &data, valuelen );
       if ( ctx.kstatus == KEY_OK ) {
         ::memcpy( data, value, valuelen );
+        ctx.flags |= EKF_KEYSPACE_EVENT;
         return EXEC_SEND_OK;
       }
       /* FALLTHRU */
@@ -1118,6 +1128,7 @@ RedisExec::exec_setrange( EvKeyCtx &ctx )
           if ( (uint64_t) off > data_sz ) /* pad with zeros */
             ::memset( &((uint8_t *) data)[ data_sz ], 0, off - data_sz );
           ::memcpy( &((uint8_t *) data)[ off ], value, valuelen );
+          ctx.flags |= EKF_KEYSPACE_EVENT;
           return EXEC_SEND_INT;
         }
       }

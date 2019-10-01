@@ -279,7 +279,7 @@ RouteDB::add_route( uint32_t hash,  uint32_t r )
   }
   if ( this->code_free * 2 > this->code_end )
     this->gc_code_ref_space();
-  return xcnt;
+  return xcnt; /* count of routes after inserting r */
 }
 
 uint32_t
@@ -303,7 +303,7 @@ RouteDB::del_route( uint32_t hash,  uint32_t r )
     if ( this->code_free * 2 > this->code_end )
       this->gc_code_ref_space();
   }
-  return xcnt;
+  return xcnt; /* count of routes after deleting r */
 }
 
 uint32_t

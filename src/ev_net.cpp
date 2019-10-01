@@ -758,6 +758,122 @@ RoutePublish::hash_to_sub( uint32_t r,  uint32_t h,  char *key,
   }
   return false;
 }
+
+static const char kspc[] = "__keyspace@",
+                  kevt[] = "__keyevent@";
+
+void
+EvPoll::add_pattern_route( const char *sub,  size_t prefix_len,  uint32_t hash,
+                           uint32_t fd )
+{
+  size_t pre_len = ( prefix_len < 11 ? prefix_len : 11 );
+  /* if first route added for hash */
+  if ( this->sub_route.add_pattern_route( hash, fd, prefix_len ) == 1 ) {
+    /*printf( "add_pattern %.*s\n", (int) prefix_len, sub );*/
+    this->update_keyspace_count( sub, pre_len, 1 );
+  }
+}
+
+void
+EvPoll::del_pattern_route( const char *sub,  size_t prefix_len,  uint32_t hash,
+                           uint32_t fd )
+{
+  size_t pre_len = ( prefix_len < 11 ? prefix_len : 11 );
+  /* if last route deleted */
+  if ( this->sub_route.del_pattern_route( hash, fd, prefix_len ) == 0 ) {
+    /*printf( "del_pattern %.*s\n", (int) prefix_len, sub );*/
+    this->update_keyspace_count( sub, pre_len, -1 );
+  }
+}
+
+void
+EvPoll::add_route( const char *sub,  size_t sub_len,  uint32_t hash,
+                   uint32_t fd )
+{
+  /* if first route added for hash */
+  if ( this->sub_route.add_route( hash, fd ) == 1 ) {
+    if ( sub_len > 11 ) {
+      /*printf( "add_route %.*s\n", (int) sub_len, sub );*/
+      this->update_keyspace_count( sub, 11, 1 );
+    }
+  }
+}
+
+void
+EvPoll::del_route( const char *sub,  size_t sub_len,  uint32_t hash,
+                   uint32_t fd )
+{
+  /* if last route deleted */
+  if ( this->sub_route.del_route( hash, fd ) == 0 ) {
+    if ( sub_len > 11 ) {
+      /*printf( "del_route %.*s\n", (int) sub_len, sub );*/
+      this->update_keyspace_count( sub, 11, -1 );
+    }
+  }
+}
+
+void
+RoutePublish::update_keyspace_count( const char *sub,  size_t len,  int add )
+{
+  if ( ::memcmp( kspc, sub, len ) == 0 ) {
+    this->keyspace_cnt += add;
+    if ( len < 6 && ::memcmp( kevt, sub, len ) == 0 )
+      this->keyevent_cnt += add;
+  }
+  else if ( ::memcmp( kevt, sub, len ) == 0 )
+    this->keyevent_cnt += add;
+  else
+    return;
+  this->key_flags = ( ( this->keyspace_cnt == 0 ? 0 : EKF_KEYSPACE_FWD ) |
+                      ( this->keyevent_cnt == 0 ? 0 : EKF_KEYEVENT_FWD ) );
+  /*printf( "%.*s %d key_flags %x\n", (int) len, sub, add, this->key_flags );*/
+}
+
+void
+RoutePublish::notify_sub( uint32_t h,  const char *sub,  size_t len,
+                          uint32_t sub_id,  uint32_t rcnt,  char src_type,
+                          const char *rep,  size_t rlen )
+{
+  EvPoll & poll = static_cast<EvPoll &>( *this );
+  if ( len > 11 )
+    this->update_keyspace_count( sub, 11, 1 );
+  poll.pubsub->do_sub( h, sub, len, sub_id, rcnt, src_type, rep, rlen );
+}
+
+void
+RoutePublish::notify_unsub( uint32_t h,  const char *sub,  size_t len,
+                            uint32_t sub_id,  uint32_t rcnt,  char src_type )
+{
+  EvPoll & poll = static_cast<EvPoll &>( *this );
+  if ( len > 11 )
+    this->update_keyspace_count( sub, 11, -1 );
+  poll.pubsub->do_unsub( h, sub, len, sub_id, rcnt, src_type );
+}
+
+void
+RoutePublish::notify_psub( uint32_t h,  const char *pattern,  size_t len,
+                           const char *prefix,  uint8_t prefix_len,
+                           uint32_t sub_id,  uint32_t rcnt,  char src_type )
+{
+  EvPoll & poll = static_cast<EvPoll &>( *this );
+  size_t pre_len = ( prefix_len < 11 ? prefix_len : 11 );
+  this->update_keyspace_count( prefix, pre_len, 1 );
+  poll.pubsub->do_psub( h, pattern, len, prefix, prefix_len,
+                        sub_id, rcnt, src_type );
+}
+
+void
+RoutePublish::notify_punsub( uint32_t h,  const char *pattern,  size_t len,
+                             const char *prefix,  uint8_t prefix_len,
+                             uint32_t sub_id,  uint32_t rcnt,  char src_type )
+{
+  EvPoll & poll = static_cast<EvPoll &>( *this );
+  size_t pre_len = ( prefix_len < 11 ? prefix_len : 11 );
+  this->update_keyspace_count( prefix, pre_len, -1 );
+  poll.pubsub->do_punsub( h, pattern, len, prefix, prefix_len,
+                          sub_id, rcnt, src_type );
+}
+
 #if 0
 bool
 EvSocket::publish( EvPublish & )

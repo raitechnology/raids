@@ -156,6 +156,14 @@ struct EvPoll : public RoutePublish {
 
   int init( int numfds,  bool prefetch/*,  bool single*/ );
   int init_shm( EvShm &shm );    /* open shm pubsub */
+  void add_pattern_route( const char *sub,  size_t prefix_len,  uint32_t hash,
+                          uint32_t fd );
+  void del_pattern_route( const char *sub,  size_t prefix_len,  uint32_t hash,
+                          uint32_t fd );
+  void add_route( const char *sub,  size_t sub_len,  uint32_t hash,
+                  uint32_t fd );
+  void del_route( const char *sub,  size_t sub_len,  uint32_t hash,
+                  uint32_t fd );
   int wait( int ms );            /* call epoll() with ms timeout */
   bool dispatch( void );         /* process any sock in the queues */
   void drain_prefetch( void );   /* process prefetches */

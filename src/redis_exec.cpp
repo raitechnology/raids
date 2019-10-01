@@ -8,6 +8,8 @@
 #include <raikv/util.h>
 #include <raids/redis_exec.h>
 #include <raids/redis_cmd_db.h>
+#include <raids/ev_publish.h>
+#include <raids/route_db.h>
 #include <raimd/md_types.h>
 
 using namespace rai;
@@ -270,7 +272,7 @@ RedisExec::next_key( int &i )
   i += this->step;
   if ( this->last < 0 && (size_t) i < this->argc )
     return true;
-  if ( test_cmd_mask( this->flags, CMD_MOVABLEKEYS_FLAG ) ) {
+  if ( test_cmd_mask( this->cmd_flags, CMD_MOVABLEKEYS_FLAG ) ) {
     while ( ( ( (uint64_t) 1 << i ) & this->step_mask ) == 0 ) {
       i += this->step;
       if ( i > this->last )
@@ -285,7 +287,7 @@ size_t
 RedisExec::calc_key_count( void )
 {
   /* how many keys are in the command */
-  if ( test_cmd_mask( this->flags, CMD_MOVABLEKEYS_FLAG ) )
+  if ( test_cmd_mask( this->cmd_flags, CMD_MOVABLEKEYS_FLAG ) )
     return __builtin_popcountl( this->step_mask );
   if ( this->last > 0 )
     return ( this->last + 1 - this->first ) / this->step;
@@ -318,9 +320,10 @@ RedisExec::exec( EvSocket *svc,  EvPrefetchQueue *q )
   }
   else if ( (size_t) -this->arity > this->argc )
     return ERR_BAD_ARGS;
-  this->flags = get_cmd_flag_mask( this->cmd );
+  this->cmd_flags = get_cmd_flag_mask( this->cmd );
+  this->key_flags = 0;
 
-  if ( test_cmd_mask( this->flags, CMD_MOVABLEKEYS_FLAG ) )
+  if ( test_cmd_mask( this->cmd_flags, CMD_MOVABLEKEYS_FLAG ) )
     if ( ! this->locate_movablekeys() )
       return ERR_BAD_ARGS;
   if ( this->multi != NULL ) {
@@ -426,19 +429,19 @@ RedisExec::exec( EvSocket *svc,  EvPrefetchQueue *q )
 kv::KeyStatus
 RedisExec::exec_key_fetch( EvKeyCtx &ctx,  bool force_read )
 {
-  if ( test_cmd_mask( this->flags, CMD_READONLY_FLAG ) || force_read ) {
+  if ( test_cmd_mask( this->cmd_flags, CMD_READONLY_FLAG ) || force_read ) {
     ctx.kstatus = this->kctx.find( &this->wrk );
-    ctx.is_read = true;
+    ctx.flags  |= EKF_IS_READ_ONLY;
   }
-  else if ( test_cmd_mask( this->flags, CMD_WRITE_FLAG ) ) {
+  else if ( test_cmd_mask( this->cmd_flags, CMD_WRITE_FLAG ) ) {
     ctx.kstatus = this->kctx.acquire( &this->wrk );
-    ctx.is_new = ( ctx.kstatus == KEY_IS_NEW );
-    ctx.is_read = false;
+    ctx.flags  |= ( ( ctx.kstatus == KEY_IS_NEW ) ? EKF_IS_NEW : 0 );
+    ctx.flags  &= ~EKF_IS_READ_ONLY;
   }
   else {
     ctx.kstatus = KEY_NO_VALUE;
     ctx.status  = ERR_BAD_CMD;
-    ctx.is_read = true;
+    ctx.flags  |= EKF_IS_READ_ONLY;
   }
   if ( ctx.kstatus == KEY_OK ) /* not new and is found */
     ctx.type = this->kctx.get_type();
@@ -451,7 +454,7 @@ RedisExec::exec_key_continue( EvKeyCtx &ctx )
   if ( ctx.status != EXEC_CONTINUE && ctx.status != EXEC_DEPENDS ) {
     if ( ++this->key_done < this->key_cnt )
       return EXEC_CONTINUE;
-    return EXEC_SUCCESS;
+    goto success;
   }
   if ( this->kctx.kbuf != &ctx.kbuf ||
        this->kctx.key != ctx.hash1 || this->kctx.key2 != ctx.hash2 )
@@ -652,8 +655,8 @@ RedisExec::exec_key_continue( EvKeyCtx &ctx )
       case NO_CMD:        ctx.status = ERR_BAD_CMD; break;
     }
     /* set the type when key is new */
-    if ( ! ctx.is_read ) {
-      if ( ctx.is_new && exec_status_success( ctx.status ) ) {
+    if ( ! ctx.is_read_only() ) {
+      if ( ctx.is_new() && exec_status_success( ctx.status ) ) {
         uint8_t type;
         if ( (type = ctx.type) == MD_NODATA ) {
           switch ( get_cmd_category( this->cmd ) ) {
@@ -675,6 +678,7 @@ RedisExec::exec_key_continue( EvKeyCtx &ctx )
           this->kctx.set_type( type );
         this->kctx.set_val( 0 );
       }
+      this->key_flags |= ctx.flags;
       this->kctx.release();
     }
     /* if key depends on other keys */
@@ -692,15 +696,16 @@ RedisExec::exec_key_continue( EvKeyCtx &ctx )
     for ( uint32_t i = 0; i < this->key_cnt; i++ )
       this->keys[ i ]->status = ctx.status;
   }
-  else if ( test_cmd_mask( this->flags, CMD_MULTI_KEY_ARRAY_FLAG ) ) {
+  else if ( test_cmd_mask( this->cmd_flags, CMD_MULTI_KEY_ARRAY_FLAG ) ) {
     if ( exec_status_success( ctx.status ) ) {
       this->array_string_result();
-      return EXEC_SUCCESS;
+      goto success;
     }
   }
   switch ( ctx.status ) {
     case EXEC_OK:           break;
     case EXEC_SEND_OK:      this->strm.append( ok, ok_sz );            break;
+    case EXEC_ABORT_SEND_NIL:
     case EXEC_SEND_NIL:     this->strm.append( nil, nil_sz );          break;
     case EXEC_SEND_NULL:    this->strm.append( null, null_sz );        break;
     case EXEC_ABORT_SEND_ZERO:
@@ -713,7 +718,271 @@ RedisExec::exec_key_continue( EvKeyCtx &ctx )
   }
   if ( this->key_done < this->key_cnt )
     return EXEC_CONTINUE;
+success:;
+  if ( ( this->key_flags & this->sub_route.rte.key_flags &
+         EKF_KEYSPACE_EVENT ) != 0 )
+    this->pub_keyspace_events();
   return EXEC_SUCCESS;
+}
+
+struct RedisKeyspace {
+
+  char         kspc[ 24 ],
+               kevt[ 24 ];
+  RedisExec  & exec;
+  size_t       off;
+  const char * key;
+  size_t       keylen;
+  const char * evt;
+  size_t       evtlen;
+  char       * subj;
+  size_t       alloc_len;
+
+  RedisKeyspace( RedisExec &e ) : exec( e ), subj( 0 ), alloc_len( 0 ) {
+    uint8_t db = e.kctx.db_num;
+    static const char kspc_prefix[] = "__keyspace@";
+    this->off = sizeof( kspc_prefix ) - 1;
+    /* construct __keyspace@#__:key */
+    ::memcpy( this->kspc, kspc_prefix, this->off );
+    if ( db > 9 ) {
+      if ( db > 99 ) {
+        this->kspc[ this->off++ ] = '0' + ( db / 100 );
+        db %= 100;
+      }
+      this->kspc[ this->off++ ] = '0' + ( db / 10 );
+      db %= 10;
+    }
+    this->kspc[ this->off++ ] = '0' + db;
+    this->kspc[ this->off++ ] = '_';
+    this->kspc[ this->off++ ] = '_';
+    this->kspc[ this->off++ ] = ':';
+    this->kspc[ this->off ] = '\0';
+    ::memcpy( this->kevt, this->kspc, this->off + 1 );
+    ::memcpy( &this->kevt[ 5 ], "event", 5 );
+  }
+
+  bool alloc_subj( size_t subj_len ) {
+    if ( this->alloc_len < subj_len ) {
+      size_t len = this->off + this->keylen + this->evtlen;
+      char * tmp = this->exec.strm.alloc_temp( len + 1 );
+      if ( tmp == NULL )
+        return false;
+      this->subj = tmp;
+      this->alloc_len = len;
+    }
+    return true;
+  }
+  /* publish __keyspace@N__:key <- event */
+  void fwd_keyspace( void ) {
+    size_t subj_len = this->off + this->keylen;
+    if ( ! this->alloc_subj( subj_len ) )
+      return;
+    ::memcpy( this->subj, this->kspc, this->off );
+    ::memcpy( &this->subj[ this->off ], this->key, this->keylen );
+    this->subj[ subj_len ] = '\0';
+
+    EvPublish pub( this->subj, subj_len, NULL, 0, this->evt, this->evtlen,
+                   this->exec.sub_id, kv_crc_c( this->subj, subj_len, 0 ),
+                   NULL, 0, MD_STRING, ':' );
+    /*printf( "%s <- %s\n", this->subj, this->evt );*/
+    this->exec.sub_route.rte.forward_msg( pub, NULL, 0, NULL );
+  }
+  /* publish __keyevent@N__:event <- key */
+  void fwd_keyevent( void ) {
+    size_t subj_len = this->off + this->evtlen;
+    if ( ! this->alloc_subj( subj_len ) )
+      return;
+    ::memcpy( this->subj, this->kevt, this->off );
+    ::memcpy( &this->subj[ this->off ], this->evt, this->evtlen );
+    this->subj[ subj_len ] = '\0';
+
+    EvPublish pub( this->subj, subj_len, NULL, 0, this->key, this->keylen,
+                   this->exec.sub_id, kv_crc_c( this->subj, subj_len, 0 ),
+                   NULL, 0, MD_STRING, ';' );
+    /*printf( "%s <- %s\n", this->subj, this->key );*/
+    this->exec.sub_route.rte.forward_msg( pub, NULL, 0, NULL );
+  }
+};
+
+void
+RedisExec::pub_keyspace_events( void )
+{
+  /* translate cmd into an event */
+  const char * e      = NULL;
+  size_t       elen   = 0;
+  uint8_t      key_fl = this->sub_route.rte.key_flags | EKF_KEYSPACE_DEL;
+#define EVT( STR ) e = STR; elen = sizeof( STR ) - 1
+  switch ( this->cmd ) {
+    default:                   break;
+    case DEL_CMD:              EVT( "del" ); break;
+    case BRPOPLPUSH_CMD:       /* rpop, lpush */
+    case RPOPLPUSH_CMD:
+    case RENAME_CMD:           break; /* rename_from, rename_to */
+    case EXPIRE_CMD:           EVT( "expire" ); break;
+    case BITFIELD_CMD:         EVT( "setbit" ); break;
+    case BITOP_CMD:
+    case GETSET_CMD:
+    case MSET_CMD:
+    case MSETNX_CMD:
+    case PSETEX_CMD:
+    case SETEX_CMD:
+    case SETNX_CMD:
+    case SET_CMD:              EVT( "set" ); break;
+    case SETRANGE_CMD:         EVT( "setrange" ); break;
+    case DECR_CMD:
+    case DECRBY_CMD:
+    case INCR_CMD:
+    case INCRBY_CMD:           EVT( "incrby" ); break;
+    case INCRBYFLOAT_CMD:      EVT( "incrbyfloat" ); break;
+    case APPEND_CMD:           EVT( "append" ); break;
+    case LPUSH_CMD:
+    case LPUSHX_CMD:           EVT( "lpush" ); break;
+    case BLPOP_CMD:
+    case LPOP_CMD:             EVT( "lpop" ); break;
+    case RPUSH_CMD:
+    case RPUSHX_CMD:           EVT( "rpush" ); break;
+    case BRPOP_CMD:
+    case RPOP_CMD:             EVT( "rpop" ); break;
+    case LINSERT_CMD:          EVT( "linsert" ); break;
+    case LSET_CMD:             EVT( "lset" ); break;
+    case LTRIM_CMD:            EVT( "ltrim" ); break;
+    case HSETNX_CMD:
+    case HMSET_CMD:
+    case HSET_CMD:             EVT( "hset" ); break;
+    case HINCRBY_CMD:          EVT( "hincrby" ); break;
+    case HINCRBYFLOAT_CMD:     EVT( "hincrbyfloat" ); break;
+    case HDEL_CMD:             EVT( "hdel" ); break;
+    case SMOVE_CMD:
+    case SADD_CMD:             EVT( "sadd" ); break;
+    case SREM_CMD:             EVT( "srem" ); break;
+    case SPOP_CMD:             EVT( "spop" ); break;
+    case SINTERSTORE_CMD:      EVT( "sinterstore" ); break;
+    case SUNIONSTORE_CMD:      EVT( "sunionstore" ); break;
+    case SDIFFSTORE_CMD:       EVT( "sdiffstore" ); break;
+    case ZINCRBY_CMD:          EVT( "zincrby" ); break;
+    case GEOADD_CMD:
+    case ZADD_CMD:             EVT( "zadd" ); break;
+    case ZREM_CMD:             EVT( "zrem" ); break;
+    case ZREMRANGEBYLEX_CMD:   EVT( "zremrangebylex" ); break;
+    case ZREMRANGEBYRANK_CMD:  EVT( "zremrangebyrank" ); break;
+    case ZREMRANGEBYSCORE_CMD: EVT( "zremrangebyscore" ); break;
+    case ZINTERSTORE_CMD:      EVT( "zinterstore" ); break;
+    case ZUNIONSTORE_CMD:      EVT( "zunionstore" ); break;
+  }
+#undef EVT
+  if ( e != NULL ) {
+    RedisKeyspace ev( *this );
+    if ( this->key_cnt == 1 ) {
+      uint8_t fl = this->key->flags & key_fl;
+      ev.key    = (const char *) this->key->kbuf.u.buf;
+      ev.keylen = this->key->kbuf.keylen - 1;
+      ev.evt    = e;
+      ev.evtlen = elen;
+      if ( ( fl & EKF_KEYSPACE_FWD ) != 0 )
+        ev.fwd_keyspace();
+      if ( ( fl & EKF_KEYEVENT_FWD ) != 0 )
+        ev.fwd_keyevent();
+
+      if ( ( fl & EKF_KEYSPACE_DEL ) != 0 ) {
+        ev.evt    = "del";
+        ev.evtlen = 3;
+        if ( ( fl & EKF_KEYSPACE_FWD ) != 0 )
+          ev.fwd_keyspace();
+        if ( ( fl & EKF_KEYEVENT_FWD ) != 0 )
+          ev.fwd_keyevent();
+      }
+    }
+    else {
+      uint32_t i;
+      ev.evt    = e;
+      ev.evtlen = elen;
+      for ( i = 0; i < this->key_cnt; i++ ) {
+        uint8_t fl = this->keys[ i ]->flags & key_fl;
+        if ( ( fl & ( EKF_KEYSPACE_FWD | EKF_KEYEVENT_FWD ) ) != 0 ) {
+          ev.key    = (const char *) this->keys[ i ]->kbuf.u.buf;
+          ev.keylen = this->keys[ i ]->kbuf.keylen - 1;
+          if ( ( fl & EKF_KEYSPACE_FWD ) != 0 )
+            ev.fwd_keyspace();
+          if ( ( fl & EKF_KEYEVENT_FWD ) != 0 )
+            ev.fwd_keyevent();
+        }
+      }
+      if ( ( this->key_flags & EKF_KEYSPACE_DEL ) != 0 ) {
+        ev.evt    = "del";
+        ev.evtlen = 3;
+        for ( i = 0; i < this->key_cnt; i++ ) {
+          uint8_t fl = this->keys[ i ]->flags & key_fl;
+          if ( ( fl & ( EKF_KEYSPACE_FWD | EKF_KEYEVENT_FWD ) ) != 0 ) {
+            if ( ( fl & EKF_KEYSPACE_DEL ) != 0 ) {
+              ev.key    = (const char *) this->keys[ i ]->kbuf.u.buf;
+              ev.keylen = this->keys[ i ]->kbuf.keylen - 1;
+              if ( ( fl & EKF_KEYSPACE_FWD ) != 0 )
+                ev.fwd_keyspace();
+              if ( ( fl & EKF_KEYEVENT_FWD ) != 0 )
+                ev.fwd_keyevent();
+            }
+          }
+        }
+      }
+    }
+  }
+  else {
+    const char * first,
+               * second;
+    size_t       firstlen,
+                 secondlen;
+    switch ( cmd ) {
+      case RENAME_CMD:
+        first     = "rename_from";
+        firstlen  = 11;
+        second    = "rename_to";
+        secondlen = 9;
+        break;
+      case BRPOPLPUSH_CMD:       /* rpop, lpush */
+      case RPOPLPUSH_CMD:
+        first     = "rpop";
+        firstlen  = 4;
+        second    = "lpush";
+        secondlen = 5;
+        break;
+      default:
+        first     = NULL;
+        firstlen  = 0;
+        second    = NULL;
+        secondlen = 0;
+        break;
+    }
+    if ( first != NULL ) {
+      RedisKeyspace ev( *this );
+      uint8_t fl = this->key_flags & key_fl;
+      ev.key    = (const char *) this->keys[ 0 ]->kbuf.u.buf;
+      ev.keylen = this->keys[ 0 ]->kbuf.keylen - 1;
+      ev.evt    = first;
+      ev.evtlen = firstlen;
+      if ( ( fl & EKF_KEYSPACE_FWD ) != 0 )
+        ev.fwd_keyspace();
+      if ( ( fl & EKF_KEYEVENT_FWD ) != 0 )
+        ev.fwd_keyevent();
+
+      if ( ( fl & EKF_KEYSPACE_DEL ) != 0 ) {
+        ev.evt    = "del";
+        ev.evtlen = 3;
+        if ( ( fl & EKF_KEYSPACE_FWD ) != 0 )
+          ev.fwd_keyspace();
+        if ( ( fl & EKF_KEYEVENT_FWD ) != 0 )
+          ev.fwd_keyevent();
+      }
+
+      ev.key    = (const char *) this->keys[ 1 ]->kbuf.u.buf;
+      ev.keylen = this->keys[ 1 ]->kbuf.keylen - 1;
+      ev.evt    = second;
+      ev.evtlen = secondlen;
+      if ( ( fl & EKF_KEYSPACE_FWD ) != 0 )
+        ev.fwd_keyspace();
+      if ( ( fl & EKF_KEYEVENT_FWD ) != 0 )
+        ev.fwd_keyevent();
+    }
+  }
 }
 
 /* CLUSTER */
@@ -1128,6 +1397,7 @@ RedisExec::send_err( int status,  KeyStatus kstatus )
     case EXEC_OK:               break;
     case EXEC_SETUP_OK:         break;
     case EXEC_SEND_OK:          this->send_ok(); break;
+    case EXEC_ABORT_SEND_NIL:
     case EXEC_SEND_NIL:         this->send_nil(); break;
     case EXEC_SEND_NULL:        this->send_null(); break;
     case EXEC_SEND_INT:         this->send_int(); break;

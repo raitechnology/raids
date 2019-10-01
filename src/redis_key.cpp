@@ -22,6 +22,7 @@ RedisExec::exec_del( EvKeyCtx &ctx )
        this->exec_key_fetch( ctx ) == KEY_OK ) {
     this->kctx.tombstone();
     ctx.ival = 1;
+    ctx.flags |= EKF_KEYSPACE_EVENT;
   }
   return EXEC_SEND_INT;
 }
@@ -230,6 +231,7 @@ RedisExec::do_pexpire( EvKeyCtx &ctx,  uint64_t units )
   if ( this->exec_key_fetch( ctx ) == KEY_OK ) {
     this->kctx.update_stamps( exp, 0 );
     ctx.ival = 1;
+    ctx.flags |= EKF_KEYSPACE_EVENT;
   }
   else {
     ctx.ival = 0;
@@ -255,6 +257,7 @@ RedisExec::do_pexpireat( EvKeyCtx &ctx,  uint64_t units )
   if ( this->exec_key_fetch( ctx ) == KEY_OK ) {
     this->kctx.update_stamps( exp, 0 );
     ctx.ival = 1;
+    ctx.flags |= EKF_KEYSPACE_EVENT;
   }
   else {
     ctx.ival = 0;
@@ -334,6 +337,7 @@ RedisExec::exec_rename( EvKeyCtx &ctx )
           ::memcpy( data, this->keys[ 0 ]->part->data( 0 ), sz ); /* key data */
           this->kctx.set_type( this->keys[ 0 ]->type );
           this->kctx.set_val( 0 );
+          ctx.flags |= EKF_KEYSPACE_EVENT;
           /* inherits expire time? */
           if ( this->cmd == RENAME_CMD )
             return EXEC_SEND_OK;
@@ -365,6 +369,7 @@ RedisExec::exec_rename( EvKeyCtx &ctx )
       case KEY_OK:
       case KEY_IS_NEW:
         this->kctx.tombstone();
+        ctx.flags |= EKF_KEYSPACE_EVENT | EKF_KEYSPACE_DEL;
         if ( this->cmd == RENAME_CMD )
           return EXEC_SEND_OK;
         /* renamenx */

@@ -424,8 +424,8 @@ EvRvService::add_sub( void )
              rcnt;
     if ( this->sub_tab.put( h, sub, len ) == RV_SUB_OK ) {
       rcnt = this->poll.sub_route.add_route( h, this->fd );
-      this->poll.pubsub->notify_sub( h, sub, len, this->fd, rcnt, 'V',
-                                    this->msg_in.reply, this->msg_in.replylen );
+      this->poll.notify_sub( h, sub, len, this->fd, rcnt, 'V',
+                             this->msg_in.reply, this->msg_in.replylen );
     }
   }
   else {
@@ -458,8 +458,8 @@ EvRvService::add_sub( void )
         else {
           rcnt = this->poll.sub_route.add_pattern_route( h, this->fd,
                                                          cvt.prefixlen );
-          this->poll.pubsub->notify_psub( h, buf, cvt.off, sub, cvt.prefixlen,
-                                          this->fd, rcnt, 'V' );
+          this->poll.notify_psub( h, buf, cvt.off, sub, cvt.prefixlen,
+                                  this->fd, rcnt, 'V' );
         }
       }
     }
@@ -479,7 +479,7 @@ EvRvService::rem_sub( void )
       printf( "rem sub %s\n", sub );
       if ( this->sub_tab.tab.find_by_hash( h ) == NULL )
         rcnt = this->poll.sub_route.del_route( h, this->fd );
-      this->poll.pubsub->notify_unsub( h, sub, len, this->fd, rcnt, 'V' );
+      this->poll.notify_unsub( h, sub, len, this->fd, rcnt, 'V' );
     }
   }
   else {
@@ -504,8 +504,8 @@ EvRvService::rem_sub( void )
         this->pat_tab.tab.remove( loc );
         rcnt = this->poll.sub_route.del_pattern_route( h, this->fd,
                                                        cvt.prefixlen );
-        this->poll.pubsub->notify_punsub( h, buf, cvt.off, sub, cvt.prefixlen,
-                                          this->fd, rcnt, 'V' );
+        this->poll.notify_punsub( h, buf, cvt.off, sub, cvt.prefixlen,
+                                  this->fd, rcnt, 'V' );
       }
     }
   }
@@ -521,8 +521,8 @@ EvRvService::rem_all_sub( void )
   if ( this->sub_tab.first( pos ) ) {
     do {
       rcnt = this->poll.sub_route.del_route( pos.rt->hash, this->fd );
-      this->poll.pubsub->notify_unsub( pos.rt->hash, pos.rt->value, pos.rt->len,
-                                       this->fd, rcnt, 'V' );
+      this->poll.notify_unsub( pos.rt->hash, pos.rt->value, pos.rt->len,
+                               this->fd, rcnt, 'V' );
     } while ( this->sub_tab.next( pos ) );
   }
   if ( this->pat_tab.first( ppos ) ) {
@@ -532,9 +532,9 @@ EvRvService::rem_all_sub( void )
       if ( cvt.convert_rv( ppos.rt->value, ppos.rt->len ) == 0 ) {
         rcnt = this->poll.sub_route.del_pattern_route( ppos.rt->hash, this->fd,
                                                   cvt.prefixlen );
-        this->poll.pubsub->notify_punsub( ppos.rt->hash, buf, cvt.off,
-                                          ppos.rt->value, cvt.prefixlen,
-                                          this->fd, rcnt, 'V' );
+        this->poll.notify_punsub( ppos.rt->hash, buf, cvt.off,
+                                  ppos.rt->value, cvt.prefixlen,
+                                  this->fd, rcnt, 'V' );
       }
     } while ( this->pat_tab.next( ppos ) );
   }

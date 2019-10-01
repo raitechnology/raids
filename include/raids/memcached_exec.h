@@ -457,7 +457,7 @@ struct MemcachedExec {
     kv::KeyStatus status = this->exec_key_fetch( ctx, false );
     if ( status == KEY_OK && ctx.type != type ) {
       if ( ctx.type == 0 ) {
-        ctx.is_new = true;
+        ctx.flags |= EKF_IS_NEW;
         return KEY_IS_NEW;
       }
       return KEY_NO_VALUE;

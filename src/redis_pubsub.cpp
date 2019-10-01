@@ -6,7 +6,6 @@
 #include <raids/redis_exec.h>
 #include <raids/ev_publish.h>
 #include <raids/route_db.h>
-#include <raids/kv_pubsub.h>
 #define PCRE2_CODE_UNIT_WIDTH 8
 #include <pcre2.h>
 #include <raids/pattern_cvt.h>
@@ -32,8 +31,8 @@ RedisExec::rem_all_sub( void )
   if ( this->sub_tab.first( pos ) ) {
     do {
       rcnt = this->sub_route.del_route( pos.rt->hash, this->sub_id );
-      this->pubsub.notify_unsub( pos.rt->hash, pos.rt->value, pos.rt->len,
-                                 this->sub_id, rcnt, 'R' );
+      this->sub_route.rte.notify_unsub( pos.rt->hash, pos.rt->value,
+                                        pos.rt->len, this->sub_id, rcnt, 'R' );
     } while ( this->sub_tab.next( pos ) );
   }
   if ( this->pat_tab.first( ppos ) ) {
@@ -43,8 +42,9 @@ RedisExec::rem_all_sub( void )
       if ( cvt.convert_glob( ppos.rt->value, ppos.rt->len ) == 0 ) {
         rcnt = this->sub_route.del_pattern_route( ppos.rt->hash, this->sub_id,
                                                   cvt.prefixlen );
-        this->pubsub.notify_punsub( ppos.rt->hash, buf, cvt.off, ppos.rt->value,
-                                    cvt.prefixlen, this->sub_id, rcnt, 'R' );
+        this->sub_route.rte.notify_punsub( ppos.rt->hash, buf, cvt.off,
+                                           ppos.rt->value, cvt.prefixlen,
+                                           this->sub_id, rcnt, 'R' );
       }
     } while ( this->pat_tab.next( ppos ) );
   }
@@ -348,7 +348,7 @@ RedisExec::do_subscribe( const char *sub,  size_t len )
   h = kv_crc_c( sub, len, 0 );
   if ( this->sub_tab.put( h, sub, len ) == REDIS_SUB_OK ) {
     rcnt = this->sub_route.add_route( h, this->sub_id );
-    this->pubsub.notify_sub( h, sub, len, this->sub_id, rcnt, 'R' );
+    this->sub_route.rte.notify_sub( h, sub, len, this->sub_id, rcnt, 'R' );
     return EXEC_OK;
   }
   return ERR_KEY_EXISTS;
@@ -365,8 +365,8 @@ RedisExec::do_unsubscribe( const char *sub,  size_t len )
     /* check for duplicate hashes */
     if ( this->sub_tab.tab.find_by_hash( h ) == NULL )
       rcnt = this->sub_route.del_route( h, this->sub_id );
-    this->pubsub.notify_unsub( h, sub, len, this->sub_id,
-                               rcnt, 'R' );
+    this->sub_route.rte.notify_unsub( h, sub, len, this->sub_id,
+                                      rcnt, 'R' );
     return EXEC_OK;
   }
   return ERR_KEY_DOESNT_EXIST;
@@ -403,8 +403,8 @@ RedisExec::do_psubscribe( const char *sub,  size_t len )
       else {
         rcnt = this->sub_route.add_pattern_route( h, this->sub_id,
                                                   cvt.prefixlen );
-        this->pubsub.notify_psub( h, buf, cvt.off, sub, cvt.prefixlen,
-                                  this->sub_id, rcnt, 'R' );
+        this->sub_route.rte.notify_psub( h, buf, cvt.off, sub, cvt.prefixlen,
+                                         this->sub_id, rcnt, 'R' );
         return EXEC_OK;
       }
     }
@@ -436,8 +436,8 @@ RedisExec::do_punsubscribe( const char *sub,  size_t len )
       this->pat_tab.tab.remove( loc );
       rcnt = this->sub_route.del_pattern_route( h, this->sub_id,
                                                 cvt.prefixlen );
-      this->pubsub.notify_punsub( h, buf, cvt.off, sub, cvt.prefixlen,
-                                  this->sub_id, rcnt, 'R' );
+      this->sub_route.rte.notify_punsub( h, buf, cvt.off, sub, cvt.prefixlen,
+                                         this->sub_id, rcnt, 'R' );
       return EXEC_OK;
     }
   }

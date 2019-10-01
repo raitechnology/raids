@@ -40,6 +40,10 @@ struct KvMsg {
            dest_start, /* the recipient */
            dest_end,   /* if > start, forward msg to others */
            msg_type;   /* what class of message (sub, unsub, pub) */
+
+  static const char * msg_type_string( uint8_t msg_type );
+  const char * msg_type_string( void ) const;
+  void print( void );
 };
 
 typedef union {
@@ -129,7 +133,6 @@ struct KvSubMsg : public KvMsg {
       + (size_t) pref_cnt * 5 /* pref + hash */, sizeof( uint32_t ) )
       + kv::align<size_t>( msg_size, sizeof( uint32_t ) );
   }
-  const char * msg_type_string( void ) const;
 };
 
 enum KvMsgType {
@@ -187,12 +190,13 @@ struct KvSubNotifyList {
   KvSubNotifyList() : next( 0 ), back( 0 ), in_list( false ) {}
 };
 
-enum KvPubSubFlags {
-  KV_DO_NOTIFY = 1
+enum KvPubSubFlag {
+  KV_DO_NOTIFY = 1 /* whether to notify external processes of inbox msgs */
 };
+
 struct KvPubSub : public EvSocket {
   uint16_t     ctx_id,                 /* my endpoint */
-               flags;
+               flags;                  /* KvPubSubFlags above */
   uint32_t     pad;
   uint64_t     seed1, seed2,           /* seeds of the shm keys */
                session_id,             /* session id of the my endpoint */
@@ -209,7 +213,7 @@ struct KvPubSub : public EvSocket {
                            rt_wrk,     /* wrk for rt_kctx kv */
                            wrkq;       /* for pending sends to shm */
   kv::DLinkList<KvMsgList> sendq;      /* sendq is to the network */
-  kv::DLinkList<KvSubNotifyList> sub_notifyq; /* notify for local subsribes */
+  kv::DLinkList<KvSubNotifyList> sub_notifyq; /* notify for subscribes */
 
   void * operator new( size_t, void *ptr ) { return ptr; }
   KvPubSub( EvPoll &p,  int sock,  void *mcptr,  const char *mc,  size_t mclen )
@@ -228,7 +232,6 @@ struct KvPubSub : public EvSocket {
                                      this->seed2 );
   }
 
-  static const char * msg_type_string( uint8_t msg_type );
   static KvPubSub *create( EvPoll &p );
   bool register_mcast( bool activate );
   bool subscribe_mcast( const char *sub,  size_t len,  bool activate,
@@ -249,17 +252,17 @@ struct KvPubSub : public EvSocket {
   KvSubMsg *create_kvpsubmsg( uint32_t h,  const char *pattern,  size_t len,
                               const char *prefix,  uint8_t prefix_len,
                               char src_type,  KvMsgType mtype );
-  void notify_sub( uint32_t h,  const char *sub,  size_t len,
-                   uint32_t sub_id,  uint32_t rcnt,  char src_type,
-                   const char *rep = NULL,  size_t rlen = 0 );
-  void notify_unsub( uint32_t h,  const char *sub,  size_t len,
-                     uint32_t sub_id,  uint32_t rcnt,  char src_type );
-  void notify_psub( uint32_t h,  const char *pattern,  size_t len,
-                    const char *prefix,  uint8_t prefix_len,
-                    uint32_t sub_id,  uint32_t rcnt,  char src_type );
-  void notify_punsub( uint32_t h,  const char *pattern,  size_t len,
-                      const char *prefix,  uint8_t prefix_len,
-                      uint32_t sub_id,  uint32_t rcnt,  char src_type );
+  void do_sub( uint32_t h,  const char *sub,  size_t len,
+               uint32_t sub_id,  uint32_t rcnt,  char src_type,
+               const char *rep = NULL,  size_t rlen = 0 );
+  void do_unsub( uint32_t h,  const char *sub,  size_t len,
+                 uint32_t sub_id,  uint32_t rcnt,  char src_type );
+  void do_psub( uint32_t h,  const char *pattern,  size_t len,
+                const char *prefix,  uint8_t prefix_len,
+                uint32_t sub_id,  uint32_t rcnt,  char src_type );
+  void do_punsub( uint32_t h,  const char *pattern,  size_t len,
+                  const char *prefix,  uint8_t prefix_len,
+                  uint32_t sub_id,  uint32_t rcnt,  char src_type );
   void forward_sub( KvSubMsg &submsg );
   void process( bool use_prefetch );
   void process_shutdown( void );

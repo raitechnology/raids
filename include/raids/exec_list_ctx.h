@@ -40,9 +40,14 @@ struct ExecListCtx {
     if ( (this->ctx.kstatus = this->kctx.resize( &data, datalen )) == KEY_OK ) {
       this->x = new ( &this->tmp[ this->n++%2 ] ) LIST_CLASS( data, datalen );
       this->x->init( count, ndata );
-      this->ctx.type = LIST_TYPE;
-      this->ctx.is_new = true;
+      this->ctx.type   = LIST_TYPE;
+      this->ctx.flags |= EKF_IS_NEW;
     }
+    return this->ctx.kstatus == KEY_OK;
+  }
+
+  bool tombstone( void ) {
+    this->ctx.kstatus = this->kctx.tombstone();
     return this->ctx.kstatus == KEY_OK;
   }
 

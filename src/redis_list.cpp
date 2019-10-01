@@ -21,9 +21,10 @@ enum {
   DO_LSET      = 1<<3,
   DO_LPOP      = 1<<4,
   DO_RPOP      = 1<<5,
-  DO_LREM      = 1<<6,
-  DO_LTRIM     = 1<<7,
-  L_MUST_EXIST = 1<<8
+  DO_RPOPLPUSH = 1<<6,
+  DO_LREM      = 1<<7,
+  DO_LTRIM     = 1<<8,
+  L_MUST_EXIST = 1<<9
 };
 
 ExecStatus
@@ -213,10 +214,26 @@ RedisExec::exec_rpop( EvKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::exec_rpoplpush( EvKeyCtx &/*ctx*/ )
+RedisExec::exec_rpoplpush( EvKeyCtx &ctx )
 {
   /* RPOPLPUSH src dest */
-  return ERR_BAD_CMD;
+  if ( ctx.argn == 1 )
+    return this->do_pop( ctx, DO_RPOPLPUSH );
+  if ( this->key_cnt != this->key_done + 1 )
+    return EXEC_DEPENDS;
+
+  const char * value    = this->strm.out_buf;
+  size_t       i        = 0,
+               valuelen = this->strm.sz;
+  for ( i = 4; i + 2 < valuelen; i++ )
+    if ( value[ i - 2 ] == '\r' )
+      break;
+  if ( i + 2 < valuelen ) {
+    value    = &value[ i ];
+    valuelen = valuelen - ( i + 2 );
+    return this->do_push( ctx, DO_RPOPLPUSH, value, valuelen );
+  }
+  return EXEC_ABORT_SEND_NIL;
 }
 
 ExecStatus
@@ -234,13 +251,12 @@ RedisExec::exec_rpushx( EvKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::do_push( EvKeyCtx &ctx,  int flags )
+RedisExec::do_push( EvKeyCtx &ctx,  int flags,
+                    const char *value,  size_t valuelen )
 {
   ExecListCtx<ListData, MD_LIST> list( *this, ctx );
-  const char * value    = NULL,
-             * piv      = NULL;
-  size_t       valuelen = 0,
-               pivlen   = 0,
+  const char * piv      = NULL;
+  size_t       pivlen   = 0,
                argi     = 3;
   int64_t      pos      = 0;
   size_t       count,
@@ -293,8 +309,10 @@ RedisExec::do_push( EvKeyCtx &ctx,  int flags )
       break;
   }
   for (;;) {
-    switch ( flags & ( DO_LPUSH | DO_RPUSH | DO_LINSERT | DO_LSET ) ) {
+    switch ( flags & ( DO_LPUSH | DO_RPUSH | DO_LINSERT | DO_LSET |
+                       DO_RPOPLPUSH ) ) {
       case DO_LPUSH:
+      case DO_RPOPLPUSH:
         lstatus = list.x->lpush( value, valuelen );
         break;
       case DO_RPUSH:
@@ -312,7 +330,8 @@ RedisExec::do_push( EvKeyCtx &ctx,  int flags )
         return ERR_KV_STATUS;
       continue;
     }
-    switch ( flags & ( DO_LPUSH | DO_RPUSH | DO_LINSERT | DO_LSET ) ) {
+    switch ( flags & ( DO_LPUSH | DO_RPUSH | DO_LINSERT | DO_LSET |
+                       DO_RPOPLPUSH ) ) {
       case DO_LPUSH:
       case DO_RPUSH:
         if ( this->argc > argi ) {
@@ -323,14 +342,20 @@ RedisExec::do_push( EvKeyCtx &ctx,  int flags )
         /* FALLTHRU */
       case DO_LINSERT:
         if ( lstatus == LIST_OK ) {
-          ctx.ival = list.x->count();
+          ctx.ival   = list.x->count();
+          ctx.flags |= EKF_KEYSPACE_EVENT;
           return EXEC_SEND_INT;
         }
         return EXEC_SEND_NIL;
       case DO_LSET:
-        if ( lstatus == LIST_OK )
+        if ( lstatus == LIST_OK ) {
+          ctx.flags |= EKF_KEYSPACE_EVENT;
           return EXEC_SEND_OK;
+        }
         return ERR_BAD_RANGE;
+      case DO_RPOPLPUSH:
+        ctx.flags |= EKF_KEYSPACE_EVENT;
+        return EXEC_OK;
     }
   }
 }
@@ -364,11 +389,13 @@ RedisExec::do_pop( EvKeyCtx &ctx,  int flags )
     default:           return ERR_KV_STATUS;
     case KEY_NO_VALUE: return ERR_BAD_TYPE;
     case KEY_IS_NEW:
-      switch ( flags & ( DO_LPOP | DO_RPOP | DO_LREM | DO_LTRIM ) ) {
+      switch ( flags & ( DO_LPOP | DO_RPOP | DO_RPOPLPUSH |
+                         DO_LREM | DO_LTRIM ) ) {
         case DO_LPOP:
-        case DO_RPOP:  break;
-        case DO_LREM:  return EXEC_SEND_ZERO;
-        case DO_LTRIM: return EXEC_SEND_OK;
+        case DO_RPOP:      break;
+        case DO_RPOPLPUSH: return EXEC_ABORT_SEND_NIL;
+        case DO_LREM:      return EXEC_SEND_ZERO;
+        case DO_LTRIM:     return EXEC_SEND_OK;
       }
       return EXEC_SEND_NIL;
     case KEY_OK:
@@ -376,9 +403,11 @@ RedisExec::do_pop( EvKeyCtx &ctx,  int flags )
         return ERR_KV_STATUS;
       break;
   }
-  switch ( flags & ( DO_LPOP | DO_RPOP | DO_LREM | DO_LTRIM ) ) {
-    case DO_LPOP: lstatus = list.x->lpop( lv ); break;
-    case DO_RPOP: lstatus = list.x->rpop( lv ); break;
+  /* XXX: need to delete list if empty */
+  switch ( flags & ( DO_LPOP | DO_RPOP | DO_RPOPLPUSH | DO_LREM | DO_LTRIM ) ) {
+    case DO_LPOP:      lstatus = list.x->lpop( lv ); break;
+    case DO_RPOP:
+    case DO_RPOPLPUSH: lstatus = list.x->rpop( lv ); break;
     case DO_LREM:
       cnt = 0;
       if ( ival < 0 ) {
@@ -399,7 +428,8 @@ RedisExec::do_pop( EvKeyCtx &ctx,  int flags )
           cnt++;
         } while ( --ival != 0 );
       }
-      ctx.ival = cnt;
+      if ( (ctx.ival = cnt) > 0 )
+        ctx.flags |= EKF_KEYSPACE_EVENT;
       return EXEC_SEND_INT;
 
     case DO_LTRIM:
@@ -411,14 +441,34 @@ RedisExec::do_pop( EvKeyCtx &ctx,  int flags )
       start = min<int64_t>( cnt, max<int64_t>( 0, start ) );
       stop = min<int64_t>( cnt, max<int64_t>( 0, stop + 1 ) );
       stop = cnt - stop;
-      list.x->ltrim( start );
-      list.x->rtrim( stop );
+
+      ctx.flags |= EKF_KEYSPACE_EVENT; /* gen event even when no elems are rm */
+      if ( start > 0 || stop > 0 ) {
+        if ( start > 0 )
+          list.x->ltrim( start );
+        if ( stop > 0 )
+          list.x->rtrim( stop );
+        if ( start + stop >= (int64_t) cnt ) {
+          ctx.flags |= EKF_KEYSPACE_DEL;
+          if ( ! list.tombstone() )
+            return ERR_KV_STATUS;
+        }
+      }
       return EXEC_SEND_OK;
   }
   /* lpop & rpop */
-  if ( lstatus == LIST_NOT_FOUND ) /* success */
+  if ( lstatus == LIST_NOT_FOUND ) { /* success */
+    if ( ( flags & DO_RPOPLPUSH ) != 0 )
+      return EXEC_ABORT_SEND_NIL;
     return EXEC_SEND_NIL;
+  }
   this->strm.sz += this->send_concat_string( lv.data, lv.sz, lv.data2, lv.sz2 );
+  ctx.flags |= EKF_KEYSPACE_EVENT;
+  if ( list.x->count() == 0 ) {
+    ctx.flags |= EKF_KEYSPACE_DEL;
+    if ( ! list.tombstone() )
+      return ERR_KV_STATUS;
+  }
   return EXEC_OK;
 }
 

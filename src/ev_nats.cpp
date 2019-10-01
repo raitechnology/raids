@@ -429,8 +429,8 @@ EvNatsService::add_sub( void )
     }
     else {
       uint32_t rcnt = this->poll.sub_route.add_route( xsubj.hash(), this->fd );
-      this->poll.pubsub->notify_sub( xsubj.hash(), xsubj.str, xsubj.len,
-                                     this->fd, rcnt, 'N' );
+      this->poll.notify_sub( xsubj.hash(), xsubj.str, xsubj.len,
+                             this->fd, rcnt, 'N' );
     }
   }
 #if 0
@@ -472,8 +472,8 @@ EvNatsService::add_wild( NatsStr &xsubj )
       return;
     }
     rcnt = this->poll.sub_route.add_pattern_route( h, this->fd, cvt.prefixlen );
-    this->poll.pubsub->notify_psub( h, buf, cvt.off, xsubj.str, cvt.prefixlen,
-                                    this->fd, rcnt, 'N' );
+    this->poll.notify_psub( h, buf, cvt.off, xsubj.str, cvt.prefixlen,
+                            this->fd, rcnt, 'N' );
   }
 }
 
@@ -506,8 +506,8 @@ EvNatsService::rem_wild( NatsStr &xsubj )
     h = kv_crc_c( xsubj.str, cvt.prefixlen,
                   this->poll.sub_route.prefix_seed( cvt.prefixlen ) );
     rcnt = this->poll.sub_route.del_pattern_route( h, this->fd, cvt.prefixlen );
-    this->poll.pubsub->notify_punsub( h, buf, cvt.off, xsubj.str, cvt.prefixlen,
-                                      this->fd, rcnt, 'N' );
+    this->poll.notify_punsub( h, buf, cvt.off, xsubj.str, cvt.prefixlen,
+                              this->fd, rcnt, 'N' );
     this->map.rem_wild( h, xsubj );
   }
 }
@@ -533,8 +533,8 @@ EvNatsService::rem_sid( uint32_t max_msgs )
           uint32_t rcnt = 0;
           if ( this->map.sub_map.find_by_hash( h ) == NULL )
             rcnt = this->poll.sub_route.del_route( h, this->fd );
-          this->poll.pubsub->notify_unsub( h, xsubj.str, xsubj.len,
-                                           this->fd, rcnt, 'N' );
+          this->poll.notify_unsub( h, xsubj.str, xsubj.len,
+                                   this->fd, rcnt, 'N' );
         }
       }
       if ( status != NATS_OK ) {
@@ -580,8 +580,8 @@ EvNatsService::rem_all_sub( void )
       this->rem_wild( xsubj );
     else {
       uint32_t rcnt = this->poll.sub_route.del_route( rt->hash, this->fd );
-      this->poll.pubsub->notify_unsub( rt->hash, xsubj.str, xsubj.len,
-                                       this->fd, rcnt, 'N' );
+      this->poll.notify_unsub( rt->hash, xsubj.str, xsubj.len,
+                               this->fd, rcnt, 'N' );
     }
   }
 }
@@ -625,8 +625,8 @@ EvNatsService::on_msg( EvPublish &pub )
             /* check for duplicate hashes */
             if ( this->map.sub_map.find_by_hash( h ) == NULL )
               rcnt = this->poll.sub_route.del_route( h, this->fd );
-            this->poll.pubsub->notify_unsub( h, xsubj.str, xsubj.len,
-                                             this->fd, rcnt, 'N' );
+            this->poll.notify_unsub( h, xsubj.str, xsubj.len,
+                                     this->fd, rcnt, 'N' );
           }
         }
       }

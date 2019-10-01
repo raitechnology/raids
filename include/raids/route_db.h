@@ -92,9 +92,25 @@ typedef struct kv::PrioQueue<RoutePublishData *, RoutePublishData::is_greater>
 
 struct KvPrefHash;
 struct RoutePublish {
+  int32_t keyspace_cnt,
+          keyevent_cnt;
+  uint8_t key_flags;
   bool forward_msg( EvPublish &pub,  uint32_t *rcount_total,  uint8_t pref_cnt,
                     KvPrefHash *ph );
   bool hash_to_sub( uint32_t r,  uint32_t h,  char *key,  size_t &keylen );
+  void update_keyspace_count( const char *sub,  size_t len,  int add );
+  void notify_sub( uint32_t h,  const char *sub,  size_t len,
+                   uint32_t sub_id,  uint32_t rcnt,  char src_type,
+                   const char *rep = NULL,  size_t rlen = 0 );
+  void notify_unsub( uint32_t h,  const char *sub,  size_t len,
+                     uint32_t sub_id,  uint32_t rcnt,  char src_type );
+  void notify_psub( uint32_t h,  const char *pattern,  size_t len,
+                    const char *prefix,  uint8_t prefix_len,
+                    uint32_t sub_id,  uint32_t rcnt,  char src_type );
+  void notify_punsub( uint32_t h,  const char *pattern,  size_t len,
+                      const char *prefix,  uint8_t prefix_len,
+                      uint32_t sub_id,  uint32_t rcnt,  char src_type );
+  RoutePublish() : keyspace_cnt( 0 ), keyevent_cnt( 0 ), key_flags( 0 ) {}
 };
 
 struct RouteDB {

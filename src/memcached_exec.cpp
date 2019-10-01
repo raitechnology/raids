@@ -1223,17 +1223,17 @@ MemcachedExec::exec_key_fetch( EvKeyCtx &ctx,  bool force_read )
 {
   if ( test_read_only( this->msg->cmd ) || force_read ) {
     ctx.kstatus = this->kctx.find( &this->wrk );
-    ctx.is_read = true;
+    ctx.flags  |= EKF_IS_READ_ONLY;
   }
   else if ( test_mutator( this->msg->cmd ) != 0 ) {
     ctx.kstatus = this->kctx.acquire( &this->wrk );
-    ctx.is_new = ( ctx.kstatus == KEY_IS_NEW );
-    ctx.is_read = false;
+    ctx.flags  |= ( ( ctx.kstatus == KEY_IS_NEW ) ? EKF_IS_NEW : 0 );
+    ctx.flags  &= ~EKF_IS_READ_ONLY;
   }
   else {
     ctx.kstatus = KEY_NO_VALUE;
     ctx.status  = MEMCACHED_BAD_CMD;
-    ctx.is_read = true;
+    ctx.flags  |= EKF_IS_READ_ONLY;
   }
   if ( ctx.kstatus == KEY_OK ) /* not new and is found */
     ctx.type = this->kctx.get_type();
@@ -1247,6 +1247,7 @@ MemcachedExec::exec_key_continue( EvKeyCtx &ctx )
     ctx.status = MEMCACHED_BAD_PAD;
     goto skip_key;
   }
+  /* there is no MEMCACHED_DEPENDS case yet */
   if ( ctx.status != MEMCACHED_CONTINUE && ctx.status != MEMCACHED_DEPENDS ) {
     if ( ++this->key_done < this->key_cnt )
       return MEMCACHED_CONTINUE;
@@ -1300,8 +1301,8 @@ MemcachedExec::exec_key_continue( EvKeyCtx &ctx )
         break;
     }
     /* set the type when key is new */
-    if ( ! ctx.is_read ) {
-      if ( ctx.is_new && ctx.status <= MEMCACHED_SUCCESS ) {
+    if ( ! ctx.is_read_only() ) {
+      if ( ctx.is_new() && ctx.status <= MEMCACHED_SUCCESS ) {
         uint8_t type;
         if ( (type = ctx.type) == MD_NODATA )
           type = MD_STRING;
@@ -1397,7 +1398,7 @@ MemcachedExec::exec_store( EvKeyCtx &ctx )
 
   switch ( this->get_key_write( ctx, MD_STRING ) ) {
     case KEY_NO_VALUE: /* overwrite key */
-      ctx.is_new = true;
+      ctx.flags |= EKF_IS_NEW;
       ctx.type   = MD_STRING;
       /* FALLTHRU */
     case KEY_OK:
@@ -1405,7 +1406,7 @@ MemcachedExec::exec_store( EvKeyCtx &ctx )
       if ( (flags & ( MC_DO_CAS | MC_MUST_NOT_EXIST | MC_MUST_EXIST )) != 0 ) {
         static const int not_found = 1, not_stored = 2, exists = 3;
         int status = 0;
-        if ( ctx.is_new ) {
+        if ( ctx.is_new() ) {
           if ( ( flags & MC_MUST_EXIST ) != 0 ) {
             if ( ( flags & MC_DO_CAS ) != 0 ) {
               this->stat.cas_miss++;
@@ -1416,7 +1417,7 @@ MemcachedExec::exec_store( EvKeyCtx &ctx )
             }
           }
         }
-        /* if ( ! ctx.is_new ) */
+        /* if ( ! ctx.is_new() ) */
         else if ( ( flags & MC_MUST_NOT_EXIST ) != 0 )
           status = not_stored;
         if ( status == 0 && ( flags & MC_DO_CAS ) != 0 ) {
@@ -1516,7 +1517,7 @@ MemcachedExec::exec_bin_store( EvKeyCtx &ctx )
 
   switch ( this->get_key_write( ctx, MD_STRING ) ) {
     case KEY_NO_VALUE: /* overwrite key */
-      ctx.is_new = true;
+      ctx.flags |= EKF_IS_NEW;
       ctx.type   = MD_STRING;
       /* FALLTHRU */
     case KEY_OK:
@@ -1524,7 +1525,7 @@ MemcachedExec::exec_bin_store( EvKeyCtx &ctx )
       if ( (flags & ( MC_DO_CAS | MC_MUST_NOT_EXIST | MC_MUST_EXIST )) != 0 ) {
         static const int not_found = 1, not_stored = 2, exists = 3;
         int status = 0;
-        if ( ctx.is_new ) {
+        if ( ctx.is_new() ) {
           if ( ( flags & MC_MUST_EXIST ) != 0 ) {
             if ( ( flags & MC_DO_CAS ) != 0 ) {
               this->stat.cas_miss++;
@@ -1534,7 +1535,7 @@ MemcachedExec::exec_bin_store( EvKeyCtx &ctx )
               status = not_stored;
           }
         }
-        /* if ( ! ctx.is_new ) */
+        /* if ( ! ctx.is_new() ) */
         else if ( ( flags & MC_MUST_NOT_EXIST ) != 0 )
           status = exists;
         if ( status == 0 && ( flags & MC_DO_CAS ) != 0 ) {

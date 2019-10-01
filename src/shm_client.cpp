@@ -69,7 +69,7 @@ EvShmClient::init_exec( void )
   if ( ::pipe2( this->pfd, O_NONBLOCK ) < 0 )
     return -1;
   this->exec = new ( e ) RedisExec( *this->map, this->ctx_id, *this,
-                                    this->poll.sub_route, *this->poll.pubsub );
+                                    this->poll.sub_route );
   this->fd = this->pfd[ 0 ];
   this->exec->sub_id = this->fd;
   this->poll.add_sock( this );

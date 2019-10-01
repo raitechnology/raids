@@ -254,8 +254,15 @@ RedisExec::do_swrite( EvKeyCtx &ctx,  int flags )
       case DO_SMOVE:
         if ( ctx.argn == 1 ) { /* src */
           sstatus = set.x->srem( arg, arglen, pos );
-          if ( sstatus == SET_OK )
+          if ( sstatus == SET_OK ) {
+            ctx.flags |= EKF_KEYSPACE_EVENT;
+            if ( set.x->hcount() == 0 ) {
+              ctx.flags |= EKF_KEYSPACE_DEL;
+              if ( ! set.tombstone() )
+                return ERR_KV_STATUS;
+            }
             return EXEC_OK;
+          }
           return EXEC_ABORT_SEND_ZERO;
         }
         /* dest */
@@ -276,10 +283,23 @@ RedisExec::do_swrite( EvKeyCtx &ctx,  int flags )
         return ERR_KV_STATUS;
       continue;
     }
-    if ( ( flags & DO_SMOVE ) != 0 )
+    if ( ( flags & DO_SMOVE ) != 0 ) {
+      ctx.flags |= EKF_KEYSPACE_EVENT;
       return EXEC_SEND_ONE;
-    if ( this->argc == argi )
+    }
+    if ( this->argc == argi ) {
+      if ( ctx.ival > 0 ) {
+        ctx.flags |= EKF_KEYSPACE_EVENT;
+        if ( ( flags & DO_SREM ) != 0 ) {
+          if ( set.x->hcount() == 0 ) {
+            ctx.flags |= EKF_KEYSPACE_DEL;
+            if ( ! set.tombstone() )
+              return ERR_KV_STATUS;
+          }
+        }
+      }
       return EXEC_SEND_INT;
+    }
     if ( ! this->msg.get_arg( argi++, arg, arglen ) )
       return ERR_BAD_ARGS;
     pos.init( arg, arglen );
@@ -419,6 +439,12 @@ RedisExec::do_smultiscan( EvKeyCtx &ctx,  int flags,  ScanArgs *sa )
           break;
         set.x->spopn( j + 1 );
       }
+    }
+    ctx.flags |= EKF_KEYSPACE_EVENT;
+    if ( set.x->hcount() == 0 ) {
+      ctx.flags |= EKF_KEYSPACE_DEL;
+      if ( ! set.tombstone() )
+        return ERR_KV_STATUS;
     }
   }
 
@@ -573,9 +599,11 @@ RedisExec::do_ssetop( EvKeyCtx &ctx,  int flags )
   }
   /* cmd has a dest key, store the result and return the set member count */
   switch ( this->get_key_write( ctx, MD_SET ) ) {
-    case KEY_NO_VALUE: /* overwrite key */
-      ctx.is_new = true;
+    case KEY_NO_VALUE: /* overwrite key (gen del event?)*/
+#if 0
+      ctx.flags |= EKF_IS_NEW;
       ctx.type   = MD_SET;
+#endif
       /* FALLTHRU */
     case KEY_IS_NEW:
     case KEY_OK:
@@ -584,7 +612,7 @@ RedisExec::do_ssetop( EvKeyCtx &ctx,  int flags )
         ::memcpy( data, set->listp, set->size );
         ctx.ival   = set->hcount();
         ctx.type   = MD_SET;
-        ctx.is_new = true;
+        ctx.flags |= EKF_IS_NEW | EKF_KEYSPACE_EVENT;
         return EXEC_SEND_INT;
       }
     /* FALLTHRU */

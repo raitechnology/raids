@@ -64,13 +64,13 @@ struct PingTest : public EvShmSvc, public KvSubNotifyList {
       /* if using inbox for reply */
       if ( this->active_ping && this->ilen > 0 ) {
         rcnt = this->poll.sub_route.add_route( this->ih, this->fd );
-        this->poll.pubsub->notify_sub( this->ih, this->ibx, this->ilen,
-                                       this->fd, rcnt, 'K' );
+        this->poll.notify_sub( this->ih, this->ibx, this->ilen,
+                               this->fd, rcnt, 'K' );
       }
       else {
         rcnt = this->poll.sub_route.add_route( this->h, this->fd );
-        this->poll.pubsub->notify_sub( this->h, this->sub, this->len,
-                                       this->fd, rcnt, 'K' );
+        this->poll.notify_sub( this->h, this->sub, this->len,
+                               this->fd, rcnt, 'K' );
       }
     }
   }
@@ -80,13 +80,13 @@ struct PingTest : public EvShmSvc, public KvSubNotifyList {
     if ( this->round_trip || ! this->active_ping ) {
       if ( this->active_ping && this->ilen > 0 ) {
         rcnt = this->poll.sub_route.del_route( this->ih, this->fd );
-        this->poll.pubsub->notify_unsub( this->ih, this->ibx, this->ilen,
-                                         this->fd, rcnt, 'K' );
+        this->poll.notify_unsub( this->ih, this->ibx, this->ilen,
+                                 this->fd, rcnt, 'K' );
       }
       else {
         rcnt = this->poll.sub_route.del_route( this->h, this->fd );
-        this->poll.pubsub->notify_unsub( this->h, this->sub, this->len,
-                                         this->fd, rcnt, 'K' );
+        this->poll.notify_unsub( this->h, this->sub, this->len,
+                                 this->fd, rcnt, 'K' );
       }
     }
   }
