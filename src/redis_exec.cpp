@@ -3,12 +3,11 @@
 #include <string.h>
 #include <stdint.h>
 #include <unistd.h>
-#include <ctype.h>
 #include <sys/time.h>
 #include <raikv/util.h>
 #include <raids/redis_exec.h>
 #include <raids/redis_cmd_db.h>
-#include <raids/ev_publish.h>
+#include <raids/redis_keyspace.h>
 #include <raids/route_db.h>
 #include <raimd/md_types.h>
 
@@ -47,10 +46,12 @@ RedisExec::release( void )
 {
   if ( this->multi != NULL )
     this->discard_multi();
-  if ( ! this->sub_tab.is_null() || ! this->pat_tab.is_null() ) {
+  if ( ! this->sub_tab.is_null() || ! this->pat_tab.is_null() ||
+       ! this->continue_tab.is_null() ) {
     this->rem_all_sub();
     this->sub_tab.release();
     this->pat_tab.release();
+    this->continue_tab.release();
   }
   this->wrk.release_all();
 }
@@ -270,7 +271,7 @@ RedisExec::next_key( int &i )
 {
   /* step through argc until last key */
   i += this->step;
-  if ( this->last < 0 && (size_t) i < this->argc )
+  if ( this->last < 0 && i < (int) this->argc + (int) this->last + 1 )
     return true;
   if ( test_cmd_mask( this->cmd_flags, CMD_MOVABLEKEYS_FLAG ) ) {
     while ( ( ( (uint64_t) 1 << i ) & this->step_mask ) == 0 ) {
@@ -690,20 +691,37 @@ RedisExec::exec_key_continue( EvKeyCtx &ctx )
     if ( ctx.status != ERR_KV_STATUS || ctx.kstatus != KEY_MUTATED )
       break;
   }
-  if ( ++this->key_done < this->key_cnt ) {
-    if ( exec_status_success( ctx.status ) )
+  /* if command is done */
+  if ( ++this->key_done == this->key_cnt ) {
+    /* if all keys are blocked, waiting for some event */
+    if ( ctx.status == EXEC_BLOCKED ) {
+      ctx.status = this->save_blocked_cmd();
+      if ( ctx.status == EXEC_OK )
+        return EXEC_SUCCESS;
+      return (ExecStatus) ctx.status;
+    }
+    /* all keys complete, mget is special */
+    if ( this->cmd == MGET_CMD ) {
+      if ( exec_status_success( ctx.status ) ) {
+        this->array_string_result();
+        goto success;
+      }
+    }
+  }
+  /* command continues to next key */
+  else {
+    /* if status is still good, continue to process next key */
+    if ( ctx.status <= EXEC_BLOCKED )
       return EXEC_CONTINUE;
+    /* other status values finish the command */
     for ( uint32_t i = 0; i < this->key_cnt; i++ )
       this->keys[ i ]->status = ctx.status;
   }
-  else if ( test_cmd_mask( this->cmd_flags, CMD_MULTI_KEY_ARRAY_FLAG ) ) {
-    if ( exec_status_success( ctx.status ) ) {
-      this->array_string_result();
-      goto success;
-    }
-  }
+  /* if ctx.status outputs data */
   switch ( ctx.status ) {
     case EXEC_OK:           break;
+    case EXEC_BLOCKED:      break;
+    case EXEC_SEND_DATA:    break;
     case EXEC_SEND_OK:      this->strm.append( ok, ok_sz );            break;
     case EXEC_ABORT_SEND_NIL:
     case EXEC_SEND_NIL:     this->strm.append( nil, nil_sz );          break;
@@ -716,273 +734,15 @@ RedisExec::exec_key_continue( EvKeyCtx &ctx )
     case EXEC_SEND_INT:     this->send_int();                          break;
     default:                this->send_err( ctx.status, ctx.kstatus ); break;
   }
+  /* wait for the last key to be run */
   if ( this->key_done < this->key_cnt )
     return EXEC_CONTINUE;
 success:;
+  /* publish keyspace events */
   if ( ( this->key_flags & this->sub_route.rte.key_flags &
          EKF_KEYSPACE_EVENT ) != 0 )
-    this->pub_keyspace_events();
+    RedisKeyspace::pub_keyspace_events( *this );
   return EXEC_SUCCESS;
-}
-
-struct RedisKeyspace {
-
-  char         kspc[ 24 ],
-               kevt[ 24 ];
-  RedisExec  & exec;
-  size_t       off;
-  const char * key;
-  size_t       keylen;
-  const char * evt;
-  size_t       evtlen;
-  char       * subj;
-  size_t       alloc_len;
-
-  RedisKeyspace( RedisExec &e ) : exec( e ), subj( 0 ), alloc_len( 0 ) {
-    uint8_t db = e.kctx.db_num;
-    static const char kspc_prefix[] = "__keyspace@";
-    this->off = sizeof( kspc_prefix ) - 1;
-    /* construct __keyspace@#__:key */
-    ::memcpy( this->kspc, kspc_prefix, this->off );
-    if ( db > 9 ) {
-      if ( db > 99 ) {
-        this->kspc[ this->off++ ] = '0' + ( db / 100 );
-        db %= 100;
-      }
-      this->kspc[ this->off++ ] = '0' + ( db / 10 );
-      db %= 10;
-    }
-    this->kspc[ this->off++ ] = '0' + db;
-    this->kspc[ this->off++ ] = '_';
-    this->kspc[ this->off++ ] = '_';
-    this->kspc[ this->off++ ] = ':';
-    this->kspc[ this->off ] = '\0';
-    ::memcpy( this->kevt, this->kspc, this->off + 1 );
-    ::memcpy( &this->kevt[ 5 ], "event", 5 );
-  }
-
-  bool alloc_subj( size_t subj_len ) {
-    if ( this->alloc_len < subj_len ) {
-      size_t len = this->off + this->keylen + this->evtlen;
-      char * tmp = this->exec.strm.alloc_temp( len + 1 );
-      if ( tmp == NULL )
-        return false;
-      this->subj = tmp;
-      this->alloc_len = len;
-    }
-    return true;
-  }
-  /* publish __keyspace@N__:key <- event */
-  void fwd_keyspace( void ) {
-    size_t subj_len = this->off + this->keylen;
-    if ( ! this->alloc_subj( subj_len ) )
-      return;
-    ::memcpy( this->subj, this->kspc, this->off );
-    ::memcpy( &this->subj[ this->off ], this->key, this->keylen );
-    this->subj[ subj_len ] = '\0';
-
-    EvPublish pub( this->subj, subj_len, NULL, 0, this->evt, this->evtlen,
-                   this->exec.sub_id, kv_crc_c( this->subj, subj_len, 0 ),
-                   NULL, 0, MD_STRING, ':' );
-    /*printf( "%s <- %s\n", this->subj, this->evt );*/
-    this->exec.sub_route.rte.forward_msg( pub, NULL, 0, NULL );
-  }
-  /* publish __keyevent@N__:event <- key */
-  void fwd_keyevent( void ) {
-    size_t subj_len = this->off + this->evtlen;
-    if ( ! this->alloc_subj( subj_len ) )
-      return;
-    ::memcpy( this->subj, this->kevt, this->off );
-    ::memcpy( &this->subj[ this->off ], this->evt, this->evtlen );
-    this->subj[ subj_len ] = '\0';
-
-    EvPublish pub( this->subj, subj_len, NULL, 0, this->key, this->keylen,
-                   this->exec.sub_id, kv_crc_c( this->subj, subj_len, 0 ),
-                   NULL, 0, MD_STRING, ';' );
-    /*printf( "%s <- %s\n", this->subj, this->key );*/
-    this->exec.sub_route.rte.forward_msg( pub, NULL, 0, NULL );
-  }
-};
-
-void
-RedisExec::pub_keyspace_events( void )
-{
-  /* translate cmd into an event */
-  const char * e      = NULL;
-  size_t       elen   = 0;
-  uint8_t      key_fl = this->sub_route.rte.key_flags | EKF_KEYSPACE_DEL;
-#define EVT( STR ) e = STR; elen = sizeof( STR ) - 1
-  switch ( this->cmd ) {
-    default:                   break;
-    case DEL_CMD:              EVT( "del" ); break;
-    case BRPOPLPUSH_CMD:       /* rpop, lpush */
-    case RPOPLPUSH_CMD:
-    case RENAME_CMD:           break; /* rename_from, rename_to */
-    case EXPIRE_CMD:           EVT( "expire" ); break;
-    case BITFIELD_CMD:         EVT( "setbit" ); break;
-    case BITOP_CMD:
-    case GETSET_CMD:
-    case MSET_CMD:
-    case MSETNX_CMD:
-    case PSETEX_CMD:
-    case SETEX_CMD:
-    case SETNX_CMD:
-    case SET_CMD:              EVT( "set" ); break;
-    case SETRANGE_CMD:         EVT( "setrange" ); break;
-    case DECR_CMD:
-    case DECRBY_CMD:
-    case INCR_CMD:
-    case INCRBY_CMD:           EVT( "incrby" ); break;
-    case INCRBYFLOAT_CMD:      EVT( "incrbyfloat" ); break;
-    case APPEND_CMD:           EVT( "append" ); break;
-    case LPUSH_CMD:
-    case LPUSHX_CMD:           EVT( "lpush" ); break;
-    case BLPOP_CMD:
-    case LPOP_CMD:             EVT( "lpop" ); break;
-    case RPUSH_CMD:
-    case RPUSHX_CMD:           EVT( "rpush" ); break;
-    case BRPOP_CMD:
-    case RPOP_CMD:             EVT( "rpop" ); break;
-    case LINSERT_CMD:          EVT( "linsert" ); break;
-    case LSET_CMD:             EVT( "lset" ); break;
-    case LTRIM_CMD:            EVT( "ltrim" ); break;
-    case HSETNX_CMD:
-    case HMSET_CMD:
-    case HSET_CMD:             EVT( "hset" ); break;
-    case HINCRBY_CMD:          EVT( "hincrby" ); break;
-    case HINCRBYFLOAT_CMD:     EVT( "hincrbyfloat" ); break;
-    case HDEL_CMD:             EVT( "hdel" ); break;
-    case SMOVE_CMD:
-    case SADD_CMD:             EVT( "sadd" ); break;
-    case SREM_CMD:             EVT( "srem" ); break;
-    case SPOP_CMD:             EVT( "spop" ); break;
-    case SINTERSTORE_CMD:      EVT( "sinterstore" ); break;
-    case SUNIONSTORE_CMD:      EVT( "sunionstore" ); break;
-    case SDIFFSTORE_CMD:       EVT( "sdiffstore" ); break;
-    case ZINCRBY_CMD:          EVT( "zincrby" ); break;
-    case GEOADD_CMD:
-    case ZADD_CMD:             EVT( "zadd" ); break;
-    case ZREM_CMD:             EVT( "zrem" ); break;
-    case ZREMRANGEBYLEX_CMD:   EVT( "zremrangebylex" ); break;
-    case ZREMRANGEBYRANK_CMD:  EVT( "zremrangebyrank" ); break;
-    case ZREMRANGEBYSCORE_CMD: EVT( "zremrangebyscore" ); break;
-    case ZINTERSTORE_CMD:      EVT( "zinterstore" ); break;
-    case ZUNIONSTORE_CMD:      EVT( "zunionstore" ); break;
-  }
-#undef EVT
-  if ( e != NULL ) {
-    RedisKeyspace ev( *this );
-    if ( this->key_cnt == 1 ) {
-      uint8_t fl = this->key->flags & key_fl;
-      ev.key    = (const char *) this->key->kbuf.u.buf;
-      ev.keylen = this->key->kbuf.keylen - 1;
-      ev.evt    = e;
-      ev.evtlen = elen;
-      if ( ( fl & EKF_KEYSPACE_FWD ) != 0 )
-        ev.fwd_keyspace();
-      if ( ( fl & EKF_KEYEVENT_FWD ) != 0 )
-        ev.fwd_keyevent();
-
-      if ( ( fl & EKF_KEYSPACE_DEL ) != 0 ) {
-        ev.evt    = "del";
-        ev.evtlen = 3;
-        if ( ( fl & EKF_KEYSPACE_FWD ) != 0 )
-          ev.fwd_keyspace();
-        if ( ( fl & EKF_KEYEVENT_FWD ) != 0 )
-          ev.fwd_keyevent();
-      }
-    }
-    else {
-      uint32_t i;
-      ev.evt    = e;
-      ev.evtlen = elen;
-      for ( i = 0; i < this->key_cnt; i++ ) {
-        uint8_t fl = this->keys[ i ]->flags & key_fl;
-        if ( ( fl & ( EKF_KEYSPACE_FWD | EKF_KEYEVENT_FWD ) ) != 0 ) {
-          ev.key    = (const char *) this->keys[ i ]->kbuf.u.buf;
-          ev.keylen = this->keys[ i ]->kbuf.keylen - 1;
-          if ( ( fl & EKF_KEYSPACE_FWD ) != 0 )
-            ev.fwd_keyspace();
-          if ( ( fl & EKF_KEYEVENT_FWD ) != 0 )
-            ev.fwd_keyevent();
-        }
-      }
-      if ( ( this->key_flags & EKF_KEYSPACE_DEL ) != 0 ) {
-        ev.evt    = "del";
-        ev.evtlen = 3;
-        for ( i = 0; i < this->key_cnt; i++ ) {
-          uint8_t fl = this->keys[ i ]->flags & key_fl;
-          if ( ( fl & ( EKF_KEYSPACE_FWD | EKF_KEYEVENT_FWD ) ) != 0 ) {
-            if ( ( fl & EKF_KEYSPACE_DEL ) != 0 ) {
-              ev.key    = (const char *) this->keys[ i ]->kbuf.u.buf;
-              ev.keylen = this->keys[ i ]->kbuf.keylen - 1;
-              if ( ( fl & EKF_KEYSPACE_FWD ) != 0 )
-                ev.fwd_keyspace();
-              if ( ( fl & EKF_KEYEVENT_FWD ) != 0 )
-                ev.fwd_keyevent();
-            }
-          }
-        }
-      }
-    }
-  }
-  else {
-    const char * first,
-               * second;
-    size_t       firstlen,
-                 secondlen;
-    switch ( cmd ) {
-      case RENAME_CMD:
-        first     = "rename_from";
-        firstlen  = 11;
-        second    = "rename_to";
-        secondlen = 9;
-        break;
-      case BRPOPLPUSH_CMD:       /* rpop, lpush */
-      case RPOPLPUSH_CMD:
-        first     = "rpop";
-        firstlen  = 4;
-        second    = "lpush";
-        secondlen = 5;
-        break;
-      default:
-        first     = NULL;
-        firstlen  = 0;
-        second    = NULL;
-        secondlen = 0;
-        break;
-    }
-    if ( first != NULL ) {
-      RedisKeyspace ev( *this );
-      uint8_t fl = this->key_flags & key_fl;
-      ev.key    = (const char *) this->keys[ 0 ]->kbuf.u.buf;
-      ev.keylen = this->keys[ 0 ]->kbuf.keylen - 1;
-      ev.evt    = first;
-      ev.evtlen = firstlen;
-      if ( ( fl & EKF_KEYSPACE_FWD ) != 0 )
-        ev.fwd_keyspace();
-      if ( ( fl & EKF_KEYEVENT_FWD ) != 0 )
-        ev.fwd_keyevent();
-
-      if ( ( fl & EKF_KEYSPACE_DEL ) != 0 ) {
-        ev.evt    = "del";
-        ev.evtlen = 3;
-        if ( ( fl & EKF_KEYSPACE_FWD ) != 0 )
-          ev.fwd_keyspace();
-        if ( ( fl & EKF_KEYEVENT_FWD ) != 0 )
-          ev.fwd_keyevent();
-      }
-
-      ev.key    = (const char *) this->keys[ 1 ]->kbuf.u.buf;
-      ev.keylen = this->keys[ 1 ]->kbuf.keylen - 1;
-      ev.evt    = second;
-      ev.evtlen = secondlen;
-      if ( ( fl & EKF_KEYSPACE_FWD ) != 0 )
-        ev.fwd_keyspace();
-      if ( ( fl & EKF_KEYEVENT_FWD ) != 0 )
-        ev.fwd_keyevent();
-    }
-  }
 }
 
 /* CLUSTER */
@@ -1396,6 +1156,7 @@ RedisExec::send_err( int status,  KeyStatus kstatus )
   switch ( (ExecStatus) status ) {
     case EXEC_OK:               break;
     case EXEC_SETUP_OK:         break;
+    case EXEC_SEND_DATA:        break;
     case EXEC_SEND_OK:          this->send_ok(); break;
     case EXEC_ABORT_SEND_NIL:
     case EXEC_SEND_NIL:         this->send_nil(); break;
@@ -1407,6 +1168,7 @@ RedisExec::send_err( int status,  KeyStatus kstatus )
     case EXEC_SEND_NEG_ONE:     this->send_neg_one(); break;
     case EXEC_SEND_ZERO_STRING: this->send_zero_string(); break;
     case EXEC_QUEUED:           this->send_queued(); break;
+    case EXEC_BLOCKED:          break;
     case EXEC_SUCCESS:          break;
     case EXEC_DEPENDS:          break;
     case EXEC_CONTINUE:         break;

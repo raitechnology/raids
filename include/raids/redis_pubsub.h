@@ -12,8 +12,8 @@ namespace rai {
 namespace ds {
 
 struct RedisSubRoute {
+  uint64_t msg_cnt;
   uint32_t hash;
-  uint32_t msg_cnt;
   uint16_t len;
   char     value[ 2 ];
   bool equals( const void *s,  uint16_t l ) const {
@@ -90,10 +90,10 @@ struct RedisSubMap {
 };
 
 struct RedisPatternRoute {
-  uint32_t                  hash,
-                            msg_cnt;
   pcre2_real_code_8       * re;
   pcre2_real_match_data_8 * md;
+  uint64_t                  msg_cnt;
+  uint32_t                  hash;
   uint16_t                  len;
   char                      value[ 2 ];
 
@@ -146,6 +146,91 @@ struct RedisPatternMap {
   }
   /* iterate next tab[ sub ] */
   bool next( RedisPatternRoutePos &pos ) {
+    pos.rt = this->tab.next( pos.v, pos.off );
+    return pos.rt != NULL;
+  }
+};
+
+struct RedisContinuePtr {
+  uint32_t hash,  /* hash of this subject */
+           len;   /* length of subject */
+  char   * value; /* the subject which notifies that a key is changed */
+};
+
+struct RedisContinueMsg {
+  void * operator new( size_t, void *ptr ) { return ptr; }
+  void operator delete( void *ptr ) { ::free( ptr ); }
+
+  RedisContinueMsg * next, /* list links if multiple continuations pending */
+                   * back;
+  RedisContinuePtr * ptr;     /* subject keys in this msg */
+  uint32_t           keycnt;  /* count of ptr[] */
+  bool               in_list; /* if in the cont_list */
+  char             * msg;     /* the redis msg ascii buffer */
+  size_t             msglen;  /* length of msg[] */
+
+  RedisContinueMsg( size_t ml,  uint32_t kc );
+};
+
+struct RedisContinue {
+  RedisContinueMsg * cm;         /* the continuation that has this key */
+  uint32_t           hash,       /* the hash of value */
+                     keynum,     /* which key this is 0 -> keycnt -1 */
+                     keycnt;     /* total keys */
+  uint16_t           len;        /* length of key subject */
+  char               value[ 2 ]; /* subject */
+  bool equals( const void *s,  uint16_t l ) const {
+    return l == this->len && ::memcmp( s, this->value, l ) == 0;
+  }
+  void copy( const void *s,  uint16_t l ) {
+    ::memcpy( this->value, s, l );
+  }
+};
+
+struct RedisContinuePos {
+  RedisContinue * rt;
+  uint32_t v;
+  uint16_t off;
+};
+
+struct RedisContinueMap {
+  RouteVec<RedisContinue> tab;
+
+  bool is_null( void ) const {
+    return this->tab.vec_size == 0;
+  }
+  void release( void );
+  /* put in new sub
+   * tab[ sub ] => {cnt} */
+  RedisSubStatus put( uint32_t h,  const char *sub,  size_t len,
+                      RedisContinue *&rt ) {
+    RouteLoc loc;
+    rt = this->tab.upsert( h, sub, len, loc );
+    if ( rt == NULL )
+      return REDIS_SUB_NOT_FOUND;
+    if ( loc.is_new ) {
+      rt->cm     = NULL;
+      rt->keynum = 0;
+      rt->keycnt = 1;
+      return REDIS_SUB_OK;
+    }
+    return REDIS_SUB_EXISTS;
+  }
+  /* remove tab[ sub ] */
+  RedisSubStatus find( uint32_t h,  const char *sub,  size_t len,
+                       RedisContinue *&rt,  RouteLoc &loc ) {
+    rt = this->tab.find( h, sub, len, loc );
+    if ( rt == NULL )
+      return REDIS_SUB_NOT_FOUND;
+    return REDIS_SUB_OK;
+  }
+  /* iterate first tab[ sub ] */
+  bool first( RedisContinuePos &pos ) {
+    pos.rt = this->tab.first( pos.v, pos.off );
+    return pos.rt != NULL;
+  }
+  /* iterate next tab[ sub ] */
+  bool next( RedisContinuePos &pos ) {
     pos.rt = this->tab.next( pos.v, pos.off );
     return pos.rt != NULL;
   }

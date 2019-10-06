@@ -463,23 +463,14 @@ RedisExec::do_zwrite( EvKeyCtx &ctx,  int flags )
     for (;;) {
       if ( geo.x->georem( arg, arglen, pos ) == GEO_OK )
         ctx.ival++;
-      if ( this->argc == argi ) {
-        if ( ctx.ival > 0 ) {
-          ctx.flags |= EKF_KEYSPACE_EVENT;
-          if ( geo.x->hcount() == 0 ) {
-            ctx.flags |= EKF_KEYSPACE_DEL;
-            if ( ! geo.tombstone() )
-              return ERR_KV_STATUS;
-          }
-        }
-        return EXEC_SEND_INT;
-      }
+      if ( this->argc == argi )
+        break;
       if ( ! this->msg.get_arg( argi++, arg, arglen ) )
         return ERR_BAD_ARGS;
       pos.init( arg, arglen );
     }
     if ( ctx.ival > 0 ) {
-      ctx.flags |= EKF_KEYSPACE_EVENT;
+      ctx.flags |= EKF_KEYSPACE_EVENT | EKF_KEYSPACE_GEO;
       if ( geo.x->hcount() == 0 ) {
         ctx.flags |= EKF_KEYSPACE_DEL;
         if ( ! geo.tombstone() )
@@ -542,7 +533,7 @@ RedisExec::do_zwrite( EvKeyCtx &ctx,  int flags )
     }
     /* return number members updated */
     if ( ctx.ival > 0 ) {
-      ctx.flags |= EKF_KEYSPACE_EVENT;
+      ctx.flags |= EKF_KEYSPACE_EVENT | EKF_KEYSPACE_ZSET;
       if ( zset.x->hcount() == 0 ) {
         ctx.flags |= EKF_KEYSPACE_DEL;
         if ( ! zset.tombstone() )
@@ -946,7 +937,7 @@ RedisExec::do_zremrange( EvKeyCtx &ctx,  int flags )
       }
     }
     if ( ctx.ival > 0 ) {
-      ctx.flags |= EKF_KEYSPACE_EVENT;
+      ctx.flags |= EKF_KEYSPACE_EVENT | EKF_KEYSPACE_ZSET;
       if ( zset.x->hcount() == 0 ) {
         ctx.flags |= EKF_KEYSPACE_DEL;
         if ( ! zset.tombstone() )
@@ -989,7 +980,7 @@ RedisExec::do_zremrange( EvKeyCtx &ctx,  int flags )
       }
     }
     if ( ctx.ival > 0 ) {
-      ctx.flags |= EKF_KEYSPACE_EVENT;
+      ctx.flags |= EKF_KEYSPACE_EVENT | EKF_KEYSPACE_GEO;
       if ( geo.x->hcount() == 0 ) {
         ctx.flags |= EKF_KEYSPACE_DEL;
         if ( ! geo.tombstone() )
@@ -1052,7 +1043,8 @@ RedisExec::do_zsetop_store( EvKeyCtx &ctx,  int flags )
                  retry  = 0,
                  ndata,
                  count;
-  uint8_t        type;
+  uint8_t        type,
+                 kspc_type;
   ZAggregateType aggregate_type = ZAGGREGATE_SUM;
   bool           has_weights    = false;
 
@@ -1159,9 +1151,10 @@ RedisExec::do_zsetop_store( EvKeyCtx &ctx,  int flags )
         old_zset->copy( *zset );
       }
     }
-    data    = zset->listp;
-    datalen = zset->size;
-    count   = zset->hcount();
+    data      = zset->listp;
+    datalen   = zset->size;
+    count     = zset->hcount();
+    kspc_type = EKF_KEYSPACE_ZSET;
   }
   else { /* type == MD_GEO */
     GeoData   tmp[ 2 ];
@@ -1208,9 +1201,10 @@ RedisExec::do_zsetop_store( EvKeyCtx &ctx,  int flags )
         old_geo->copy( *geo );
       }
     }
-    data    = geo->listp;
-    datalen = geo->size;
-    count   = geo->hcount();
+    data      = geo->listp;
+    datalen   = geo->size;
+    count     = geo->hcount();
+    kspc_type = EKF_KEYSPACE_GEO;
   }
 
   /* save the result */
@@ -1222,7 +1216,7 @@ RedisExec::do_zsetop_store( EvKeyCtx &ctx,  int flags )
         ::memcpy( data2, data, datalen );
         ctx.ival   = count;
         ctx.type   = type;
-        ctx.flags |= EKF_IS_NEW | EKF_KEYSPACE_EVENT;
+        ctx.flags |= EKF_IS_NEW | EKF_KEYSPACE_EVENT | kspc_type;
         return EXEC_SEND_INT;
       }
     /* FALLTHRU */

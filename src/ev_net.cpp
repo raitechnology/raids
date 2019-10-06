@@ -1119,6 +1119,10 @@ EvConnection::write( void )
   StreamBuf & strm = *this;
   if ( strm.sz > 0 )
     strm.flush();
+  else if ( strm.wr_pending == 0 ) {
+    this->pop2( EV_WRITE, EV_WRITE_HI );
+    return;
+  }
   ::memset( &h, 0, sizeof( h ) );
   h.msg_iov    = &strm.iov[ strm.woff ];
   h.msg_iovlen = strm.idx - strm.woff;

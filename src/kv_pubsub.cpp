@@ -16,6 +16,7 @@
 #include <raids/cube_route.h>
 #include <raids/redis_msg.h>
 #include <raimd/md_types.h>
+#include <raimd/hex_dump.h>
 
 using namespace rai;
 using namespace kv;
@@ -82,61 +83,10 @@ KvMsg::msg_type_string( void ) const
   return KvMsg::msg_type_string( this->msg_type );
 }
 
-struct KvHexDump {
-  static const char hex_chars[];
-  char line[ 80 ];
-  uint32_t boff, hex, ascii;
-  uint64_t stream_off;
-
-  KvHexDump() : boff( 0 ), stream_off( 0 ) {
-    this->flush_line();
-  }
-  void reset( void ) {
-    this->boff = 0;
-    this->stream_off = 0;
-    this->flush_line();
-  }
-  void flush_line( void ) {
-    this->stream_off += this->boff;
-    this->boff  = 0;
-    this->hex   = 9;
-    this->ascii = 61;
-    this->init_line();
-  }
-  void init_line( void ) {
-    uint64_t j, k = this->stream_off;
-    ::memset( this->line, ' ', 79 );
-    this->line[ 79 ] = '\0';
-    this->line[ 5 ] = hex_chars[ k & 0xf ];
-    k >>= 4; j = 4;
-    while ( k > 0 ) {
-      this->line[ j ] = hex_chars[ k & 0xf ];
-      if ( j-- == 0 )
-        break;
-      k >>= 4;
-    }
-  }
-  uint32_t fill_line( const void *ptr,  uint64_t off,  uint64_t len ) {
-    while ( off < len && this->boff < 16 ) {
-      uint8_t b = ((uint8_t *) ptr)[ off++ ];
-      this->line[ this->hex ]   = hex_chars[ b >> 4 ];
-      this->line[ this->hex+1 ] = hex_chars[ b & 0xf ];
-      this->hex += 3;
-      if ( b >= ' ' && b <= 127 )
-        line[ this->ascii ] = b;
-      this->ascii++;
-      if ( ( ++this->boff & 0x3 ) == 0 )
-        this->hex++;
-    }
-    return off;
-  }
-};
-const char KvHexDump::hex_chars[] = "0123456789abcdef";
-
 static void
 dump_hex( void *ptr,  uint64_t size )
 {
-  KvHexDump hex;
+  MDHexDump hex;
   for ( uint64_t off = 0; off < size; ) {
     off = hex.fill_line( ptr, off, size );
     printf( "%s\r\n", hex.line );

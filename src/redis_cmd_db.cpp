@@ -406,7 +406,7 @@ CommandDB cmd_db[] = {
 { "INCRBYFLOAT", "key float ; incr float by amt",
   "[\"incrbyfloat\",3,['write','denyoom','fast'],1,1,1]" },
 { "MGET", "key [key ...] ; Get values of multiple keys",
-  "[\"mget\",-2,['readonly','fast','multi_key_array'],1,-1,1]" },
+  "[\"mget\",-2,['readonly','fast'],1,-1,1]" },
 
 { "MSET", "key val [key val ...] ; Set values of multiple keys",
   "[\"mset\",-3,['write','denyoom'],1,-1,2]" },
@@ -477,7 +477,7 @@ const char *cmd_flag[] = {
   "write",   "readonly",    "denyoom",      "admin",
   "pubsub",  "noscript",    "random",       "sort_for_script",
   "loading", "stale",       "skip_monitor", "asking",
-  "fast",    "movablekeys", "multi_key_array" };
+  "fast",    "movablekeys" };
 
 const size_t cmd_flag_cnt = sizeof( cmd_flag ) /
                             sizeof( cmd_flag[ 0 ] );

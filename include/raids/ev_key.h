@@ -19,19 +19,28 @@ struct EvKeyTempResult {
   }
 };
 
-enum EvKeyState {
+enum EvKeyState { /* status for exec_key_continue(), memcached_key_continue() */
   EK_SUCCESS  = 20, /* statement finished */
   EK_DEPENDS  = 21, /* key depends on another */
   EK_CONTINUE = 22  /* more keys to process */
 };
 
-enum EvKeyFlags {
+enum EvKeyFlags { /* bits for EvKeyCtx::flags */
   EKF_IS_READ_ONLY   = 1, /* key is read only (no write access) */
   EKF_IS_NEW         = 2, /* key doesn't exist */
   EKF_KEYSPACE_FWD   = 4, /* operation resulted in a keyspace modification */
   EKF_KEYEVENT_FWD   = 8, /* operation resulted in a keyevent modification */
   EKF_KEYSPACE_EVENT = 12, /* both the above bits together */
-  EKF_KEYSPACE_DEL   = 16  /* keyspace event (pop, srem, etc) caused a key del */
+  EKF_KEYSPACE_DEL   = 16, /* keyspace event (pop, srem, etc) caused a key del */
+
+#define EKF_TYPE_SHIFT 5
+  EKF_KEYSPACE_STRING = ( 1 << EKF_TYPE_SHIFT ), /* 32 */
+  EKF_KEYSPACE_LIST   = ( 2 << EKF_TYPE_SHIFT ), /* 64 */
+  EKF_KEYSPACE_HASH   = ( 3 << EKF_TYPE_SHIFT ), /* 96 */
+  EKF_KEYSPACE_SET    = ( 4 << EKF_TYPE_SHIFT ), /* 128 */
+  EKF_KEYSPACE_ZSET   = ( 5 << EKF_TYPE_SHIFT ), /* 160 */
+  EKF_KEYSPACE_GEO    = ( 6 << EKF_TYPE_SHIFT ), /* 192 */
+  EKF_KEYSPACE_HLL    = ( 7 << EKF_TYPE_SHIFT )  /* 224 */
 };
 
 struct EvKeyCtx {

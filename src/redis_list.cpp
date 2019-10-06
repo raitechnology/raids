@@ -28,26 +28,46 @@ enum {
 };
 
 ExecStatus
-RedisExec::exec_blpop( EvKeyCtx &/*ctx*/ )
+RedisExec::exec_blpop( EvKeyCtx &ctx )
 {
   /* BLPOP key [key...] timeout */
-  //return this->do_pop( ctx, DO_LPOP );
-  return ERR_BAD_CMD;
+  ExecStatus status = this->do_pop( ctx, DO_LPOP );
+  switch ( status ) {
+    case EXEC_SEND_NIL: return EXEC_BLOCKED;
+    case EXEC_OK:       return EXEC_SEND_DATA;
+    default:            return status;
+  }
 }
 
 ExecStatus
-RedisExec::exec_brpop( EvKeyCtx &/*ctx*/ )
+RedisExec::exec_brpop( EvKeyCtx &ctx )
 {
   /* BRPOP key [key...] timeout */
-  //return this->do_pop( ctx, DO_LPOP );
-  return ERR_BAD_CMD;
+  ExecStatus status = this->do_pop( ctx, DO_RPOP );
+  switch ( status ) {
+    case EXEC_SEND_NIL: return EXEC_BLOCKED;
+    case EXEC_OK:       return EXEC_SEND_DATA;
+    default:            return status;
+  }
 }
 
 ExecStatus
-RedisExec::exec_brpoplpush( EvKeyCtx &/*ctx*/ )
+RedisExec::exec_brpoplpush( EvKeyCtx &ctx )
 {
-  /* BRPOPLPUSH src dest */
-  return ERR_BAD_CMD;
+  /* BRPOPLPUSH src dest timeout */
+  if ( ctx.argn == 1 ) {
+    ExecStatus status = this->do_pop( ctx, DO_RPOPLPUSH );
+    switch ( status ) {
+      case EXEC_ABORT_SEND_NIL: return EXEC_BLOCKED;
+      case EXEC_OK:             return EXEC_OK;
+      default:                  return status;
+    }
+  }
+  if ( this->key_cnt != this->key_done + 1 )
+    return EXEC_DEPENDS;
+  if ( this->keys[ 0 ]->status == EXEC_BLOCKED )
+    return EXEC_BLOCKED;
+  return this->exec_rpoplpush( ctx );
 }
 
 ExecStatus
@@ -343,18 +363,18 @@ RedisExec::do_push( EvKeyCtx &ctx,  int flags,
       case DO_LINSERT:
         if ( lstatus == LIST_OK ) {
           ctx.ival   = list.x->count();
-          ctx.flags |= EKF_KEYSPACE_EVENT;
+          ctx.flags |= EKF_KEYSPACE_EVENT | EKF_KEYSPACE_LIST;
           return EXEC_SEND_INT;
         }
         return EXEC_SEND_NIL;
       case DO_LSET:
         if ( lstatus == LIST_OK ) {
-          ctx.flags |= EKF_KEYSPACE_EVENT;
+          ctx.flags |= EKF_KEYSPACE_EVENT | EKF_KEYSPACE_LIST;
           return EXEC_SEND_OK;
         }
         return ERR_BAD_RANGE;
       case DO_RPOPLPUSH:
-        ctx.flags |= EKF_KEYSPACE_EVENT;
+        ctx.flags |= EKF_KEYSPACE_EVENT | EKF_KEYSPACE_LIST;
         return EXEC_OK;
     }
   }
@@ -429,7 +449,7 @@ RedisExec::do_pop( EvKeyCtx &ctx,  int flags )
         } while ( --ival != 0 );
       }
       if ( (ctx.ival = cnt) > 0 )
-        ctx.flags |= EKF_KEYSPACE_EVENT;
+        ctx.flags |= EKF_KEYSPACE_EVENT | EKF_KEYSPACE_LIST;
       return EXEC_SEND_INT;
 
     case DO_LTRIM:
@@ -441,8 +461,8 @@ RedisExec::do_pop( EvKeyCtx &ctx,  int flags )
       start = min<int64_t>( cnt, max<int64_t>( 0, start ) );
       stop = min<int64_t>( cnt, max<int64_t>( 0, stop + 1 ) );
       stop = cnt - stop;
-
-      ctx.flags |= EKF_KEYSPACE_EVENT; /* gen event even when no elems are rm */
+      /* gen event even when no elems are rm */
+      ctx.flags |= EKF_KEYSPACE_EVENT | EKF_KEYSPACE_LIST;
       if ( start > 0 || stop > 0 ) {
         if ( start > 0 )
           list.x->ltrim( start );
@@ -463,7 +483,7 @@ RedisExec::do_pop( EvKeyCtx &ctx,  int flags )
     return EXEC_SEND_NIL;
   }
   this->strm.sz += this->send_concat_string( lv.data, lv.sz, lv.data2, lv.sz2 );
-  ctx.flags |= EKF_KEYSPACE_EVENT;
+  ctx.flags |= EKF_KEYSPACE_EVENT | EKF_KEYSPACE_LIST;
   if ( list.x->count() == 0 ) {
     ctx.flags |= EKF_KEYSPACE_DEL;
     if ( ! list.tombstone() )

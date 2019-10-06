@@ -29,11 +29,13 @@ enum ExecStatus {
   EXEC_SUCCESS  = EK_SUCCESS,  /* <= success = good */
   EXEC_DEPENDS  = EK_DEPENDS,  /* key depends (dest) on another key arg (src) */
   EXEC_CONTINUE = EK_CONTINUE, /* continue working, more keys */
+  EXEC_QUEUED,           /* cmd queued for multi transaction */
+  EXEC_BLOCKED,          /* cmd blocked waiting for elements */
   EXEC_QUIT,             /* quit/shutdown command */
   EXEC_DEBUG,            /* debug command */
   EXEC_ABORT_SEND_ZERO,  /* abort multiple key operation and return 0 */
   EXEC_ABORT_SEND_NIL,   /* abort multiple key operation and return nil */
-  EXEC_QUEUED,           /* cmd queued for multi transaction */
+  EXEC_SEND_DATA,        /* multiple key, first to succeed wins */
   /* errors v v v / ok ^ ^ ^ */
   ERR_KV_STATUS,        /* kstatus != ok */
   ERR_MSG_STATUS,       /* mstatus != ok */
@@ -116,6 +118,7 @@ struct RedisExec {
   uint64_t seed,   seed2;     /* kv map hash seeds, different for each db */
   kv::KeyCtx       kctx;      /* key context used for every key in command */
   kv::WorkAllocT< 1024 > wrk; /* kv work buffer, reset before each key lookup */
+  kv::DLinkList<RedisContinueMsg> cont_list;
   StreamBuf      & strm;      /* output buffer, result of command execution */
   RedisMsg         msg;       /* current command msg */
   EvKeyCtx       * key,       /* currently executing key */
@@ -137,6 +140,7 @@ struct RedisExec {
   size_t           argc;      /* count of args in cmd msg */
   RedisSubMap      sub_tab;   /* pub/sub subscription table */
   RedisPatternMap  pat_tab;   /* pub/sub pattern sub table */
+  RedisContinueMap continue_tab; /* blocked continuations */
   RouteDB        & sub_route; /* map subject to sub_id */
   uint32_t         sub_id;    /* fd, set this after accept() */
 
@@ -167,6 +171,10 @@ struct RedisExec {
   ExecStatus exec( EvSocket *svc,  EvPrefetchQueue *q );
   /* execute a key operation */
   ExecStatus exec_key_continue( EvKeyCtx &ctx );
+  /* subscribe to keyspace subjects and wait for publish to continue */
+  ExecStatus save_blocked_cmd( void );
+  /* execute the saved commands after signaled */
+  void drain_continuations( EvSocket *svc );
   /* publish keyspace events */
   void pub_keyspace_events( void );
   /* compute the hash and prefetch the ht[] location */
@@ -311,7 +319,7 @@ struct RedisExec {
   ExecStatus do_punsubscribe( const char *sub,  size_t len );
   ExecStatus do_sub( int flags );
   bool pub_message( EvPublish &pub,  RedisPatternRoute *rt );
-  bool do_pub( EvPublish &pub );
+  int do_pub( EvPublish &pub,  RedisContinueMsg *&cm );
   bool do_hash_to_sub( uint32_t h,  char *key,  size_t &keylen );
   /* SCRIPT */
   ExecStatus exec_eval( EvKeyCtx &ctx );

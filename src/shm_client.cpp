@@ -79,8 +79,14 @@ EvShmClient::init_exec( void )
 bool
 EvShmClient::on_msg( EvPublish &pub )
 {
-  if ( this->exec->do_pub( pub ) )
+  RedisContinueMsg * cm = NULL;
+  int status = this->exec->do_pub( pub, cm );
+  if ( ( status & 1 ) != 0 )
     this->stream_to_msg();
+  if ( ( status & 2 ) != 0 ) {
+    this->exec->cont_list.push_tl( cm );
+    cm->in_list = true;
+  }
   return true;
 }
 

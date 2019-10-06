@@ -255,7 +255,7 @@ RedisExec::do_swrite( EvKeyCtx &ctx,  int flags )
         if ( ctx.argn == 1 ) { /* src */
           sstatus = set.x->srem( arg, arglen, pos );
           if ( sstatus == SET_OK ) {
-            ctx.flags |= EKF_KEYSPACE_EVENT;
+            ctx.flags |= EKF_KEYSPACE_EVENT | EKF_KEYSPACE_SET;
             if ( set.x->hcount() == 0 ) {
               ctx.flags |= EKF_KEYSPACE_DEL;
               if ( ! set.tombstone() )
@@ -284,12 +284,12 @@ RedisExec::do_swrite( EvKeyCtx &ctx,  int flags )
       continue;
     }
     if ( ( flags & DO_SMOVE ) != 0 ) {
-      ctx.flags |= EKF_KEYSPACE_EVENT;
+      ctx.flags |= EKF_KEYSPACE_EVENT | EKF_KEYSPACE_SET;
       return EXEC_SEND_ONE;
     }
     if ( this->argc == argi ) {
       if ( ctx.ival > 0 ) {
-        ctx.flags |= EKF_KEYSPACE_EVENT;
+        ctx.flags |= EKF_KEYSPACE_EVENT | EKF_KEYSPACE_SET;
         if ( ( flags & DO_SREM ) != 0 ) {
           if ( set.x->hcount() == 0 ) {
             ctx.flags |= EKF_KEYSPACE_DEL;
@@ -440,7 +440,7 @@ RedisExec::do_smultiscan( EvKeyCtx &ctx,  int flags,  ScanArgs *sa )
         set.x->spopn( j + 1 );
       }
     }
-    ctx.flags |= EKF_KEYSPACE_EVENT;
+    ctx.flags |= EKF_KEYSPACE_EVENT | EKF_KEYSPACE_SET;
     if ( set.x->hcount() == 0 ) {
       ctx.flags |= EKF_KEYSPACE_DEL;
       if ( ! set.tombstone() )
@@ -612,7 +612,7 @@ RedisExec::do_ssetop( EvKeyCtx &ctx,  int flags )
         ::memcpy( data, set->listp, set->size );
         ctx.ival   = set->hcount();
         ctx.type   = MD_SET;
-        ctx.flags |= EKF_IS_NEW | EKF_KEYSPACE_EVENT;
+        ctx.flags |= EKF_IS_NEW | EKF_KEYSPACE_EVENT | EKF_KEYSPACE_SET;
         return EXEC_SEND_INT;
       }
     /* FALLTHRU */

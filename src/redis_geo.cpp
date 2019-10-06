@@ -87,7 +87,7 @@ RedisExec::exec_geoadd( EvKeyCtx &ctx )
       ctx.ival++;
     if ( this->argc == argi ) { /* no more elements to add */
       if ( ctx.ival > 0 )
-        ctx.flags |= EKF_KEYSPACE_EVENT;
+        ctx.flags |= EKF_KEYSPACE_EVENT | EKF_KEYSPACE_GEO;
       return EXEC_SEND_INT;
     }
     /* get the next coords and hash */

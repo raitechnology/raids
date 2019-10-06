@@ -173,8 +173,8 @@ term_includes            := -Ilinecook/include
 
 libraids_files := ev_net ev_service ev_http ev_client ev_tcp ev_unix ev_udp \
   ev_nats ev_capr ev_rv shm_client stream_buf route_db redis_msg redis_cmd_db \
-  redis_exec redis_geo redis_hash redis_hyperloglog redis_key redis_list \
-  redis_pubsub redis_script redis_set redis_sortedset redis_stream \
+  redis_exec redis_keyspace redis_geo redis_hash redis_hyperloglog redis_key \
+  redis_list redis_pubsub redis_script redis_set redis_sortedset redis_stream \
   redis_string redis_transaction kv_pubsub timer_queue ev_memcached \
   memcached_exec term
 libraids_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(libraids_files)))

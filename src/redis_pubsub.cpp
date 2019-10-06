@@ -10,6 +10,7 @@
 #include <pcre2.h>
 #include <raids/pattern_cvt.h>
 #include <raimd/md_types.h>
+#include <raids/redis_keyspace.h>
 
 using namespace rai;
 using namespace ds;
@@ -27,6 +28,7 @@ RedisExec::rem_all_sub( void )
 {
   RedisSubRoutePos     pos;
   RedisPatternRoutePos ppos;
+  RedisContinuePos     cpos;
   uint32_t             rcnt;
   if ( this->sub_tab.first( pos ) ) {
     do {
@@ -48,6 +50,13 @@ RedisExec::rem_all_sub( void )
       }
     } while ( this->pat_tab.next( ppos ) );
   }
+  if ( this->continue_tab.first( cpos ) ) {
+    do {
+      rcnt = this->sub_route.del_route( cpos.rt->hash, this->sub_id );
+      this->sub_route.rte.notify_unsub( cpos.rt->hash, cpos.rt->value,
+                                        cpos.rt->len, this->sub_id, rcnt, 'R' );
+    } while ( this->continue_tab.next( cpos ) );
+  }
 }
 
 void
@@ -66,6 +75,20 @@ RedisPatternMap::release( void )
         ppos.rt->re = NULL;
       }
     } while ( this->next( ppos ) );
+  }
+  this->tab.release();
+}
+
+void
+RedisContinueMap::release( void )
+{
+  RedisContinuePos cpos;
+
+  if ( this->first( cpos ) ) {
+    do {
+      if ( cpos.rt->keynum == 0 && cpos.rt->cm != NULL )
+        delete cpos.rt->cm;
+    } while ( this->next( cpos ) );
   }
   this->tab.release();
 }
@@ -142,9 +165,10 @@ RedisExec::pub_message( EvPublish &pub,  RedisPatternRoute *rt )
   return true;
 }
 
-bool
-RedisExec::do_pub( EvPublish &pub )
+int
+RedisExec::do_pub( EvPublish &pub,  RedisContinueMsg *&cm )
 {
+  int status = 0;
   /* don't publish to self ?? (redis does not allow pub w/sub on same conn) */
   if ( (uint32_t) this->sub_id == pub.src_route )
     return false;
@@ -156,6 +180,39 @@ RedisExec::do_pub( EvPublish &pub )
       if ( ret == REDIS_SUB_OK ) {
         this->pub_message( pub, NULL );
         pub_cnt++;
+      }
+      if ( pub.subject_len > 10 && pub.subject[ 0 ] == '_' &&
+           ! this->continue_tab.is_null() ) {
+        RedisContinue * rt;
+        RouteLoc        loc;
+        ret = this->continue_tab.find( pub.subj_hash, pub.subject,
+                                       pub.subject_len, rt, loc );
+        if ( ret == REDIS_SUB_OK ) {
+          uint32_t keynum, keycnt, i;
+          cm     = rt->cm;
+          keynum = rt->keynum;
+          keycnt = rt->keycnt;
+          rt     = NULL; /* removing will junk this ptr */
+          this->continue_tab.tab.remove( loc );
+          status |= 2;
+          if ( keycnt > 1 ) { /* remove the other keys */
+            for ( i = 0; i < keycnt; i++ ) {
+              if ( i != keynum ) {
+                this->continue_tab.tab.remove( cm->ptr[ i ].hash,
+                                               cm->ptr[ i ].value,
+                                               cm->ptr[ i ].len );
+              }
+            }
+          }
+          for ( i = 0; i < keycnt; i++ ) {
+            uint32_t rcnt = this->sub_route.del_route( cm->ptr[ i ].hash,
+                                                       this->sub_id );
+            this->sub_route.rte.notify_unsub( cm->ptr[ i ].hash,
+                                              cm->ptr[ i ].value,
+                                              cm->ptr[ i ].len,
+                                              this->sub_id, rcnt, 'R' );
+          }
+        }
       }
     }
     else {
@@ -175,7 +232,9 @@ RedisExec::do_pub( EvPublish &pub )
       }
     }
   }
-  return pub_cnt > 0;
+  if ( pub_cnt > 0 )
+    status |= 1;
+  return status;
 }
 
 ExecStatus
@@ -189,9 +248,7 @@ bool
 RedisExec::do_hash_to_sub( uint32_t h,  char *key,  size_t &keylen )
 {
   RedisSubRoute * rt;
-  if ( (rt = this->sub_tab.tab.find_by_hash( h )) != NULL /*||
-       (rt = this->sub_tab.tab.find_by_hash( h |
-                                         UIntHashTab::SLOT_USED )) != NULL*/ ) {
+  if ( (rt = this->sub_tab.tab.find_by_hash( h )) != NULL ) {
     ::memcpy( key, rt->value, rt->len );
     keylen = rt->len;
     return true;
@@ -531,5 +588,103 @@ RedisExec::do_sub( int flags )
     }
   }
   return EXEC_OK;
+}
+
+RedisContinueMsg::RedisContinueMsg( size_t ml,  uint32_t kc )
+            : next( 0 ), back( 0 ), keycnt( kc ), in_list( false ), msglen( ml )
+{
+  this->ptr = (RedisContinuePtr *) (void *) &this[ 1 ];
+  this->msg = (char *) (void *) &this->ptr[ kc ];
+}
+
+ExecStatus
+RedisExec::save_blocked_cmd( void )
+{
+  size_t             msglen = this->msg.pack_size();
+  char             * buf;
+  RedisKeyspace      kspc( *this );
+  RedisContinue    * rt;
+  RedisContinueMsg * cm;
+  void             * p;
+  char             * sub;
+  size_t             len;
+  uint32_t           h, rcnt, i;
+
+  /* calculate length of buf[] */
+  len = 0;
+  for ( i = 0; i < this->key_cnt; i++ ) {
+    kspc.key    = (char *) this->keys[ i ]->kbuf.u.buf;
+    kspc.keylen = this->keys[ i ]->kbuf.keylen - 1;
+    uint32_t sz = kspc.make_keyspace_subj();
+    if ( sz == 0 ) /* can't allocate temp space for subject */
+      return ERR_ALLOC_FAIL;
+    len += sz;
+  }
+  len += sizeof( RedisContinueMsg ) +
+         sizeof( RedisContinuePtr ) * this->key_cnt;
+  /* space for msg and ptrs to other keys */
+  buf = (char *) ::malloc( kv::align<size_t>( msglen, 8 ) + len );
+  if ( buf == NULL )
+    return ERR_ALLOC_FAIL;
+  cm = new ( buf ) RedisContinueMsg( msglen, this->key_cnt );
+  /* pack msg for later continuation */
+  this->msg.pack( cm->msg );
+
+  /* if more than one key, will have multiple entries in table */
+  p = &cm->msg[ kv::align<size_t>( msglen, 8 ) ];
+
+  /* create a subject for each key in command */
+  for ( i = 0; i < this->key_cnt; i++ ) {
+    kspc.key    = (char *) this->keys[ i ]->kbuf.u.buf;
+    kspc.keylen = this->keys[ i ]->kbuf.keylen - 1;
+    len         = kspc.make_keyspace_subj();
+    sub         = kspc.subj;
+    h           = kv_crc_c( sub, len, 0 );
+    /* subscribe to the continuation notification (the keyspace subject) */
+    rcnt = this->sub_route.add_route( h, this->sub_id );
+    this->sub_route.rte.notify_sub( h, sub, len, this->sub_id, rcnt, 'R' );
+    if ( this->continue_tab.put( h, sub, len, rt ) == REDIS_SUB_OK ) {
+      rt->cm     = cm;   /* continue msg and ptrs to other subject keys */
+      rt->keynum = i;
+      rt->keycnt = this->key_cnt;
+    }
+    /* save the ptr to the subject and hash */
+    ::memcpy( p, sub, len );
+    cm->ptr[ i ].hash  = h;
+    cm->ptr[ i ].len   = len;
+    cm->ptr[ i ].value = (char *) p;
+    p = &((char *) p)[ len ];
+  }
+  return EXEC_OK;
+}
+
+void
+RedisExec::drain_continuations( EvSocket *svc )
+{
+  RedisContinueMsg * cm;
+  RedisMsgStatus     mstatus;
+  ExecStatus         status;
+
+  while ( ! this->cont_list.is_empty() ) {
+    cm = this->cont_list.pop_hd();
+    mstatus = this->msg.unpack( cm->msg, cm->msglen, this->strm.tmp );
+    if ( mstatus == REDIS_MSG_OK ) {
+      if ( (status = this->exec( svc, NULL )) == EXEC_OK )
+        if ( this->strm.alloc_fail )
+          status = ERR_ALLOC_FAIL;
+      switch ( status ) {
+        case EXEC_SETUP_OK:
+          this->exec_run_to_completion();
+          if ( ! this->strm.alloc_fail )
+            break;
+          status = ERR_ALLOC_FAIL;
+          /* FALLTHRU */
+        default:
+          this->send_err( status );
+          break;
+      }
+    }
+    delete cm;
+  }
 }
 

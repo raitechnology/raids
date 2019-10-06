@@ -312,10 +312,17 @@ EvHttpService::flush_term( void )
 bool
 EvHttpService::on_msg( EvPublish &pub )
 {
+  RedisContinueMsg * cm = NULL;
   bool flow_good = true;
-  if ( this->RedisExec::do_pub( pub ) ) {
+  int  status    = this->RedisExec::do_pub( pub, cm );
+  if ( ( status & 1 ) != 0 ) {
     flow_good = ( this->strm.pending() <= this->send_highwater );
     this->idle_push( flow_good ? EV_WRITE : EV_WRITE_HI );
+  }
+  if ( ( status & 2 ) != 0 ) {
+    this->cont_list.push_tl( cm );
+    cm->in_list = true;
+    this->idle_push( EV_PROCESS );
   }
   return flow_good;
 }
