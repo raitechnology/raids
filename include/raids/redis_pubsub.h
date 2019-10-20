@@ -157,6 +157,15 @@ struct RedisContinuePtr {
   char   * value; /* the subject which notifies that a key is changed */
 };
 
+enum {
+  CM_WAIT_LIST = 1, /* in RedisExec::wait_list */
+  CM_CONT_LIST = 2, /* in RedisExec::cont_list */
+  CM_CONT_TAB  = 4, /* in RedisExec::continue_tab */
+  CM_TIMER     = 8, /* has timer */
+  CM_TIMEOUT   = 16,/* timer expired */
+  CM_RELEASE   = 32 /* timer expired */
+};
+
 struct RedisContinueMsg {
   void * operator new( size_t, void *ptr ) { return ptr; }
   void operator delete( void *ptr ) { ::free( ptr ); }
@@ -164,12 +173,13 @@ struct RedisContinueMsg {
   RedisContinueMsg * next, /* list links if multiple continuations pending */
                    * back;
   RedisContinuePtr * ptr;     /* subject keys in this msg */
-  uint32_t           keycnt;  /* count of ptr[] */
-  bool               in_list; /* if in the cont_list */
+  uint16_t           keycnt,  /* count of ptr[] */
+                     state;   /* CM_WAIT_LIST, CM_CONT_LIST, CM_EXPIRED */
+  uint32_t           msgid;   /* event_id for timer */
   char             * msg;     /* the redis msg ascii buffer */
   size_t             msglen;  /* length of msg[] */
 
-  RedisContinueMsg( size_t ml,  uint32_t kc );
+  RedisContinueMsg( size_t ml,  uint16_t kc );
 };
 
 struct RedisContinue {

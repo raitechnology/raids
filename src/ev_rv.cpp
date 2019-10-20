@@ -119,21 +119,12 @@ EvRvListen::accept( void )
     }
     return;
   }
-  EvRvService * c = this->poll.free_rv.hd;
-  if ( c != NULL )
-    c->pop_free_list();
-  else {
-    void * m = aligned_malloc( sizeof( EvRvService ) * EvPoll::ALLOC_INCR );
-    if ( m == NULL ) {
-      perror( "accept: no memory" );
-      ::close( sock );
-      return;
-    }
-    c = new ( m ) EvRvService( this->poll );
-    for ( int i = EvPoll::ALLOC_INCR - 1; i >= 1; i-- ) {
-      new ( (void *) &c[ i ] ) EvRvService( this->poll );
-      c[ i ].push_free_list();
-    }
+  EvRvService *c =
+    this->poll.get_free_list<EvRvService>( this->poll.free_rv );
+  if ( c == NULL ) {
+    perror( "accept: no memory" );
+    ::close( sock );
+    return;
   }
   struct linger lin;
   lin.l_onoff  = 1;
@@ -165,8 +156,7 @@ EvRvListen::accept( void )
   c->ipport = this->ipport;
 
   c->fd = sock;
-  c->initialize_state( this->timer_id );
-  this->timer_id += 16;
+  c->initialize_state( ++this->timer_id );
   c->idle_push( EV_WRITE_HI );
   if ( this->poll.add_sock( c ) < 0 ) {
     printf( "failed to add sock %d\n", sock );
@@ -178,7 +168,7 @@ EvRvListen::accept( void )
   ver_rec[ 1 ] = get_u32<MD_BIG>( &ver_rec[ 1 ] ); /* flip */
   c->append( ver_rec, sizeof( ver_rec ) );
   /*this->poll.timer_queue->add_timer( c->fd, RV_SESSION_IVAL, c->timer_id,
-                                     IVAL_SECS );*/
+                                     IVAL_SECS, 0 );*/
 #if 0
   MDOutput out;
   printf( "-> %lu ->\n", sizeof( ver_rec ) );
@@ -209,7 +199,7 @@ EvRvService::send_info( bool agree )
 }
 
 void
-EvRvService::process( bool /*use_prefetch*/ )
+EvRvService::process( void )
 {
   size_t  buflen, msglen;
   int32_t status = 0;
@@ -405,7 +395,7 @@ EvRvService::respond_info( void )
 }
 
 bool
-EvRvService::timer_expire( uint64_t tid )
+EvRvService::timer_expire( uint64_t tid,  uint64_t )
 {
   if ( this->timer_id != tid )
     return false;

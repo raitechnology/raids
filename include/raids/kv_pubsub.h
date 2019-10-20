@@ -264,7 +264,11 @@ struct KvPubSub : public EvSocket {
                   const char *prefix,  uint8_t prefix_len,
                   uint32_t sub_id,  uint32_t rcnt,  char src_type );
   void forward_sub( KvSubMsg &submsg );
-  void process( bool use_prefetch );
+  void process( void );
+  void exec_key_prefetch( EvKeyCtx & ) {}
+  int exec_key_continue( EvKeyCtx & ) { return 0; }
+  bool timer_expire( uint64_t, uint64_t ) { return false; }
+  void release( void ) {}
   void process_shutdown( void );
   void process_close( void );
   void write( void );

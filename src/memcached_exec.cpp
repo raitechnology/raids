@@ -1134,7 +1134,7 @@ MemcachedExec::exec( EvSocket *svc,  EvPrefetchQueue *q )
     this->key_done = 0;
 
     this->key  = NULL;
-    this->keys = NULL;
+    this->keys = &this->key;
     /* setup first key */
     status = this->exec_key_setup( svc, q, this->key, i );
     if ( status == MEMCACHED_SETUP_OK ) {

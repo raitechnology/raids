@@ -65,21 +65,7 @@ RedisKeyspace::db_to_subj( size_t off )
   this->subj[ off + 2 ] = ':';
   return off + 3;
 }
-#if 0
-size_t
-RedisKeyspace::make_subj( const char *prefix,  size_t pre_len )
-{
-  size_t subj_len = pre_len + 8 + this->keylen;
-  if ( ! this->alloc_subj( subj_len ) )
-    return 0;
-  ::memcpy( this->subj, prefix, pre_len );
-  subj_len = this->db_to_subj( pre_len );
-  ::memcpy( &this->subj[ subj_len ], this->key, this->keylen );
-  subj_len += this->keylen;
-  this->subj[ subj_len ] = '\0';
-  return subj_len;
-}
-#endif
+
 size_t
 RedisKeyspace::make_keyspace_subj( void )
 {
@@ -87,9 +73,45 @@ RedisKeyspace::make_keyspace_subj( void )
   size_t subj_len = 20 + this->keylen;
   if ( ! this->alloc_subj( subj_len ) )
     return 0;
-  *(uint64_t *) (void *) this->subj = *(uint64_t *) (void *) kspc;
+  ::memcpy( this->subj, kspc, 8 );
   this->subj[ 8 ] = 'c';
   this->subj[ 9 ] = 'e';
+  subj_len = this->db_to_subj( 10 );
+
+  ::memcpy( &this->subj[ subj_len ], this->key, this->keylen );
+  subj_len += this->keylen;
+  this->subj[ subj_len ] = '\0';
+  return subj_len;
+}
+
+size_t
+RedisKeyspace::make_listblkd_subj( void )
+{
+  static const uint8_t lblk[ 8 ] = { '_', '_', 'l', 'i', 's', 't', 'b', 'l' };
+  size_t subj_len = 20 + this->keylen;
+  if ( ! this->alloc_subj( subj_len ) )
+    return 0;
+  ::memcpy( this->subj, lblk, 8 );
+  this->subj[ 8 ] = 'k';
+  this->subj[ 9 ] = 'd';
+  subj_len = this->db_to_subj( 10 );
+
+  ::memcpy( &this->subj[ subj_len ], this->key, this->keylen );
+  subj_len += this->keylen;
+  this->subj[ subj_len ] = '\0';
+  return subj_len;
+}
+
+size_t
+RedisKeyspace::make_zsetblkd_subj( void )
+{
+  static const uint8_t zblk[ 8 ] = { '_', '_', 'z', 's', 'e', 't', 'b', 'l' };
+  size_t subj_len = 20 + this->keylen;
+  if ( ! this->alloc_subj( subj_len ) )
+    return 0;
+  ::memcpy( this->subj, zblk, 8 );
+  this->subj[ 8 ] = 'k';
+  this->subj[ 9 ] = 'd';
   subj_len = this->db_to_subj( 10 );
 
   ::memcpy( &this->subj[ subj_len ], this->key, this->keylen );
@@ -114,6 +136,38 @@ RedisKeyspace::fwd_keyspace( void )
   return true;
 }
 
+/* publish __listblkd@N__:key <- event */
+bool
+RedisKeyspace::fwd_listblkd( void )
+{
+  size_t subj_len = this->make_listblkd_subj();
+  if ( subj_len == 0 )
+    return false;
+
+  EvPublish pub( this->subj, subj_len, NULL, 0, this->evt, this->evtlen,
+                 this->exec.sub_id, kv_crc_c( this->subj, subj_len, 0 ),
+                 NULL, 0, MD_STRING, ':' );
+  /*printf( "%s <- %s\n", this->subj, this->evt );*/
+  this->exec.sub_route.rte.forward_msg( pub, NULL, 0, NULL );
+  return true;
+}
+
+/* publish __zsetblkd@N__:key <- event */
+bool
+RedisKeyspace::fwd_zsetblkd( void )
+{
+  size_t subj_len = this->make_zsetblkd_subj();
+  if ( subj_len == 0 )
+    return false;
+
+  EvPublish pub( this->subj, subj_len, NULL, 0, this->evt, this->evtlen,
+                 this->exec.sub_id, kv_crc_c( this->subj, subj_len, 0 ),
+                 NULL, 0, MD_STRING, ':' );
+  /*printf( "%s <- %s\n", this->subj, this->evt );*/
+  this->exec.sub_route.rte.forward_msg( pub, NULL, 0, NULL );
+  return true;
+}
+
 /* publish __keyevent@N__:event <- key */
 bool
 RedisKeyspace::fwd_keyevent( void )
@@ -122,7 +176,7 @@ RedisKeyspace::fwd_keyevent( void )
   size_t subj_len = 20 + this->evtlen;
   if ( ! this->alloc_subj( subj_len ) )
     return false;
-  *(uint64_t *) (void *) this->subj = *(uint64_t *) (void *) kevt;
+  ::memcpy( this->subj, kevt, 8 );
   this->subj[ 8 ] = 'n';
   this->subj[ 9 ] = 't';
   subj_len = this->db_to_subj( 10 );
@@ -146,9 +200,10 @@ RedisKeyspace::pub_keyspace_events( RedisExec &exec )
   /* translate cmd into an event */
   const char * e      = NULL;
   size_t       elen   = 0;
-  uint8_t      key_fl = exec.sub_route.rte.key_flags | EKF_KEYSPACE_DEL;
+  uint16_t     key_fl = exec.sub_route.rte.key_flags | EKF_KEYSPACE_DEL;
   bool         b      = true;
 #define EVT( STR ) e = STR; elen = sizeof( STR ) - 1
+  /*printf( "key_fl %u\n", key_fl );*/
   switch ( exec.cmd ) {
     default:                   break;
     case DEL_CMD:              EVT( "del" ); break;
@@ -205,20 +260,28 @@ RedisKeyspace::pub_keyspace_events( RedisExec &exec )
     case ZREMRANGEBYSCORE_CMD: EVT( "zremrangebyscore" ); break;
     case ZINTERSTORE_CMD:      EVT( "zinterstore" ); break;
     case ZUNIONSTORE_CMD:      EVT( "zunionstore" ); break;
+    case BZPOPMIN_CMD:
+    case ZPOPMIN_CMD:          EVT( "zpopmin" ); break;
+    case BZPOPMAX_CMD:
+    case ZPOPMAX_CMD:          EVT( "zpopmax" ); break;
   }
 #undef EVT
   if ( e != NULL ) {
     RedisKeyspace ev( exec );
     if ( exec.key_cnt == 1 ) {
-      uint8_t fl = exec.key->flags & key_fl;
+      uint16_t fl = exec.key->flags & key_fl;
       ev.key    = (const char *) exec.key->kbuf.u.buf;
       ev.keylen = exec.key->kbuf.keylen - 1;
       ev.evt    = e;
       ev.evtlen = elen;
       if ( ( fl & EKF_KEYSPACE_FWD ) != 0 )
-        ev.fwd_keyspace();
+        b &= ev.fwd_keyspace();
       if ( ( fl & EKF_KEYEVENT_FWD ) != 0 )
-        ev.fwd_keyevent();
+        b &= ev.fwd_keyevent();
+      if ( ( fl & EKF_LISTBLKD_NOT ) != 0 )
+        b &= ev.fwd_listblkd();
+      if ( ( fl & EKF_ZSETBLKD_NOT ) != 0 )
+        b &= ev.fwd_zsetblkd();
 
       if ( ( fl & EKF_KEYSPACE_DEL ) != 0 ) {
         ev.evt    = "del";
@@ -234,21 +297,26 @@ RedisKeyspace::pub_keyspace_events( RedisExec &exec )
       ev.evt    = e;
       ev.evtlen = elen;
       for ( i = 0; i < exec.key_cnt; i++ ) {
-        uint8_t fl = exec.keys[ i ]->flags & key_fl;
-        if ( ( fl & ( EKF_KEYSPACE_FWD | EKF_KEYEVENT_FWD ) ) != 0 ) {
+        uint16_t fl = exec.keys[ i ]->flags & key_fl;
+        if ( ( fl & ( EKF_KEYSPACE_FWD | EKF_KEYEVENT_FWD |
+                      EKF_LISTBLKD_NOT | EKF_ZSETBLKD_NOT ) ) != 0 ) {
           ev.key    = (const char *) exec.keys[ i ]->kbuf.u.buf;
           ev.keylen = exec.keys[ i ]->kbuf.keylen - 1;
           if ( ( fl & EKF_KEYSPACE_FWD ) != 0 )
             b &= ev.fwd_keyspace();
           if ( ( fl & EKF_KEYEVENT_FWD ) != 0 )
             b &= ev.fwd_keyevent();
+          if ( ( fl & EKF_LISTBLKD_NOT ) != 0 )
+            b &= ev.fwd_listblkd();
+          if ( ( fl & EKF_ZSETBLKD_NOT ) != 0 )
+            b &= ev.fwd_zsetblkd();
         }
       }
       if ( ( exec.key_flags & EKF_KEYSPACE_DEL ) != 0 ) {
         ev.evt    = "del";
         ev.evtlen = 3;
         for ( i = 0; i < exec.key_cnt; i++ ) {
-          uint8_t fl = exec.keys[ i ]->flags & key_fl;
+          uint16_t fl = exec.keys[ i ]->flags & key_fl;
           if ( ( fl & ( EKF_KEYSPACE_FWD | EKF_KEYEVENT_FWD ) ) != 0 ) {
             if ( ( fl & EKF_KEYSPACE_DEL ) != 0 ) {
               ev.key    = (const char *) exec.keys[ i ]->kbuf.u.buf;
@@ -291,7 +359,7 @@ RedisKeyspace::pub_keyspace_events( RedisExec &exec )
     }
     if ( first != NULL ) {
       RedisKeyspace ev( exec );
-      uint8_t fl = exec.key_flags & key_fl;
+      uint16_t fl = exec.key_flags & key_fl;
       ev.key    = (const char *) exec.keys[ 0 ]->kbuf.u.buf;
       ev.keylen = exec.keys[ 0 ]->kbuf.keylen - 1;
       ev.evt    = first;

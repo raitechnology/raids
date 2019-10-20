@@ -127,6 +127,7 @@ isfwd( RedisCmd cmd )
     case ZREVRANGE_CMD:
     case ZREVRANGEBYSCORE_CMD:
     case ZREVRANK_CMD:
+    case ZPOPMAX_CMD:
       return false;
     default:
       return true;
@@ -266,6 +267,26 @@ main( int, char ** )
         count = sk->zset->hcount();
         printf( "%ld\n", count );
         break;
+      case ZPOPMIN_CMD:
+        ival = 0;
+        if ( ! msg.get_arg( 2, jval ) )
+          goto bad_args;
+        count = sk->zset->hcount();
+        if ( jval < 0 )
+          jval = 0;
+        else if ( (size_t) jval > count )
+          jval = count;
+        goto do_range;
+      case ZPOPMAX_CMD:
+        if ( ! msg.get_arg( 2, ival ) )
+          goto bad_args;
+        count = sk->zset->hcount();
+        jval = count;
+        if ( ival > 0 && (size_t) ival < count )
+          ival = count - ival;
+        else
+          ival = 0;
+        goto do_range;
       case ZRANGE_CMD:          /* ZRANGE key start stop [WITHSCORES] */
       case ZREVRANGE_CMD:       /* ZREVRANGE key start stop [WITHSCORES] */
         withscores = ( msg.match_arg( 4, "withscores", 10, NULL ) == 1 );
@@ -341,6 +362,8 @@ main( int, char ** )
             break;
           i += ( isfwd( cmd ) ? 1 : -1 );
         }
+        if ( cmd == ZPOPMIN_CMD || cmd == ZPOPMAX_CMD )
+          goto do_rem_range;
 #if 0
         if ( cmd != SMEMBERS_CMD ) {
           if ( cmd == SDIFFSTORE_CMD || cmd == SINTERSTORE_CMD ||

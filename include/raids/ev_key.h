@@ -32,15 +32,17 @@ enum EvKeyFlags { /* bits for EvKeyCtx::flags */
   EKF_KEYEVENT_FWD   = 8, /* operation resulted in a keyevent modification */
   EKF_KEYSPACE_EVENT = 12, /* both the above bits together */
   EKF_KEYSPACE_DEL   = 16, /* keyspace event (pop, srem, etc) caused a key del */
+  EKF_LISTBLKD_NOT   = 32, /* notify a blocked list an element available */
+  EKF_ZSETBLKD_NOT   = 64, /* notify a blocked zset an element available */
 
-#define EKF_TYPE_SHIFT 5
-  EKF_KEYSPACE_STRING = ( 1 << EKF_TYPE_SHIFT ), /* 32 */
-  EKF_KEYSPACE_LIST   = ( 2 << EKF_TYPE_SHIFT ), /* 64 */
-  EKF_KEYSPACE_HASH   = ( 3 << EKF_TYPE_SHIFT ), /* 96 */
-  EKF_KEYSPACE_SET    = ( 4 << EKF_TYPE_SHIFT ), /* 128 */
-  EKF_KEYSPACE_ZSET   = ( 5 << EKF_TYPE_SHIFT ), /* 160 */
-  EKF_KEYSPACE_GEO    = ( 6 << EKF_TYPE_SHIFT ), /* 192 */
-  EKF_KEYSPACE_HLL    = ( 7 << EKF_TYPE_SHIFT )  /* 224 */
+#define EKF_TYPE_SHIFT 7
+  EKF_KEYSPACE_STRING = ( 1 << EKF_TYPE_SHIFT ), /* 128 */
+  EKF_KEYSPACE_LIST   = ( 2 << EKF_TYPE_SHIFT ), /* 256 */
+  EKF_KEYSPACE_HASH   = ( 3 << EKF_TYPE_SHIFT ), /* 384 */
+  EKF_KEYSPACE_SET    = ( 4 << EKF_TYPE_SHIFT ), /* 512 */
+  EKF_KEYSPACE_ZSET   = ( 5 << EKF_TYPE_SHIFT ), /* 640 */
+  EKF_KEYSPACE_GEO    = ( 6 << EKF_TYPE_SHIFT ), /* 768 */
+  EKF_KEYSPACE_HLL    = ( 7 << EKF_TYPE_SHIFT ), /* 896 */
 };
 
 struct EvKeyCtx {
@@ -55,17 +57,17 @@ struct EvKeyCtx {
   EvKeyTempResult * part;   /* saved data for key */
   const int         argn;   /* which arg number of command */
   int               status; /* result of exec for this key */
+  uint16_t          flags;  /* is new, is read only */
   kv::KeyStatus     kstatus;/* result of key lookup */
   uint8_t           dep,    /* depends on another key */
-                    type,   /* value type, string, list, hash, etc */
-                    flags;  /* is new, is read only */
+                    type;   /* value type, string, list, hash, etc */
   kv::KeyFragment   kbuf;   /* key material, extends past structure */
 
   EvKeyCtx( kv::HashTab &h,  EvSocket *own,  const char *key,  size_t keylen,
             const int n,  const uint64_t seed,  const uint64_t seed2 )
      : ht( h ), owner( own ), hash1( seed ), hash2( seed2 ), ival( 0 ),
-       part( 0 ), argn( n ), status( 0 ), kstatus( KEY_OK ), dep( 0 ),
-       type( 0 ), flags( EKF_IS_READ_ONLY ) {
+       part( 0 ), argn( n ), status( 0 ), flags( EKF_IS_READ_ONLY ),
+       kstatus( KEY_OK ), dep( 0 ), type( 0 ) {
     uint16_t * p = (uint16_t *) (void *) this->kbuf.u.buf,
              * k = (uint16_t *) (void *) key,
              * e = (uint16_t *) (void *) &key[ keylen ];

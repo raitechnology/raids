@@ -26,11 +26,18 @@ struct RedisKeyspace {
   size_t db_str( size_t off );
   /* append "@db__:" to subj */
   size_t db_to_subj( size_t off );
-  /* create a subject: <prefix>@db__:key */
-  /*bool make_subj( const char *prefix,  size_t pre_len );*/
+  /* create a subject: __keyspace@db__:key */
   size_t make_keyspace_subj( void );
+  /* create a subject: __listblkd@db__:key */
+  size_t make_listblkd_subj( void );
+  /* create a subject: __zsetblkd@db__:key */
+  size_t make_zsetblkd_subj( void );
   /* publish __keyspace@N__:key <- event */
   bool fwd_keyspace( void );
+  /* publish __listblkd@N__:key <- event */
+  bool fwd_listblkd( void );
+  /* publish __zsetblkd@N__:key <- event */
+  bool fwd_zsetblkd( void );
   /* publish __keyevent@N__:event <- key */
   bool fwd_keyevent( void );
   /* convert command into keyspace events and publish them */

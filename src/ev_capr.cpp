@@ -126,21 +126,12 @@ EvCaprListen::accept( void )
     }
     return;
   }
-  EvCaprService * c = this->poll.free_capr.hd;
-  if ( c != NULL )
-    c->pop_free_list();
-  else {
-    void * m = aligned_malloc( sizeof( EvCaprService ) * EvPoll::ALLOC_INCR );
-    if ( m == NULL ) {
-      perror( "accept: no memory" );
-      ::close( sock );
-      return;
-    }
-    c = new ( m ) EvCaprService( this->poll );
-    for ( int i = EvPoll::ALLOC_INCR - 1; i >= 1; i-- ) {
-      new ( (void *) &c[ i ] ) EvCaprService( this->poll );
-      c[ i ].push_free_list();
-    }
+  EvCaprService *c = 
+    this->poll.get_free_list<EvCaprService>( this->poll.free_capr );
+  if ( c == NULL ) {
+    perror( "accept: no memory" );
+    ::close( sock );
+    return;
   }
   struct linger lin;
   lin.l_onoff  = 1;
@@ -162,8 +153,7 @@ EvCaprListen::accept( void )
     this->sess = CaprSession::create( "localhost", user, host, "ds", h1 );
   }
   c->fd = sock;
-  c->initialize_state( this->timer_id );
-  this->timer_id += 16;
+  c->initialize_state( ++this->timer_id );
   c->sess = this->sess->copy();
   c->idle_push( EV_WRITE_HI );
   if ( this->poll.add_sock( c ) < 0 ) {
@@ -173,8 +163,7 @@ EvCaprListen::accept( void )
     return;
   }
   c->pub_session( CAPR_SESSION_START );
-  this->poll.timer_queue->add_timer( c->fd, CAPR_SESSION_IVAL, c->timer_id,
-                                     IVAL_SECS );
+  this->poll.add_timer_seconds( c->fd, CAPR_SESSION_IVAL, c->timer_id, 0 );
 }
 
 static void
@@ -187,7 +176,7 @@ print_rec( CaprMsgIn &rec )
 }
 
 void
-EvCaprService::process( bool /*use_prefetch*/ )
+EvCaprService::process( void )
 {
   CaprMsgIn rec;
   size_t    buflen;
@@ -244,7 +233,7 @@ break_loop:;
 }
 
 bool
-EvCaprService::timer_expire( uint64_t tid )
+EvCaprService::timer_expire( uint64_t tid,  uint64_t )
 {
   if ( this->timer_id != tid )
     return false;

@@ -39,7 +39,13 @@ enum {
   DO_ZREVRANK         = 1<<17,
   DO_ZSCORE           = 1<<18,
   DO_ZUNIONSTORE      = 1<<19,
-  DO_ZSCAN            = 1<<20
+  DO_ZSCAN            = 1<<20,
+  DO_ZPOPMIN          = 1<<21,
+  DO_ZPOPMAX          = 1<<22,
+  DO_BZPOPMIN         = 1<<23,
+  DO_BZPOPMAX         = 1<<24,
+  ZSET_POP_CMDS       = DO_ZPOPMAX | DO_ZPOPMIN |
+                        DO_BZPOPMAX | DO_BZPOPMIN
 };
 
 ExecStatus
@@ -193,6 +199,50 @@ RedisExec::exec_zscan( EvKeyCtx &ctx )
   status = this->do_zmultiscan( ctx, DO_ZSCAN, &sa );
   this->release_scan_args( sa );
   return status;
+}
+
+ExecStatus
+RedisExec::exec_zpopmin( EvKeyCtx &ctx )
+{
+  /* ZPOPMIN key [cnt] */
+  return this->do_zremrange( ctx, DO_ZPOPMIN );
+}
+
+ExecStatus
+RedisExec::exec_zpopmax( EvKeyCtx &ctx )
+{
+  /* ZPOPMAX key [cnt] */
+  return this->do_zremrange( ctx, DO_ZPOPMAX );
+}
+
+ExecStatus
+RedisExec::exec_bzpopmin( EvKeyCtx &ctx )
+{
+  /* BZPOPMIN key [key...] timeout */
+  ExecStatus status = this->do_zremrange( ctx, DO_BZPOPMIN );
+  switch ( status ) {
+    case EXEC_SEND_ZEROARR:
+      if ( ! this->msg.get_arg( this->argc - 1, ctx.ival ) )
+        ctx.ival = 0;
+      return EXEC_BLOCKED;
+    case EXEC_OK:       return EXEC_SEND_DATA;
+    default:            return status;
+  }
+}
+
+ExecStatus
+RedisExec::exec_bzpopmax( EvKeyCtx &ctx )
+{
+  /* BZPOPMAX key [key...] timeout */
+  ExecStatus status = this->do_zremrange( ctx, DO_BZPOPMAX );
+  switch ( status ) {
+    case EXEC_SEND_ZEROARR:
+      if ( ! this->msg.get_arg( this->argc - 1, ctx.ival ) )
+        ctx.ival = 0;
+      return EXEC_BLOCKED;
+    case EXEC_OK:       return EXEC_SEND_DATA;
+    default:            return status;
+  }
 }
 
 static ZScore
@@ -533,6 +583,8 @@ RedisExec::do_zwrite( EvKeyCtx &ctx,  int flags )
     }
     /* return number members updated */
     if ( ctx.ival > 0 ) {
+      if ( ( flags & DO_ZADD ) != 0 )
+        ctx.flags |= EKF_ZSETBLKD_NOT;
       ctx.flags |= EKF_KEYSPACE_EVENT | EKF_KEYSPACE_ZSET;
       if ( zset.x->hcount() == 0 ) {
         ctx.flags |= EKF_KEYSPACE_DEL;
@@ -837,15 +889,23 @@ finished:;
 ExecStatus
 RedisExec::do_zremrange( EvKeyCtx &ctx,  int flags )
 {
-  const char * lo         = NULL,
-             * hi         = NULL;
-  size_t       lolen      = 0,
-               hilen      = 0;
-  int64_t      ival       = 0,
-               jval       = 0;
+  const char * lo    = NULL,
+             * hi    = NULL;
+  size_t       lolen = 0,
+               hilen = 0;
+  int64_t      ival  = 0,
+               jval  = 0;
 
-  /* ZREMRANGEBYRANK key start stop */
-  if ( ( flags & DO_ZREMRANGEBYRANK ) != 0 ) {
+  /* ZPOPMIN/MAX key [cnt] or BZPOPMIN/MAX key key2 key3 timeout */
+  if ( ( flags & ZSET_POP_CMDS ) != 0 ) {
+    if ( ( flags & ( DO_ZPOPMAX | DO_ZPOPMIN ) ) != 0 && this->argc > 2 ) {
+      if ( ! this->msg.get_arg( 2, jval ) )
+        return ERR_BAD_ARGS;
+    }
+    else /* default and bz is always 1 */
+      jval = 1;
+  }
+  else if ( ( flags & DO_ZREMRANGEBYRANK ) != 0 ) {
     if ( ! this->msg.get_arg( 2, ival ) || ! this->msg.get_arg( 3, jval ) )
       return ERR_BAD_ARGS;
   }
@@ -878,11 +938,15 @@ RedisExec::do_zremrange( EvKeyCtx &ctx,  int flags )
     }
   }
   switch ( this->exec_key_fetch( ctx ) ) {
-    case KEY_IS_NEW: return EXEC_SEND_ZERO;
-    default:         return ERR_KV_STATUS;
+    default:
+      return ERR_KV_STATUS;
     case KEY_OK:
-      if ( ctx.type == MD_NODATA )
+      if ( ctx.type == MD_NODATA ) {
+    case KEY_IS_NEW:
+        if ( ( flags & ZSET_POP_CMDS ) != 0 )
+          return EXEC_SEND_ZEROARR;
         return EXEC_SEND_ZERO;
+      }
       if ( ctx.type != MD_ZSET && ctx.type != MD_GEO )
         return ERR_BAD_TYPE;
       break;
@@ -893,10 +957,31 @@ RedisExec::do_zremrange( EvKeyCtx &ctx,  int flags )
 
     if ( ! zset.open() )
       return ERR_KV_STATUS;
-    if ( (count = zset.x->hcount()) == 0 )
+    if ( (count = zset.x->hcount()) == 0 ) {
+      if ( ( flags & ZSET_POP_CMDS ) != 0 )
+        return EXEC_SEND_ZEROARR;
       return EXEC_SEND_ZERO;
-
-    if ( ( flags & DO_ZREMRANGEBYRANK ) != 0 ) {
+    }
+    if ( ( flags & ZSET_POP_CMDS ) != 0 ) {
+      if ( ( flags & ( DO_ZPOPMIN | DO_BZPOPMIN ) ) != 0 ) {
+        ival = 0;
+        if ( jval > (int64_t) count )
+          jval = count;
+        else if ( jval < 0 )
+          jval = 0;
+      }
+      else { /* ZPOPMAX, BZPOPMAX */
+        ival = jval;
+        jval = count; 
+        if ( ival > 0 && (size_t) ival <= count )
+          ival = count - ival;
+        else
+          ival = count;
+      }
+      i = ival;
+      j = jval;
+    }
+    else if ( ( flags & DO_ZREMRANGEBYRANK ) != 0 ) {
       if ( ival < 0 )
         ival = count + ival;
       if ( jval < 0 )
@@ -926,6 +1011,44 @@ RedisExec::do_zremrange( EvKeyCtx &ctx,  int flags )
       }
     }
 
+    if ( ( flags & ZSET_POP_CMDS ) != 0 ) {
+      StreamBuf::BufQueue q( this->strm );
+      ZSetVal    zv;
+      ZSetStatus zstatus;
+      char       fpdata[ 64 ];
+      size_t     fvallen, itemcnt = 0, k;
+
+      for (;;) {
+        if ( i >= j )
+          break;
+        if ( ( flags & ( DO_ZPOPMAX | DO_BZPOPMAX ) ) != 0 )
+          k = j--;
+        else
+          k = ++i;
+        zstatus = zset.x->zindex( k, zv );
+        if ( zstatus != ZSET_OK )
+          break;
+        if ( ( flags & ( DO_BZPOPMIN | DO_BZPOPMAX ) ) != 0 ) {
+          if ( q.append_string( ctx.kbuf.u.buf, ctx.kbuf.keylen - 1 ) == 0 )
+            return ERR_ALLOC_FAIL;
+          itemcnt++;
+        }
+        if ( q.append_string( zv.data, zv.sz, zv.data2, zv.sz2 ) == 0 )
+          return ERR_ALLOC_FAIL;
+        itemcnt++;
+        fvallen = zv.score.to_string( fpdata );
+        if ( q.append_string( fpdata, fvallen ) == 0 )
+          return ERR_ALLOC_FAIL;
+        itemcnt++;
+      }
+      q.finish_tail();
+      q.prepend_array( itemcnt );
+      this->strm.append_iov( q );
+
+      i = ival;
+      j = jval;
+    }
+
     ctx.ival = j - i;
     if ( (size_t) ctx.ival == count ) {
       zset.x->zremall();
@@ -950,10 +1073,31 @@ RedisExec::do_zremrange( EvKeyCtx &ctx,  int flags )
 
     if ( ! geo.open() )
       return ERR_KV_STATUS;
-    if ( (count = geo.x->hcount()) == 0 )
+    if ( (count = geo.x->hcount()) == 0 ) {
+      if ( ( flags & ZSET_POP_CMDS ) != 0 )
+        return EXEC_SEND_ZEROARR;
       return EXEC_SEND_ZERO;
-
-    if ( ( flags & DO_ZREMRANGEBYRANK ) != 0 ) {
+    }
+    if ( ( flags & ZSET_POP_CMDS ) != 0 ) {
+      if ( ( flags & ( DO_ZPOPMIN | DO_BZPOPMIN ) ) != 0 ) {
+        ival = 0;
+        if ( jval > (int64_t) count )
+          jval = count;
+        else if ( jval < 0 )
+          jval = 0;
+      }
+      else { /* ZPOPMAX, BZPOPMAX */
+        ival = jval;
+        jval = count; 
+        if ( ival > 0 && (size_t) ival <= count )
+          ival = count - ival;
+        else
+          ival = count;
+      }
+      i = ival;
+      j = jval;
+    }
+    else if ( ( flags & DO_ZREMRANGEBYRANK ) != 0 ) {
       if ( ival < 0 )
         ival = count + ival;
       if ( jval < 0 )
@@ -967,6 +1111,44 @@ RedisExec::do_zremrange( EvKeyCtx &ctx,  int flags )
     }
     else { /* zremrangebyscore, zremrangebylex ?? maybe ?? */
       return ERR_BAD_TYPE;
+    }
+
+    if ( ( flags & ZSET_POP_CMDS ) != 0 ) {
+      StreamBuf::BufQueue q( this->strm );
+      GeoVal     gv;
+      GeoStatus  gstatus;
+      char       fpdata[ 64 ];
+      size_t     fvallen, itemcnt = 0, k;
+
+      for (;;) {
+        if ( i >= j )
+          break;
+        if ( ( flags & ( DO_ZPOPMAX | DO_BZPOPMAX ) ) != 0 )
+          k = j--;
+        else
+          k = ++i;
+        gstatus = geo.x->geoindex( k, gv );
+        if ( gstatus != GEO_OK )
+          break;
+        if ( ( flags & ( DO_BZPOPMIN | DO_BZPOPMAX ) ) != 0 ) {
+          if ( q.append_string( ctx.kbuf.u.buf, ctx.kbuf.keylen - 1 ) == 0 )
+            return ERR_ALLOC_FAIL;
+          itemcnt++;
+        }
+        if ( q.append_string( gv.data, gv.sz, gv.data2, gv.sz2 ) == 0 )
+          return ERR_ALLOC_FAIL;
+        itemcnt++;
+        fvallen = uint_to_str( gv.score, fpdata );
+        if ( q.append_string( fpdata, fvallen ) == 0 )
+          return ERR_ALLOC_FAIL;
+        itemcnt++;
+      }
+      q.finish_tail();
+      q.prepend_array( itemcnt );
+      this->strm.append_iov( q );
+
+      i = ival;
+      j = jval;
     }
 
     ctx.ival = j - i;
@@ -988,6 +1170,8 @@ RedisExec::do_zremrange( EvKeyCtx &ctx,  int flags )
       }
     }
   }
+  if ( ( flags & ZSET_POP_CMDS ) != 0 )
+    return EXEC_OK;
   return EXEC_SEND_INT;
 }
 
@@ -1043,8 +1227,8 @@ RedisExec::do_zsetop_store( EvKeyCtx &ctx,  int flags )
                  retry  = 0,
                  ndata,
                  count;
-  uint8_t        type,
-                 kspc_type;
+  uint16_t       kspc_type;
+  uint8_t        type;
   ZAggregateType aggregate_type = ZAGGREGATE_SUM;
   bool           has_weights    = false;
 
@@ -1216,7 +1400,8 @@ RedisExec::do_zsetop_store( EvKeyCtx &ctx,  int flags )
         ::memcpy( data2, data, datalen );
         ctx.ival   = count;
         ctx.type   = type;
-        ctx.flags |= EKF_IS_NEW | EKF_KEYSPACE_EVENT | kspc_type;
+        ctx.flags |= EKF_IS_NEW | EKF_KEYSPACE_EVENT |
+                     kspc_type | EKF_ZSETBLKD_NOT;
         return EXEC_SEND_INT;
       }
     /* FALLTHRU */

@@ -71,21 +71,12 @@ EvRedisUnixListen::accept( void )
     }
     return;
   }
-  EvRedisService * c = this->poll.free_redis.hd;
-  if ( c != NULL )
-    c->pop_free_list();
-  else {
-    void * m = aligned_malloc( sizeof( EvRedisService ) * EvPoll::ALLOC_INCR );
-    if ( m == NULL ) {
-      perror( "accept: no memory" );
-      ::close( sock );
-      return;
-    }
-    c = new ( m ) EvRedisService( this->poll );
-    for ( int i = EvPoll::ALLOC_INCR - 1; i >= 1; i-- ) {
-      new ( (void *) &c[ i ] ) EvRedisService( this->poll );
-      c[ i ].push_free_list();
-    }
+  EvRedisService *c =
+    this->poll.get_free_list<EvRedisService>( this->poll.free_redis );
+  if ( c == NULL ) {
+    perror( "accept: no memory" );
+    ::close( sock );
+    return;
   }
   ::fcntl( sock, F_SETFL, O_NONBLOCK | ::fcntl( sock, F_GETFL ) );
   c->fd = sock;

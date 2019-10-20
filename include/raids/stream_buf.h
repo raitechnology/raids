@@ -66,13 +66,8 @@ struct StreamBuf {
   struct iovec * iov;
   size_t vlen;
 
-  kv::WorkAllocT< 8 * 1024 > tmp;
-  struct iovec iovbuf[ 128 ]; /* vec of send buffers */
-
-#if __cplusplus > 201103L
-  /* 64b align */
-  static_assert( 0 == sizeof( StreamBuf ) % 64, "stream buf size" );
-#endif
+  kv::WorkAllocT< 5 * 1024 > tmp;
+  struct iovec iovbuf[ 32 ]; /* vec of send buffers */
 
   StreamBuf() { this->reset(); }
 
@@ -167,6 +162,11 @@ struct StreamBuf {
     }
   }
 };
+
+#if __cplusplus >= 201103L
+  /* 64b align */
+  static_assert( 0 == sizeof( StreamBuf ) % 64, "stream buf size" );
+#endif
 
 }
 }

@@ -19,6 +19,7 @@ using namespace md;
 static char ok[]      = "+OK\r\n";
 static char nil[]     = "$-1\r\n";
 static char null[]    = "*-1\r\n";
+static char zeroarr[] = "*0\r\n";
 static char zero[]    = ":0\r\n";
 static char one[]     = ":1\r\n";
 static char neg_one[] = ":-1\r\n";
@@ -27,6 +28,7 @@ static char queued[]  = "+QUEUED\r\n";
 static const size_t ok_sz      = sizeof( ok ) - 1,
                     nil_sz     = sizeof( nil ) - 1,
                     null_sz    = sizeof( null ) - 1,
+                    zeroarr_sz = sizeof( zeroarr ) - 1,
                     zero_sz    = sizeof( zero ) - 1,
                     one_sz     = sizeof( one ) - 1,
                     neg_one_sz = sizeof( neg_one ) - 1,
@@ -35,6 +37,7 @@ static const size_t ok_sz      = sizeof( ok ) - 1,
 void RedisExec::send_ok( void ) { this->strm.append( ok, ok_sz ); }
 void RedisExec::send_nil( void ) { this->strm.append( nil, nil_sz ); }
 void RedisExec::send_null( void ) { this->strm.append( null, null_sz ); }
+void RedisExec::send_zeroarr( void ) { this->strm.append( zeroarr,zeroarr_sz );}
 void RedisExec::send_zero( void ) { this->strm.append( zero, zero_sz ); }
 void RedisExec::send_one( void ) { this->strm.append( one, one_sz ); }
 void RedisExec::send_neg_one( void ) { this->strm.append( neg_one, neg_one_sz);}
@@ -149,10 +152,7 @@ RedisExec::array_string_result( void )
   this->strm.sz += crlf( str, sz );
 
   if ( this->key_cnt > 0 ) {
-    if ( this->key_cnt == 1 ) /* only one part, no keys[] array */
-      part = this->key->part;
-    else
-      part = this->keys[ 0 ]->part;
+    part = this->keys[ 0 ]->part;
     for ( uint32_t i = 0; ; ) {
       if ( part != NULL ) {
         if ( part->size < 256 )
@@ -348,7 +348,7 @@ RedisExec::exec( EvSocket *svc,  EvPrefetchQueue *q )
     this->key_done = 0;
 
     this->key  = NULL;
-    this->keys = NULL;
+    this->keys = &this->key;
     /* setup first key */
     status = this->exec_key_setup( svc, q, this->key, i );
     if ( status == EXEC_SETUP_OK ) {
@@ -608,6 +608,10 @@ RedisExec::exec_key_continue( EvKeyCtx &ctx )
       case ZSCORE_CMD:    ctx.status = this->exec_zscore( ctx ); break;
       case ZUNIONSTORE_CMD: ctx.status = this->exec_zunionstore( ctx ); break;
       case ZSCAN_CMD:     ctx.status = this->exec_zscan( ctx ); break;
+      case ZPOPMIN_CMD:   ctx.status = this->exec_zpopmin( ctx ); break;
+      case ZPOPMAX_CMD:   ctx.status = this->exec_zpopmax( ctx ); break;
+      case BZPOPMIN_CMD:  ctx.status = this->exec_bzpopmin( ctx ); break;
+      case BZPOPMAX_CMD:  ctx.status = this->exec_bzpopmax( ctx ); break;
       /* STRING */
       case APPEND_CMD:    ctx.status = this->exec_append( ctx ); break;
       case BITCOUNT_CMD:  ctx.status = this->exec_bitcount( ctx ); break;
@@ -695,10 +699,15 @@ RedisExec::exec_key_continue( EvKeyCtx &ctx )
   if ( ++this->key_done == this->key_cnt ) {
     /* if all keys are blocked, waiting for some event */
     if ( ctx.status == EXEC_BLOCKED ) {
-      ctx.status = this->save_blocked_cmd();
-      if ( ctx.status == EXEC_OK )
-        return EXEC_SUCCESS;
-      return (ExecStatus) ctx.status;
+      if ( ! this->timeout ) {
+        ctx.status = this->save_blocked_cmd( ctx.ival );
+        if ( ctx.status == EXEC_OK )
+          return EXEC_SUCCESS;
+        return (ExecStatus) ctx.status;
+      }
+      else { /* blocked cmd timeout */
+        ctx.status = EXEC_SEND_NULL;
+      }
     }
     /* all keys complete, mget is special */
     if ( this->cmd == MGET_CMD ) {
@@ -739,8 +748,8 @@ RedisExec::exec_key_continue( EvKeyCtx &ctx )
     return EXEC_CONTINUE;
 success:;
   /* publish keyspace events */
-  if ( ( this->key_flags & this->sub_route.rte.key_flags &
-         EKF_KEYSPACE_EVENT ) != 0 )
+  /*printf( "kf %x rte kf %x\n", this->key_flags, this->sub_route.rte.key_flags );*/
+  if ( ( this->key_flags & this->sub_route.rte.key_flags ) != 0 )
     RedisKeyspace::pub_keyspace_events( *this );
   return EXEC_SUCCESS;
 }
@@ -1163,6 +1172,7 @@ RedisExec::send_err( int status,  KeyStatus kstatus )
     case EXEC_SEND_NULL:        this->send_null(); break;
     case EXEC_SEND_INT:         this->send_int(); break;
     case EXEC_ABORT_SEND_ZERO:
+    case EXEC_SEND_ZEROARR:     this->send_zeroarr(); break;
     case EXEC_SEND_ZERO:        this->send_zero(); break;
     case EXEC_SEND_ONE:         this->send_one(); break;
     case EXEC_SEND_NEG_ONE:     this->send_neg_one(); break;

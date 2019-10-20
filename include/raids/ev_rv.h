@@ -236,10 +236,12 @@ struct EvRvService : public EvConnection {
     this->vmaj = this->vmin = this->vupd = 0;
   }
   void send_info( bool agree );
-  void process( bool use_prefetch );
+  void process( void );
+  void exec_key_prefetch( EvKeyCtx & ) {}
+  int exec_key_continue( EvKeyCtx & ) { return 0; }
   int recv_data( void *msg,  size_t msg_len );
   int respond_info( void );
-  bool timer_expire( uint64_t tid ); /* return false if stop or invalid */
+  bool timer_expire( uint64_t tid,  uint64_t eid );
   void add_sub( void );
   void rem_sub( void );
   void rem_all_sub( void );
@@ -252,6 +254,7 @@ struct EvRvService : public EvConnection {
   void push_free_list( void );
   void pop_free_list( void );
   void pub_session( uint8_t code );
+  void process_close( void ) {}
 };
 
 }

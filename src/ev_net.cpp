@@ -105,6 +105,48 @@ sock_type_string( EvSockType t )
   }
   return "unknown";
 }
+/* vtable dispatch */
+inline void EvSocket::v_write( void ) {
+  SOCK_CALL( this, write() );
+}
+inline void EvSocket::v_read( void ) {
+  SOCK_CALL( this, read() );
+}
+inline void EvSocket::v_process( void ) {
+  SOCK_CALL( this, process() );
+}
+inline void EvSocket::v_release( void ) {
+  SOCK_CALL( this, release() );
+}
+inline bool EvSocket::v_timer_expire( uint64_t tid, uint64_t eid ) {
+  bool b = false;
+  SOCK_CALL2( b, this, timer_expire( tid, eid ) );
+  return b;
+}
+inline bool EvSocket::v_hash_to_sub( uint32_t h, char *k, size_t &klen ) {
+  bool b = false;
+  SOCK_CALL2( b, this, hash_to_sub( h, k, klen ) );
+  return b;
+}
+inline bool EvSocket::v_on_msg( EvPublish &pub ) {
+  bool b = true;
+  SOCK_CALL2( b, this, on_msg( pub ) );
+  return b;
+}
+inline void EvSocket::v_exec_key_prefetch( EvKeyCtx &ctx ) {
+  SOCK_CALL( this, exec_key_prefetch( ctx ) );
+}
+inline int  EvSocket::v_exec_key_continue( EvKeyCtx &ctx ) {
+  int status = 0;
+  SOCK_CALL2( status, this, exec_key_continue( ctx ) );
+  return status;
+}
+inline void EvSocket::v_process_shutdown( void ) {
+  SOCK_CALL( this, process_shutdown() );
+}
+inline void EvSocket::v_process_close( void ) {
+  SOCK_CALL( this, process_close() );
+}
 
 void
 EvPoll::drain_prefetch( void )
@@ -121,82 +163,17 @@ EvPoll::drain_prefetch( void )
     ctx[ i ] = pq.pop();
     EvKeyCtx & k = *ctx[ i ];
     s = k.owner;
-    switch ( s->type ) {
-      case EV_REDIS_SOCK:
-        ((EvRedisService *) s)->exec_key_prefetch( k ); break;
-      case EV_HTTP_SOCK:
-        ((EvHttpService *) s)->exec_key_prefetch( k ); break;
-      case EV_MEMCACHED_SOCK:
-        ((EvMemcachedService *) s)->exec_key_prefetch( k ); break;
-      case EV_MEMUDP_SOCK:
-        ((EvMemcachedUdp *) s)->exec->exec_key_prefetch( k ); break;
-      case EV_SHM_SOCK:
-        /*((EvShmClient *) s)->exec->exec_key_prefetch( k );*/ break;
-      case EV_NATS_SOCK:      break;
-      case EV_CAPR_SOCK:      break;
-      case EV_RV_SOCK:        break;
-      case EV_KV_PUBSUB:      break;
-      case EV_SHM_SVC:        break;
-      case EV_LISTEN_SOCK:    break;
-      case EV_CLIENT_SOCK:    break;
-      case EV_TERMINAL:       break;
-      case EV_TIMER_QUEUE:    break;
-      case EV_CLIENTUDP_SOCK: break;
-    }
-    /*ctx[ i ]->prefetch();*/
+    s->v_exec_key_prefetch( k );
   }
   this->prefetch_cnt[ sz ]++;
   i &= ( PREFETCH_SIZE - 1 );
   for ( j = 0; ; ) {
-    int status = 0;
     EvKeyCtx & k = *ctx[ j ];
     s = k.owner;
-    switch ( s->type ) {
-      case EV_REDIS_SOCK:
-        status = ((EvRedisService *) s)->exec_key_continue( k ); break;
-      case EV_HTTP_SOCK:
-        status = ((EvHttpService *) s)->exec_key_continue( k ); break;
-      case EV_MEMCACHED_SOCK:
-        status = ((EvMemcachedService *) s)->exec_key_continue( k ); break;
-      case EV_MEMUDP_SOCK:
-        status = ((EvMemcachedUdp *) s)->exec->exec_key_continue( k ); break;
-      case EV_SHM_SOCK:
-        /*status = ((EvShmClient *) s)->exec->exec_key_continue( k );*/ break;
-      case EV_NATS_SOCK:      break;
-      case EV_CAPR_SOCK:      break;
-      case EV_RV_SOCK:        break;
-      case EV_KV_PUBSUB:      break;
-      case EV_SHM_SVC:        break;
-      case EV_LISTEN_SOCK:    break;
-      case EV_CLIENT_SOCK:    break;
-      case EV_TERMINAL:       break;
-      case EV_TIMER_QUEUE:    break;
-      case EV_CLIENTUDP_SOCK: break;
-    }
-    switch ( status ) {
+    switch( s->v_exec_key_continue( k ) ) {
       default:
       case EK_SUCCESS:
-        switch ( s->type ) {
-          case EV_REDIS_SOCK:
-            ((EvRedisService *) s)->process( true ); break;
-          case EV_HTTP_SOCK:
-            ((EvHttpService *) s)->process( true ); break;
-          case EV_MEMCACHED_SOCK:
-            ((EvMemcachedService *) s)->process( true ); break;
-          case EV_MEMUDP_SOCK:
-            ((EvMemcachedUdp *) s)->process( true ); break;
-          case EV_CLIENT_SOCK:    break;
-          case EV_TERMINAL:       break;
-          case EV_NATS_SOCK:      break;
-          case EV_CAPR_SOCK:      break;
-          case EV_RV_SOCK:        break;
-          case EV_KV_PUBSUB:      break;
-          case EV_TIMER_QUEUE:    break;
-          case EV_SHM_SVC:        break;
-          case EV_LISTEN_SOCK:    break;
-          case EV_SHM_SOCK:       break;
-          case EV_CLIENTUDP_SOCK: break;
-        }
+        s->v_process();
         if ( s->test( EV_PREFETCH ) != 0 ) {
           s->pop( EV_PREFETCH ); /* continue prefetching */
         }
@@ -222,28 +199,7 @@ EvPoll::drain_prefetch( void )
         ctx[ i ] = pq.pop();
         EvKeyCtx & k = *ctx[ i ];
         s = k.owner;
-        switch ( s->type ) {
-          case EV_REDIS_SOCK:
-            ((EvRedisService *) s)->exec_key_prefetch( k ); break;
-          case EV_HTTP_SOCK:
-            ((EvHttpService *) s)->exec_key_prefetch( k ); break;
-          case EV_MEMCACHED_SOCK:
-            ((EvMemcachedService *) s)->exec_key_prefetch( k ); break;
-          case EV_MEMUDP_SOCK:
-            ((EvMemcachedUdp *) s)->exec->exec_key_prefetch( k ); break;
-          case EV_SHM_SOCK:
-            /*((EvShmClient *) s)->exec->exec_key_prefetch( k );*/ break;
-          case EV_NATS_SOCK:      break;
-          case EV_CAPR_SOCK:      break;
-          case EV_RV_SOCK:        break;
-          case EV_KV_PUBSUB:      break;
-          case EV_SHM_SVC:        break;
-          case EV_LISTEN_SOCK:    break;
-          case EV_CLIENT_SOCK:    break;
-          case EV_TERMINAL:       break;
-          case EV_TIMER_QUEUE:    break;
-          case EV_CLIENTUDP_SOCK: break;
-        }
+        s->v_exec_key_prefetch( k );
         /*ctx[ i ]->prefetch();*/
         i = ( i + 1 ) & ( PREFETCH_SIZE - 1 );
       } while ( ++sz < PREFETCH_SIZE && ! pq.is_empty() );
@@ -289,42 +245,10 @@ EvPoll::dispatch( void )
       case EV_READ:
       case EV_READ_LO:
       case EV_READ_HI:
-        switch ( s->type ) {
-          case EV_REDIS_SOCK:     ((EvRedisService *) s)->read(); break;
-          case EV_HTTP_SOCK:      ((EvHttpService *) s)->read(); break;
-          case EV_LISTEN_SOCK:    ((EvListen *) s)->accept(); break;
-          case EV_CLIENT_SOCK:    ((EvNetClient *) s)->read(); break;
-          case EV_TERMINAL:       ((EvTerminal *) s)->read(); break;
-          case EV_NATS_SOCK:      ((EvNatsService *) s)->read(); break;
-          case EV_CAPR_SOCK:      ((EvCaprService *) s)->read(); break;
-          case EV_RV_SOCK:        ((EvRvService *) s)->read(); break;
-          case EV_KV_PUBSUB:      ((KvPubSub *) s)->read(); break;
-          case EV_TIMER_QUEUE:    ((EvTimerQueue *) s)->read(); break;
-          case EV_SHM_SVC:        ((EvShmSvc *) s)->read(); break;
-          case EV_MEMCACHED_SOCK: ((EvMemcachedService *) s)->read(); break;
-          case EV_MEMUDP_SOCK:    ((EvMemcachedUdp *) s)->read(); break;
-          case EV_CLIENTUDP_SOCK: ((EvUdpClient *) s)->read(); break;
-          case EV_SHM_SOCK:       break;
-        }
+        s->v_read();
         break;
       case EV_PROCESS:
-        switch ( s->type ) {
-          case EV_REDIS_SOCK:     ((EvRedisService *) s)->process( true ); break;
-          case EV_HTTP_SOCK:      ((EvHttpService *) s)->process( false ); break;
-          case EV_CLIENT_SOCK:    ((EvNetClient *) s)->process(); break;
-          case EV_TERMINAL:       ((EvTerminal *) s)->process(); break;
-          case EV_NATS_SOCK:      ((EvNatsService *) s)->process( false ); break;
-          case EV_CAPR_SOCK:      ((EvCaprService *) s)->process( false ); break;
-          case EV_RV_SOCK:        ((EvRvService *) s)->process( false ); break;
-          case EV_KV_PUBSUB:      ((KvPubSub *) s)->process( false ); break;
-          case EV_TIMER_QUEUE:    ((EvTimerQueue *) s)->process(); break;
-          case EV_SHM_SVC:        ((EvShmSvc *) s)->process( false ); break;
-          case EV_MEMCACHED_SOCK: ((EvMemcachedService *) s)->process( true ); break;
-          case EV_MEMUDP_SOCK:    ((EvMemcachedUdp *) s)->process( true ); break;
-          case EV_CLIENTUDP_SOCK: ((EvUdpClient *) s)->process(); break;
-          case EV_LISTEN_SOCK:    break;
-          case EV_SHM_SOCK:       break;
-        }
+        s->v_process();
         break;
       case EV_PREFETCH:
         s->pop( EV_PREFETCH );
@@ -332,89 +256,24 @@ EvPoll::dispatch( void )
         goto next_tick; /* skip putting s back into event queue */
       case EV_WRITE:
       case EV_WRITE_HI:
-        switch ( s->type ) {
-          case EV_REDIS_SOCK:     ((EvRedisService *) s)->write(); break;
-          case EV_HTTP_SOCK:      ((EvHttpService *) s)->write(); break;
-          case EV_CLIENT_SOCK:    ((EvNetClient *) s)->write(); break;
-          case EV_TERMINAL:       ((EvTerminal *) s)->write(); break;
-          case EV_NATS_SOCK:      ((EvNatsService *) s)->write(); break;
-          case EV_CAPR_SOCK:      ((EvCaprService *) s)->write(); break;
-          case EV_RV_SOCK:        ((EvRvService *) s)->write(); break;
-          case EV_KV_PUBSUB:      ((KvPubSub *) s)->write(); break;
-          case EV_SHM_SVC:        ((EvShmSvc *) s)->write(); break;
-          case EV_MEMCACHED_SOCK: ((EvMemcachedService *) s)->write(); break;
-          case EV_MEMUDP_SOCK:    ((EvMemcachedUdp *) s)->write(); break;
-          case EV_CLIENTUDP_SOCK: ((EvUdpClient *) s)->write(); break;
-          case EV_LISTEN_SOCK:    break;
-          case EV_SHM_SOCK:       break;
-          case EV_TIMER_QUEUE:    break;
-        }
+        s->v_write();
         break;
       case EV_SHUTDOWN:
-        switch ( s->type ) {
-          case EV_REDIS_SOCK:     ((EvRedisService *) s)->process_shutdown(); break;
-          case EV_HTTP_SOCK:      ((EvHttpService *) s)->process_shutdown(); break;
-          case EV_LISTEN_SOCK:    ((EvListen *) s)->process_shutdown(); break;
-          case EV_CLIENT_SOCK:    ((EvNetClient *) s)->process_shutdown(); break;
-          case EV_TERMINAL:       ((EvTerminal *) s)->process_shutdown(); break;
-          case EV_NATS_SOCK:      ((EvNatsService *) s)->process_shutdown(); break;
-          case EV_CAPR_SOCK:      ((EvCaprService *) s)->process_shutdown(); break;
-          case EV_RV_SOCK:        ((EvRvService *) s)->process_shutdown(); break;
-          case EV_KV_PUBSUB:      ((KvPubSub *) s)->process_shutdown(); break;
-          case EV_SHM_SOCK:       ((EvShmClient *) s)->process_shutdown(); break;
-          case EV_TIMER_QUEUE:    ((EvTimerQueue *) s)->process_shutdown(); break;
-          case EV_SHM_SVC:        ((EvShmSvc *) s)->process_shutdown(); break;
-          case EV_MEMCACHED_SOCK: ((EvMemcachedService *) s)->process_shutdown(); break;
-          case EV_MEMUDP_SOCK:    ((EvMemcachedUdp *) s)->process_shutdown(); break;
-          case EV_CLIENTUDP_SOCK: ((EvUdpClient *) s)->process_shutdown(); break;
-        }
+        s->v_process_shutdown();
         s->pop( EV_SHUTDOWN );
         break;
       case EV_CLOSE:
         s->popall();
         this->remove_sock( s );
-        switch ( s->type ) {
-          case EV_REDIS_SOCK:     break;
-          case EV_HTTP_SOCK:      break;
-          case EV_LISTEN_SOCK:    break;
-          case EV_CLIENT_SOCK:    ((EvNetClient *) s)->process_close(); break;
-          case EV_TERMINAL:       ((EvTerminal *) s)->process_close(); break;
-          case EV_NATS_SOCK:      break;
-          case EV_CAPR_SOCK:      break;
-          case EV_RV_SOCK:        break;
-          case EV_KV_PUBSUB:      ((KvPubSub *) s)->process_close(); break;
-          case EV_SHM_SOCK:       break;
-          case EV_TIMER_QUEUE:    break;
-          case EV_SHM_SVC:        ((EvShmSvc *) s)->process_close(); break;
-          case EV_MEMCACHED_SOCK: break;
-          case EV_MEMUDP_SOCK:    break;
-          case EV_CLIENTUDP_SOCK: ((EvUdpClient *) s)->process_close(); break;
-        }
+        s->v_process_close();
         break;
       case EV_BUSY_POLL:
-        switch ( s->type ) {
-          case EV_REDIS_SOCK:
-          case EV_HTTP_SOCK:
-          case EV_LISTEN_SOCK:
-          case EV_CLIENT_SOCK:
-          case EV_TERMINAL:
-          case EV_NATS_SOCK:
-          case EV_CAPR_SOCK:
-          case EV_RV_SOCK:
-          case EV_SHM_SOCK:
-          case EV_TIMER_QUEUE:
-          case EV_SHM_SVC:
-          case EV_MEMCACHED_SOCK:
-          case EV_MEMUDP_SOCK:
-          case EV_CLIENTUDP_SOCK: break;
-          case EV_KV_PUBSUB: {
-            uint64_t ns = ( busy_ns > 300 ? 300 : busy_ns );
-            if ( ! ((KvPubSub *) s)->busy_poll( ns ) )
-              busy_ns -= ns;
-            else
-              busy_ns = 0;
-            break;
-          }
+        if ( s->type == EV_KV_PUBSUB ) {
+          uint64_t ns = ( busy_ns > 300 ? 300 : busy_ns );
+          if ( ! ((KvPubSub *) s)->busy_poll( ns ) )
+            busy_ns -= ns;
+          else
+            busy_ns = 0;
         }
         break;
     }
@@ -424,14 +283,10 @@ EvPoll::dispatch( void )
     }
   }
   return start == this->prio_tick;
-#if 0
-    use_pref = ( this->prefetch_queue != NULL &&
-                 this->queue[ EV_PROCESS ].cnt > 1 );
-    if ( this->prefetch_queue != NULL && ! this->prefetch_queue->is_empty() )
-      this->drain_prefetch( *this->prefetch_queue );
-#endif
 }
 
+/* different publishers for different size route matches, one() is the most
+ * common, but multi / queue need to be used with multiple routes */
 bool
 EvPoll::publish_one( EvPublish &pub,  uint32_t *rcount_total,
                      RoutePublishData &rpd )
@@ -453,39 +308,7 @@ EvPoll::publish_one( EvPublish &pub,  uint32_t *rcount_total,
     EvSocket * s;
     if ( routes[ i ] <= (uint32_t) this->maxfd &&
          (s = this->sock[ routes[ i ] ]) != NULL ) {
-      switch ( s->type ) {
-        case EV_REDIS_SOCK:
-          flow_good &= ((EvRedisService *) s)->on_msg( pub );
-          break;
-        case EV_HTTP_SOCK:
-          flow_good &= ((EvHttpService *) s)->on_msg( pub );
-          break;
-        case EV_NATS_SOCK:
-          flow_good &= ((EvNatsService *) s)->on_msg( pub );
-          break;
-        case EV_CAPR_SOCK:
-          flow_good &= ((EvCaprService *) s)->on_msg( pub );
-          break;
-        case EV_RV_SOCK:
-          flow_good &= ((EvRvService *) s)->on_msg( pub );
-          break;
-        case EV_KV_PUBSUB:
-          flow_good &= ((KvPubSub *) s)->on_msg( pub );
-          break;
-        case EV_SHM_SOCK: 
-          flow_good &= ((EvShmClient *) s)->on_msg( pub );
-          break;
-        case EV_SHM_SVC:
-          flow_good &= ((EvShmSvc *) s)->on_msg( pub );
-          break;
-        case EV_TERMINAL:       break;
-        case EV_CLIENT_SOCK:    break;
-        case EV_LISTEN_SOCK:    break;
-        case EV_TIMER_QUEUE:    break;
-        case EV_MEMCACHED_SOCK: break;
-        case EV_MEMUDP_SOCK:    break;
-        case EV_CLIENTUDP_SOCK: break;
-      }
+      flow_good &= s->v_on_msg( pub );
     }
   }
   return flow_good;
@@ -534,46 +357,14 @@ EvPoll::publish_multi( EvPublish &pub,  uint32_t *rcount_total,
     if ( (s = this->sock[ min_route ]) != NULL ) {
       rcount++;
       pub.prefix_cnt = cnt;
-      switch ( s->type ) {
-        case EV_REDIS_SOCK:
-          flow_good &= ((EvRedisService *) s)->on_msg( pub );
-          break;
-        case EV_HTTP_SOCK:
-          flow_good &= ((EvHttpService *) s)->on_msg( pub );
-          break;
-        case EV_NATS_SOCK:
-          flow_good &= ((EvNatsService *) s)->on_msg( pub );
-          break;
-        case EV_CAPR_SOCK:
-          flow_good &= ((EvCaprService *) s)->on_msg( pub );
-          break;
-        case EV_RV_SOCK:
-          flow_good &= ((EvRvService *) s)->on_msg( pub );
-          break;
-        case EV_KV_PUBSUB:
-          flow_good &= ((KvPubSub *) s)->on_msg( pub );
-          break;
-        case EV_SHM_SOCK: 
-          flow_good &= ((EvShmClient *) s)->on_msg( pub );
-          break;
-        case EV_SHM_SVC:
-          flow_good &= ((EvShmSvc *) s)->on_msg( pub );
-          break;
-        case EV_TERMINAL:       break;
-        case EV_CLIENT_SOCK:    break;
-        case EV_LISTEN_SOCK:    break;
-        case EV_TIMER_QUEUE:    break;
-        case EV_MEMCACHED_SOCK: break;
-        case EV_MEMUDP_SOCK:    break;
-        case EV_CLIENTUDP_SOCK: break;
-      }
+      flow_good &= s->v_on_msg( pub );
     }
   }
   if ( rcount_total != NULL )
     *rcount_total += rcount;
   return flow_good;
 }
-
+/* same as above with a prio queue heap instead of linear search */
 bool
 EvPoll::publish_queue( EvPublish &pub,  uint32_t *rcount_total )
 {
@@ -617,46 +408,15 @@ EvPoll::publish_queue( EvPublish &pub,  uint32_t *rcount_total )
     if ( (s = this->sock[ min_route ]) != NULL ) {
       rcount++;
       pub.prefix_cnt = cnt;
-      switch ( s->type ) {
-        case EV_REDIS_SOCK:
-          flow_good &= ((EvRedisService *) s)->on_msg( pub );
-          break;
-        case EV_HTTP_SOCK:
-          flow_good &= ((EvHttpService *) s)->on_msg( pub );
-          break;
-        case EV_NATS_SOCK:
-          flow_good &= ((EvNatsService *) s)->on_msg( pub );
-          break;
-        case EV_CAPR_SOCK:
-          flow_good &= ((EvCaprService *) s)->on_msg( pub );
-          break;
-        case EV_RV_SOCK:
-          flow_good &= ((EvRvService *) s)->on_msg( pub );
-          break;
-        case EV_KV_PUBSUB:
-          flow_good &= ((KvPubSub *) s)->on_msg( pub );
-          break;
-        case EV_SHM_SOCK: 
-          flow_good &= ((EvShmClient *) s)->on_msg( pub );
-          break;
-        case EV_SHM_SVC:
-          flow_good &= ((EvShmSvc *) s)->on_msg( pub );
-          break;
-        case EV_TERMINAL:       break;
-        case EV_CLIENT_SOCK:    break;
-        case EV_LISTEN_SOCK:    break;
-        case EV_TIMER_QUEUE:    break;
-        case EV_MEMCACHED_SOCK: break;
-        case EV_MEMUDP_SOCK:    break;
-        case EV_CLIENTUDP_SOCK: break;
-      }
+      flow_good &= s->v_on_msg( pub );
     }
   }
   if ( rcount_total != NULL )
     *rcount_total += rcount;
   return flow_good;
 }
-
+/* match subject against route db and forward msg to fds subscribed, route
+ * db contains both exact matches and wildcard prefix matches */
 bool
 RoutePublish::forward_msg( EvPublish &pub,  uint32_t *rcount_total,
                            uint8_t pref_cnt,  KvPrefHash *ph )
@@ -722,46 +482,44 @@ RoutePublish::forward_msg( EvPublish &pub,  uint32_t *rcount_total,
   }
   return flow_good;
 }
-
+/* convert a hash into a subject string, this may have collisions */
 bool
 RoutePublish::hash_to_sub( uint32_t r,  uint32_t h,  char *key,
                            size_t &keylen )
 {
   EvPoll & poll = static_cast<EvPoll &>( *this );
   EvSocket *s;
-  if ( r <= (uint32_t) poll.maxfd && (s = poll.sock[ r ]) != NULL ) {
-    switch ( s->type ) {
-      case EV_REDIS_SOCK:
-        return ((EvRedisService *) s)->hash_to_sub( h, key, keylen );
-      case EV_HTTP_SOCK:
-        return ((EvHttpService *) s)->hash_to_sub( h, key, keylen );
-      case EV_NATS_SOCK:
-        return ((EvNatsService *) s)->hash_to_sub( h, key, keylen );
-      case EV_CAPR_SOCK:
-        return ((EvCaprService *) s)->hash_to_sub( h, key, keylen );
-      case EV_RV_SOCK:
-        return ((EvRvService *) s)->hash_to_sub( h, key, keylen );
-      case EV_KV_PUBSUB:
-        return ((KvPubSub *) s)->hash_to_sub( h, key, keylen );
-      case EV_SHM_SOCK:
-        return ((EvShmClient *) s)->hash_to_sub( h, key, keylen );
-      case EV_SHM_SVC:
-        return ((EvShmSvc *) s)->hash_to_sub( h, key, keylen );
-      case EV_TERMINAL:       break;
-      case EV_CLIENT_SOCK:    break;
-      case EV_LISTEN_SOCK:    break;
-      case EV_TIMER_QUEUE:    break;
-      case EV_MEMCACHED_SOCK: break;
-      case EV_MEMUDP_SOCK:    break;
-      case EV_CLIENTUDP_SOCK: break;
-    }
-  }
-  return false;
+  bool b = false;
+  if ( r <= (uint32_t) poll.maxfd && (s = poll.sock[ r ]) != NULL )
+    b = s->v_hash_to_sub( h, key, keylen );
+  return b;
 }
+/* track number of subscribes to keyspace subjects to enable them */
+inline void
+RoutePublish::update_keyspace_count( const char *sub,  size_t len,  int add )
+{
+  /* keyspace subjects are special, since subscribing to them can create
+   * some overhead */
+  static const char kspc[] = "__keyspace@",
+                    kevt[] = "__keyevent@",
+                    lblk[] = "__listblkd@",
+                    zblk[] = "__zsetblkd@";
+  if ( ::memcmp( kspc, sub, len ) == 0 )
+    this->keyspace_cnt += add;
+  if ( ::memcmp( kevt, sub, len ) == 0 )
+    this->keyevent_cnt += add;
+  if ( ::memcmp( lblk, sub, len ) == 0 )
+    this->listblkd_cnt += add;
+  if ( ::memcmp( zblk, sub, len ) == 0 )
+    this->zsetblkd_cnt += add;
 
-static const char kspc[] = "__keyspace@",
-                  kevt[] = "__keyevent@";
-
+  this->key_flags = ( ( this->keyspace_cnt == 0 ? 0 : EKF_KEYSPACE_FWD ) |
+                      ( this->keyevent_cnt == 0 ? 0 : EKF_KEYEVENT_FWD ) |
+                      ( this->listblkd_cnt == 0 ? 0 : EKF_LISTBLKD_NOT ) |
+                      ( this->zsetblkd_cnt == 0 ? 0 : EKF_ZSETBLKD_NOT ) );
+  /*printf( "%.*s %d key_flags %x\n", (int) len, sub, add, this->key_flags );*/
+}
+/* external patterns from kv pubsub */
 void
 EvPoll::add_pattern_route( const char *sub,  size_t prefix_len,  uint32_t hash,
                            uint32_t fd )
@@ -785,7 +543,7 @@ EvPoll::del_pattern_route( const char *sub,  size_t prefix_len,  uint32_t hash,
     this->update_keyspace_count( sub, pre_len, -1 );
   }
 }
-
+/* external routes from kv pubsub */
 void
 EvPoll::add_route( const char *sub,  size_t sub_len,  uint32_t hash,
                    uint32_t fd )
@@ -811,24 +569,7 @@ EvPoll::del_route( const char *sub,  size_t sub_len,  uint32_t hash,
     }
   }
 }
-
-void
-RoutePublish::update_keyspace_count( const char *sub,  size_t len,  int add )
-{
-  if ( ::memcmp( kspc, sub, len ) == 0 ) {
-    this->keyspace_cnt += add;
-    if ( len < 6 && ::memcmp( kevt, sub, len ) == 0 )
-      this->keyevent_cnt += add;
-  }
-  else if ( ::memcmp( kevt, sub, len ) == 0 )
-    this->keyevent_cnt += add;
-  else
-    return;
-  this->key_flags = ( ( this->keyspace_cnt == 0 ? 0 : EKF_KEYSPACE_FWD ) |
-                      ( this->keyevent_cnt == 0 ? 0 : EKF_KEYEVENT_FWD ) );
-  /*printf( "%.*s %d key_flags %x\n", (int) len, sub, add, this->key_flags );*/
-}
-
+/* client subscribe, notify to kv pubsub */
 void
 RoutePublish::notify_sub( uint32_t h,  const char *sub,  size_t len,
                           uint32_t sub_id,  uint32_t rcnt,  char src_type,
@@ -849,7 +590,7 @@ RoutePublish::notify_unsub( uint32_t h,  const char *sub,  size_t len,
     this->update_keyspace_count( sub, 11, -1 );
   poll.pubsub->do_unsub( h, sub, len, sub_id, rcnt, src_type );
 }
-
+/* client pattern subscribe, notify to kv pubsub */
 void
 RoutePublish::notify_psub( uint32_t h,  const char *pattern,  size_t len,
                            const char *prefix,  uint8_t prefix_len,
@@ -873,22 +614,7 @@ RoutePublish::notify_punsub( uint32_t h,  const char *pattern,  size_t len,
   poll.pubsub->do_punsub( h, pattern, len, prefix, prefix_len,
                           sub_id, rcnt, src_type );
 }
-
-#if 0
-bool
-EvSocket::publish( EvPublish & )
-{
-  fprintf( stderr, "no publish defined for type %d\n", this->type );
-  return false;
-}
-
-bool
-EvSocket::hash_to_sub( uint32_t,  char *,  size_t & )
-{
-  fprintf( stderr, "no hash_to_sub defined for type %d\n", this->type );
-  return false;
-}
-#endif
+/* shutdown and close all open socks */
 void
 EvPoll::process_quit( void )
 {
@@ -915,7 +641,7 @@ EvPoll::process_quit( void )
     this->quit++;
   }
 }
-
+/* enable epolling of sock fd */
 int
 EvPoll::add_sock( EvSocket *s )
 {
@@ -962,37 +688,32 @@ EvPoll::add_sock( EvSocket *s )
     this->queue.push( s );
   return 0;
 }
+/* start a timer event */
+bool
+RoutePublish::add_timer_seconds( int id,  uint32_t ival,  uint64_t timer_id,
+                                 uint64_t event_id )
+{
+  EvPoll & poll = static_cast<EvPoll &>( *this );
+  return poll.timer_queue->add_timer_seconds( id, ival, timer_id, event_id );
+}
 
+bool
+RoutePublish::remove_timer( int id,  uint64_t timer_id,  uint64_t event_id )
+{
+  EvPoll & poll = static_cast<EvPoll &>( *this );
+  return poll.timer_queue->remove_timer( id, timer_id, event_id );
+}
+/* dispatch a timer firing */
 bool
 EvPoll::timer_expire( EvTimerEvent &ev )
 {
   EvSocket *s;
-
-  if ( ev.id <= this->maxfd && (s = this->sock[ ev.id ]) != NULL ) {
-    switch ( s->type ) {
-      case EV_REDIS_SOCK:     break;
-      case EV_HTTP_SOCK:      break;
-      case EV_CLIENT_SOCK:    break;
-      case EV_TERMINAL:       break;
-      case EV_NATS_SOCK:      break;
-      case EV_SHM_SOCK:       break;
-      case EV_LISTEN_SOCK:    break;
-      case EV_KV_PUBSUB:      break;
-      case EV_TIMER_QUEUE:    break;
-      case EV_MEMCACHED_SOCK: break;
-      case EV_MEMUDP_SOCK:    break;
-      case EV_CLIENTUDP_SOCK: break;
-      case EV_CAPR_SOCK:
-        return ((EvCaprService *) s)->timer_expire( ev.timer_id );
-      case EV_RV_SOCK:
-        return ((EvRvService *) s)->timer_expire( ev.timer_id );
-      case EV_SHM_SVC:
-        return ((EvShmSvc *) s)->timer_expire( ev.timer_id );
-    }
-  }
-  return false;
+  bool b = false;
+  if ( ev.id <= this->maxfd && (s = this->sock[ ev.id ]) != NULL )
+    b = s->v_timer_expire( ev.timer_id, ev.event_id );
+  return b;
 }
-
+/* remove a sock fd from epolling */
 void
 EvPoll::remove_sock( EvSocket *s )
 {
@@ -1023,27 +744,11 @@ EvPoll::remove_sock( EvSocket *s )
     this->active_list.pop( s );
   }
   /* release memory buffers */
-  switch ( s->type ) {
-    case EV_REDIS_SOCK:     ((EvRedisService *) s)->release(); break;
-    case EV_HTTP_SOCK:      ((EvHttpService *) s)->release(); break;
-    case EV_CLIENT_SOCK:    ((EvNetClient *) s)->release(); break;
-    case EV_TERMINAL:       ((EvTerminal *) s)->release(); break;
-    case EV_NATS_SOCK:      ((EvNatsService *) s)->release(); break;
-    case EV_CAPR_SOCK:      ((EvCaprService *) s)->release(); break;
-    case EV_RV_SOCK:        ((EvRvService *) s)->release(); break;
-    case EV_SHM_SOCK:       ((EvShmClient *) s)->release(); break;
-    case EV_SHM_SVC:        ((EvShmSvc *) s)->release(); break;
-    case EV_MEMCACHED_SOCK: ((EvMemcachedService *) s)->release(); break;
-    case EV_MEMUDP_SOCK:    ((EvMemcachedUdp *) s)->release(); break;
-    case EV_CLIENTUDP_SOCK: ((EvUdpClient *) s)->release(); break;
-    case EV_LISTEN_SOCK:    break;
-    case EV_KV_PUBSUB:      break;
-    case EV_TIMER_QUEUE:    break;
-  }
+  s->v_release();
   s->fd = -1;
 }
-
-bool
+/* fill up recv buffers */
+void
 EvConnection::read( void )
 {
   this->adjust_recv();
@@ -1060,7 +765,7 @@ EvConnection::read( void )
           this->pushpop( EV_READ_LO, EV_READ );
         else
           this->pushpop( EV_READ, EV_READ_LO );
-        return true;
+        return;
       }
       /* wait for epoll() to set EV_READ again */
       this->pop3( EV_READ, EV_READ_LO, EV_READ_HI );
@@ -1078,19 +783,19 @@ EvConnection::read( void )
         this->push( EV_SHUTDOWN ); /* close after process and writes */
       /*else if ( this->test( EV_WRITE ) )
         this->pushpop( EV_WRITE_HI, EV_WRITE );*/
-      return false;
+      return;
     }
     /* allow draining of existing buf before resizing */
     if ( this->test( EV_READ ) ) {
       this->pushpop( EV_READ_LO, EV_READ );
-      return false;
+      return;
     }
     /* process was not able to drain read buf */
     if ( ! this->resize_recv_buf() )
-      return false;
+      return;
   }
 }
-
+/* if msg is too large for existing buffers, resize it */
 bool
 EvConnection::resize_recv_buf( void )
 {
@@ -1109,7 +814,7 @@ EvConnection::resize_recv_buf( void )
   this->recv_size = newsz;
   return true;
 }
-
+/* write data to sock fd */
 void
 EvConnection::write( void )
 {
@@ -1173,7 +878,7 @@ EvConnection::write( void )
     this->push( EV_CLOSE );
   }
 }
-
+/* use mmsg for udp sockets */
 bool
 EvUdp::alloc_mmsg( void )
 {
@@ -1222,8 +927,8 @@ EvUdp::alloc_mmsg( void )
   this->in_size = this->in_nsize;
   return true;
 }
-
-bool
+/* read udp packets */
+void
 EvUdp::read( void )
 {
   int nmsgs = 0;
@@ -1232,7 +937,7 @@ EvUdp::read( void )
       perror( "alloc" );
       this->popall();
       this->push( EV_CLOSE );
-      return false;
+      return;
     }
   }
   if ( this->in_moff + 1 < this->in_size ) {
@@ -1254,7 +959,7 @@ EvUdp::read( void )
     this->in_nsize = ( ( this->in_nmsgs < 8 ) ? this->in_nmsgs + 1 : 8 );
     this->push( EV_PROCESS );
     this->pushpop( EV_READ_LO, EV_READ );
-    return true;
+    return;
   }
   this->in_nsize = 1;
   /* wait for epoll() to set EV_READ again */
@@ -1267,9 +972,8 @@ EvUdp::read( void )
       this->push( EV_CLOSE );
     }
   }
-  return false;
 }
-
+/* write udp packets */
 void
 EvUdp::write( void )
 {
@@ -1304,7 +1008,7 @@ EvUdp::write( void )
     this->push( EV_CLOSE );
   }
 }
-
+/* if some alloc failed, kill the client */
 void
 EvConnection::close_alloc_error( void )
 {
@@ -1312,7 +1016,8 @@ EvConnection::close_alloc_error( void )
   this->popall();
   this->push( EV_CLOSE );
 }
-
+/* when a sock is not dispatch()ed, it may need to be rearranged in the queue
+ * for correct priority */
 void
 EvSocket::idle_push( EvState s )
 {

@@ -12,7 +12,7 @@ namespace ds {
 
 #define SYS_WILD_PREFIX "_SYS.W"
 
-struct SysWildSub {
+struct SysWildSub { /* wildcard prefix: _SYS.W3.XYZ */
   size_t len;
   char   sub[ sizeof( SYS_WILD_PREFIX ) - 1 + 4 + 64 ];
 
@@ -35,9 +35,12 @@ struct SysWildSub {
   }
 };
 
-
-struct CodeRef {
-  uint32_t hash, ref, ecnt, rcnt, code;
+struct CodeRef { /* refs to a route space, which is a list of fds */
+  uint32_t hash, /* hash of the route */
+           ref,  /* how many refs to this route (multiple subs) */
+           ecnt, /* encoded number of ints needed to represent route (zipped) */
+           rcnt, /* count of elems in a route (not encoded) */
+           code; /* the routes code */
 
   CodeRef( uint32_t *co,  uint32_t ec,  uint32_t rc,  uint32_t h ) :
     hash( h ), ref( 1 ), ecnt( ec ), rcnt( rc ) {
@@ -69,11 +72,11 @@ struct CodeRef {
 };
 
 struct EvPublish;
-struct RoutePublishData {
-  unsigned int prefix : 7,
-               rcount : 25;
-  uint32_t     hash;
-  uint32_t   * routes;
+struct RoutePublishData {   /* structure for publish queue heap */
+  unsigned int prefix : 7,  /* prefix size */
+               rcount : 25; /* count of routes */
+  uint32_t     hash;        /* hash of prefix */
+  uint32_t   * routes;      /* routes for this hash */
 
   static inline uint32_t precmp( uint32_t p ) {
     return ( ( ( p & 63 ) << 1 ) + 1 ) | ( p >> 6 );
@@ -87,14 +90,22 @@ struct RoutePublishData {
   }
 };
 
+/* queue for publishes, to merge multiple sub matches into one pub, for example:
+ *   SUB* -> 1, 7
+ *   SUBJECT* -> 1, 3, 7
+ *   SUBJECT_MATCH -> 1, 3, 8
+ * The publish to SUBJECT_MATCH has 3 matches for 1 and 2 matches for 7 and 3
+ * The heap sorts by route id (fd) to merge the publishes to 1, 3, 7, 8 */
 typedef struct kv::PrioQueue<RoutePublishData *, RoutePublishData::is_greater>
  RoutePublishQueue;
 
 struct KvPrefHash;
 struct RoutePublish {
-  int32_t keyspace_cnt,
-          keyevent_cnt;
-  uint8_t key_flags;
+  int32_t keyspace_cnt, /* count of __keyspace@N__ subscribes active */
+          keyevent_cnt, /* count of __keyevent@N__ subscribes active */
+          listblkd_cnt, /* count of __listblkd@N__ subscribes active */
+          zsetblkd_cnt; /* count of __zsetblkd@N__ subscribes active */
+  uint16_t key_flags;    /* bits set for key subs above (EKF_KEYSPACE_FWD|..) */
   bool forward_msg( EvPublish &pub,  uint32_t *rcount_total,  uint8_t pref_cnt,
                     KvPrefHash *ph );
   bool hash_to_sub( uint32_t r,  uint32_t h,  char *key,  size_t &keylen );
@@ -110,7 +121,12 @@ struct RoutePublish {
   void notify_punsub( uint32_t h,  const char *pattern,  size_t len,
                       const char *prefix,  uint8_t prefix_len,
                       uint32_t sub_id,  uint32_t rcnt,  char src_type );
-  RoutePublish() : keyspace_cnt( 0 ), keyevent_cnt( 0 ), key_flags( 0 ) {}
+  bool add_timer_seconds( int id,  uint32_t ival,  uint64_t timer_id,
+                          uint64_t event_id );
+  bool remove_timer( int id,  uint64_t timer_id,  uint64_t event_id );
+
+  RoutePublish() : keyspace_cnt( 0 ), keyevent_cnt( 0 ),
+                   listblkd_cnt( 0 ), zsetblkd_cnt( 0 ), key_flags( 0 ) {}
 };
 
 struct RouteDB {

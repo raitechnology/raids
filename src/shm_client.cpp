@@ -84,8 +84,8 @@ EvShmClient::on_msg( EvPublish &pub )
   if ( ( status & 1 ) != 0 )
     this->stream_to_msg();
   if ( ( status & 2 ) != 0 ) {
-    this->exec->cont_list.push_tl( cm );
-    cm->in_list = true;
+    this->exec->push_continue_list( cm );
+    cm->msgid = 0;
   }
   return true;
 }
@@ -168,13 +168,13 @@ int EvShmSvc::init_poll( void ) {
   this->fd = -1;
   return status;
 }
-bool   EvShmSvc::timer_expire( uint64_t ) { return false; }
-bool   EvShmSvc::read( void ) { return false; }
-size_t EvShmSvc::write( void ) { return 0; }
-bool   EvShmSvc::on_msg( EvPublish & ) { return false; }
-bool   EvShmSvc::hash_to_sub( uint32_t,  char *,  size_t & ) { return false; }
-void   EvShmSvc::process( bool ) {}
-void   EvShmSvc::process_shutdown( void ) {}
-void   EvShmSvc::process_close( void ) {}
-void   EvShmSvc::release( void ) {}
+bool EvShmSvc::timer_expire( uint64_t,  uint64_t ) { return false; }
+void EvShmSvc::read( void ) {}
+void EvShmSvc::write( void ) {}
+bool EvShmSvc::on_msg( EvPublish & ) { return false; }
+bool EvShmSvc::hash_to_sub( uint32_t,  char *,  size_t & ) { return false; }
+void EvShmSvc::process( void ) {}
+void EvShmSvc::process_shutdown( void ) {}
+void EvShmSvc::process_close( void ) {}
+void EvShmSvc::release( void ) {}
 

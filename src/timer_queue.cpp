@@ -47,8 +47,8 @@ EvTimerQueue::create_timer_queue( EvPoll &p )
 static const uint32_t to_ns[] = { 1000 * 1000 * 1000, 1000 * 1000, 1000, 1 };
 
 bool
-EvTimerQueue::add_timer( int id,  uint32_t ival,  uint64_t timer_id,
-                         TimerUnits u )
+EvTimerQueue::add_timer_units( int id,  uint32_t ival,  TimerUnits u,
+                               uint64_t timer_id,  uint64_t event_id )
 {
   EvTimerEvent el;
   el.id          = id;
@@ -56,6 +56,7 @@ EvTimerQueue::add_timer( int id,  uint32_t ival,  uint64_t timer_id,
   el.timer_id    = timer_id;
   el.next_expire = current_monotonic_time_ns() +
                    ( (uint64_t) ival * (uint64_t) to_ns[ u ] );
+  el.event_id    = event_id;
   if ( ! this->queue.push( el ) )
     return false;
   this->idle_push( EV_PROCESS );
@@ -63,13 +64,14 @@ EvTimerQueue::add_timer( int id,  uint32_t ival,  uint64_t timer_id,
 }
 
 bool
-EvTimerQueue::remove_timer( int id,  uint64_t timer_id )
+EvTimerQueue::remove_timer( int id,  uint64_t timer_id,  uint64_t event_id )
 {
   EvTimerEvent el;
   el.id          = id;
   el.ival        = 0;
   el.timer_id    = timer_id;
   el.next_expire = 0;
+  el.event_id    = event_id;
   return this->queue.remove( el );
 }
 

@@ -323,7 +323,7 @@ CommandDB cmd_db[] = {
 { "SSCAN", "key curs [MATCH pat] [COUNT cnt]; Iterate over set",
   "[\"sscan\",-3,['readonly','random'],1,1,1]" },
 
-#define SORTED_SET_CNT 21
+#define SORTED_SET_CNT 25
   /* sorted sets */
 { "ZADD", "key [NX|XX] [CH] [INCR] score mem ; Add mem w/score",
   "[\"zadd\",-4,['write','denyoom','fast'],1,1,1]" },
@@ -372,6 +372,16 @@ CommandDB cmd_db[] = {
 
 { "ZSCAN", "key curs [MATCH pat] [COUNT cnt]; Iterate over set",
   "[\"zscan\",-3,['readonly','random'],1,1,1]" },
+{ "ZPOPMIN", "key [count] ; Remove up to count member(s) with lowest score",
+  "[\"zpopmin\",-2,['write','fast'],1,1,1]" },
+{ "ZPOPMAX", "key [count] ; Remove up to count member(s) with highest score",
+  "[\"zpopmin\",-2,['write','fast'],1,1,1]" },
+{ "BZPOPMIN", "key [key ...] timeout ; "
+  "Block and get the member with the lowest score",
+  "[\"bzpopmin\",-3,['write','noscript'],1,-2,1]" },
+{ "BZPOPMAX", "key [key ...] timeout ; "
+  "Block and get the member with the highest score",
+  "[\"bzpopmax\",-3,['write','noscript'],1,-2,1]" },
 
 #define STRING_CNT 24
   /* strings */

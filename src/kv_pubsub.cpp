@@ -501,7 +501,7 @@ KvPubSub::do_punsub( uint32_t h,  const char *pattern,  size_t len,
 }
 
 void
-KvPubSub::process( bool )
+KvPubSub::process( void )
 {
   CubeRoute128  cr;
   HashTab     * map = this->poll.map;

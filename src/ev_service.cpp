@@ -17,6 +17,12 @@ using namespace rai;
 using namespace ds;
 using namespace kv;
 
+EvRedisListen::EvRedisListen( EvPoll &p )
+             : EvTcpListen( p ),
+               timer_id( (uint64_t) EV_REDIS_SOCK << 56 )
+{
+}
+
 void
 EvRedisListen::accept( void )
 {
@@ -32,21 +38,12 @@ EvRedisListen::accept( void )
     }
     return;
   }
-  EvRedisService * c = this->poll.free_redis.hd;
-  if ( c != NULL )
-    c->pop_free_list();
-  else {
-    void * m = aligned_malloc( sizeof( EvRedisService ) * EvPoll::ALLOC_INCR );
-    if ( m == NULL ) {
-      perror( "accept: no memory" );
-      ::close( sock );
-      return;
-    }
-    c = new ( m ) EvRedisService( this->poll );
-    for ( int i = EvPoll::ALLOC_INCR - 1; i >= 1; i-- ) {
-      new ( (void *) &c[ i ] ) EvRedisService( this->poll );
-      c[ i ].push_free_list();
-    }
+  EvRedisService *c =
+    this->poll.get_free_list<EvRedisService>( this->poll.free_redis );
+  if ( c == NULL ) {
+    perror( "accept: no memory" );
+    ::close( sock );
+    return;
   }
   struct linger lin;
   lin.l_onoff  = 1;
@@ -59,8 +56,10 @@ EvRedisListen::accept( void )
     perror( "warning: TCP_NODELAY" );
 
   ::fcntl( sock, F_SETFL, O_NONBLOCK | ::fcntl( sock, F_GETFL ) );
-  c->fd = sock;
-  c->sub_id = sock;
+  c->fd       = sock;
+  c->sub_id   = sock;
+  c->timer_id = ++this->timer_id;
+
   if ( this->poll.add_sock( c ) < 0 ) {
     ::close( sock );
     c->push_free_list();
@@ -68,13 +67,13 @@ EvRedisListen::accept( void )
 }
 
 void
-EvRedisService::process( bool use_prefetch )
+EvRedisService::process( void )
 {
   if ( ! this->cont_list.is_empty() )
     this->drain_continuations( this );
 
   StreamBuf       & strm = *this;
-  EvPrefetchQueue * q    = ( use_prefetch ? this->poll.prefetch_queue : NULL );
+  EvPrefetchQueue * q    = this->poll.prefetch_queue;
   size_t            buflen;
   RedisMsgStatus    mstatus;
   ExecStatus        status;
@@ -144,11 +143,23 @@ EvRedisService::on_msg( EvPublish &pub )
     this->idle_push( flow_good ? EV_WRITE : EV_WRITE_HI );
   }
   if ( ( status & 2 ) != 0 ) {
-    this->cont_list.push_tl( cm );
-    cm->in_list = true;
+    this->push_continue_list( cm );
     this->idle_push( EV_PROCESS );
   }
   return flow_good;
+}
+
+bool
+EvRedisService::timer_expire( uint64_t tid,  uint64_t event_id )
+{
+  if ( tid == this->timer_id ) {
+    RedisContinueMsg *cm = NULL;
+    if ( this->continue_expire( event_id, cm ) ) {
+      this->push_continue_list( cm );
+      this->idle_push( EV_PROCESS );
+    }
+  }
+  return false;
 }
 
 bool

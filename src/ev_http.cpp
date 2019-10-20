@@ -31,21 +31,12 @@ EvHttpListen::accept( void )
     }
     return;
   }
-  EvHttpService * c = this->poll.free_http.hd;
-  if ( c != NULL )
-    c->pop_free_list();
-  else {
-    void * m = aligned_malloc( sizeof( EvHttpService ) * EvPoll::ALLOC_INCR );
-    if ( m == NULL ) {
-      perror( "accept: no memory" );
-      ::close( sock );
-      return;
-    }
-    c = new ( m ) EvHttpService( this->poll );
-    for ( int i = EvPoll::ALLOC_INCR - 1; i >= 1; i-- ) {
-      new ( (void *) &c[ i ] ) EvHttpService( this->poll );
-      c[ i ].push_free_list();
-    }
+  EvHttpService *c =
+    this->poll.get_free_list<EvHttpService>( this->poll.free_http );
+  if ( c == NULL ) {
+    perror( "accept: no memory" );
+    ::close( sock );
+    return;
   }
   struct linger lin;
   lin.l_onoff  = 1;
@@ -75,7 +66,7 @@ static char page404[] =
 "<html><body> Not  Found </body></html>\r\n";
 
 void
-EvHttpService::process( bool /*use_prefetch*/ )
+EvHttpService::process( void )
 {
   StreamBuf       & strm = *this;
   //EvPrefetchQueue * q    = ( use_prefetch ? this->poll.prefetch_queue : NULL );
@@ -320,11 +311,23 @@ EvHttpService::on_msg( EvPublish &pub )
     this->idle_push( flow_good ? EV_WRITE : EV_WRITE_HI );
   }
   if ( ( status & 2 ) != 0 ) {
-    this->cont_list.push_tl( cm );
-    cm->in_list = true;
+    this->push_continue_list( cm );
     this->idle_push( EV_PROCESS );
   }
   return flow_good;
+}
+
+bool
+EvHttpService::timer_expire( uint64_t tid,  uint64_t event_id )
+{
+  if ( tid == this->timer_id ) {
+    RedisContinueMsg *cm = NULL;
+    if ( this->continue_expire( event_id, cm ) ) {
+      this->push_continue_list( cm );
+      this->idle_push( EV_PROCESS );
+    }
+  }
+  return false;
 }
 
 bool
@@ -332,55 +335,7 @@ EvHttpService::hash_to_sub( uint32_t h,  char *key,  size_t &keylen )
 {
   return this->RedisExec::do_hash_to_sub( h, key, keylen );
 }
-#if 0
-void
-EvHttpService::cook_string( char *s,  size_t len )
-{
-  StreamBuf & strm = *this;
-  char  * end = &s[ len ],
-        * buf;
-  size_t  sz,
-          off;
-  for (;;) {
-    sz = ( end - s ) + 1; /* +1 for '\r' to '\r\n' expansion */
-    if ( sz > 255 ) /* must fit in a byte */
-      sz = 255;
-    buf = strm.alloc( sz + 2 );
-    if ( buf == NULL )
-      return;
-    buf[ 0 ] = '@';
-    for ( off = 0; s < end; s++ ) {
-      if ( *s == '\r' && ( &s[ 1 ] == end || s[ 1 ] != '\n' ) ) {
-        if ( off + 2 > sz )
-          break;
-        *s = '\n'; /* change input '\r' into '\n' so redis msg parses line */
-        buf[ 2 + off++ ] = '\r';
-        buf[ 2 + off++ ] = '\n';
-      }
-      else {
-        if ( off + 1 > sz )
-          break;
-        buf[ 2 + off++ ] = *s;
-      }
-    }
-    buf[ 1 ] = (uint8_t) off;
-    strm.sz += off + 2;
-    if ( s == end )
-      return;
-  }
-}
-#endif
-#if 0
-size_t
-EvHttpService::try_write( void )
-{
-  if ( this->websock_off != 0 &&
-       this->websock_off < this->nbytes_sent + this->pending() )
-    if ( ! this->frame_websock() )
-      return 0;
-  return this->EvConnection::try_write();
-}
-#endif
+
 void
 EvHttpService::write( void )
 {

@@ -124,21 +124,12 @@ EvNatsListen::accept( void )
     }
     return;
   }
-  EvNatsService * c = this->poll.free_nats.hd;
-  if ( c != NULL )
-    c->pop_free_list();
-  else {
-    void * m = aligned_malloc( sizeof( EvNatsService ) * EvPoll::ALLOC_INCR );
-    if ( m == NULL ) {
-      perror( "accept: no memory" );
-      ::close( sock );
-      return;
-    }
-    c = new ( m ) EvNatsService( this->poll );
-    for ( int i = EvPoll::ALLOC_INCR - 1; i >= 1; i-- ) {
-      new ( (void *) &c[ i ] ) EvNatsService( this->poll );
-      c[ i ].push_free_list();
-    }
+  EvNatsService *c =
+    this->poll.get_free_list<EvNatsService>( this->poll.free_nats );
+  if ( c == NULL ) {
+    perror( "accept: no memory" );
+    ::close( sock );
+    return;
   }
   struct linger lin;
   lin.l_onoff  = 1;
@@ -236,7 +227,7 @@ parse_args( char *start,  char *end,  char **args,  size_t *len )
 }
 
 void
-EvNatsService::process( bool /*use_prefetch*/ )
+EvNatsService::process( void )
 {
   enum { DO_OK = 1, DO_ERR = 2, NEED_MORE = 4, FLOW_BACKPRESSURE = 8,
          HAS_PING = 16 };

@@ -13,11 +13,6 @@ struct EvTcpListen : public EvListen {
   virtual void accept( void ) {}
 };
 
-struct EvRedisListen : public EvTcpListen {
-  EvRedisListen( EvPoll &p ) : EvTcpListen( p ) {}
-  virtual void accept( void );
-};
-
 struct EvTcpClient : public EvNetClient {
   EvTcpClient( EvPoll &p, EvCallback &callback,  EvSockType t = EV_CLIENT_SOCK )
     : EvNetClient( p, callback, t ) {}

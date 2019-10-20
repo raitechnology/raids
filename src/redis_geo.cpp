@@ -87,7 +87,7 @@ RedisExec::exec_geoadd( EvKeyCtx &ctx )
       ctx.ival++;
     if ( this->argc == argi ) { /* no more elements to add */
       if ( ctx.ival > 0 )
-        ctx.flags |= EKF_KEYSPACE_EVENT | EKF_KEYSPACE_GEO;
+        ctx.flags |= EKF_ZSETBLKD_NOT | EKF_KEYSPACE_EVENT | EKF_KEYSPACE_GEO;
       return EXEC_SEND_INT;
     }
     /* get the next coords and hash */
@@ -725,6 +725,7 @@ RedisExec::do_gradius_store( EvKeyCtx &ctx )
       default:           return ERR_KV_STATUS;
       case KEY_NO_VALUE: return ERR_BAD_TYPE;
       case KEY_IS_NEW:
+        ctx.flags |= EKF_IS_NEW;
         count = stp.listcnt;
         ndata = stp.listsz + stp.listcnt * sizeof( H3Index );
         if ( ! geo.create( count, ndata ) )
@@ -756,6 +757,7 @@ RedisExec::do_gradius_store( EvKeyCtx &ctx )
       default:           return ERR_KV_STATUS;
       case KEY_NO_VALUE: return ERR_BAD_TYPE;
       case KEY_IS_NEW:
+        ctx.flags |= EKF_IS_NEW;
         count = stp.listcnt;
         ndata = stp.listsz + stp.listcnt * sizeof( ZScore );
         if ( ! zset.create( count, ndata ) )
@@ -782,5 +784,6 @@ RedisExec::do_gradius_store( EvKeyCtx &ctx )
           return ERR_KV_STATUS;
     }
   }
+  ctx.flags |= EKF_ZSETBLKD_NOT | EKF_KEYSPACE_EVENT | EKF_KEYSPACE_GEO;
   return EXEC_SEND_INT;
 }

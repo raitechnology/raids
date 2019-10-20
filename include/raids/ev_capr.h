@@ -188,8 +188,10 @@ struct EvCaprService : public EvConnection {
     this->sid = 0;
   }
   void send( CaprMsgOut &rec,  size_t off,  const void *data, size_t data_len );
-  void process( bool use_prefetch );
-  bool timer_expire( uint64_t tid );
+  void process( void );
+  void exec_key_prefetch( EvKeyCtx & ) {}
+  int exec_key_continue( EvKeyCtx & ) { return 0; }
+  bool timer_expire( uint64_t tid,  uint64_t eid );
   void reassert_subs( CaprMsgIn &rec );
   void add_sub( CaprMsgIn &rec );
   void add_subscription( const char *sub,  uint32_t len,
@@ -206,6 +208,7 @@ struct EvCaprService : public EvConnection {
   void push_free_list( void );
   void pop_free_list( void );
   void pub_session( uint8_t code );
+  void process_close( void ) {}
 };
 
 static inline bool is_rng( uint8_t c, uint8_t x, uint8_t y ) {

@@ -58,24 +58,17 @@ EvMemcachedListen::accept( void )
     }
     return;
   }
-  EvMemcachedService * c = this->poll.free_memcached.hd;
-  if ( c != NULL )
-    c->pop_free_list();
-  else {
-    void * m = aligned_malloc( sizeof( EvMemcachedService ) *
-                               EvPoll::ALLOC_INCR );
-    if ( m == NULL ) {
-      perror( "accept: no memory" );
-      ::close( sock );
-      return;
-    }
-    c = new ( m ) EvMemcachedService( this->poll, stat );
-    for ( int i = EvPoll::ALLOC_INCR - 1; i >= 1; i-- ) {
-      new ( (void *) &c[ i ] ) EvMemcachedService( this->poll, stat );
-      c[ i ].push_free_list();
-    }
-    stat.conn_structs += EvPoll::ALLOC_INCR;
+  bool was_empty = this->poll.free_memcached.is_empty();
+  EvMemcachedService * c =
+    this->poll.get_free_list2<EvMemcachedService, MemcachedStats>(
+      this->poll.free_memcached, stat );
+  if ( c == NULL ) {
+    perror( "accept: no memory" );
+    ::close( sock );
+    return;
   }
+  if ( was_empty )
+    stat.conn_structs += EvPoll::ALLOC_INCR;
   struct linger lin;
   lin.l_onoff  = 1;
   lin.l_linger = 10; /* 10 secs */
@@ -216,10 +209,10 @@ EvMemcached::process_loop( MemcachedExec &mex,  EvPrefetchQueue *q,
 }
 
 void
-EvMemcachedService::process( bool use_prefetch )
+EvMemcachedService::process( void )
 {
   StreamBuf       & strm = *this;
-  EvPrefetchQueue * q    = ( use_prefetch ? this->poll.prefetch_queue : NULL );
+  EvPrefetchQueue * q    = this->poll.prefetch_queue;
   EvMemcached       evm( this->recv_buf, this->off, this->len );
 
   switch ( evm.process_loop( *this, q, strm, this ) ) {
@@ -382,9 +375,9 @@ EvMemcachedMerge::merge_frames( StreamBuf &strm,  struct mmsghdr *mhdr,
 }
 
 void
-EvMemcachedUdp::process( bool use_prefetch )
+EvMemcachedUdp::process( void )
 {
-  EvPrefetchQueue * q    = ( use_prefetch ? this->poll.prefetch_queue : NULL );
+  EvPrefetchQueue * q    = this->poll.prefetch_queue;
   StreamBuf       & strm = *this;
   /* alloc index for tracking iov[] indexes in strm above */
   if ( this->out_idx == NULL )
@@ -611,13 +604,12 @@ MemcachedUdpFraming::construct_frames( void )
   return true;
 }
 
-bool
+void
 EvMemcachedService::read( void )
 {
   size_t nb = this->nbytes_recv;
-  bool b = this->EvConnection::read();
+  this->EvConnection::read();
   stat.bytes_read += this->nbytes_recv - nb;
-  return b;
 }
 
 void
@@ -628,13 +620,12 @@ EvMemcachedService::write( void )
   stat.bytes_written += this->nbytes_sent - nb;
 }
 
-bool
+void
 EvMemcachedUdp::read( void )
 {
   size_t nb = this->nbytes_recv;
-  bool b = this->EvUdp::read();
+  this->EvUdp::read();
   stat.bytes_read += this->nbytes_recv - nb;
-  return b;
 }
 
 void

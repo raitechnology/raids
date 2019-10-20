@@ -152,16 +152,17 @@ struct PingTest : public EvShmSvc, public KvSubNotifyList {
   /* start a timer at per_sec interval */
   void start_timer( void ) {
     if ( this->per_sec >= 1000 ) {
-      this->poll.timer_queue->add_timer( this->fd, this->ns_ival, 1,
-                                         IVAL_NANOS );
+      this->poll.timer_queue->add_timer_units( this->fd, this->ns_ival,
+                                               IVAL_NANOS, 1, 0 );
     }
     else {
       uint32_t us_ival = this->ns_ival / 1000;
-      this->poll.timer_queue->add_timer( this->fd, us_ival, 1, IVAL_MICROS );
+      this->poll.timer_queue->add_timer_units( this->fd, us_ival,
+                                               IVAL_MICROS, 1, 0 );
     }
   }
   /* a timer expires every ns_ival, send messages */
-  virtual bool timer_expire( uint64_t ) {
+  virtual bool timer_expire( uint64_t, uint64_t ) {
     uint64_t now = this->poll.timer_queue->now;
     if ( this->last_time == 0 ) {
       this->last_time = now;

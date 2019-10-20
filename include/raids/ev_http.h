@@ -44,12 +44,10 @@ struct EvHttpService : public EvConnection, public RedisExec {
     this->is_using_term = false;
     this->term.zero();
   }
-  void process( bool use_prefetch );
+  void process( void );
   bool on_msg( EvPublish &pub );
+  bool timer_expire( uint64_t tid,  uint64_t event_id );
   bool hash_to_sub( uint32_t h,  char *key,  size_t &keylen );
-#if 0
-  void cook_string( char *s,  size_t len ); /* expand '\r' to '\r\n' */
-#endif
   bool flush_term( void );
   void write( void ); /* override write() in EvConnection */
   bool frame_websock( void );
@@ -62,6 +60,7 @@ struct EvHttpService : public EvConnection, public RedisExec {
   void release( void );
   void push_free_list( void );
   void pop_free_list( void );
+  void process_close( void ) {}
 };
 
 /*    0                   1                   2                   3

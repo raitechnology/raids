@@ -10,6 +10,28 @@
 namespace rai {
 namespace ds {
 
+struct EvSocket;            /* base class for anything with a fd */
+struct EvPrefetchQueue;     /* queue for prefetching key memory */
+struct EvPublish;           /* data for publishing, key + msg */
+struct EvPoll;              /* manages events with epoll() */
+struct KvPubSub;            /* manages pubsub through kv shm */
+struct EvRedisService;      /* service redis protocol */
+struct EvHttpService;       /* service http + websock protocol */
+struct EvNatsService;       /* service nats protocol */
+struct EvCaprService;       /* service capr protocol */
+struct EvRvService;         /* service rv protocol */
+struct EvMemcachedService;  /* service memcached protocol */
+struct EvMemcachedUdp;      /* service memcached udp protocol */
+struct EvUdpClient;         /* client for memcached udp protocol */
+struct EvShm;               /* kv shm + ctx_id */
+struct EvShmSvc;            /* shm direct service */
+struct EvShmClient;         /* shm direct client */
+struct EvTimerQueue;        /* timerfd with heap queue of events */
+struct EvTimerEvent;        /* a timer event signal */
+struct EvNetClient;         /* a redis client */
+struct EvTerminal;          /* terminal fd */
+struct EvKeyCtx;
+
 enum EvSockType {
   EV_REDIS_SOCK     = 0, /* redis protocol */
   EV_HTTP_SOCK      = 1, /* http / websock protocol */
@@ -27,6 +49,44 @@ enum EvSockType {
   EV_MEMUDP_SOCK    = 13,/* memcached udp protocol */
   EV_CLIENTUDP_SOCK = 14 /* udp client */
 };
+
+/* vtable dispatch, without vtable */
+#define SOCK_CALL( S, F ) \
+  switch ( S->type ) { \
+    case EV_REDIS_SOCK:     ((EvRedisService *) S)->F; break; \
+    case EV_HTTP_SOCK:      ((EvHttpService *) S)->F; break; \
+    case EV_LISTEN_SOCK:    ((EvListen *) S)->F; break; \
+    case EV_CLIENT_SOCK:    ((EvNetClient *) S)->F; break; \
+    case EV_TERMINAL:       ((EvTerminal *) S)->F; break; \
+    case EV_NATS_SOCK:      ((EvNatsService *) S)->F; break; \
+    case EV_CAPR_SOCK:      ((EvCaprService *) S)->F; break; \
+    case EV_RV_SOCK:        ((EvRvService *) S)->F; break; \
+    case EV_KV_PUBSUB:      ((KvPubSub *) S)->F; break; \
+    case EV_SHM_SOCK:       ((EvShmClient *) S)->F; break; \
+    case EV_TIMER_QUEUE:    ((EvTimerQueue *) S)->F; break; \
+    case EV_SHM_SVC:        ((EvShmSvc *) S)->F; break; \
+    case EV_MEMCACHED_SOCK: ((EvMemcachedService *) S)->F; break; \
+    case EV_MEMUDP_SOCK:    ((EvMemcachedUdp *) S)->F; break; \
+    case EV_CLIENTUDP_SOCK: ((EvUdpClient *) S)->F; break; \
+  }
+#define SOCK_CALL2( R, S, F ) \
+  switch ( S->type ) { \
+    case EV_REDIS_SOCK:     R = ((EvRedisService *) S)->F; break; \
+    case EV_HTTP_SOCK:      R = ((EvHttpService *) S)->F; break; \
+    case EV_LISTEN_SOCK:    R = ((EvListen *) S)->F; break; \
+    case EV_CLIENT_SOCK:    R = ((EvNetClient *) S)->F; break; \
+    case EV_TERMINAL:       R = ((EvTerminal *) S)->F; break; \
+    case EV_NATS_SOCK:      R = ((EvNatsService *) S)->F; break; \
+    case EV_CAPR_SOCK:      R = ((EvCaprService *) S)->F; break; \
+    case EV_RV_SOCK:        R = ((EvRvService *) S)->F; break; \
+    case EV_KV_PUBSUB:      R = ((KvPubSub *) S)->F; break; \
+    case EV_SHM_SOCK:       R = ((EvShmClient *) S)->F; break; \
+    case EV_TIMER_QUEUE:    R = ((EvTimerQueue *) S)->F; break; \
+    case EV_SHM_SVC:        R = ((EvShmSvc *) S)->F; break; \
+    case EV_MEMCACHED_SOCK: R = ((EvMemcachedService *) S)->F; break; \
+    case EV_MEMUDP_SOCK:    R = ((EvMemcachedUdp *) S)->F; break; \
+    case EV_CLIENTUDP_SOCK: R = ((EvUdpClient *) S)->F; break; \
+  }
 
 enum EvState {
   EV_READ_HI   = 0, /* listen port accept */
@@ -47,26 +107,16 @@ enum EvListFlag {
   IN_FREE_LIST   = 2  /* in a free list */
 };
 
-struct EvSocket;
-struct EvPrefetchQueue; /* queue for prefetching key memory */
-struct EvPublish;
-struct EvPoll;
-struct KvPubSub;
-
 struct EvSocket {
   EvSocket * next,     /* link for sock lists */
            * back;
   EvPoll   & poll;     /* the parent container */
   uint64_t   prio_cnt; /* timeslice each socket for a slot to run */
   int        fd;       /* the socket fd */
-  uint16_t   state;    /* bit mask of states, the queues the sock is in */
+  uint32_t   state;    /* bit mask of states, the queues the sock is in */
   EvSockType type;     /* listen or cnnection */
   EvListFlag listfl;   /* in active list or free list */
-  uint64_t   pad[ 3 ];
-#if __cplusplus > 201103L
-  /* 64b align */
-  static_assert( 64 == sizeof( EvSocket ), "socket size" );
-#endif
+  uint64_t   pad[ 2 ];
 
   EvSocket( EvPoll &p,  EvSockType t )
     : next( 0 ), back( 0 ), poll( p ), prio_cnt( 0 ), fd( -1 ),
@@ -95,18 +145,32 @@ struct EvSocket {
         x2 = __builtin_ffs( s2->state );
     return x1 > x2 || ( x1 == x2 && s1->prio_cnt > s2->prio_cnt );
   }
+  /* the "virtual" calls, dispatched based on this->type, inlined ev_net.cpp */
+  void v_write( void );
+  void v_read( void );
+  void v_process( void );
+  void v_release( void );
+  bool v_timer_expire( uint64_t tid, uint64_t eid );
+  bool v_hash_to_sub( uint32_t h, char *k, size_t &klen );
+  bool v_on_msg( EvPublish &pub );
+  void v_exec_key_prefetch( EvKeyCtx &ctx );
+  int  v_exec_key_continue( EvKeyCtx &ctx );
+  void v_process_shutdown( void );
+  void v_process_close( void );
 };
 
-struct EvRedisService;
-struct EvHttpService;
-struct EvNatsService;
-struct EvCaprService;
-struct EvRvService;
-struct KvPubSub;
-struct EvShm;
-struct EvTimerQueue;
-struct EvTimerEvent;
-struct EvMemcachedService;
+#if __cplusplus >= 201103L
+  /* 64b align */
+  static_assert( 64 == sizeof( EvSocket ), "socket size" );
+#endif
+
+static inline void *aligned_malloc( size_t sz ) {
+#ifdef _ISOC11_SOURCE
+  return ::aligned_alloc( sizeof( kv::BufAlign64 ), sz ); /* >= RH7 */
+#else
+  return ::memalign( sizeof( kv::BufAlign64 ), sz ); /* RH5, RH6.. */
+#endif
+}
 
 /* route_db.h has RoutePublish which contains the function for publishing -
  *   bool publish( pub, rcount, pref_cnt, ph )
@@ -145,6 +209,43 @@ struct EvPoll : public RoutePublish {
   kv::DLinkList<EvRvService>        free_rv;        /* EvRvService free */
   kv::DLinkList<EvMemcachedService> free_memcached; /* EvMemcached free */
   /*bool single_thread; (if kv single threaded) */
+  /* alloc ALLOC_INCR(64) elems of the above list elems at a time, aligned 64 */
+  template<class T>
+  T *get_free_list( kv::DLinkList<T> &free_list ) {
+    T *c = free_list.hd;
+    if ( c == NULL ) {
+      size_t sz  = kv::align<size_t>( sizeof( T ), 64 );
+      void * m   = aligned_malloc( sz * EvPoll::ALLOC_INCR );
+      char * end = &((char *) m)[ sz * EvPoll::ALLOC_INCR ];
+      if ( m == NULL )
+        return NULL;
+      while ( (char *) m < end ) {
+        end = &end[ -sz ];
+        c = new ( end ) T( *this );
+        c->push_free_list();
+      }
+    }
+    c->pop_free_list();
+    return c;
+  }
+  template<class T, class S>
+  T *get_free_list2( kv::DLinkList<T> &free_list, S &stats ) {
+    T *c = free_list.hd;
+    if ( c == NULL ) {
+      size_t sz  = kv::align<size_t>( sizeof( T ), 64 );
+      void * m   = aligned_malloc( sz * EvPoll::ALLOC_INCR );
+      char * end = &((char *) m)[ sz * EvPoll::ALLOC_INCR ];
+      if ( m == NULL )
+        return NULL;
+      while ( (char *) m < end ) {
+        end = &end[ -sz ];
+        c = new ( end ) T( *this, stats );
+        c->push_free_list();
+      }
+    }
+    c->pop_free_list();
+    return c;
+  }
 
   EvPoll()
     : sock( 0 ), ev( 0 ), map( 0 ), prefetch_queue( 0 ), pubsub( 0 ),
@@ -187,16 +288,18 @@ struct EvListen : public EvSocket {
   EvListen( EvPoll &p ) : EvSocket( p, EV_LISTEN_SOCK ) {}
 
   virtual void accept( void ) {}
+  void write( void ) {}
+  void read( void ) { this->accept(); }
+  void process( void ) {}
+  void release( void ) {}
+  bool timer_expire( uint64_t, uint64_t ) { return false; }
+  bool hash_to_sub( uint32_t, char *, size_t & ) { return false; }
+  bool on_msg( EvPublish & ) { return true; }
+  void exec_key_prefetch( EvKeyCtx & ) {}
+  int exec_key_continue( EvKeyCtx & ) { return 0; }
   void process_shutdown( void ) { this->pushpop( EV_CLOSE, EV_SHUTDOWN ); }
+  void process_close( void ) {}
 };
-
-static inline void *aligned_malloc( size_t sz ) {
-#ifdef _ISOC11_SOURCE
-  return ::aligned_alloc( sizeof( kv::BufAlign64 ), sz ); /* >= RH7 */
-#else
-  return ::memalign( sizeof( kv::BufAlign64 ), sz ); /* RH5, RH6.. */
-#endif
-}
 
 struct EvConnection : public EvSocket, public StreamBuf {
   char   * recv;           /* initially recv_buf, but may realloc */
@@ -247,7 +350,7 @@ struct EvConnection : public EvSocket, public StreamBuf {
     }
   }
   bool resize_recv_buf( void );   /* need more buffer space */
-  bool read( void );              /* fill recv buf, return true if read some */
+  void read( void );              /* fill recv buf */
   void write( void );             /* flush stream buffer */
   void close_alloc_error( void ); /* if stream buf alloc failed or similar */
   void process_shutdown( void ) { this->pushpop( EV_CLOSE, EV_SHUTDOWN ); }
@@ -286,7 +389,7 @@ struct EvUdp : public EvSocket, public StreamBuf {
     this->zero();
     this->StreamBuf::reset();
   }
-  bool read( void );             /* fill recv buf, return true if read some */
+  void read( void );             /* fill recv buf, return true if read some */
   void write( void );            /* flush stream buffer */
   void process_shutdown( void ) { this->pushpop( EV_CLOSE, EV_SHUTDOWN ); }
 };

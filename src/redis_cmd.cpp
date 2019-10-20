@@ -226,7 +226,7 @@ gen_perfect_hash( void )
   uint64_t x = 0;
   uint32_t ht[ 1024 ];
   size_t   i;
-  uint32_t r = 0xa28b04b0U;
+  uint32_t r = 0x36fbdccd;
   const char *cmd;
   int k = 0;
 

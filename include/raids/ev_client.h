@@ -23,6 +23,11 @@ struct EvClient {
   EvClient( EvCallback &callback ) : cb( callback ) {}
   /*virtual void send_msg( RedisMsg &msg );*/
   virtual void send_data( char *buf,  size_t size );
+  void exec_key_prefetch( EvKeyCtx & ) {}
+  int exec_key_continue( EvKeyCtx & ) { return 0; }
+  bool timer_expire( uint64_t, uint64_t ) { return false; }
+  bool hash_to_sub( uint32_t, char *, size_t & ) { return false; }
+  bool on_msg( EvPublish & ) { return true; }
 };
 
 struct EvShm {
@@ -50,11 +55,15 @@ struct EvShmClient : public EvShm, public EvClient, public StreamBuf,
 
   int init_exec( void );
   /*virtual void send_msg( RedisMsg &msg );*/
+  void process( void ) {}
+  void read( void ) {}
+  void write( void ) {}
   virtual void send_data( char *buf,  size_t size );
   bool on_msg( EvPublish &pub );
   bool hash_to_sub( uint32_t h,  char *key,  size_t &keylen );
   void stream_to_msg( void );
   void process_shutdown( void );
+  void process_close( void ) {}
   void release( void ) {
     this->StreamBuf::reset();
   }
@@ -67,12 +76,14 @@ struct EvShmSvc : public EvShm, public EvSocket {
   virtual ~EvShmSvc();
 
   int init_poll( void );
-  virtual bool timer_expire( uint64_t tid ); /* return false if stop timer */
-  virtual bool read( void );              /* return true if recv more data */
-  virtual size_t write( void );           /* return amount sent */
-  virtual bool on_msg( EvPublish &pub ); /* fwd pub message, true if fwded */
+  virtual bool timer_expire( uint64_t tid,  uint64_t eid );
+  virtual void read( void );              /* return true if recv more data */
+  virtual void write( void );             /* return amount sent */
+  virtual bool on_msg( EvPublish &pub );  /* fwd pub message, true if fwded */
   virtual bool hash_to_sub( uint32_t h,  char *key,  size_t &keylen );
-  virtual void process( bool use_prefetch ); /* process protocol */
+  void exec_key_prefetch( EvKeyCtx & ) {}
+  int exec_key_continue( EvKeyCtx & ) { return 0; }
+  virtual void process( void );           /* process protocol */
   virtual void process_shutdown( void );  /* start shutdown */
   virtual void process_close( void );     /* finish close */
   virtual void release( void );           /* release allocations */

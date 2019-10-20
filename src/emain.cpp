@@ -8,7 +8,7 @@
 #include <sys/socket.h>
 #include <netinet/tcp.h>
 #include <netdb.h>
-#include <raids/ev_tcp.h>
+#include <raids/ev_service.h>
 #include <raids/ev_unix.h>
 #include <raids/ev_memcached.h>
 #include <raids/ev_http.h>
@@ -46,7 +46,7 @@ main( int argc, char *argv[] )
              * np = get_arg( argc, argv, 1, "-n", "42222" ), /* nats */
              * cp = get_arg( argc, argv, 1, "-c", "8866" ),  /* capr */
              * rv = get_arg( argc, argv, 1, "-r", "7501" ),  /* rv */
-             * fd = get_arg( argc, argv, 1, "-x", "4096" ),  /* max num fds */
+             * fd = get_arg( argc, argv, 1, "-x", "10000" ), /* max num fds */
              * fe = get_arg( argc, argv, 1, "-f", "1" ),
              /** si = get_arg( argc, argv, 1, "-s", "0" ),*/
              * bu = get_arg( argc, argv, 0, "-b", 0 ),
@@ -65,7 +65,7 @@ main( int argc, char *argv[] )
       "  nats  = listen nats port      (42222)\n"
       "  capr  = listen capr port      (8866)\n"
       "  rv    = listen rv port        (7501)\n"
-      "  mfd   = max fds               (4096)\n"
+      "  mfd   = max fds               (10000)\n"
       "  pre   = prefetch keys:      0 = no, 1 = yes (1)\n"
       "  -k    = don't use signal USR1 pub notification\n"
       "  -b    = busy poll\n"
@@ -89,7 +89,7 @@ main( int argc, char *argv[] )
   int               maxfd = atoi( fd );
 
   if ( maxfd == 0 )
-    maxfd = 4096;
+    maxfd = 10000;
   if ( poll.init( maxfd, fe[ 0 ] == '1'/*, si[ 0 ] == '1'*/ ) != 0 ||
        poll.init_shm( shm ) != 0 ) {
     fprintf( stderr, "unable to init shm\n" );

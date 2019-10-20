@@ -23,6 +23,7 @@ enum ExecStatus {
   EXEC_SEND_NULL,        /* send *-1 */
   EXEC_SEND_INT,         /* send :100 */
   EXEC_SEND_ZERO,        /* send :0 */
+  EXEC_SEND_ZEROARR,     /* send *0 */
   EXEC_SEND_ONE,         /* send :1 */
   EXEC_SEND_NEG_ONE,     /* send :-1 */
   EXEC_SEND_ZERO_STRING, /* send $0 */
@@ -118,7 +119,7 @@ struct RedisExec {
   uint64_t seed,   seed2;     /* kv map hash seeds, different for each db */
   kv::KeyCtx       kctx;      /* key context used for every key in command */
   kv::WorkAllocT< 1024 > wrk; /* kv work buffer, reset before each key lookup */
-  kv::DLinkList<RedisContinueMsg> cont_list;
+  kv::DLinkList<RedisContinueMsg> cont_list, wait_list;
   StreamBuf      & strm;      /* output buffer, result of command execution */
   RedisMsg         msg;       /* current command msg */
   EvKeyCtx       * key,       /* currently executing key */
@@ -128,10 +129,10 @@ struct RedisExec {
   RedisMultiExec * multi;     /* MULTI .. EXEC block */
   RedisCmd         cmd;       /* current command (GET_CMD) */
   RedisMsgStatus   mstatus;   /* command message parse status */
-  uint8_t          key_flags, /* EvKeyFlags, if a key has a keyspace event */
-                   pad1;
+  uint8_t          timeout,   /* if blocking command timed out */
+                   pad;
   uint16_t         cmd_flags, /* command flags (CMD_READONLY_FLAG) */
-                   pad2;
+                   key_flags; /* EvKeyFlags, if a key has a keyspace event */
   int16_t          arity,     /* number of command args */
                    first,     /* first key in args */
                    last,      /* last key in args */
@@ -142,17 +143,24 @@ struct RedisExec {
   RedisPatternMap  pat_tab;   /* pub/sub pattern sub table */
   RedisContinueMap continue_tab; /* blocked continuations */
   RouteDB        & sub_route; /* map subject to sub_id */
-  uint32_t         sub_id;    /* fd, set this after accept() */
+  uint32_t         sub_id,    /* fd, set this after accept() */
+                   next_event_id; /* next event id for timers */
+  uint64_t         timer_id;  /* timer id of this service */
 
   RedisExec( kv::HashTab &map,  uint32_t ctx_id,  StreamBuf &s,
              RouteDB &rdb ) :
       kctx( map, ctx_id, NULL ), strm( s ),
       key( 0 ), keys( 0 ), key_cnt( 0 ), key_done( 0 ),
-      sub_route( rdb ), sub_id( ~0U ) {
+      timeout( 0 ), key_flags( 0 ), sub_route( rdb ), sub_id( ~0U ),
+      next_event_id( 0 ), timer_id( 0 ) {
     this->kctx.ht.hdr.get_hash_seed( this->kctx.db_num, this->seed,
                                      this->seed2 );
     this->kctx.set( kv::KEYCTX_NO_COPY_ON_READ );
   }
+  /* stop a continuation and send null */
+  bool continue_expire( uint64_t event_id,  RedisContinueMsg *&cm );
+  /* restart continuation */
+  void push_continue_list( RedisContinueMsg *cm );
   /* release anything allocated */
   void release( void );
   /* unsubscribe anything subscribed */
@@ -172,7 +180,7 @@ struct RedisExec {
   /* execute a key operation */
   ExecStatus exec_key_continue( EvKeyCtx &ctx );
   /* subscribe to keyspace subjects and wait for publish to continue */
-  ExecStatus save_blocked_cmd( void );
+  ExecStatus save_blocked_cmd( int64_t timeout_secs );
   /* execute the saved commands after signaled */
   void drain_continuations( EvSocket *svc );
   /* publish keyspace events */
@@ -388,6 +396,10 @@ struct RedisExec {
   ExecStatus exec_zscore( EvKeyCtx &ctx );
   ExecStatus exec_zunionstore( EvKeyCtx &ctx );
   ExecStatus exec_zscan( EvKeyCtx &ctx );
+  ExecStatus exec_zpopmin( EvKeyCtx &ctx );
+  ExecStatus exec_zpopmax( EvKeyCtx &ctx );
+  ExecStatus exec_bzpopmin( EvKeyCtx &ctx );
+  ExecStatus exec_bzpopmax( EvKeyCtx &ctx );
   ExecStatus do_zread( EvKeyCtx &ctx,  int flags );
   ExecStatus do_zwrite( EvKeyCtx &ctx,  int flags );
   ExecStatus do_zmultiscan( EvKeyCtx &ctx,  int flags,  ScanArgs *sa );
@@ -456,6 +468,7 @@ struct RedisExec {
   void send_int( void );
   void send_int( int64_t ival );
   void send_zero( void );
+  void send_zeroarr( void );
   void send_one( void );
   void send_neg_one( void );
   void send_zero_string( void );

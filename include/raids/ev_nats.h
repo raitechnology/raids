@@ -69,7 +69,10 @@ struct EvNatsService : public EvConnection {
     this->name = this->lang = this->version = NULL;
     this->user = this->pass = this->auth_token = NULL;
   }
-  void process( bool use_prefetch );
+  void process( void );
+  void exec_key_prefetch( EvKeyCtx & ) {}
+  int exec_key_continue( EvKeyCtx & ) { return 0; }
+  bool timer_expire( uint64_t, uint64_t ) { return false; }
   /*HashData * resize_tab( HashData *curr,  size_t add_len );*/
   void add_sub( void );
   void add_wild( NatsStr &xsubj );
@@ -84,6 +87,7 @@ struct EvNatsService : public EvConnection {
   void release( void );
   void push_free_list( void );
   void pop_free_list( void );
+  void process_close( void ) {}
 };
 
 /* presumes little endian, 0xdf masks out 0x20 for toupper() */

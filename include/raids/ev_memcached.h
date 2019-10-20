@@ -53,12 +53,22 @@ struct EvMemcachedUdp : public EvUdp {
     exec( 0 ), out_idx( 0 ) {}
   int listen( const char *ip,  int port );
   void init( void );
-  void process( bool use_prefetch );
-  bool read( void );
+  void process( void );
+  void exec_key_prefetch( EvKeyCtx &ctx ) {
+    this->exec->exec_key_prefetch( ctx );
+  }
+  int exec_key_continue( EvKeyCtx &ctx ) {
+    return this->exec->exec_key_continue( ctx );
+  }
+  bool timer_expire( uint64_t, uint64_t ) { return false; }
+  bool hash_to_sub( uint32_t, char *, size_t & ) { return false; }
+  bool on_msg( EvPublish & ) { return true; }
+  void read( void );
   void write( void );
   void release( void );
   bool merge_inmsgs( uint32_t req_id,  uint32_t i,  uint32_t total,
                      uint32_t size );
+  void process_close( void ) {}
 };
 
 struct MemcachedUdpFraming {
@@ -93,12 +103,16 @@ struct EvMemcachedService : public EvConnection, public MemcachedExec {
   EvMemcachedService( EvPoll &p,  MemcachedStats &st )
     : EvConnection( p, EV_MEMCACHED_SOCK ),
       MemcachedExec( *p.map, p.ctx_id, *this, st ) {}
-  void process( bool use_prefetch );
-  bool read( void );
+  void process( void );
+  bool timer_expire( uint64_t, uint64_t ) { return false; }
+  bool hash_to_sub( uint32_t, char *, size_t & ) { return false; }
+  bool on_msg( EvPublish & ) { return true; }
+  void read( void );
   void write( void );
   void release( void );
   void push_free_list( void );
   void pop_free_list( void );
+  void process_close( void ) {}
 };
 
 }
