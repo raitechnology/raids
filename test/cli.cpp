@@ -167,30 +167,19 @@ TermCallback::on_msg( RedisMsg &msg )
     /*this->on_close();*/
     return;
   }
-  char buf[ 1024 ], *b = buf;
-  size_t sz = msg.to_almost_json_size();
+  char * b;
+  size_t sz  = msg.to_almost_json_size(),
+         sz2 = msg.pack_size();
 
-  if ( sz > sizeof( buf ) ) {
-    b = (char *) this->me.wrk.alloc( sz );
-    if ( b == NULL )
-      this->me.term.printf( "msg too large\n" );
-  }
-  if ( b != NULL ) {
+  b = (char *) this->me.wrk.alloc( sz > sz2 ? sz : sz2 );
+  if ( b == NULL )
+    this->me.term.printf( "msg too large\n" );
+  else {
     msg.to_almost_json( b );
     this->me.term.printf( "executing: %.*s\n", (int) sz, b );
-  }
-
-  b  = buf;
-  sz = msg.pack_size();
-  if ( sz > sizeof( buf ) ) {
-    b = (char *) this->me.wrk.alloc( sz );
-    if ( b == NULL )
-      this->me.term.printf( "msg too large\n" );
-  }
-  if ( b != NULL ) {
     msg.pack( b );
     this->me.msg_sent++;
-    this->me.client->send_data( b, sz );
+    this->me.client->send_data( b, sz2 );
   }
 }
 
@@ -209,8 +198,14 @@ TermCallback::on_data( char *buf,  size_t &buflen )
         this->on_err( buf, buflen, status );
       }
       else {
-        this->me.msg_sent++;
-        this->me.client->send_data( buf, buflen );
+        char * b = (char *) this->me.wrk.alloc( buflen );
+        if ( b == NULL )
+          this->me.term.printf( "msg too large\n" );
+        else {
+          ::memcpy( b, buf, buflen );
+          this->me.msg_sent++;
+          this->me.client->send_data( b, buflen );
+        }
       }
     }
   }

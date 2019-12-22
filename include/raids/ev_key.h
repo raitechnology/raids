@@ -13,7 +13,6 @@ struct EvSocket;
 struct EvKeyTempResult {
   size_t  mem_size, /* alloc size */
           size;     /* data size */
-  uint8_t type;     /* type of data */
   char * data( size_t x ) const {
     return &((char *) (void *) &this[ 1 ])[ x ];
   }
@@ -82,11 +81,13 @@ struct EvKeyCtx {
     return sizeof( EvKeyCtx ) + keylen; /* alloc size of *this */
   }
   const char *get_type_str( void ) const;
-  EvKeyCtx *prefetch( kv::KeyCtx &kctx ) {
+  EvKeyCtx *set( kv::KeyCtx &kctx ) {
     kctx.set_key( this->kbuf );
     kctx.set_hash( this->hash1, this->hash2 );
-    kctx.prefetch( 2 );
     return this;
+  }
+  void prefetch( kv::HashTab &ht,  bool for_read ) {
+    ht.prefetch( this->hash1, for_read );
   }
   bool is_new( void ) const {
     return ( this->flags & EKF_IS_NEW ) != 0;

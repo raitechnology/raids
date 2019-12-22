@@ -182,10 +182,10 @@ parse_units( RedisMsg &msg,  size_t i,  double base,  double &u,  bool inv )
                       meters_in_miles = 1609.34,
                       meters_in_feet  = 0.3048;
   double x;
-  switch ( msg.match_arg( i, "m", 1, "meter",     5, "meters",     6,
-                            "km", 2, "kilometer", 9, "kilometers", 10,
-                            "ft", 2, "feet",      4, "foot",       4,
-                            "mi", 2, "mile",      4, "miles",      5, NULL ) ) {
+  switch ( msg.match_arg( i, MARG( "m" ), MARG( "meter" ), MARG( "meters" ),
+                       MARG( "km" ), MARG( "kilometer" ), MARG( "kilometers" ),
+                       MARG( "ft" ), MARG( "feet" ), MARG( "foot" ),
+                       MARG( "mi" ), MARG( "mile" ), MARG( "miles" ), NULL ) ) {
     case 1: case 2: case 3:    u = base; return 1;
     case 4: case 5: case 6:    x = meters_in_km; break;
     case 7: case 8: case 9:    x = meters_in_feet; break;
@@ -321,7 +321,6 @@ RedisExec::do_gread( EvKeyCtx &ctx,  int flags )
       if ( ( flags & DO_GEODIST ) != 0 )
         this->strm.sz += sz;
       else {
-        q.finish_tail();
         q.prepend_array( nitems );
         this->strm.append_iov( q );
       }
@@ -510,14 +509,14 @@ RedisExec::do_gradius( EvKeyCtx &ctx,  int flags )
   if ( argi < this->argc ) {
     int withct = 0;
     do {
-      switch ( this->msg.match_arg( argi++, "withcoord", 9,
-                                            "withdist",  8,
-                                            "withhash",  8,
-                                            "count",     5,
-                                            "asc",       3,
-                                            "desc",      4,
-                                            "store",     5,
-                                            "storedist", 9, NULL ) ) {
+      switch ( this->msg.match_arg( argi++, MARG( "withcoord" ),
+                                            MARG( "withdist" ),
+                                            MARG( "withhash" ),
+                                            MARG( "count" ),
+                                            MARG( "asc" ),
+                                            MARG( "desc" ),
+                                            MARG( "store" ),
+                                            MARG( "storedist" ), NULL ) ) {
         case 1: withflags |= WITHCOORD_F; withct++; break;
         case 2: withflags |= WITHDIST_F;  withct++; break;
         case 3: withflags |= WITHHASH_F;  withct++; break;
@@ -679,7 +678,7 @@ finished:;
   /* save the list for the store key */
   if ( ( withflags & ( STORE_F | STOREDIST_F ) ) != 0 ) {
     StorePlaceList stp( listcnt, listsz, par, withflags, units );
-    if ( ! this->save_data( ctx, &stp, sizeof( stp ), 0 ) )
+    if ( ! this->save_data( ctx, &stp, sizeof( stp ) ) )
       return ERR_ALLOC_FAIL;
   }
   /* append to output stream */
@@ -699,7 +698,6 @@ finished:;
     return ERR_KV_STATUS;
   if ( ( withflags & ( STORE_F | STOREDIST_F ) ) != 0 )
     return EXEC_OK;
-  q.finish_tail();
   q.prepend_array( nitems );
   this->strm.append_iov( q );
   return EXEC_OK;

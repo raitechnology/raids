@@ -40,7 +40,7 @@ main( int argc, char *argv[] )
 
   const char * mn = get_arg( argc, argv, 1, "-m", "sysv2m:shm.test" ),
              * pt = get_arg( argc, argv, 1, "-p", "7379" ),  /* redis */
-             * mc = get_arg( argc, argv, 1, "-m", "21211" ), /* memcached */
+             * mc = get_arg( argc, argv, 1, "-d", "21211" ), /* memcached */
              * sn = get_arg( argc, argv, 1, "-u", "/tmp/raids.sock" ),/* unix */
              * hp = get_arg( argc, argv, 1, "-w", "48080" ), /* http/websock */
              * np = get_arg( argc, argv, 1, "-n", "42222" ), /* nats */
@@ -55,7 +55,7 @@ main( int argc, char *argv[] )
 
   if ( he != NULL ) {
     printf( "%s"
-" [-m map] [-p redis] [-m memcd] [-u unix] [-w web] [-n nats] [-c capr]"
+" [-m map] [-p redis] [-d memcd] [-u unix] [-w web] [-n nats] [-c capr]"
 " [-x mfd] [-f pre] [-b]\n" /*"[-s sin]\n"*/
       "  map   = kv shm map name       (sysv2m:shm.test)\n"
       "  redis = listen redis port     (7379)\n"

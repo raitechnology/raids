@@ -311,7 +311,7 @@ struct EvConnection : public EvSocket, public StreamBuf {
            pad;
   uint64_t nbytes_recv,
            nbytes_sent;
-  char     recv_buf[ 4 * 1024 ] __attribute__((__aligned__( 64 )));
+  char     recv_buf[ 16 * 1024 ] __attribute__((__aligned__( 64 )));
 
   EvConnection( EvPoll &p, EvSockType t ) : EvSocket( p, t ) {
     this->recv           = this->recv_buf;
@@ -346,6 +346,11 @@ struct EvConnection : public EvSocket, public StreamBuf {
       this->len -= this->off;
       if ( this->len > 0 )
         ::memmove( this->recv, &this->recv[ this->off ], this->len );
+      else if ( this->recv != this->recv_buf ) {
+        ::free( this->recv );
+        this->recv = this->recv_buf;
+        this->recv_size = sizeof( this->recv_buf );
+      }
       this->off = 0;
     }
   }

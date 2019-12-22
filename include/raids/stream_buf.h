@@ -12,37 +12,43 @@ struct StreamBuf {
   struct BufList {
     BufList * next;
     size_t    off,
-              used;
+              used,
+              buflen;
     char    * buf( size_t x ) const {
       return &((char *) (void *) &this[ 1 ])[ this->off + x ];
     }
   };
   /* allocate a BufList */
-  BufList *alloc_buf_list( BufList *&hd,  BufList *tl,  size_t len,
+  BufList *alloc_buf_list( BufList *&hd,  BufList *&tl,  size_t len,
                            size_t pad = 0 );
   /* queue of items, usually an array */
   struct BufQueue {
     StreamBuf & strm;
     BufList   * hd,
               * tl;
-    char      * bufp;
-    size_t      buflen,
-                used,
-                total;
-    BufQueue( StreamBuf &s ) : strm( s ), hd( 0 ), tl( 0 ), bufp( 0 ),
-                               buflen( 0 ), used( 0 ), total( 0 ) {}
+    BufQueue( StreamBuf &s ) : strm( s ), hd( 0 ), tl( 0 ) {}
     /* put used into this->tl */
-    size_t finish_tail( void ) {
-      if ( this->tl != NULL )
-        this->tl->used += this->used;
-      this->total += this->used;
-      this->used   = 0;
-      return this->total;
+    void append_list( BufQueue &q ) {
+      if ( q.hd != NULL ) {
+        if ( this->tl != NULL )
+          this->tl->next = q.hd;
+        else
+          this->hd = q.hd;
+        this->tl = q.tl;
+      }
+    }
+    BufList * get_buf( size_t len ) {
+      if ( this->tl == NULL ||
+           len + this->tl->used + this->tl->off > this->tl->buflen )
+        return this->append_buf( len );
+      return this->tl;
     }
     /* allocate a new BufList that fits at least len and append to list */
-    bool append_buf( size_t len );
+    BufList * append_buf( size_t len );
     /* a nil string: $-1\r\n or *-1\r\n if is_null true */
     size_t append_nil( bool is_null = false );
+    /* a zero length array: *0\r\n */
+    size_t append_zero_array( void );
     /* one string item, appended with decorations: $<strlen>\r\n<string>\r\n */
     size_t append_string( const void *str,  size_t len,  const void *str2=0,
                           size_t len2=0 );

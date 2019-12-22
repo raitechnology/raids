@@ -446,9 +446,14 @@ struct MemcachedExec {
   MemcachedStatus exec_key_setup( EvSocket *own,  EvPrefetchQueue *q,
                                   EvKeyCtx *&ctx,  uint32_t n );
   MemcachedStatus exec( EvSocket *svc,  EvPrefetchQueue *q );
+  /* set the hash */
+  void exec_key_set( EvKeyCtx &ctx ) { 
+    this->key = ctx.set( this->kctx );
+  } 
   /* compute the hash and prefetch the ht[] location */
   void exec_key_prefetch( EvKeyCtx &ctx ) {
-    this->key = ctx.prefetch( this->kctx );
+    ctx.prefetch( this->kctx.ht,
+      test_read_only( this->msg->cmd ) ? true : false );
   }
   kv::KeyStatus exec_key_fetch( EvKeyCtx &ctx,  bool force_read );
   MemcachedStatus exec_key_continue( EvKeyCtx &ctx );

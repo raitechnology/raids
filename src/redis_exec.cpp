@@ -74,6 +74,17 @@ RedisExec::send_string( const void *data,  size_t size )
 }
 
 size_t
+RedisExec::send_simple_string( const void *data,  size_t size )
+{
+  char * str = this->strm.alloc( 3 + size );
+  if ( str == NULL )
+    return 0;
+  str[ 0 ] = '+';
+  ::memcpy( &str[ 1 ], data, size );
+  return crlf( str, 1 + size );
+}
+
+size_t
 RedisExec::send_concat_string( const void *data,  size_t size,
                                const void *data2,  size_t size2 )
 {
@@ -100,7 +111,6 @@ RedisExec::save_string_result( EvKeyCtx &ctx,  const void *data,  size_t size )
     part = (EvKeyTempResult *) this->strm.alloc_temp( msz );
     if ( part != NULL ) {
       part->mem_size = msz;
-      part->type = 0; /* no type */
       ctx.part = part;
     }
     else {
@@ -118,8 +128,7 @@ RedisExec::save_string_result( EvKeyCtx &ctx,  const void *data,  size_t size )
 }
 
 bool
-RedisExec::save_data( EvKeyCtx &ctx,  const void *data,  size_t size,
-                      uint8_t type )
+RedisExec::save_data( EvKeyCtx &ctx,  const void *data,  size_t size )
 {
   size_t msz = sizeof( EvKeyTempResult ) + size;
   if ( ctx.part == NULL || msz > ctx.part->mem_size ) {
@@ -135,8 +144,30 @@ RedisExec::save_data( EvKeyCtx &ctx,  const void *data,  size_t size,
   }
   ::memcpy( ctx.part->data( 0 ), data, size );
   ctx.part->size = size;
-  ctx.part->type = type;
   return true;
+}
+
+void *
+RedisExec::save_data2( EvKeyCtx &ctx,  const void *data,  size_t size,
+                       const void *data2,  size_t size2 )
+{
+  size_t msz = sizeof( EvKeyTempResult ) + size + size2;
+  if ( ctx.part == NULL || msz > ctx.part->mem_size ) {
+    EvKeyTempResult *part;
+    part = (EvKeyTempResult *) this->strm.alloc_temp( msz );
+    if ( part != NULL ) {
+      part->mem_size = msz;
+      ctx.part = part;
+    }
+    else {
+      return NULL;
+    }
+  }
+  uint8_t * ptr = (uint8_t *) ctx.part->data( 0 );
+  ::memcpy( ptr, data, size );
+  ::memcpy( &ptr[ size ], data2, size2 );
+  ctx.part->size = size + size2;
+  return ptr;
 }
 
 void
@@ -219,10 +250,9 @@ bool
 RedisExec::locate_movablekeys( void )
 {
   int64_t i;
-  this->step_mask = 0;
-  this->first     = 0;
-  this->last      = 0;
-  this->step      = 0;
+  this->first = 0;
+  this->last  = 0;
+  this->step  = 0;
   switch ( this->cmd ) {  /* these commands do not follow regular rules */
     /* GEORADIUS key long lat mem rad unit [WITHCOORD] [WITHDIST]
      * [WITHHASH] [COUNT count] [ASC|DESC] [STORE key] [STOREDIST key] */
@@ -234,7 +264,8 @@ RedisExec::locate_movablekeys( void )
       this->step_mask = 1 << this->first;
       if ( this->argc > 2 &&
            this->msg.match_arg( this->argc - 2,
-                                "STORE", 5, "STOREDIST", 9, NULL ) != 0 ) {
+                                MARG( "STORE" ),
+                                MARG( "STOREDIST" ), NULL ) != 0 ) {
         this->last = this->argc - 1;
         this->step_mask = 1 << this->last;
         this->step = this->last - this->first;
@@ -260,7 +291,71 @@ RedisExec::locate_movablekeys( void )
       if ( (size_t) ( 3 + i ) > this->argc ) /* if args above fit into argc */
         return false;
       return true;
-    case XREADGROUP_CMD: break;
+    case XREAD_CMD:
+      /* XREAD [COUNT count] [BLOCK ms] STREAMS key [key ...] id [id ...] */
+      for ( i = 1; (size_t) i < this->argc; ) {
+        switch ( this->msg.match_arg( i, MARG( "count" ),
+                                         MARG( "block" ),
+                                         MARG( "streams" ), NULL ) ) {
+          default:
+            return false;
+          case 1: /* count N */
+            i += 2;
+            break;
+          case 2: /* block millseconds */
+            i += 2;
+            break;
+          case 3: /* streams */
+            if ( (size_t) ++i < this->argc ) {
+              this->first = i;
+              this->last  = i + ( this->argc - i ) / 2 - 1;
+              this->step  = 1;
+              if ( (size_t) ( this->first +
+                              ( this->last - this->first + 1 ) * 2 ) == 
+                   this->argc )
+                return true;
+            }
+            return false;
+        }
+      }
+      return false;
+    case XREADGROUP_CMD:
+      /* XREADGROUP GROUP group consumer [COUNT count] [BLOCK ms] [NOACK]
+       * STREAMS key [key ...] id [id ...] */
+      for ( i = 1; (size_t) i < this->argc; ) {
+        switch ( msg.match_arg( i, MARG( "group" ),
+                                   MARG( "count" ),
+                                   MARG( "block" ),
+                                   MARG( "noack" ),
+                                   MARG( "streams" ), NULL ) ) {
+          default:
+            return false;
+          case 1: /* group */
+            i += 3;
+            break;
+          case 2: /* count N */
+            i += 2;
+            break;
+          case 3: /* block millseconds */
+            i += 2;
+            break;
+          case 4: /* noack */
+            i += 1;
+            break;
+          case 5: /* streams */
+            if ( (size_t) ++i < this->argc ) {
+              this->first = i;
+              this->last  = i + ( this->argc - i ) / 2 - 1;
+              this->step  = 1;
+              if ( (size_t) ( this->first +
+                              ( this->last - this->first + 1 ) * 2 ) == 
+                   this->argc )
+                return true;
+            }
+            return false;
+        }
+      }
+      return false;
     default: break;
   }
   return false;
@@ -273,7 +368,7 @@ RedisExec::next_key( int &i )
   i += this->step;
   if ( this->last < 0 && i < (int) this->argc + (int) this->last + 1 )
     return true;
-  if ( test_cmd_mask( this->cmd_flags, CMD_MOVABLEKEYS_FLAG ) ) {
+  if ( this->step_mask != 0 ) {
     while ( ( ( (uint64_t) 1 << i ) & this->step_mask ) == 0 ) {
       i += this->step;
       if ( i > this->last )
@@ -288,7 +383,7 @@ size_t
 RedisExec::calc_key_count( void )
 {
   /* how many keys are in the command */
-  if ( test_cmd_mask( this->cmd_flags, CMD_MOVABLEKEYS_FLAG ) )
+  if ( this->step_mask != 0 )
     return __builtin_popcountl( this->step_mask );
   if ( this->last > 0 )
     return ( this->last + 1 - this->first ) / this->step;
@@ -323,7 +418,7 @@ RedisExec::exec( EvSocket *svc,  EvPrefetchQueue *q )
     return ERR_BAD_ARGS;
   this->cmd_flags = get_cmd_flag_mask( this->cmd );
   this->key_flags = 0;
-
+  this->step_mask = 0;
   if ( test_cmd_mask( this->cmd_flags, CMD_MOVABLEKEYS_FLAG ) )
     if ( ! this->locate_movablekeys() )
       return ERR_BAD_ARGS;
@@ -457,9 +552,10 @@ RedisExec::exec_key_continue( EvKeyCtx &ctx )
       return EXEC_CONTINUE;
     goto success;
   }
-  if ( this->kctx.kbuf != &ctx.kbuf ||
+  this->exec_key_set( ctx );
+  /*if ( this->kctx.kbuf != &ctx.kbuf ||
        this->kctx.key != ctx.hash1 || this->kctx.key2 != ctx.hash2 )
-    this->exec_key_prefetch( ctx );
+    this->exec_key_prefetch( ctx );*/
   for (;;) {
     switch ( this->cmd ) {
       /* CLUSTER */
@@ -644,18 +740,19 @@ RedisExec::exec_key_continue( EvKeyCtx &ctx )
       case UNWATCH_CMD:   ctx.status = ERR_BAD_CMD; break; /* no keys */
       case WATCH_CMD:     ctx.status = this->exec_watch( ctx ); break;
       /* STREAM */
+      case XINFO_CMD:     ctx.status = this->exec_xinfo( ctx ); break;
       case XADD_CMD:      ctx.status = this->exec_xadd( ctx ); break;
-      case XLEN_CMD:      ctx.status = this->exec_xlen( ctx ); break;
+      case XTRIM_CMD:     ctx.status = this->exec_xtrim( ctx ); break;
+      case XDEL_CMD:      ctx.status = this->exec_xdel( ctx ); break;
       case XRANGE_CMD:    ctx.status = this->exec_xrange( ctx ); break;
       case XREVRANGE_CMD: ctx.status = this->exec_xrevrange( ctx ); break;
+      case XLEN_CMD:      ctx.status = this->exec_xlen( ctx ); break;
       case XREAD_CMD:     ctx.status = this->exec_xread( ctx ); break;
-      case XREADGROUP_CMD: ctx.status = this->exec_xreadgroup( ctx ); break;
       case XGROUP_CMD:    ctx.status = this->exec_xgroup( ctx ); break;
+      case XREADGROUP_CMD: ctx.status = this->exec_xreadgroup( ctx ); break;
       case XACK_CMD:      ctx.status = this->exec_xack( ctx ); break;
-      case XPENDING_CMD:  ctx.status = this->exec_xpending( ctx ); break;
       case XCLAIM_CMD:    ctx.status = this->exec_xclaim( ctx ); break;
-      case XINFO_CMD:     ctx.status = this->exec_xinfo( ctx ); break;
-      case XDEL_CMD:      ctx.status = this->exec_xdel( ctx ); break;
+      case XPENDING_CMD:  ctx.status = this->exec_xpending( ctx ); break;
 
       case NO_CMD:        ctx.status = ERR_BAD_CMD; break;
     }
@@ -836,12 +933,12 @@ RedisExec::exec_bgsave( void )
 
 ExecStatus RedisExec::exec_client( void )
 {
-  switch ( this->msg.match_arg( 1, "getname", 7,
-                                   "kill", 4,
-                                   "list", 4,
-                                   "pause", 5,
-                                   "reply", 5,
-                                   "setname", 7, NULL ) ) {
+  switch ( this->msg.match_arg( 1, MARG( "getname" ),
+                                   MARG( "kill" ),
+                                   MARG( "list" ),
+                                   MARG( "pause" ),
+                                   MARG( "reply" ),
+                                   MARG( "setname" ), NULL ) ) {
     default: return ERR_BAD_ARGS;
     case 1: /* getname */
       this->send_nil();  /* get my name */
@@ -874,10 +971,10 @@ RedisExec::exec_command( void )
   RedisCmd     cmd;
 
   this->mstatus = REDIS_MSG_OK;
-  switch ( this->msg.match_arg( 1, "info",    4,
-                                   "getkeys", 7,
-                                   "count",   5,
-                                   "help",    4, NULL ) ) {
+  switch ( this->msg.match_arg( 1, MARG( "info" ),
+                                   MARG( "getkeys" ),
+                                   MARG( "count" ),
+                                   MARG( "help" ), NULL ) ) {
     case 0: { /* no args */
       if ( ! m.alloc_array( this->strm.tmp, REDIS_CMD_COUNT - 1 ) )
         return ERR_ALLOC_FAIL;
@@ -926,8 +1023,8 @@ RedisExec::exec_command( void )
       return ERR_BAD_ARGS;
   }
   if ( this->mstatus == REDIS_MSG_OK ) {
-    size_t sz  = 16 * 1024;
-    void * buf = this->strm.alloc( sz );
+    size_t sz  = m.pack_size();
+    void * buf = this->strm.alloc_temp( sz );
     if ( buf == NULL )
       return ERR_ALLOC_FAIL;
     this->strm.append_iov( buf, m.pack( buf ) );
@@ -940,17 +1037,43 @@ RedisExec::exec_command( void )
 ExecStatus
 RedisExec::exec_config( void )
 {
-  switch ( this->msg.match_arg( 1, "get",       3,
-                                   "resetstat", 9,
-                                   "rewrite",   7,
-                                   "set",       3, NULL ) ) {
+  RedisMsg m;
+  size_t   sz;
+  void   * buf;
+  switch ( this->msg.match_arg( 1, MARG( "get" ),
+                                   MARG( "resetstat" ),
+                                   MARG( "rewrite" ),
+                                   MARG( "set" ), NULL ) ) {
     default: return ERR_BAD_ARGS;
     case 1: /* get */
+      switch ( this->msg.match_arg( 2, MARG( "appendonly" ),
+                                       MARG( "save" ), NULL ) ) {
+        default: return ERR_BAD_ARGS;
+        case 1:
+          if ( ! m.alloc_array( this->strm.tmp, 2 ) )
+            return ERR_ALLOC_FAIL;
+          m.array[ 0 ].set_bulk_string( (char *) MARG( "appendonly" ) );
+          m.array[ 1 ].set_bulk_string( (char *) MARG( "no" ) );
+          break;
+        case 2:
+          if ( ! m.alloc_array( this->strm.tmp, 2 ) )
+            return ERR_ALLOC_FAIL;
+          m.array[ 0 ].set_bulk_string( (char *) MARG( "save" ) );
+          m.array[ 1 ].set_bulk_string( (char *) MARG( "" ) );
+          break;
+      }
+      sz  = m.pack_size();
+      buf = this->strm.alloc_temp( sz );
+      if ( buf == NULL )
+        return ERR_ALLOC_FAIL;
+      this->strm.append_iov( buf, m.pack( buf ) );
+      return EXEC_OK;
     case 2: /* resetstat */
     case 3: /* rewrite */
     case 4: /* set */
-      return ERR_BAD_CMD;
+      break;
   }
+  return ERR_BAD_CMD;
 }
 
 ExecStatus
@@ -1020,12 +1143,12 @@ RedisExec::exec_lastsave( void )
 ExecStatus
 RedisExec::exec_memory( void )
 {
-  switch ( this->msg.match_arg( 1, "doctor",       6,
-                                   "help",         4,
-                                   "malloc-stats", 12,
-                                   "purge",        5,
-                                   "stats",        5,
-                                   "usage",        5, NULL ) ) {
+  switch ( this->msg.match_arg( 1, MARG( "doctor" ),
+                                   MARG( "help" ),
+                                   MARG( "malloc-stats" ),
+                                   MARG( "purge" ),
+                                   MARG( "stats" ),
+                                   MARG( "usage" ), NULL ) ) {
     default: return ERR_BAD_ARGS;
     case 1: /* doctor */
     case 2: /* help */
@@ -1188,6 +1311,7 @@ RedisExec::send_err( int status,  KeyStatus kstatus )
     case ERR_BAD_CMD:           this->send_err_bad_cmd(); break;
     case ERR_BAD_TYPE:          this->send_err_bad_type(); break;
     case ERR_BAD_RANGE:         this->send_err_bad_range(); break;
+    case ERR_NO_GROUP:          this->send_err_no_group(); break;
     case EXEC_QUIT:
     case EXEC_DEBUG:            this->send_ok(); break;
     case ERR_ALLOC_FAIL:        this->send_err_alloc_fail(); break;
@@ -1330,6 +1454,23 @@ RedisExec::send_err_bad_range( void )
     arg0len = ( arg0len < 24 ? arg0len : 24 );
     bsz = ::snprintf( buf, bsz,
                       "-ERR index out of range for command: '%.*s'\r\n",
+                     (int) arg0len, arg0 );
+    strm.sz += bsz;
+  }
+}
+
+void
+RedisExec::send_err_no_group( void )
+{
+  size_t       arg0len;
+  const char * arg0 = this->msg.command( arg0len );
+  size_t       bsz  = 64 + 24;
+  char       * buf  = this->strm.alloc( bsz );
+
+  if ( buf != NULL ) {
+    arg0len = ( arg0len < 24 ? arg0len : 24 );
+    bsz = ::snprintf( buf, bsz,
+                      "-ERR group not found for command: '%.*s'\r\n",
                      (int) arg0len, arg0 );
     strm.sz += bsz;
   }

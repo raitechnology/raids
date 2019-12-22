@@ -496,7 +496,7 @@ rai::ds::string_to_int( const char *str,  size_t sz,  int64_t &ival )
       if ( i == max_pow10 )
         break;
     }
-    /* 9223372036854775807 == 0x7fffffffffffffff */
+    /* 922337203,6854775807 == 0x7fffffffffffffff */
     if ( nn > (uint64_t) 922337203 ||
          ( nn == (uint64_t) 922337203 &&
            n > (uint64_t) 6854775807 ) ) {
@@ -536,17 +536,82 @@ rai::ds::string_to_dbl( const char *str,  size_t sz,  double &fval )
 int
 rai::ds::string_to_uint( const char *str,  size_t sz,  uint64_t &ival )
 {
-  char buf[ 64 ], *endptr = NULL;
-  /* null terminate string */
-  if ( sz > sizeof( buf ) - 1 )
-    sz = sizeof( buf ) - 1;
-  ::memcpy( buf, str, sz );
-  buf[ sz ] = '\0';
-  ival = strtoull( buf, &endptr, 0 );
-  if ( endptr == buf )
+  /* max is 1844674407,3709551615, this table doesnn't overflow 32bits */
+  static const uint32_t pow10[] = {     10000U * 10000U * 10,
+    10000U * 10000, 10000U * 1000, 10000U * 100, 10000U * 10,
+             10000,          1000,          100,          10,
+                 1
+  };
+  static const size_t max_pow10 = sizeof( pow10 ) / sizeof( pow10[ 0 ] );
+  size_t i, j;
+  uint64_t n = 0;
+  bool neg;
+
+  if ( sz == 0 )
     return REDIS_MSG_BAD_INT;
-  if ( ival == 0 && errno == ERANGE )
-    return REDIS_MSG_INT_OVERFLOW;
+  if ( str[ 0 ] == '-' ) {
+    if ( --sz == 0 )
+      return REDIS_MSG_BAD_INT;
+    str++;
+    neg = true;
+  }
+  else {
+    neg = false;
+  }
+  i = j = 0;
+  if ( sz < max_pow10 )
+    i = max_pow10 - sz;
+  else
+    j = sz - max_pow10;
+  sz = j;
+  for (;;) {
+    if ( str[ j ] < '0' || str[ j ] > '9' )
+      return REDIS_MSG_BAD_INT;
+    n += (uint64_t) pow10[ i++ ] * ( str[ j++ ] - '0' );
+    if ( i == max_pow10 )
+      break;
+  }
+  if ( sz != 0 ) {
+    i = j = 0;
+    if ( sz <= max_pow10 )
+      i = max_pow10 - sz;
+    else
+      return REDIS_MSG_INT_OVERFLOW;
+    uint64_t nn = 0;
+    for (;;) {
+      if ( str[ j ] < '0' || str[ j ] > '9' )
+        return REDIS_MSG_BAD_INT;
+      nn += (uint64_t) pow10[ i++ ] * ( str[ j++ ] - '0' );
+      if ( i == max_pow10 )
+        break;
+    }
+    if ( neg ) {
+      /* 922337203,6854775807 == 0x7fffffffffffffff */
+      if ( nn > (uint64_t) 922337203 ||
+           ( nn == (uint64_t) 922337203 &&
+             n > (uint64_t) 6854775807 ) ) {
+        /* test for neg && 6854775808 */
+        if ( neg && nn == 922337203 && n == 6854775808 ) {
+          ival = 0x8000000000000000LL;
+          return REDIS_MSG_OK;
+        }
+        return REDIS_MSG_INT_OVERFLOW;
+      }
+    }
+    else {
+      /* 1844674407,3709551615 == 0xffffffffffffffff */
+      if ( nn > (uint64_t) 1844674407 ||
+           ( nn == (uint64_t) 1844674407 &&
+             n > (uint64_t) 3709551615 ) ) {
+        return REDIS_MSG_INT_OVERFLOW;
+      }
+    }
+    n += (uint64_t) 10 * (uint64_t) pow10[ 0 ] * nn;
+  }
+  if ( neg )
+    ival = (uint64_t) -(int64_t) n;
+  else
+    ival = n;
   return REDIS_MSG_OK;
 }
 

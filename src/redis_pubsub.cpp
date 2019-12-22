@@ -326,9 +326,9 @@ RedisExec::exec_pubsub( void )
   size_t cnt = 0;
 
   /* PUBSUB [channels [pattern] | numsub channel-1 [, ...] | numpat] */
-  switch ( this->msg.match_arg( 1, "channels", 8,
-                                   "numsub",   6,
-                                   "numpat",   6, NULL ) ) {
+  switch ( this->msg.match_arg( 1, MARG( "channels" ),
+                                   MARG( "numsub" ),
+                                   MARG( "numpat" ), NULL ) ) {
     default: return ERR_BAD_CMD;
     case 1: { /* channels [pattern] */
       pcre2_real_code_8       * re = NULL; /* pcre regex compiled */
@@ -401,7 +401,6 @@ RedisExec::exec_pubsub( void )
       return EXEC_OK;
     }
   }
-  q.finish_tail();
   q.prepend_array( cnt );
   this->strm.append_iov( q );
   return EXEC_OK;

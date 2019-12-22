@@ -4,7 +4,6 @@
 #include <stdint.h>
 #include <raikv/util.h>
 #include <raids/redis_exec.h>
-#include <raimd/md_types.h>
 #include <raimd/md_set.h>
 #include <raids/set_bits.h>
 #include <raids/exec_list_ctx.h>
@@ -449,7 +448,6 @@ RedisExec::do_smultiscan( EvKeyCtx &ctx,  int flags,  ScanArgs *sa )
   }
 
 finished:;
-  q.finish_tail();
   if ( ( flags & DO_SSCAN ) != 0 )
     q.prepend_cursor_array( i == count ? 0 : i, itemcnt );
   else
@@ -501,7 +499,7 @@ RedisExec::do_ssetop( EvKeyCtx &ctx,  int flags )
           data    = (void *) mt_list; /* empty */
           datalen = sizeof( mt_list );
         }
-        if ( ! this->save_data( ctx, data, datalen, 0 ) )
+        if ( ! this->save_data( ctx, data, datalen ) )
           return ERR_ALLOC_FAIL;
         if ( set.validate_value() ) {
           if ( this->key_cnt == this->key_done + 1 ) /* the last key */
@@ -592,7 +590,6 @@ RedisExec::do_ssetop( EvKeyCtx &ctx,  int flags )
         return ERR_ALLOC_FAIL;
       itemcnt++;
     }
-    q.finish_tail();
     q.prepend_array( itemcnt );
     this->strm.append_iov( q );
     return EXEC_OK;

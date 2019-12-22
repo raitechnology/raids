@@ -213,7 +213,7 @@ EvMemcachedService::process( void )
 {
   StreamBuf       & strm = *this;
   EvPrefetchQueue * q    = this->poll.prefetch_queue;
-  EvMemcached       evm( this->recv_buf, this->off, this->len );
+  EvMemcached       evm( this->recv, this->off, this->len );
 
   switch ( evm.process_loop( *this, q, strm, this ) ) {
     case EV_PREFETCH:

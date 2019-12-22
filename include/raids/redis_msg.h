@@ -137,10 +137,12 @@ struct RedisMsg {
   }
   /* match argument by string, returns which arg matched, 0 if none
    * the arg n indicates which arg to start, -2 means args [2 -> end]
-   *   int n = match( -2, "one", "two", NULL );
+   *   int n = match( -2, "one", 3, "two", 3, NULL );
    *   if ( n == 1 ) matched one
    *   if ( n == 2 ) matched two
    *   if ( n == 0 ) matched none */
+  #define MARG( str ) str, sizeof( str ) - 1
+  /* used as: match_arg( 1, MARG( "hello" ), MARG( "world" ), NULL ) */
   int match_arg( int n,  const char *str,  size_t sz,  ... );
 
   /* str length sz to int */

@@ -44,6 +44,7 @@ enum ExecStatus {
   ERR_BAD_CMD,          /* command unknown or not implmented */
   ERR_BAD_TYPE,         /* data type not compatible with operator */
   ERR_BAD_RANGE,        /* index out of range */
+  ERR_NO_GROUP,         /* group not found */
   ERR_ALLOC_FAIL,       /* alloc returned NULL */
   ERR_KEY_EXISTS,       /* when set with NX operator */
   ERR_KEY_DOESNT_EXIST, /* when set with XX operator */
@@ -65,6 +66,7 @@ struct EvPublish;
 struct RedisExec;
 struct RouteDB;
 struct KvPubSub;
+struct ExecStreamCtx;
 
 struct ScanArgs {
   int64_t pos,    /* position argument, the position where scan starts */
@@ -150,7 +152,7 @@ struct RedisExec {
   RedisExec( kv::HashTab &map,  uint32_t ctx_id,  StreamBuf &s,
              RouteDB &rdb ) :
       kctx( map, ctx_id, NULL ), strm( s ),
-      key( 0 ), keys( 0 ), key_cnt( 0 ), key_done( 0 ),
+      key( 0 ), keys( 0 ), key_cnt( 0 ), key_done( 0 ), multi( 0 ),
       timeout( 0 ), key_flags( 0 ), sub_route( rdb ), sub_id( ~0U ),
       next_event_id( 0 ), timer_id( 0 ) {
     this->kctx.ht.hdr.get_hash_seed( this->kctx.db_num, this->seed,
@@ -185,9 +187,14 @@ struct RedisExec {
   void drain_continuations( EvSocket *svc );
   /* publish keyspace events */
   void pub_keyspace_events( void );
+  /* set the hash */
+  void exec_key_set( EvKeyCtx &ctx ) {
+    this->key = ctx.set( this->kctx );
+  }
   /* compute the hash and prefetch the ht[] location */
   void exec_key_prefetch( EvKeyCtx &ctx ) {
-    this->key = ctx.prefetch( this->kctx );
+    ctx.prefetch( this->kctx.ht,
+      test_cmd_mask( this->cmd_flags, CMD_READONLY_FLAG ) ? true : false );
   }
   /* fetch key for write and check type matches or is not set */
   kv::KeyStatus get_key_write( EvKeyCtx &ctx,  uint8_t type ) {
@@ -445,18 +452,26 @@ struct RedisExec {
   ExecStatus exec_unwatch( void );
   ExecStatus exec_watch( EvKeyCtx &ctx );
   /* STREAM */
+  ExecStatus exec_xinfo( EvKeyCtx &ctx );
+  ExecStatus xinfo_consumers( ExecStreamCtx &stream );
+  ExecStatus xinfo_groups( ExecStreamCtx &stream );
+  ExecStatus xinfo_streams( ExecStreamCtx &stream );
+
   ExecStatus exec_xadd( EvKeyCtx &ctx );
-  ExecStatus exec_xlen( EvKeyCtx &ctx );
+  ExecStatus exec_xtrim( EvKeyCtx &ctx );
+  ExecStatus exec_xdel( EvKeyCtx &ctx );
+  bool construct_xfield_output( ExecStreamCtx &stream,  size_t idx,
+                                StreamBuf::BufQueue &q );
   ExecStatus exec_xrange( EvKeyCtx &ctx );
   ExecStatus exec_xrevrange( EvKeyCtx &ctx );
+  ExecStatus exec_xlen( EvKeyCtx &ctx );
   ExecStatus exec_xread( EvKeyCtx &ctx );
+  ExecStatus finish_xread( EvKeyCtx &ctx,  StreamBuf::BufQueue &q );
   ExecStatus exec_xreadgroup( EvKeyCtx &ctx );
   ExecStatus exec_xgroup( EvKeyCtx &ctx );
   ExecStatus exec_xack( EvKeyCtx &ctx );
-  ExecStatus exec_xpending( EvKeyCtx &ctx );
   ExecStatus exec_xclaim( EvKeyCtx &ctx );
-  ExecStatus exec_xinfo( EvKeyCtx &ctx );
-  ExecStatus exec_xdel( EvKeyCtx &ctx );
+  ExecStatus exec_xpending( EvKeyCtx &ctx );
 
   /* result senders */
   void send_err( int status,  kv::KeyStatus kstatus = KEY_OK );
@@ -474,6 +489,7 @@ struct RedisExec {
   void send_zero_string( void );
   void send_queued( void );
   size_t send_string( const void *data,  size_t size );
+  size_t send_simple_string( const void *data,  size_t size );
   size_t send_concat_string( const void *data,  size_t size,
                              const void *data2,  size_t size2 );
   void send_err_bad_args( void );
@@ -481,14 +497,16 @@ struct RedisExec {
   void send_err_bad_cmd( void );
   void send_err_bad_type( void );
   void send_err_bad_range( void );
+  void send_err_no_group( void );
   void send_err_msg( RedisMsgStatus mstatus );
   void send_err_alloc_fail( void );
   void send_err_key_exists( void );
   void send_err_key_doesnt_exist( void );
 
   bool save_string_result( EvKeyCtx &ctx,  const void *data,  size_t size );
-  bool save_data( EvKeyCtx &ctx,  const void *data,  size_t size,
-                  uint8_t type );
+  bool save_data( EvKeyCtx &ctx,  const void *data,  size_t size );
+  void *save_data2( EvKeyCtx &ctx,  const void *data,  size_t size,
+                                    const void *data2,  size_t size2 );
   void array_string_result( void );
 };
 

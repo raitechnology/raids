@@ -142,10 +142,10 @@ RedisExec::exec_bitfield( EvKeyCtx &ctx )
   /* split args into bf[] array */
   for ( i = 2; ; ) {
     /* [overflow (wrap|sat|fail)] incrby type off val */
-    if ( this->msg.match_arg( i, "overflow", 8, NULL ) == 1 ) {
-      int over = this->msg.match_arg( i + 1, "wrap", 4,
-                                             "sat",  3,
-                                             "fail", 4, NULL );
+    if ( this->msg.match_arg( i, MARG( "overflow" ), NULL ) == 1 ) {
+      int over = this->msg.match_arg( i + 1, MARG( "wrap" ),
+                                             MARG( "sat" ),
+                                             MARG( "fail" ), NULL );
       if ( over == 0 )
         return ERR_BAD_ARGS;
       overflow = (BitfieldOver) ( over - 1 );
@@ -186,9 +186,9 @@ RedisExec::exec_bitfield( EvKeyCtx &ctx )
     type_off = (uint64_t) val;
     if ( off[ 0 ] == '#' )
       type_off *= type_width;
-    switch ( this->msg.match_arg( i, "get",      3,
-                                     "set",      3,
-                                     "incrby",   6, NULL ) ) {
+    switch ( this->msg.match_arg( i, MARG( "get" ),
+                                     MARG( "set" ),
+                                     MARG( "incrby" ), NULL ) ) {
       case 1: /* bitfield key [get type off] */
         op = OP_GET;
         val = 0;
@@ -206,10 +206,10 @@ RedisExec::exec_bitfield( EvKeyCtx &ctx )
         op = OP_INCRBY;
         i += 4;
         /* incrby type off val [overflow (wrap|sat|fail)] */
-        if ( this->msg.match_arg( i, "overflow", 8, NULL ) == 1 ) {
-          int over = this->msg.match_arg( i + 1, "wrap", 4,
-                                                 "sat",  3,
-                                                 "fail", 4, NULL );
+        if ( this->msg.match_arg( i, MARG( "overflow" ), NULL ) == 1 ) {
+          int over = this->msg.match_arg( i + 1, MARG( "wrap" ),
+                                                 MARG( "sat" ),
+                                                 MARG( "fail" ), NULL );
           if ( over == 0 )
             return ERR_BAD_ARGS;
           overflow = (BitfieldOver) ( over - 1 );
@@ -448,10 +448,10 @@ RedisExec::exec_bitop( EvKeyCtx &ctx )
     for ( size_t i = 1; i < this->key_cnt; i++ )
       ctx.ival = max<size_t>( this->keys[ i ]->part->size, ctx.ival );
 
-    switch ( this->msg.match_arg( 1, "and", 3,
-                                     "or",  2,
-                                     "xor", 3,
-                                     "not", 3, NULL ) ) {
+    switch ( this->msg.match_arg( 1, MARG( "and" ),
+                                     MARG( "or" ),
+                                     MARG( "xor" ),
+                                     MARG( "not" ), NULL ) ) {
       default: return ERR_BAD_ARGS;
       case 1: op = BIT_AND_OP; break;
       case 2: op = BIT_OR_OP;  break;
@@ -513,7 +513,7 @@ RedisExec::exec_bitop( EvKeyCtx &ctx )
     case KEY_OK:
       if ( (ctx.kstatus = this->kctx.value( &data, sz )) == KEY_OK ) {
     case KEY_NOT_FOUND:
-        this->save_data( ctx, data, sz, 0 );
+        this->save_data( ctx, data, sz );
         ctx.kstatus = this->kctx.validate_value();
         if ( ctx.kstatus == KEY_OK )
           return EXEC_OK;

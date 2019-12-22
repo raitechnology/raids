@@ -308,7 +308,6 @@ RedisExec::do_hmultiscan( EvKeyCtx &ctx,  int flags,  ScanArgs *sa )
   }
 
 finished:;
-  q.finish_tail();
   if ( ( flags & DO_HSCAN ) != 0 )
     q.prepend_cursor_array( i == count ? 0 : i, itemcnt );
   else

@@ -155,11 +155,11 @@ RedisExec::exec_object( EvKeyCtx &ctx )
     case KEY_NOT_FOUND: return EXEC_SEND_NIL;
     default:            return ERR_KV_STATUS;
   }
-  switch ( this->msg.match_arg( 1, "refcount", 8,
-                                   "encoding", 8,
-                                   "idletime", 8,
-                                   "freq",     4,
-                                   "help",     4, NULL ) ) {
+  switch ( this->msg.match_arg( 1, MARG( "refcount" ),
+                                   MARG( "encoding" ),
+                                   MARG( "idletime" ),
+                                   MARG( "freq" ),
+                                   MARG( "help" ), NULL ) ) {
     case 1: /* refcount */
       ctx.ival = 1;
       return EXEC_SEND_INT;
@@ -355,7 +355,7 @@ RedisExec::exec_rename( EvKeyCtx &ctx )
       case KEY_OK:
         if ( (ctx.kstatus = this->kctx.value( &data, sz )) == KEY_OK ) {
       case KEY_NOT_FOUND:
-          this->save_data( ctx, data, sz, 0 );
+          this->save_data( ctx, data, sz );
           ctx.kstatus = this->kctx.validate_value();
           if ( ctx.kstatus == KEY_OK )
             return EXEC_DEPENDS; /* redo again after saving the value */
@@ -445,7 +445,7 @@ RedisExec::exec_type( EvKeyCtx &ctx )
     case KEY_NOT_FOUND: str = "none"; len = 4; break;
     default:            return ERR_KV_STATUS;
   }
-  this->strm.sz += this->send_string( (void *) str, len );
+  this->strm.sz += this->send_simple_string( (void *) str, len );
   return EXEC_OK;
 }
 
@@ -486,8 +486,8 @@ RedisExec::match_scan_args( ScanArgs &sa,  size_t i )
   if ( ! this->msg.get_arg( i++, sa.pos ) )
     return ERR_BAD_ARGS;
   for ( ; i < this->argc; i += 2 ) {
-    switch ( this->msg.match_arg( i, "match", 5,
-                                     "count", 5, NULL ) ) {
+    switch ( this->msg.match_arg( i, MARG( "match" ),
+                                     MARG( "count" ), NULL ) ) {
       case 1:
         if ( ! this->msg.get_arg( i+1, pattern, patlen ) )
           return ERR_BAD_ARGS;
@@ -564,7 +564,6 @@ RedisExec::scan_keys( ScanArgs &sa )
     }
   }
 break_loop:;
-  q.finish_tail();
   if ( sa.maxcnt >= 0 ) {
     /* next cursor */
     sa.pos = ( ( (uint64_t) sa.pos == ht_size ) ? 0 : sa.pos + 1 );

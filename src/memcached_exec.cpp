@@ -360,6 +360,7 @@ MemcachedMsg::unpack( void *buf,  size_t &buflen,  ScratchMem &wrk )
         init_op_cmd( bin_to_ascii_cmd );
         this->cmd = bin_to_ascii_cmd[ b.opcode ] | MC_BINARY;
       }
+      /*printf( "unpack: [%s]\n", memcached_cmd_string( this->cmd ) );*/
       switch ( this->command() ) {
         case MC_SET:
         case MC_ADD:
@@ -1253,9 +1254,10 @@ MemcachedExec::exec_key_continue( EvKeyCtx &ctx )
       return MEMCACHED_CONTINUE;
     return MEMCACHED_SUCCESS;
   }
-  if ( this->kctx.kbuf != &ctx.kbuf ||
+  this->exec_key_set( ctx );
+  /*if ( this->kctx.kbuf != &ctx.kbuf ||
        this->kctx.key != ctx.hash1 || this->kctx.key2 != ctx.hash2 )
-    this->exec_key_prefetch( ctx );
+    this->exec_key_prefetch( ctx );*/
   for (;;) {
     switch ( this->msg->command() ) {
       case MC_SET:
@@ -1725,7 +1727,7 @@ MemcachedExec::save_value( EvKeyCtx &ctx,  const void *data,  size_t size )
     part = (EvKeyTempResult *) this->strm.alloc_temp( msz );
     if ( part != NULL ) {
       part->mem_size = msz;
-      part->type = 0; /* no type */
+      /*part->type = 0; no type */
       ctx.part = part;
     }
     else {

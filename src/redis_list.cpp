@@ -5,7 +5,6 @@
 #include <raikv/util.h>
 #include <raikv/msg_ctx.h>
 #include <raids/redis_exec.h>
-#include <raimd/md_types.h>
 #include <raimd/md_list.h>
 #include <raids/exec_list_ctx.h>
 
@@ -214,7 +213,6 @@ RedisExec::exec_lrange( EvKeyCtx &ctx )
 finished:;
   if ( ! list.validate_value() )
     return ERR_KV_STATUS;
-  q.finish_tail();
   q.prepend_array( itemcnt );
   this->strm.append_iov( q );
   return EXEC_OK;
@@ -308,8 +306,8 @@ RedisExec::do_push( EvKeyCtx &ctx,  int flags,
   }
   else if ( ( flags & DO_LINSERT ) != 0 ) {
     /* LINSERT key [before|after] piv val */
-    switch ( this->msg.match_arg( 2, "before", 6,
-                                     "after",  5, NULL ) ) {
+    switch ( this->msg.match_arg( 2, MARG( "before" ),
+                                     MARG( "after" ), NULL ) ) {
       default: return ERR_BAD_ARGS;
       case 1:  after = false; break;
       case 2:  after = true;  break;

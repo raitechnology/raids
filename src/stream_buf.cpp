@@ -35,7 +35,7 @@ crlf( char *b,  size_t i ) {
 }
 
 StreamBuf::BufList *
-StreamBuf::alloc_buf_list( BufList *&hd,  BufList *tl,  size_t len,
+StreamBuf::alloc_buf_list( BufList *&hd,  BufList *&tl,  size_t len,
                            size_t pad )
 {
   BufList *p = (BufList *) this->alloc_temp( sizeof( BufList ) + len + pad );
@@ -45,29 +45,22 @@ StreamBuf::alloc_buf_list( BufList *&hd,  BufList *tl,  size_t len,
     tl->next = p;
   else
     hd = p;
-  p->next = NULL;
-  p->off  = pad;
-  p->used = 0;
+  tl = p;
+  p->next   = NULL;
+  p->off    = pad;
+  p->used   = 0;
+  p->buflen = len + pad;
   return p;
 }
 
-bool
+StreamBuf::BufList *
 StreamBuf::BufQueue::append_buf( size_t len )
 {
   size_t pad = ( this->hd == NULL ) ? 48 : 0,
-         alsz = 1000 - pad;
-
-  if ( alsz < (size_t) len )
+         alsz = 928 - pad;
+  if ( alsz < len )
     alsz = len;
-  BufList * p = this->strm.alloc_buf_list( this->hd, this->tl, alsz, pad );
-  if ( p == NULL )
-    return false;
-
-  this->finish_tail();
-  this->buflen = alsz;
-  this->tl     = p;
-  this->bufp   = p->buf( 0 );
-  return true;
+  return this->strm.alloc_buf_list( this->hd, this->tl, alsz, pad );
 }
 
 size_t
@@ -76,58 +69,75 @@ StreamBuf::BufQueue::append_string( const void *str,  size_t len,
 {
   size_t itemlen = len + len2,
          d       = uint_digits( itemlen );
+  BufList * p = this->get_buf( itemlen + d + 5 );
 
-  if ( itemlen + d + 5 > this->buflen - this->used )
-    if ( ! this->append_buf( itemlen + d + 5 ) )
-      return 0;
-
-  this->bufp[ this->used++ ] = '$';
-  this->used += uint_to_str( itemlen, &this->bufp[ this->used ], d );
-  this->used = crlf( this->bufp, this->used );
-  ::memcpy( &this->bufp[ this->used ], str, len );
+  if ( p == NULL )
+    return 0;
+  char * bufp = p->buf( 0 );
+  bufp[ p->used++ ] = '$';
+  p->used += uint_to_str( itemlen, &bufp[ p->used ], d );
+  p->used = crlf( bufp, p->used );
+  ::memcpy( &bufp[ p->used ], str, len );
   if ( len2 > 0 )
-    ::memcpy( &this->bufp[ this->used + len ], str2, len2 );
-  this->used = crlf( this->bufp, this->used + len + len2 );
+    ::memcpy( &bufp[ p->used + len ], str2, len2 );
+  p->used = crlf( bufp, p->used + len + len2 );
 
-  return this->total + this->used;
+  return p->used;
 }
 
 size_t
 StreamBuf::BufQueue::append_nil( bool is_null )
 {
-  if ( 5 > this->buflen - this->used )
-    if ( ! this->append_buf( 5 ) )
-      return 0;
-  this->bufp[ this->used ] = ( is_null ? '*' : '$' );
-  this->bufp[ this->used+1 ] = '-';
-  this->bufp[ this->used+2 ] = '1';
-  this->used = crlf( this->bufp, this->used + 3 );
+  BufList * p = this->get_buf( 5 );
+  if ( p == NULL )
+    return 0;
+  char * bufp = p->buf( 0 );
+  bufp[ p->used ]   = ( is_null ? '*' : '$' );
+  bufp[ p->used+1 ] = '-';
+  bufp[ p->used+2 ] = '1';
+  p->used = crlf( bufp, p->used + 3 );
 
-  return this->total + this->used;
+  return p->used;
+}
+
+size_t
+StreamBuf::BufQueue::append_zero_array( void )
+{
+  BufList * p = this->get_buf( 5 );
+  if ( p == NULL )
+    return 0;
+  char * bufp = p->buf( 0 );
+  bufp[ p->used ]   = '*';
+  bufp[ p->used+1 ] = '0';
+  p->used = crlf( bufp, p->used + 2 );
+
+  return p->used;
 }
 
 size_t
 StreamBuf::BufQueue::append_bytes( const void *buf,  size_t len )
 {
-  if ( len > this->buflen - this->used )
-    if ( ! this->append_buf( len ) )
-      return 0;
-  ::memcpy( &this->bufp[ this->used ], buf, len );
-  this->used += len;
-  return this->total + this->used;
+  BufList * p = this->get_buf( len );
+  if ( p == NULL )
+    return 0;
+  char * bufp = p->buf( 0 );
+  ::memcpy( &bufp[ p->used ], buf, len );
+  p->used += len;
+  return p->used;
 }
 
 size_t
 StreamBuf::BufQueue::append_uint( uint64_t val )
 {
   size_t d = uint_digits( val );
-  if ( d + 3 > this->buflen - this->used )
-    if ( ! this->append_buf( d + 3 ) )
-      return 0;
-  this->bufp[ this->used++ ] = ':';
-  this->used += uint_to_str( val, &this->bufp[ this->used ], d );
-  this->used = crlf( this->bufp, this->used );
-  return this->total + this->used;
+  BufList * p = this->get_buf( d + 3 );
+  if ( p == NULL )
+    return 0;
+  char * bufp = p->buf( 0 );
+  bufp[ p->used++ ] = ':';
+  p->used += uint_to_str( val, &bufp[ p->used ], d );
+  p->used = crlf( bufp, p->used );
+  return p->used;
 }
 
 size_t
@@ -136,7 +146,6 @@ StreamBuf::BufQueue::prepend_array( size_t nitems )
   size_t    itemlen = uint_digits( nitems ),
                  /*  '*'   4      '\r\n' (nitems = 1234) */
             len     = 1 + itemlen + 2;
-  char    * hdr;
   BufList * p;
   if ( this->hd != NULL && this->hd->off >= len ) {
     p = this->hd;
@@ -147,13 +156,14 @@ StreamBuf::BufQueue::prepend_array( size_t nitems )
     p = (BufList *) this->strm.alloc_temp( sizeof( BufList ) + len );
     if ( p == NULL )
       return 0;
-    p->off  = 0;
-    p->used = len;
+    p->off    = 0;
+    p->used   = len;
+    p->buflen = len;
   }
-  hdr = p->buf( 0 );
-  hdr[ 0 ] = '*';
-  uint_to_str( nitems, &hdr[ 1 ], itemlen );
-  crlf( hdr, len - 2 );
+  char * bufp = p->buf( 0 );
+  bufp[ 0 ] = '*';
+  uint_to_str( nitems, &bufp[ 1 ], itemlen );
+  crlf( bufp, len - 2 );
 
   if ( p != this->hd ) {
     p->next = this->hd;
@@ -161,9 +171,8 @@ StreamBuf::BufQueue::prepend_array( size_t nitems )
     if ( this->tl == NULL )
       this->tl = p;
   }
-  this->total += len;
 
-  return this->total + this->used;
+  return p->used;
 }
 
 size_t
@@ -177,7 +186,6 @@ StreamBuf::BufQueue::prepend_cursor_array( size_t curs,  size_t nitems )
                       /* '*'    4     '\r\n'  (nitems = 1234) */
                           1 + itemlen + 2,
             i;
-  char    * hdr;
   BufList * p;
   if ( this->hd != NULL && this->hd->off >= len ) {
     p = this->hd;
@@ -188,21 +196,22 @@ StreamBuf::BufQueue::prepend_cursor_array( size_t curs,  size_t nitems )
     p = (BufList *) this->strm.alloc_temp( sizeof( BufList ) + len );
     if ( p == NULL )
       return 0;
-    p->off  = 0;
-    p->used = len;
+    p->off    = 0;
+    p->used   = len;
+    p->buflen = len;
   }
-  hdr = p->buf( 0 );
-  hdr[ 0 ] = '*';
-  hdr[ 1 ] = '2';
-  crlf( hdr, 2 );
-  hdr[ 4 ] = '$';
-  i  = 5 + uint_to_str( curslen, &hdr[ 5 ], clenlen );
-  i  = crlf( hdr, i );
-  i += uint_to_str( curs, &hdr[ i ], curslen );
-  i  = crlf( hdr, i );
-  hdr[ i ] = '*';
-  i += 1 + uint_to_str( nitems, &hdr[ 1 + i ], itemlen );
-  crlf( hdr, i );
+  char * bufp = p->buf( 0 );
+  bufp[ 0 ] = '*';
+  bufp[ 1 ] = '2';
+  crlf( bufp, 2 );
+  bufp[ 4 ] = '$';
+  i  = 5 + uint_to_str( curslen, &bufp[ 5 ], clenlen );
+  i  = crlf( bufp, i );
+  i += uint_to_str( curs, &bufp[ i ], curslen );
+  i  = crlf( bufp, i );
+  bufp[ i ] = '*';
+  i += 1 + uint_to_str( nitems, &bufp[ 1 + i ], itemlen );
+  crlf( bufp, i );
 
   if ( p != this->hd ) {
     p->next = this->hd;
@@ -210,7 +219,6 @@ StreamBuf::BufQueue::prepend_cursor_array( size_t curs,  size_t nitems )
     if ( this->tl == NULL )
       this->tl = p;
   }
-  this->total += len;
 
-  return this->total + this->used;
+  return p->used;
 }

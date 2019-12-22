@@ -266,10 +266,12 @@ CommandDB cmd_db[] = {
 { "INFO", "[section] ; Get info and stats",
   "[\"info\",-1,['loading','stale'],0,0,0]" },
 
+/* LOLWUT [VERSION ver] */
 { "LASTSAVE", "; Get the unix timestamp of the last save",
   "[\"lastsave\",1,['random','fast'],0,0,0]" },
 { "MEMORY", "[DOCTOR|HELP|MALLOC-STATS|PURGE|STATS|USAGE] ; Mem stats",
   "[\"memory\",-2,['readonly'],0,0,0]" },
+/* MODULE [list|load|unload] */
 { "MONITOR", "; Listen for requests received by server",
   "[\"monitor\",1,['admin','noscript'],0,0,0]" },
 { "ROLE", "; What is role of the instance for replication",
@@ -281,6 +283,7 @@ CommandDB cmd_db[] = {
   "[\"shutdown\",-1,['admin','loading','stale'],0,0,0]" },
 { "SLAVEOF", "host port ; Make server a slave",
   "[\"slaveof\",3,['admin','noscript','stale'],0,0,0]" },
+/* REPLICAOF host port */
 { "SLOWLOG", "subcmd [arg] ; Manage slow queries log",
   "[\"slowlog\",-2,['admin'],0,0,0]" },
 { "SYNC", "; Internal cmd for replication",
@@ -451,34 +454,41 @@ CommandDB cmd_db[] = {
 { "WATCH", "key [key ...] ; Watch keys to determine multi/exec blk",
   "[\"watch\",-2,['readonly','noscript','fast'],1,-1,1]" },
 
-#define STREAM_CNT 12
+#define STREAM_CNT 13
   /* streams -- https://redis.io/topics/streams-intro */
-{ "XADD", "key entry-id [fld ...] ; Add to stream at key, entry-id",
+{ "XINFO", "[CONSUMERS key groupname] [GROUPS key] [STREAM key] [HELP]; "
+  "Get info for a stream",
+  "[\"xinfo\",-2,['readonly'],2,2,1]" },
+{ "XADD", "key id field string [field string ...] ; Add to stream at key, id",
   "[\"xadd\",-5,['write','denyoom','fast'],1,1,1]" },
+{ "XTRIM", "key MAXLEN [~] count ; Trims the stream to a size",
+  "[\"xtrim\",-2,['write'],1,1,1]" },
+{ "XDEL", "key entry-id ; Delete a stream entry",
+  "[\"xdel\",-2,['write','fast'],1,1,1]" },
+{ "XRANGE", "key start end [COUNT count] ; Get items in range",
+  "[\"xrange\",-4,['readonly'],1,1,1]" },
+
+{ "XREVRANGE", "key start end [COUNT count] ; Get items in range in reverse",
+  "[\"xrevrange\",-4,['readonly'],1,1,1]" },
 { "XLEN", "key ; Number of items in a stream",
   "[\"xlen\",2,['readonly','fast'],1,1,1]" },
-{ "XRANGE", "key start end ; Get items in range",
-  "[\"xrange\",-4,['readonly'],1,1,1]" },
-{ "XREVRANGE", "key start end ; Get items in range in reverse",
-  "[\"xrevrange\",-4,['readonly'],1,1,1]" },
-{ "XREAD", "[COUNT N] [BLOCK N] STREAMS key ; Listen for new items",
+{ "XREAD", "[COUNT N] [BLOCK N] STREAMS key [key ...] id [id ...]; "
+  "Listen for new items on one or more streams",
   "[\"xread\",-3,['readonly','noscript','movablekeys'],1,1,1]" },
-
-{ "XREADGROUP", "key group ; Read groups of streams",
-  "[\"xreadgroup\",-3,['write','noscript','movablekeys'],1,1,1]" },
-{ "XGROUP", "CREATE key group ; Create a group of streams",
+{ "XGROUP", "[CREATE key groupname id [mkstream]] [SETID key groupname id] "
+  "[DESTROY key groupname] [DELCONSUMER key groupname consname] ; "
+  "Create a consumer group or modify it",
   "[\"xgroup\",-2,['write','denyoom'],2,2,1]" },
+{ "XREADGROUP", "GROUP group consumer [COUNT count] [BLOCK ms] [NOACK] "
+  "STREAMS key [key ...] id [id ...] ; Read streams through consumer group",
+  "[\"xreadgroup\",-3,['write','noscript','movablekeys'],1,1,1]" },
+
 { "XACK", "key group entry-id ; Remove up to entry-id",
   "[\"xack\",-3,['write','fast'],1,1,1]" },
-{ "XPENDING", "key group ; Get the unread entry-ids",
-  "[\"xpending\",-3,['readonly'],1,1,1]" },
 { "XCLAIM", "key group consumer ; Recover consumer stream",
   "[\"xclaim\",-5,['write','fast'],1,1,1]" },
-
-{ "XINFO", "key ; Get info for a stream",
-  "[\"xinfo\",-2,['readonly'],2,2,1]" },
-{ "XDEL", "key entry-id ; Delete a stream entry",
-  "[\"xdel\",-2,['write','fast'],1,1,1]" }
+{ "XPENDING", "key group ; Get the unread entry-ids",
+  "[\"xpending\",-3,['readonly'],1,1,1]" }
 };
 
 const size_t cmd_db_cnt = sizeof( cmd_db ) / sizeof( cmd_db[ 0 ] );

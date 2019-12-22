@@ -103,7 +103,7 @@ RedisExec::exec_pfcount( EvKeyCtx &ctx )
     else {
       if ( ! HLLMsg::is_hllmsg( data, 0, datalen, 0 ) )
         return ERR_BAD_TYPE;
-      if ( ! this->save_data( ctx, data, datalen, 0 ) )
+      if ( ! this->save_data( ctx, data, datalen ) )
         return ERR_ALLOC_FAIL;
       if ( (ctx.kstatus = this->kctx.validate_value()) == KEY_OK )
         return EXEC_OK;
@@ -139,7 +139,7 @@ RedisExec::exec_pfmerge( EvKeyCtx &ctx )
       case KEY_NOT_FOUND:
         if ( datalen == 0 )
           return EXEC_OK;
-        if ( ! this->save_data( ctx, data, datalen, 0 ) )
+        if ( ! this->save_data( ctx, data, datalen ) )
           return ERR_ALLOC_FAIL;
         if ( (ctx.kstatus = this->kctx.validate_value()) == KEY_OK )
           return EXEC_OK;

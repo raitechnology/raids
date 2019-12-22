@@ -5,7 +5,6 @@
 #include <raikv/util.h>
 #include <raids/redis_exec.h>
 #include <raikv/key_hash.h>
-#include <raimd/md_types.h>
 #include <raimd/md_zset.h>
 #include <raimd/md_geo.h>
 #include <raids/exec_list_ctx.h>
@@ -442,10 +441,10 @@ RedisExec::do_zwrite( EvKeyCtx &ctx,  int flags )
   /* ZADD key [NX|XX] [CH] [INCR] score mem */
   if ( ( flags & DO_ZADD ) != 0 ) {
     for ( argi = 2; argi < this->argc; argi++ ) {
-      switch ( this->msg.match_arg( argi, "nx", 2,
-                                          "xx", 2,
-                                          "ch", 2,
-                                          "incr", 4, NULL ) ) {
+      switch ( this->msg.match_arg( argi, MARG( "nx" ),
+                                          MARG( "xx" ),
+                                          MARG( "ch" ),
+                                          MARG( "incr" ), NULL ) ) {
         case 1: add_fl |= ZADD_MUST_NOT_EXIST; break; /* nx */
         case 2: add_fl |= ZADD_MUST_EXIST;     break; /* xx */
         case 3: add_fl |= ZADD_RET_CHANGED;    break; /* ch */
@@ -614,7 +613,7 @@ RedisExec::do_zmultiscan( EvKeyCtx &ctx,  int flags,  ScanArgs *sa )
   if ( ( flags & ( DO_ZRANGE | DO_ZREVRANGE ) ) != 0 ) {
     if ( ! this->msg.get_arg( 2, ival ) || ! this->msg.get_arg( 3, jval ) )
       return ERR_BAD_ARGS;
-    withscores = ( this->msg.match_arg( 4, "withscores", 10, NULL ) == 1 );
+    withscores = ( this->msg.match_arg( 4, MARG( "withscores" ), NULL ) == 1 );
   }
   else if ( ( flags & ( DO_ZRANGEBYLEX | DO_ZRANGEBYSCORE |
                         DO_ZREVRANGEBYLEX | DO_ZREVRANGEBYSCORE ) ) != 0 ) {
@@ -622,7 +621,8 @@ RedisExec::do_zmultiscan( EvKeyCtx &ctx,  int flags,  ScanArgs *sa )
       return ERR_BAD_ARGS;
 
     for ( size_t i = 4; i < this->argc; i++ ) {
-      switch ( this->msg.match_arg( i, "withscores", 10, "limit", 5, NULL ) ) {
+      switch ( this->msg.match_arg( i, MARG( "withscores" ),
+                                       MARG( "limit" ), NULL ) ) {
         case 1: withscores = true; break;
         case 2:
           if ( ! this->msg.get_arg( i+1, zoff ) ||
@@ -873,7 +873,6 @@ RedisExec::do_zmultiscan( EvKeyCtx &ctx,  int flags,  ScanArgs *sa )
     }
   }
 finished:;
-  q.finish_tail();
   if ( ( flags & DO_ZSCAN ) != 0 )
     q.prepend_cursor_array( i == count ? 0 : i, itemcnt );
   else
@@ -1041,7 +1040,6 @@ RedisExec::do_zremrange( EvKeyCtx &ctx,  int flags )
           return ERR_ALLOC_FAIL;
         itemcnt++;
       }
-      q.finish_tail();
       q.prepend_array( itemcnt );
       this->strm.append_iov( q );
 
@@ -1143,7 +1141,6 @@ RedisExec::do_zremrange( EvKeyCtx &ctx,  int flags )
           return ERR_ALLOC_FAIL;
         itemcnt++;
       }
-      q.finish_tail();
       q.prepend_array( itemcnt );
       this->strm.append_iov( q );
 
@@ -1175,6 +1172,15 @@ RedisExec::do_zremrange( EvKeyCtx &ctx,  int flags )
   return EXEC_SEND_INT;
 }
 
+namespace {
+struct zsetop_data {
+  void   * data;
+  uint64_t datalen;
+  uint8_t  type;
+  zsetop_data() : data( 0 ), datalen( 0 ), type( MD_NODATA ) {}
+};
+}
+
 ExecStatus
 RedisExec::do_zsetop( EvKeyCtx &ctx,  int flags )
 {
@@ -1185,14 +1191,12 @@ RedisExec::do_zsetop( EvKeyCtx &ctx,  int flags )
     return EXEC_DEPENDS;
   /* if not dest key, fetch set and save */
   if ( ctx.argn != 1 ) {
-    void   * data    = NULL;
-    uint64_t datalen = 0;
-    uint8_t  type    = MD_NODATA;
+    zsetop_data z, * zptr;
     switch ( this->exec_key_fetch( ctx, true ) ) {
       case KEY_OK:
         if ( ctx.type == MD_ZSET || ctx.type == MD_GEO ) {
-          ctx.kstatus = this->kctx.value( &data, datalen );
-          type = ctx.type;
+          ctx.kstatus = this->kctx.value( &z.data, z.datalen );
+          z.type = ctx.type;
           if ( ctx.kstatus != KEY_OK )
             return ERR_KV_STATUS;
         }
@@ -1200,12 +1204,15 @@ RedisExec::do_zsetop( EvKeyCtx &ctx,  int flags )
           return ERR_BAD_TYPE;
       /* FALLTHRU */
       case KEY_NOT_FOUND:
-        if ( datalen == 0 ) {
-          data    = (void *) mt_list; /* empty */
-          datalen = sizeof( mt_list );
+        if ( z.datalen == 0 ) {
+          z.data    = (void *) mt_list; /* empty */
+          z.datalen = sizeof( mt_list );
         }
-        if ( ! this->save_data( ctx, data, datalen, type ) )
+        zptr = (zsetop_data *)
+               this->save_data2( ctx, &z, sizeof( z ), z.data, z.datalen );
+        if ( zptr == NULL )
           return ERR_ALLOC_FAIL;
+        zptr->data = (void *) &zptr[ 1 ];
         if ( (ctx.kstatus = this->kctx.validate_value()) == KEY_OK )
           return EXEC_OK;
       /* FALLTHRU */
@@ -1219,6 +1226,7 @@ RedisExec::do_zsetop( EvKeyCtx &ctx,  int flags )
 ExecStatus
 RedisExec::do_zsetop_store( EvKeyCtx &ctx,  int flags )
 {
+  zsetop_data  * zptr;
   void         * data2,
                * data;
   uint64_t       datalen;
@@ -1234,14 +1242,14 @@ RedisExec::do_zsetop_store( EvKeyCtx &ctx,  int flags )
 
   /* parse the weights and aggregate type */
   for ( i = 3 + this->key_cnt - 1; i < this->argc; ) {
-    switch ( this->msg.match_arg( i, "aggregate", 9,
-                                     "weights",   7, NULL ) ) {
+    switch ( this->msg.match_arg( i, MARG( "aggregate" ),
+                                     MARG( "weights" ), NULL ) ) {
       case 1:
         i += 1;
-        switch ( this->msg.match_arg( i, "sum", 3,
-                                         "min", 3,
-                                         "max", 3,
-                                         "none", 4, NULL ) ) {
+        switch ( this->msg.match_arg( i, MARG( "sum" ),
+                                         MARG( "min" ),
+                                         MARG( "max" ),
+                                         MARG( "none" ), NULL ) ) {
           default: return ERR_BAD_ARGS;
           case 1: aggregate_type = ZAGGREGATE_SUM; break;
           case 2: aggregate_type = ZAGGREGATE_MIN; break;
@@ -1271,13 +1279,15 @@ RedisExec::do_zsetop_store( EvKeyCtx &ctx,  int flags )
     }
   }
   /* first source key */
-  data    = this->keys[ 1 ]->part->data( 0 );
-  datalen = this->keys[ 1 ]->part->size;
-  type    = this->keys[ 1 ]->part->type;
+  zptr    = (zsetop_data *) this->keys[ 1 ]->part->data( 0 );
+  data    = zptr->data;
+  datalen = zptr->datalen;
+  type    = zptr->type;
 
   if ( type == MD_NODATA ) {
     for ( i = 2; i < this->key_cnt; i++ ) {
-      type = this->keys[ i ]->part->type;
+      zptr = (zsetop_data *) this->keys[ i ]->part->data( 0 );
+      type = zptr->type;
       if ( type != MD_NODATA )
         break;
     }
@@ -1300,9 +1310,9 @@ RedisExec::do_zsetop_store( EvKeyCtx &ctx,  int flags )
     }
     /* merge the source keys together */
     for ( i = 2; i < this->key_cnt; i++ ) {
-      ZSetData set2( this->keys[ i ]->part->data( 0 ),
-                     this->keys[ i ]->part->size );
-      type = this->keys[ i ]->part->type;
+      zptr = (zsetop_data *) this->keys[ i ]->part->data( 0 );
+      ZSetData set2( zptr->data, zptr->datalen );
+      type = zptr->type;
       if ( type != MD_ZSET && type != MD_NODATA )
         return ERR_BAD_TYPE; /* prevent mixing sortedset with geo */
       ZMergeCtx  ctx;
@@ -1351,9 +1361,9 @@ RedisExec::do_zsetop_store( EvKeyCtx &ctx,  int flags )
 
     /* merge the source keys together */
     for ( i = 2; i < this->key_cnt; i++ ) {
-      GeoData set2( this->keys[ i ]->part->data( 0 ),
-                    this->keys[ i ]->part->size );
-      type = this->keys[ i ]->part->type;
+      zptr = (zsetop_data *) this->keys[ i ]->part->data( 0 );
+      GeoData set2( zptr->data, zptr->datalen );
+      type = zptr->type;
       if ( type != MD_GEO && type != MD_NODATA )
         return ERR_BAD_TYPE; /* prevent mixing sortedset with geo */
       GeoMergeCtx ctx;
