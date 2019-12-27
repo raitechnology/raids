@@ -104,7 +104,8 @@ struct RoutePublish {
   int32_t keyspace_cnt, /* count of __keyspace@N__ subscribes active */
           keyevent_cnt, /* count of __keyevent@N__ subscribes active */
           listblkd_cnt, /* count of __listblkd@N__ subscribes active */
-          zsetblkd_cnt; /* count of __zsetblkd@N__ subscribes active */
+          zsetblkd_cnt, /* count of __zsetblkd@N__ subscribes active */
+          strmblkd_cnt; /* count of __strmblkd@N__ subscribes active */
   uint16_t key_flags;    /* bits set for key subs above (EKF_KEYSPACE_FWD|..) */
   bool forward_msg( EvPublish &pub,  uint32_t *rcount_total,  uint8_t pref_cnt,
                     KvPrefHash *ph );
@@ -123,10 +124,12 @@ struct RoutePublish {
                       uint32_t sub_id,  uint32_t rcnt,  char src_type );
   bool add_timer_seconds( int id,  uint32_t ival,  uint64_t timer_id,
                           uint64_t event_id );
+  bool add_timer_millis( int id,  uint32_t ival,  uint64_t timer_id,
+                         uint64_t event_id );
   bool remove_timer( int id,  uint64_t timer_id,  uint64_t event_id );
 
-  RoutePublish() : keyspace_cnt( 0 ), keyevent_cnt( 0 ),
-                   listblkd_cnt( 0 ), zsetblkd_cnt( 0 ), key_flags( 0 ) {}
+  RoutePublish() : keyspace_cnt( 0 ), keyevent_cnt( 0 ), listblkd_cnt( 0 ),
+                   zsetblkd_cnt( 0 ), strmblkd_cnt( 0 ), key_flags( 0 ) {}
 };
 
 struct RouteDB {

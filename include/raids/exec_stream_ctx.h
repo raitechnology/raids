@@ -79,6 +79,8 @@ struct ExecStreamCtx {
   }
 
   bool validate_value( void ) {
+    if ( this->ctx.kstatus == KEY_NOT_FOUND )
+      return true;
     this->ctx.kstatus = this->kctx.validate_value();
     return this->ctx.kstatus == KEY_OK;
   }

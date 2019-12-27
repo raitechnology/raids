@@ -384,12 +384,15 @@ RedisExec::exec_xadd( EvKeyCtx &ctx )
   /* trim the list if maxlen specified */
   if ( maxlen > 0 ) {
     size_t count = stream.x->stream.count();
-    if ( count > maxlen )
+    if ( count > maxlen ) {
       stream.x->stream.ltrim( count - maxlen );
+      ctx.flags |= EKF_KEYSPACE_TRIM;
+    }
   }
   /* the result is the list identifier */
   sz = this->send_string( idval, idlen );
   this->strm.sz += sz;
+  ctx.flags |= EKF_KEYSPACE_EVENT | EKF_KEYSPACE_STREAM | EKF_STRMBLKD_NOT;
 
   return EXEC_OK;
 }
@@ -432,6 +435,7 @@ RedisExec::exec_xtrim( EvKeyCtx &ctx )
     if ( count > maxlen ) {
       ctx.ival = count - maxlen;
       stream.x->stream.ltrim( ctx.ival );
+      ctx.flags |= EKF_KEYSPACE_EVENT | EKF_KEYSPACE_STREAM;
     }
   }
 
@@ -467,8 +471,10 @@ RedisExec::exec_xdel( EvKeyCtx &ctx )
     }
     off = stream.x->bsearch_eq( stream.x->stream, arg, arglen, tmp );
     if ( off >= 0 ) {
-      if ( stream.x->stream.lrem( off ) == LIST_OK )
+      if ( stream.x->stream.lrem( off ) == LIST_OK ) {
         ctx.ival++;
+        ctx.flags |= EKF_KEYSPACE_EVENT | EKF_KEYSPACE_STREAM;
+      }
     }
   }
   return EXEC_SEND_INT;
@@ -611,10 +617,10 @@ RedisExec::exec_xread( EvKeyCtx &ctx )
   int64_t       maxcnt,
                 blockms;
   const char  * arg;
-  size_t        arglen,
-                i, j;
+  size_t        arglen;
   ssize_t       off;
   int           n;
+  bool          blocking = false;
 
   /* XREAD [COUNT count] [BLOCK ms] STREAMS key [key ...] id [id ...] */
   maxcnt = 0;
@@ -629,36 +635,73 @@ RedisExec::exec_xread( EvKeyCtx &ctx )
       case 2:
         if ( ! this->msg.get_arg( n+1, blockms ) )
           return ERR_BAD_ARGS;
+        if ( (ctx.ival = blockms) < 0 )
+          ctx.ival = 0;
+        blocking = true;
         break;
       default:
         return ERR_BAD_ARGS;
     }
   }
-  n = this->last + 1 + ctx.argn - this->first;
-  if ( ! this->msg.get_arg( n, arg, arglen ) )
-    return ERR_BAD_ARGS;
+  if ( ( ctx.flags & EKF_IS_SAVED_CONT ) != 0 ) {
+    arglen = ctx.part->size;
+    arg    = ctx.part->data( 0 );
+  }
+  else {
+    n = this->last + 1 + ctx.argn - this->first;
+    if ( ! this->msg.get_arg( n, arg, arglen ) )
+      return ERR_BAD_ARGS;
+  }
 
   switch ( stream.get_key_read() ) {
     default:            return ERR_KV_STATUS;
     case KEY_NO_VALUE:  return ERR_BAD_TYPE;
     case KEY_NOT_FOUND:
-      if ( this->key_cnt == 1 )
-        return EXEC_SEND_NULL;
+      if ( blocking ) {
+        if ( ( ctx.flags & EKF_IS_SAVED_CONT ) == 0 ) {
+          ctx.flags |= EKF_IS_SAVED_CONT;
+          this->save_data( ctx, "0", 1 );
+        }
+      }
       break;
     case KEY_OK:
       if ( ! stream.open_readonly() )
         return ERR_KV_STATUS;
+      /* find the id (arg) in the stream */
       off = stream.x->bsearch_str( stream.x->stream, arg, arglen, true, tmp );
       if ( off < 0 )
-        return EXEC_SEND_ZEROARR;
-      size_t cnt = 0;
-      j = stream.x->stream.count();
-      for ( i = (size_t) off; i < j; i++ ) {
-        if ( this->construct_xfield_output( stream, i, q ) ) {
-          cnt++;
-          if ( maxcnt > 0 && --maxcnt == 0 )
-            break;
+        return ERR_BAD_ARGS;
+      size_t cnt = 0,
+             i   = (size_t) off,
+             j   = stream.x->stream.count();
+      /* if no field lists available */
+      if ( i == j ) {
+        /* save the tail id if a wildcard($) is used */
+        if ( blocking ) {
+          if ( ( ctx.flags & EKF_IS_SAVED_CONT ) == 0 ) {
+            const char * id;
+            size_t       idlen;
+            /* various forms of the last element */
+            if ( arglen == 1 &&
+                 ( arg[ 0 ] == '$' || arg[ 0 ] == '>' || arg[ 0 ] == '+' ) &&
+                 stream.x->sindex_id_last( stream.x->stream, id, idlen,
+                                           tmp ) == STRM_OK ) {
+              ctx.flags |= EKF_IS_SAVED_CONT;
+              this->save_data( ctx, id, idlen );
+            }
+          }
+          ctx.kstatus = KEY_NOT_FOUND; /* don't use the saved data for output */
         }
+      }
+      /* i < j, at least one field list */
+      else {
+        do {
+          if ( this->construct_xfield_output( stream, i, q ) ) {
+            cnt++;
+            if ( maxcnt > 0 && --maxcnt == 0 )
+              break;
+          }
+        } while ( ++i != j );
       }
       if ( cnt > 0 ) {
         q.prepend_array( cnt );
@@ -667,46 +710,10 @@ RedisExec::exec_xread( EvKeyCtx &ctx )
   }
   if ( ! stream.validate_value() )
     return ERR_KV_STATUS;
-  return this->finish_xread( ctx, q );
-}
-
-ExecStatus
-RedisExec::finish_xread( EvKeyCtx &ctx,  StreamBuf::BufQueue &q )
-{
-  StreamBuf::BufQueue key( this->strm );
-  if ( ctx.kstatus != KEY_NOT_FOUND && q.hd != NULL ) {
-    key.append_string( ctx.kbuf.u.buf, ctx.kbuf.keylen - 1 );
-    key.append_list( q );
-    key.prepend_array( 2 );
-    if ( this->key_done + 1 != this->key_cnt ) {
-      this->save_data( ctx, &key, sizeof( key ) );
-      return EXEC_OK;
-    }
-  }
-  if ( this->key_done + 1 == this->key_cnt ) {
-    StreamBuf::BufQueue ar( this->strm );
-    size_t cnt = 0;
-    for ( uint32_t i = 0; i < this->key_cnt; i++ ) {
-      if ( this->keys[ i ] == &ctx ) {
-        if ( ctx.kstatus != KEY_NOT_FOUND && q.hd != NULL ) {
-          ar.append_list( key );
-          cnt++;
-        }
-      }
-      else {
-        EvKeyTempResult * part = this->keys[ i ]->part;
-        if ( part != NULL && this->keys[ i ]->kstatus != KEY_NOT_FOUND ) {
-          ar.append_list( *(StreamBuf::BufQueue *) part->data( 0 ) );
-          cnt++;
-        }
-      }
-    }
-    if ( cnt == 0 )
-      return EXEC_SEND_NULL;
-    ar.prepend_array( cnt );
-    this->strm.append_iov( ar );
-  }
-  return EXEC_OK;
+  ExecStatus status = this->finish_xread( ctx, q );
+  if ( status == EXEC_SEND_NULL && blocking )
+    return EXEC_BLOCKED;
+  return status;
 }
 
 ExecStatus
@@ -721,14 +728,15 @@ RedisExec::exec_xreadgroup( EvKeyCtx &ctx )
                    blockms;
   size_t           i, k;
   int              n;
+  bool             blocking = false;
   ListStatus       lstat;
   StreamStatus     xstat;
 
   /* XREADGROUP GROUP group consumer [COUNT count] [BLOCK ms] [NOACK]
    * STREAMS key [key ...] id [id ...] */
-  maxcnt = 0;
+  maxcnt  = 0;
   blockms = 0;
-  sa.ns  = kv::current_realtime_coarse_ns();
+  sa.ns   = kv::current_realtime_coarse_ns();
   for ( n = 1; n + 1 < this->first; ) {
     switch ( this->msg.match_arg( n, MARG( "group" ),
                                      MARG( "count" ),
@@ -750,6 +758,10 @@ RedisExec::exec_xreadgroup( EvKeyCtx &ctx )
       case 3: /* block millseconds */
         if ( ! this->msg.get_arg( n+1, blockms ) )
           return ERR_BAD_ARGS;
+        /* ctx.ival saves the blocking millisecs */
+        if ( (ctx.ival = blockms) < 0 )
+          ctx.ival = 0;
+        blocking = true;
         n += 2;
         break;
       case 4: /* noack */
@@ -760,7 +772,9 @@ RedisExec::exec_xreadgroup( EvKeyCtx &ctx )
   n = this->last + 1 + ctx.argn - this->first;
   if ( ! this->msg.get_arg( n, sa.idval, sa.idlen ) )
     return ERR_BAD_ARGS;
-  sa.is_id_next = ( sa.idlen == 1 && sa.idval[ 0 ] == '>' );
+  /* is_id_next finds the last id consumed by group */
+  sa.is_id_next = ( sa.idlen == 1 && ( sa.idval[ 0 ] == '>' ||
+                    sa.idval[ 0 ] == '$' || sa.idval[ 0 ] == '+' ) );
 
   switch ( stream.get_key_write() ) {
     default:           return ERR_KV_STATUS;
@@ -775,7 +789,9 @@ RedisExec::exec_xreadgroup( EvKeyCtx &ctx )
     return ERR_NO_GROUP;
 
   size_t cnt = 0;
+  /* if new data */
   if ( sa.is_id_next ) {
+    /* construct results for this key */
     for ( i = 0; i < grp.count; i++ ) {
       ListData ld,
              * xl;
@@ -784,22 +800,24 @@ RedisExec::exec_xreadgroup( EvKeyCtx &ctx )
       if ( xstat != STRM_OK )
         break;
 
-      StreamBuf::BufQueue item( this->strm );
+      StreamBuf::BufQueue item( this->strm ); /* item[ identifier, [ flds ] ] */
       StreamBuf::BufQueue flds( this->strm );
+      /* all of the fields for this id */
       for ( k = 1; ld.lindex( k, lv ) == LIST_OK; k++ ) {
         flds.append_string( lv.data, lv.sz, lv.data2, lv.sz2 );
       }
       flds.prepend_array( k - 1 );
-
+      /* first is the identifier of the field data (time_ms-0) */
       if ( ld.lindex( 0, lv ) == LIST_OK ) {
         lv.unite( tmp );
-
+        /* the identifier */
         item.append_string( lv.data, lv.sz );
-        item.append_list( flds );
+        item.append_list( flds ); /* field data is constructed above */
         item.prepend_array( 2 );
         q.append_list( item );
         cnt++;
 
+        /* use the identifier to add to the pending list */
         sa.idval = (const char *) lv.data;
         sa.idlen = lv.sz;
         xl = sa.construct_pending( tmp );
@@ -808,7 +826,7 @@ RedisExec::exec_xreadgroup( EvKeyCtx &ctx )
           if ( lstat != LIST_FULL ) break;
           stream.realloc( 0, 0, xl->size );
         }
-        /* update index, dup xl since resize above may invalidate lv */
+        /* update index, dup xl memory since resize above may invalidate lv */
         if ( i + 1 == grp.count ) {
           xl->lindex( 0, lv );
           sa.idlen = lv.dup( tmp, &sa.idval );
@@ -822,10 +840,12 @@ RedisExec::exec_xreadgroup( EvKeyCtx &ctx )
         }
       }
     }
+    /* if any data */
     if ( cnt > 0 ) {
       q.prepend_array( cnt );
     }
   }
+  /* otherwise, is returning a history of past data consumed by client */
   else {
     for ( i = 0; i < grp.count; i++ ) {
       if ( this->construct_xfield_output( stream, grp.idx[ i ], q ) )
@@ -833,7 +853,92 @@ RedisExec::exec_xreadgroup( EvKeyCtx &ctx )
     }
     q.prepend_array( cnt );
   }
-  return this->finish_xread( ctx, q );
+  /* construct results with all keys or save result until looked at all keys */
+  ExecStatus status = this->finish_xread( ctx, q );
+  if ( status == EXEC_SEND_NULL && blocking )
+    return EXEC_BLOCKED;
+  return status;
+}
+
+ExecStatus
+RedisExec::finish_xread( EvKeyCtx &ctx,  StreamBuf::BufQueue &q )
+{
+  /* the xread and xreadgroup format is ar[ key[ field data(q) ], ... ] */
+  if ( ctx.kstatus != KEY_NOT_FOUND && q.hd != NULL ) {
+    StreamBuf::BufQueue key( this->strm );
+    key.append_string( ctx.kbuf.u.buf, ctx.kbuf.keylen - 1 );
+    key.append_list( q );
+    key.prepend_array( 2 );
+    /* if only one key, construct return value without saving */
+    if ( this->key_cnt == 1 ) {
+      StreamBuf::BufQueue ar( this->strm );
+      ar.append_list( key );
+      ar.prepend_array( 1 );
+      this->strm.append_iov( ar );
+      return EXEC_OK;
+    }
+    /* save the data returned from this key, there are more keys */
+    this->save_data( ctx, &key, sizeof( key ) );
+  }
+  /* if nothing saved, and only one key, no need to check anything else */
+  else if ( this->key_cnt == 1 ) {
+    return EXEC_SEND_NULL;
+  }
+  /* if no more keys left to read, make a result if there was some field data */
+  if ( this->key_done + 1 == this->key_cnt ) {
+    StreamBuf::BufQueue ar( this->strm );
+    size_t cnt = 0;
+    for ( size_t i = 0; i < this->key_cnt; i++ ) {
+      /* either key not found or ident not found */
+      if ( this->keys[ i ]->kstatus != KEY_NOT_FOUND ) {
+        EvKeyTempResult * part = this->keys[ i ]->part;
+        if ( part != NULL ) {
+          ar.append_list( *(StreamBuf::BufQueue *) part->data( 0 ) );
+          cnt++;
+        }
+      }
+    }
+    /* if no results cnt will be zero */
+    if ( cnt == 0 )
+      return EXEC_SEND_NULL;
+    /* otherwise some key's field data were read */
+    ar.prepend_array( cnt );
+    this->strm.append_iov( ar );
+  }
+  return EXEC_OK;
+}
+
+ExecStatus
+RedisExec::exec_xsetid( EvKeyCtx &ctx )
+{
+  ExecStreamCtx stream( *this, ctx );
+  MDMsgMem      tmp;
+  StreamArgs    sa;
+  StreamStatus  xstat = STRM_OK;
+
+  /* XSETID key groupname id */
+  switch ( stream.get_key_write() ) {
+    default:           return ERR_KV_STATUS;
+    case KEY_NO_VALUE: return ERR_BAD_TYPE;
+    case KEY_IS_NEW:   return ERR_NO_GROUP;
+    case KEY_OK:
+      if ( ! stream.open() )
+        return ERR_KV_STATUS;
+      break;
+  }
+  if ( ! this->msg.get_arg( 4, sa.idval, sa.idlen ) )
+    return ERR_BAD_ARGS;
+  if ( sa.idlen == 1 && sa.idval[ 0 ] == '$' ) {
+    xstat = stream.x->
+            sindex_id_last( stream.x->stream, sa.idval, sa.idlen, tmp );
+    if ( xstat != STRM_OK )
+      return ERR_NO_GROUP;
+  }
+  while ( (xstat = stream.x->update_group( sa, tmp )) == STRM_FULL )
+    if ( ! stream.realloc( 0, sa.glen + sa.idlen + 8, 0 ) )
+      return ERR_BAD_ARGS;
+  ctx.flags |= EKF_KEYSPACE_EVENT | EKF_KEYSPACE_STREAM;
+  return EXEC_SEND_OK;
 }
 
 ExecStatus
@@ -860,12 +965,12 @@ RedisExec::exec_xgroup( EvKeyCtx &ctx )
     case KEY_IS_NEW:
       if ( subcmd != 1 ) {
         if ( subcmd == 2 )
-          return ERR_BAD_ARGS;
+          return ERR_NO_GROUP;
         return EXEC_SEND_OK; /* destroyed already */
       }
       else {
         if ( this->msg.match_arg( 5, MARG( "mkstream" ), NULL ) == 0 )
-          return ERR_BAD_ARGS; /* must mkstream to create it */
+          return ERR_NO_GROUP; /* must mkstream to create it */
       }
       if ( ! stream.create( 8, 64 ) )
         return ERR_KV_STATUS;
@@ -904,8 +1009,10 @@ RedisExec::exec_xgroup( EvKeyCtx &ctx )
       break;
   }
 
-  if ( xstat == STRM_OK )
+  if ( xstat == STRM_OK ) {
+    ctx.flags |= EKF_KEYSPACE_EVENT | EKF_KEYSPACE_STREAM;
     return EXEC_SEND_OK;
+  }
   return ERR_BAD_CMD;
 }
 

@@ -67,15 +67,12 @@ RedisKeyspace::db_to_subj( size_t off )
 }
 
 size_t
-RedisKeyspace::make_keyspace_subj( void )
+RedisKeyspace::make_bsubj( const char *blk )
 {
-  static const uint8_t kspc[ 8 ] = { '_', '_', 'k', 'e', 'y', 's', 'p', 'a' };
   size_t subj_len = 20 + this->keylen;
   if ( ! this->alloc_subj( subj_len ) )
     return 0;
-  ::memcpy( this->subj, kspc, 8 );
-  this->subj[ 8 ] = 'c';
-  this->subj[ 9 ] = 'e';
+  ::memcpy( this->subj, blk, 10 );
   subj_len = this->db_to_subj( 10 );
 
   ::memcpy( &this->subj[ subj_len ], this->key, this->keylen );
@@ -84,79 +81,10 @@ RedisKeyspace::make_keyspace_subj( void )
   return subj_len;
 }
 
-size_t
-RedisKeyspace::make_listblkd_subj( void )
-{
-  static const uint8_t lblk[ 8 ] = { '_', '_', 'l', 'i', 's', 't', 'b', 'l' };
-  size_t subj_len = 20 + this->keylen;
-  if ( ! this->alloc_subj( subj_len ) )
-    return 0;
-  ::memcpy( this->subj, lblk, 8 );
-  this->subj[ 8 ] = 'k';
-  this->subj[ 9 ] = 'd';
-  subj_len = this->db_to_subj( 10 );
-
-  ::memcpy( &this->subj[ subj_len ], this->key, this->keylen );
-  subj_len += this->keylen;
-  this->subj[ subj_len ] = '\0';
-  return subj_len;
-}
-
-size_t
-RedisKeyspace::make_zsetblkd_subj( void )
-{
-  static const uint8_t zblk[ 8 ] = { '_', '_', 'z', 's', 'e', 't', 'b', 'l' };
-  size_t subj_len = 20 + this->keylen;
-  if ( ! this->alloc_subj( subj_len ) )
-    return 0;
-  ::memcpy( this->subj, zblk, 8 );
-  this->subj[ 8 ] = 'k';
-  this->subj[ 9 ] = 'd';
-  subj_len = this->db_to_subj( 10 );
-
-  ::memcpy( &this->subj[ subj_len ], this->key, this->keylen );
-  subj_len += this->keylen;
-  this->subj[ subj_len ] = '\0';
-  return subj_len;
-}
-
-/* publish __keyspace@N__:key <- event */
 bool
-RedisKeyspace::fwd_keyspace( void )
+RedisKeyspace::fwd_bsubj( const char *blk )
 {
-  size_t subj_len = this->make_keyspace_subj();
-  if ( subj_len == 0 )
-    return false;
-
-  EvPublish pub( this->subj, subj_len, NULL, 0, this->evt, this->evtlen,
-                 this->exec.sub_id, kv_crc_c( this->subj, subj_len, 0 ),
-                 NULL, 0, MD_STRING, ':' );
-  /*printf( "%s <- %s\n", this->subj, this->evt );*/
-  this->exec.sub_route.rte.forward_msg( pub, NULL, 0, NULL );
-  return true;
-}
-
-/* publish __listblkd@N__:key <- event */
-bool
-RedisKeyspace::fwd_listblkd( void )
-{
-  size_t subj_len = this->make_listblkd_subj();
-  if ( subj_len == 0 )
-    return false;
-
-  EvPublish pub( this->subj, subj_len, NULL, 0, this->evt, this->evtlen,
-                 this->exec.sub_id, kv_crc_c( this->subj, subj_len, 0 ),
-                 NULL, 0, MD_STRING, ':' );
-  /*printf( "%s <- %s\n", this->subj, this->evt );*/
-  this->exec.sub_route.rte.forward_msg( pub, NULL, 0, NULL );
-  return true;
-}
-
-/* publish __zsetblkd@N__:key <- event */
-bool
-RedisKeyspace::fwd_zsetblkd( void )
-{
-  size_t subj_len = this->make_zsetblkd_subj();
+  size_t subj_len = this->make_bsubj( blk );
   if ( subj_len == 0 )
     return false;
 
@@ -200,7 +128,8 @@ RedisKeyspace::pub_keyspace_events( RedisExec &exec )
   /* translate cmd into an event */
   const char * e      = NULL;
   size_t       elen   = 0;
-  uint16_t     key_fl = exec.sub_route.rte.key_flags | EKF_KEYSPACE_DEL;
+  uint16_t     key_fl = exec.sub_route.rte.key_flags |
+                        EKF_KEYSPACE_DEL | EKF_KEYSPACE_TRIM;
   bool         b      = true;
 #define EVT( STR ) e = STR; elen = sizeof( STR ) - 1
   /*printf( "key_fl %u\n", key_fl );*/
@@ -264,6 +193,12 @@ RedisKeyspace::pub_keyspace_events( RedisExec &exec )
     case ZPOPMIN_CMD:          EVT( "zpopmin" ); break;
     case BZPOPMAX_CMD:
     case ZPOPMAX_CMD:          EVT( "zpopmax" ); break;
+    case XADD_CMD:             EVT( "xadd" ); break;
+    case XDEL_CMD:             EVT( "xdel" ); break;
+    case XGROUP_CMD:           break; /* xgroup-create, xgroup-delconsumer, */
+                                      /* xgroup-destroy, xgroup-setid, */
+    case XTRIM_CMD:            EVT( "xtrim" ); break;
+    case XSETID_CMD:           EVT( "xsetid" ); break;
   }
 #undef EVT
   if ( e != NULL ) {
@@ -282,14 +217,26 @@ RedisKeyspace::pub_keyspace_events( RedisExec &exec )
         b &= ev.fwd_listblkd();
       if ( ( fl & EKF_ZSETBLKD_NOT ) != 0 )
         b &= ev.fwd_zsetblkd();
+      if ( ( fl & EKF_STRMBLKD_NOT ) != 0 )
+        b &= ev.fwd_strmblkd();
 
-      if ( ( fl & EKF_KEYSPACE_DEL ) != 0 ) {
-        ev.evt    = "del";
-        ev.evtlen = 3;
-        if ( ( fl & EKF_KEYSPACE_FWD ) != 0 )
-          b &= ev.fwd_keyspace();
-        if ( ( fl & EKF_KEYEVENT_FWD ) != 0 )
-          b &= ev.fwd_keyevent();
+      if ( ( fl & ( EKF_KEYSPACE_DEL | EKF_KEYSPACE_TRIM ) ) != 0 ) {
+        if ( ( fl & EKF_KEYSPACE_DEL ) != 0 ) {
+          ev.evt    = "del";
+          ev.evtlen = 3;
+          if ( ( fl & EKF_KEYSPACE_FWD ) != 0 )
+            b &= ev.fwd_keyspace();
+          if ( ( fl & EKF_KEYEVENT_FWD ) != 0 )
+            b &= ev.fwd_keyevent();
+        }
+        else if ( ( fl & EKF_KEYSPACE_TRIM ) != 0 ) {
+          ev.evt    = "xtrim";
+          ev.evtlen = 5;
+          if ( ( fl & EKF_KEYSPACE_FWD ) != 0 )
+            b &= ev.fwd_keyspace();
+          if ( ( fl & EKF_KEYEVENT_FWD ) != 0 )
+            b &= ev.fwd_keyevent();
+        }
       }
     }
     else {
@@ -299,7 +246,8 @@ RedisKeyspace::pub_keyspace_events( RedisExec &exec )
       for ( i = 0; i < exec.key_cnt; i++ ) {
         uint16_t fl = exec.keys[ i ]->flags & key_fl;
         if ( ( fl & ( EKF_KEYSPACE_FWD | EKF_KEYEVENT_FWD |
-                      EKF_LISTBLKD_NOT | EKF_ZSETBLKD_NOT ) ) != 0 ) {
+                      EKF_LISTBLKD_NOT | EKF_ZSETBLKD_NOT |
+                      EKF_STRMBLKD_NOT ) ) != 0 ) {
           ev.key    = (const char *) exec.keys[ i ]->kbuf.u.buf;
           ev.keylen = exec.keys[ i ]->kbuf.keylen - 1;
           if ( ( fl & EKF_KEYSPACE_FWD ) != 0 )
@@ -310,6 +258,8 @@ RedisKeyspace::pub_keyspace_events( RedisExec &exec )
             b &= ev.fwd_listblkd();
           if ( ( fl & EKF_ZSETBLKD_NOT ) != 0 )
             b &= ev.fwd_zsetblkd();
+          if ( ( fl & EKF_STRMBLKD_NOT ) != 0 )
+            b &= ev.fwd_strmblkd();
         }
       }
       if ( ( exec.key_flags & EKF_KEYSPACE_DEL ) != 0 ) {
@@ -327,6 +277,7 @@ RedisKeyspace::pub_keyspace_events( RedisExec &exec )
                 b &= ev.fwd_keyevent();
             }
           }
+          /* no xtrim possible with multiple keys */
         }
       }
     }
@@ -349,6 +300,19 @@ RedisKeyspace::pub_keyspace_events( RedisExec &exec )
         firstlen  = 4;
         second    = "lpush";
         secondlen = 5;
+        break;
+      case XGROUP_CMD:
+        switch ( exec.msg.match_arg( 1, MARG( "create" ),
+                                        MARG( "setid" ),
+                                        MARG( "destroy" ),
+                                        MARG( "delconsumer" ), NULL ) ) {
+          default: first = "none";               firstlen = 4; break;
+          case 1:  first = "xgroup-create";      firstlen = 13; break;
+          case 2:  first = "xgroup-setid";       firstlen = 12; break;
+          case 3:  first = "xgroup-destroy";     firstlen = 14; break;
+          case 4:  first = "xgroup-delconsumer"; firstlen = 18; break;
+        }
+        second = NULL; secondlen = 0;
         break;
       default:
         first     = NULL;
@@ -378,14 +342,16 @@ RedisKeyspace::pub_keyspace_events( RedisExec &exec )
           b &= ev.fwd_keyevent();
       }
 
-      ev.key    = (const char *) exec.keys[ 1 ]->kbuf.u.buf;
-      ev.keylen = exec.keys[ 1 ]->kbuf.keylen - 1;
-      ev.evt    = second;
-      ev.evtlen = secondlen;
-      if ( ( fl & EKF_KEYSPACE_FWD ) != 0 )
-        b &= ev.fwd_keyspace();
-      if ( ( fl & EKF_KEYEVENT_FWD ) != 0 )
-        b &= ev.fwd_keyevent();
+      if ( second != NULL ) {
+        ev.key    = (const char *) exec.keys[ 1 ]->kbuf.u.buf;
+        ev.keylen = exec.keys[ 1 ]->kbuf.keylen - 1;
+        ev.evt    = second;
+        ev.evtlen = secondlen;
+        if ( ( fl & EKF_KEYSPACE_FWD ) != 0 )
+          b &= ev.fwd_keyspace();
+        if ( ( fl & EKF_KEYEVENT_FWD ) != 0 )
+          b &= ev.fwd_keyevent();
+      }
     }
   }
   return b;

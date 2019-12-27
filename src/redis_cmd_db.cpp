@@ -454,7 +454,7 @@ CommandDB cmd_db[] = {
 { "WATCH", "key [key ...] ; Watch keys to determine multi/exec blk",
   "[\"watch\",-2,['readonly','noscript','fast'],1,-1,1]" },
 
-#define STREAM_CNT 13
+#define STREAM_CNT 14
   /* streams -- https://redis.io/topics/streams-intro */
 { "XINFO", "[CONSUMERS key groupname] [GROUPS key] [STREAM key] [HELP]; "
   "Get info for a stream",
@@ -483,12 +483,17 @@ CommandDB cmd_db[] = {
   "STREAMS key [key ...] id [id ...] ; Read streams through consumer group",
   "[\"xreadgroup\",-3,['write','noscript','movablekeys'],1,1,1]" },
 
-{ "XACK", "key group entry-id ; Remove up to entry-id",
-  "[\"xack\",-3,['write','fast'],1,1,1]" },
-{ "XCLAIM", "key group consumer ; Recover consumer stream",
+{ "XACK", "key group entry-id [id ...]; Remove entry-id(s)",
+  "[\"xack\",-4,['write','fast'],1,1,1]" },
+{ "XCLAIM", "key group consumer min-idle-time id [id ...] "
+  "[IDLE ms] [TIME ms-utc] [RETRYCOUNT cnt] [FORCE] [JUSTID]; "
+  "Recover consumer stream",
   "[\"xclaim\",-5,['write','fast'],1,1,1]" },
-{ "XPENDING", "key group ; Get the unread entry-ids",
-  "[\"xpending\",-3,['readonly'],1,1,1]" }
+{ "XPENDING", "key group [start end count] [consumer]; "
+  "Get the unread entry-ids",
+  "[\"xpending\",-3,['readonly'],1,1,1]" },
+{ "XSETID", "key group id; Set the last id of a group",
+  "[\"xpending\",4,['write','fast'],1,1,1]" }
 };
 
 const size_t cmd_db_cnt = sizeof( cmd_db ) / sizeof( cmd_db[ 0 ] );

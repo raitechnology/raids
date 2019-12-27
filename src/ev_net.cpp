@@ -503,7 +503,8 @@ RoutePublish::update_keyspace_count( const char *sub,  size_t len,  int add )
   static const char kspc[] = "__keyspace@",
                     kevt[] = "__keyevent@",
                     lblk[] = "__listblkd@",
-                    zblk[] = "__zsetblkd@";
+                    zblk[] = "__zsetblkd@",
+                    sblk[] = "__strmblkd@";
   if ( ::memcmp( kspc, sub, len ) == 0 )
     this->keyspace_cnt += add;
   if ( ::memcmp( kevt, sub, len ) == 0 )
@@ -512,11 +513,14 @@ RoutePublish::update_keyspace_count( const char *sub,  size_t len,  int add )
     this->listblkd_cnt += add;
   if ( ::memcmp( zblk, sub, len ) == 0 )
     this->zsetblkd_cnt += add;
+  if ( ::memcmp( sblk, sub, len ) == 0 )
+    this->strmblkd_cnt += add;
 
   this->key_flags = ( ( this->keyspace_cnt == 0 ? 0 : EKF_KEYSPACE_FWD ) |
                       ( this->keyevent_cnt == 0 ? 0 : EKF_KEYEVENT_FWD ) |
                       ( this->listblkd_cnt == 0 ? 0 : EKF_LISTBLKD_NOT ) |
-                      ( this->zsetblkd_cnt == 0 ? 0 : EKF_ZSETBLKD_NOT ) );
+                      ( this->zsetblkd_cnt == 0 ? 0 : EKF_ZSETBLKD_NOT ) |
+                      ( this->strmblkd_cnt == 0 ? 0 : EKF_STRMBLKD_NOT ) );
   /*printf( "%.*s %d key_flags %x\n", (int) len, sub, add, this->key_flags );*/
 }
 /* external patterns from kv pubsub */
@@ -695,6 +699,15 @@ RoutePublish::add_timer_seconds( int id,  uint32_t ival,  uint64_t timer_id,
 {
   EvPoll & poll = static_cast<EvPoll &>( *this );
   return poll.timer_queue->add_timer_seconds( id, ival, timer_id, event_id );
+}
+
+bool
+RoutePublish::add_timer_millis( int id,  uint32_t ival,  uint64_t timer_id,
+                                uint64_t event_id )
+{
+  EvPoll & poll = static_cast<EvPoll &>( *this );
+  return poll.timer_queue->add_timer_units( id, ival, IVAL_MILLIS, timer_id,
+                                            event_id );
 }
 
 bool

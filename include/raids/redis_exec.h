@@ -182,7 +182,7 @@ struct RedisExec {
   /* execute a key operation */
   ExecStatus exec_key_continue( EvKeyCtx &ctx );
   /* subscribe to keyspace subjects and wait for publish to continue */
-  ExecStatus save_blocked_cmd( int64_t timeout_secs );
+  ExecStatus save_blocked_cmd( int64_t timeout_val );
   /* execute the saved commands after signaled */
   void drain_continuations( EvSocket *svc );
   /* publish keyspace events */
@@ -472,6 +472,7 @@ struct RedisExec {
   ExecStatus exec_xack( EvKeyCtx &ctx );
   ExecStatus exec_xclaim( EvKeyCtx &ctx );
   ExecStatus exec_xpending( EvKeyCtx &ctx );
+  ExecStatus exec_xsetid( EvKeyCtx &ctx );
 
   /* result senders */
   void send_err( int status,  kv::KeyStatus kstatus = KEY_OK );

@@ -152,9 +152,10 @@ struct RedisPatternMap {
 };
 
 struct RedisContinuePtr {
-  uint32_t hash,  /* hash of this subject */
-           len;   /* length of subject */
-  char   * value; /* the subject which notifies that a key is changed */
+  uint32_t hash;     /* hash of this subject */
+  uint16_t len,      /* length of subject */
+           save_len; /* length of save data */
+  char   * value;    /* the subject which notifies that a key is changed */
 };
 
 enum {
@@ -179,16 +180,16 @@ struct RedisContinueMsg {
   char             * msg;     /* the redis msg ascii buffer */
   size_t             msglen;  /* length of msg[] */
 
-  RedisContinueMsg( size_t ml,  uint16_t kc );
+  RedisContinueMsg( size_t mlen,  uint16_t kcnt );
 };
 
 struct RedisContinue {
-  RedisContinueMsg * cm;         /* the continuation that has this key */
-  uint32_t           hash,       /* the hash of value */
-                     keynum,     /* which key this is 0 -> keycnt -1 */
-                     keycnt;     /* total keys */
-  uint16_t           len;        /* length of key subject */
-  char               value[ 2 ]; /* subject */
+  RedisContinueMsg * continue_msg; /* the continuation that has this key */
+  uint32_t           hash,         /* the hash of value */
+                     keynum,       /* which key this is 0 -> keycnt -1 */
+                     keycnt;       /* total keys */
+  uint16_t           len;          /* length of key subject */
+  char               value[ 2 ];   /* subject */
   bool equals( const void *s,  uint16_t l ) const {
     return l == this->len && ::memcmp( s, this->value, l ) == 0;
   }
@@ -219,7 +220,7 @@ struct RedisContinueMap {
     if ( rt == NULL )
       return REDIS_SUB_NOT_FOUND;
     if ( loc.is_new ) {
-      rt->cm     = NULL;
+      rt->continue_msg = NULL;
       rt->keynum = 0;
       rt->keycnt = 1;
       return REDIS_SUB_OK;

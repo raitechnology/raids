@@ -27,21 +27,26 @@ enum EvKeyState { /* status for exec_key_continue(), memcached_key_continue() */
 enum EvKeyFlags { /* bits for EvKeyCtx::flags */
   EKF_IS_READ_ONLY   = 1, /* key is read only (no write access) */
   EKF_IS_NEW         = 2, /* key doesn't exist */
-  EKF_KEYSPACE_FWD   = 4, /* operation resulted in a keyspace modification */
-  EKF_KEYEVENT_FWD   = 8, /* operation resulted in a keyevent modification */
-  EKF_KEYSPACE_EVENT = 12, /* both the above bits together */
-  EKF_KEYSPACE_DEL   = 16, /* keyspace event (pop, srem, etc) caused a key del */
-  EKF_LISTBLKD_NOT   = 32, /* notify a blocked list an element available */
-  EKF_ZSETBLKD_NOT   = 64, /* notify a blocked zset an element available */
+  EKF_IS_SAVED_CONT  = 4, /* key has saved data on continuation */
+  EKF_KEYSPACE_FWD   = 8, /* operation resulted in a keyspace modification */
+  EKF_KEYEVENT_FWD   = 16, /* operation resulted in a keyevent modification */
+  EKF_KEYSPACE_EVENT = 24, /* both the above bits together */
+  EKF_KEYSPACE_DEL   = 32, /* keyspace event (pop, srem, etc) caused a key del */
+  EKF_KEYSPACE_TRIM  = 64, /* xadd with maxcnt caused a trim event */
+  EKF_LISTBLKD_NOT   = 128, /* notify a blocked list an element available */
+  EKF_ZSETBLKD_NOT   = 256, /* notify a blocked zset an element available */
+  EKF_STRMBLKD_NOT   = 512, /* notify a blocked stream an element available */
 
-#define EKF_TYPE_SHIFT 7
-  EKF_KEYSPACE_STRING = ( 1 << EKF_TYPE_SHIFT ), /* 128 */
-  EKF_KEYSPACE_LIST   = ( 2 << EKF_TYPE_SHIFT ), /* 256 */
-  EKF_KEYSPACE_HASH   = ( 3 << EKF_TYPE_SHIFT ), /* 384 */
-  EKF_KEYSPACE_SET    = ( 4 << EKF_TYPE_SHIFT ), /* 512 */
-  EKF_KEYSPACE_ZSET   = ( 5 << EKF_TYPE_SHIFT ), /* 640 */
-  EKF_KEYSPACE_GEO    = ( 6 << EKF_TYPE_SHIFT ), /* 768 */
-  EKF_KEYSPACE_HLL    = ( 7 << EKF_TYPE_SHIFT ), /* 896 */
+#define EKF_TYPE_SHIFT 10
+  EKF_KEYSPACE_STRING = ( 1 << EKF_TYPE_SHIFT ), /* 1024 */
+  EKF_KEYSPACE_LIST   = ( 2 << EKF_TYPE_SHIFT ),
+  EKF_KEYSPACE_HASH   = ( 3 << EKF_TYPE_SHIFT ),
+  EKF_KEYSPACE_SET    = ( 4 << EKF_TYPE_SHIFT ),
+  EKF_KEYSPACE_ZSET   = ( 5 << EKF_TYPE_SHIFT ),
+  EKF_KEYSPACE_GEO    = ( 6 << EKF_TYPE_SHIFT ),
+  EKF_KEYSPACE_HLL    = ( 7 << EKF_TYPE_SHIFT ),
+  EKF_KEYSPACE_STREAM = ( 8 << EKF_TYPE_SHIFT )  /* 8192 */
+  /* must fit into 16 bits */
 };
 
 struct EvKeyCtx {

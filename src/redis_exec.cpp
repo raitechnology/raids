@@ -753,6 +753,7 @@ RedisExec::exec_key_continue( EvKeyCtx &ctx )
       case XACK_CMD:      ctx.status = this->exec_xack( ctx ); break;
       case XCLAIM_CMD:    ctx.status = this->exec_xclaim( ctx ); break;
       case XPENDING_CMD:  ctx.status = this->exec_xpending( ctx ); break;
+      case XSETID_CMD:    ctx.status = this->exec_xsetid( ctx ); break;
 
       case NO_CMD:        ctx.status = ERR_BAD_CMD; break;
     }
@@ -773,7 +774,7 @@ RedisExec::exec_key_continue( EvKeyCtx &ctx )
             case SORTED_SET_CATG:  type = MD_ZSET;        break;
             case STRING_CATG:      type = MD_STRING;      break;
             case TRANSACTION_CATG: type = MD_NODATA; /*MD_TRANSACTION;*/ break;
-            case STREAM_CATG:      type = MD_NODATA; /*MD_STREAM;*/  break;
+            case STREAM_CATG:      type = MD_STREAM;      break;
           }
         }
         if ( type != MD_NODATA )

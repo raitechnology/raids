@@ -26,19 +26,27 @@ struct RedisKeyspace {
   size_t db_str( size_t off );
   /* append "@db__:" to subj */
   size_t db_to_subj( size_t off );
+  /* a keyspace like subject, make_*_subj() below, * must be 8 chars */
+  size_t make_bsubj( const char *blk );
   /* create a subject: __keyspace@db__:key */
-  size_t make_keyspace_subj( void );
+  size_t make_keyspace_subj( void ) { return this->make_bsubj( "__keyspace" ); }
   /* create a subject: __listblkd@db__:key */
-  size_t make_listblkd_subj( void );
+  size_t make_listblkd_subj( void ) { return this->make_bsubj( "__listblkd" ); }
   /* create a subject: __zsetblkd@db__:key */
-  size_t make_zsetblkd_subj( void );
+  size_t make_zsetblkd_subj( void ) { return this->make_bsubj( "__zsetblkd" ); }
+  /* create a subject: __strmblkd@db__:key */
+  size_t make_strmblkd_subj( void ) { return this->make_bsubj( "__strmblkd" ); }
+  /* forward a keyspace like msg below, fwd_*() */
+  bool fwd_bsubj( const char *blk );
   /* publish __keyspace@N__:key <- event */
-  bool fwd_keyspace( void );
+  bool fwd_keyspace( void ) { return this->fwd_bsubj( "__keyspace" ); }
   /* publish __listblkd@N__:key <- event */
-  bool fwd_listblkd( void );
+  bool fwd_listblkd( void ) { return this->fwd_bsubj( "__listblkd" ); }
   /* publish __zsetblkd@N__:key <- event */
-  bool fwd_zsetblkd( void );
-  /* publish __keyevent@N__:event <- key */
+  bool fwd_zsetblkd( void ) { return this->fwd_bsubj( "__zsetblkd" ); }
+  /* publish __strmblkd@N__:key <- event */
+  bool fwd_strmblkd( void ) { return this->fwd_bsubj( "__strmblkd" ); }
+  /* publish __keyevent@N__:event <- key  (different than :key <- event above)*/
   bool fwd_keyevent( void );
   /* convert command into keyspace events and publish them */
   static bool pub_keyspace_events( RedisExec &e );
