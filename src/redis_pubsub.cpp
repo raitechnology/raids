@@ -206,13 +206,17 @@ RedisExec::do_pub( EvPublish &pub,  RedisContinueMsg *&cm )
         ret = this->continue_tab.find( pub.subj_hash, pub.subject,
                                        pub.subject_len, rt, loc );
         if ( ret == REDIS_SUB_OK ) {
+          if ( ( rt->continue_msg->state & CM_PUB_HIT ) == 0 ) {
+            cm         = rt->continue_msg;
+            cm->state |= CM_PUB_HIT;
+            status    |= REDIS_CONTINUE_MSG;
+          }
+#if 0
           uint32_t keynum, keycnt, i;
-          cm     = rt->continue_msg;
           keynum = rt->keynum;
           keycnt = rt->keycnt;
           rt     = NULL; /* removing will junk this ptr */
           this->continue_tab.tab.remove( loc );
-          status |= 2;
           if ( keycnt > 1 ) { /* remove the other keys */
             for ( i = 0; i < keycnt; i++ ) {
               if ( i != keynum ) {
@@ -231,6 +235,7 @@ RedisExec::do_pub( EvPublish &pub,  RedisContinueMsg *&cm )
                                               cm->ptr[ i ].len,
                                               this->sub_id, rcnt, 'R' );
           }
+#endif
         }
       }
     }
@@ -252,7 +257,7 @@ RedisExec::do_pub( EvPublish &pub,  RedisContinueMsg *&cm )
     }
   }
   if ( pub_cnt > 0 )
-    status |= 1;
+    status |= REDIS_FORWARD_MSG;
   return status;
 }
 
@@ -261,35 +266,44 @@ RedisExec::continue_expire( uint64_t event_id,  RedisContinueMsg *&cm )
 {
   for ( cm = this->wait_list.hd; cm != NULL; cm = cm->next ) {
     if ( cm->msgid == (uint32_t) event_id ) {
-      cm->state |= CM_TIMEOUT;
-      cm->state &= ~CM_TIMER;
-      return true;
+      if ( ( cm->state & CM_TIMEOUT ) == 0 ) {
+        cm->state |= CM_TIMEOUT;
+        cm->state &= ~CM_TIMER;
+        return true;
+      }
+      return false;
     }
   }
   return false;
 }
 
 void
+RedisExec::pop_continue_tab( RedisContinueMsg *cm )
+{
+  if ( ( cm->state & CM_CONT_TAB ) == 0 )
+    return;
+
+  uint32_t keycnt, i;
+  keycnt = cm->keycnt;
+  for ( i = 0; i < keycnt; i++ ) {
+    this->continue_tab.tab.remove( cm->ptr[ i ].hash,
+                                   cm->ptr[ i ].value,
+                                   cm->ptr[ i ].len );
+  }
+  cm->state &= ~CM_CONT_TAB;
+  for ( i = 0; i < keycnt; i++ ) {
+    uint32_t rcnt = this->sub_route.del_route( cm->ptr[ i ].hash,
+                                               this->sub_id );
+    this->sub_route.rte.notify_unsub( cm->ptr[ i ].hash,
+                                      cm->ptr[ i ].value,
+                                      cm->ptr[ i ].len,
+                                      this->sub_id, rcnt, 'R' );
+  }
+}
+
+void
 RedisExec::push_continue_list( RedisContinueMsg *cm )
 {
-  if ( ( cm->state & CM_CONT_TAB ) != 0 ) {
-    uint32_t keycnt, i;
-    keycnt = cm->keycnt;
-    for ( i = 0; i < keycnt; i++ ) {
-      this->continue_tab.tab.remove( cm->ptr[ i ].hash,
-                                     cm->ptr[ i ].value,
-                                     cm->ptr[ i ].len );
-    }
-    cm->state &= ~CM_CONT_TAB;
-    for ( i = 0; i < keycnt; i++ ) {
-      uint32_t rcnt = this->sub_route.del_route( cm->ptr[ i ].hash,
-                                                 this->sub_id );
-      this->sub_route.rte.notify_unsub( cm->ptr[ i ].hash,
-                                        cm->ptr[ i ].value,
-                                        cm->ptr[ i ].len,
-                                        this->sub_id, rcnt, 'R' );
-    }
-  }
   if ( ( cm->state & CM_WAIT_LIST ) != 0 ) {
     this->wait_list.pop( cm );
     cm->state &= ~CM_WAIT_LIST;
@@ -776,13 +790,14 @@ RedisExec::drain_continuations( EvSocket *svc )
   RedisMsgStatus     mstatus;
   ExecStatus         status;
 
+  this->blk_state = 0;
   while ( ! this->cont_list.is_empty() ) {
     cm = this->cont_list.pop_hd();
     cm->state &= ~CM_CONT_LIST;
     if ( ( cm->state & CM_TIMEOUT ) != 0 )
-      this->timeout = true;
-    else
-      this->timeout = false;
+      this->blk_state |= REDIS_BLOCK_CMD_TIMEOUT;
+    if ( ( cm->state & CM_PUB_HIT ) != 0 )
+      this->blk_state |= REDIS_BLOCK_CMD_KEY_CHANGE;
     mstatus = this->msg.unpack( cm->msg, cm->msglen, this->strm.tmp );
     if ( mstatus == REDIS_MSG_OK ) {
       if ( (status = this->exec( svc, NULL )) == EXEC_OK )
@@ -795,7 +810,10 @@ RedisExec::drain_continuations( EvSocket *svc )
                    k = cm->ptr[ i ].save_len;
             if ( k != 0 ) {
               this->save_data( *this->keys[ i ], &cm->ptr[ i ].value[ j ], k );
-              this->keys[ i ]->flags |= EKF_IS_SAVED_CONT;
+              this->keys[ i ]->flags |= EKF_IS_SAVED_CONT | EKF_IS_CONTINUATION;
+            }
+            else {
+              this->keys[ i ]->flags |= EKF_IS_CONTINUATION;
             }
           }
           this->exec_run_to_completion();
@@ -808,8 +826,14 @@ RedisExec::drain_continuations( EvSocket *svc )
           break;
       }
     }
-    this->timeout = false;
-    delete cm;
+    if ( ( this->blk_state & REDIS_BLOCK_CMD_COMPLETE ) != 0 ) {
+      this->pop_continue_tab( cm );
+      delete cm;
+    }
+    else {
+      cm->state &= ~CM_PUB_HIT;
+    }
+    this->blk_state = 0;
   }
 }
 

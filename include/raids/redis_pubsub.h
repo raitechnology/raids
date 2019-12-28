@@ -164,7 +164,8 @@ enum {
   CM_CONT_TAB  = 4, /* in RedisExec::continue_tab */
   CM_TIMER     = 8, /* has timer */
   CM_TIMEOUT   = 16,/* timer expired */
-  CM_RELEASE   = 32 /* timer expired */
+  CM_RELEASE   = 32,/* mark release */
+  CM_PUB_HIT   = 64 /* publish hit */
 };
 
 struct RedisContinueMsg {

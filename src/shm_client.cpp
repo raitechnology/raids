@@ -81,9 +81,9 @@ EvShmClient::on_msg( EvPublish &pub )
 {
   RedisContinueMsg * cm = NULL;
   int status = this->exec->do_pub( pub, cm );
-  if ( ( status & 1 ) != 0 )
+  if ( ( status & REDIS_FORWARD_MSG ) != 0 )
     this->stream_to_msg();
-  if ( ( status & 2 ) != 0 ) {
+  if ( ( status & REDIS_CONTINUE_MSG ) != 0 ) {
     this->exec->push_continue_list( cm );
     cm->msgid = 0;
   }

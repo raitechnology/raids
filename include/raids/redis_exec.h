@@ -132,7 +132,7 @@ struct RedisExec {
   RedisMultiExec * multi;     /* MULTI .. EXEC block */
   RedisCmd         cmd;       /* current command (GET_CMD) */
   RedisMsgStatus   mstatus;   /* command message parse status */
-  uint8_t          timeout,   /* if blocking command timed out */
+  uint8_t          blk_state, /* if blocking command timed out */
                    pad;
   uint16_t         cmd_flags, /* command flags (CMD_READONLY_FLAG) */
                    key_flags; /* EvKeyFlags, if a key has a keyspace event */
@@ -154,7 +154,7 @@ struct RedisExec {
              RouteDB &rdb ) :
       kctx( map, ctx_id, NULL ), strm( s ),
       key( 0 ), keys( 0 ), key_cnt( 0 ), key_done( 0 ), multi( 0 ),
-      timeout( 0 ), key_flags( 0 ), sub_route( rdb ), sub_id( ~0U ),
+      blk_state( 0 ), key_flags( 0 ), sub_route( rdb ), sub_id( ~0U ),
       next_event_id( 0 ), timer_id( 0 ) {
     this->kctx.ht.hdr.get_hash_seed( this->kctx.db_num, this->seed,
                                      this->seed2 );
@@ -162,6 +162,8 @@ struct RedisExec {
   }
   /* stop a continuation and send null */
   bool continue_expire( uint64_t event_id,  RedisContinueMsg *&cm );
+  /* remove and unsubscribe contiuation subjects from continue_tab */
+  void pop_continue_tab( RedisContinueMsg *cm );
   /* restart continuation */
   void push_continue_list( RedisContinueMsg *cm );
   /* release anything allocated */
@@ -511,6 +513,17 @@ struct RedisExec {
   void *save_data2( EvKeyCtx &ctx,  const void *data,  size_t size,
                                     const void *data2,  size_t size2 );
   void array_string_result( void );
+};
+
+enum RedisDoPubState {
+  REDIS_FORWARD_MSG  = 1, /* forward message to client */
+  REDIS_CONTINUE_MSG = 2  /* trigger continuation message */
+};
+
+enum RedisBlockState {
+  REDIS_BLOCK_CMD_TIMEOUT    = 1, /* a timer expired caused retry */
+  REDIS_BLOCK_CMD_KEY_CHANGE = 2, /* key change caused retry */
+  REDIS_BLOCK_CMD_COMPLETE   = 4  /* command continuation success */
 };
 
 static inline void

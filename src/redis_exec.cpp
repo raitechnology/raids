@@ -797,15 +797,22 @@ RedisExec::exec_key_continue( EvKeyCtx &ctx )
   if ( ++this->key_done == this->key_cnt ) {
     /* if all keys are blocked, waiting for some event */
     if ( ctx.status == EXEC_BLOCKED ) {
-      if ( ! this->timeout ) {
-        ctx.status = this->save_blocked_cmd( ctx.ival );
+      /* if no pre-existing state created, create it */
+      if ( this->blk_state == 0 ) {
+        ctx.status = this->save_blocked_cmd( ctx.ival /* timeout */ );
         if ( ctx.status == EXEC_OK )
           return EXEC_SUCCESS;
         return (ExecStatus) ctx.status;
       }
-      else { /* blocked cmd timeout */
+      else if ( ( this->blk_state & REDIS_BLOCK_CMD_TIMEOUT ) != 0 ) {
+        /* blocked cmd timeout */
         ctx.status = EXEC_SEND_NULL;
+        this->blk_state |= REDIS_BLOCK_CMD_COMPLETE;
       }
+    }
+    else if ( this->blk_state != 0 ) {
+      /* did not block, so blocked command is complete */
+      this->blk_state |= REDIS_BLOCK_CMD_COMPLETE;
     }
     /* all keys complete, mget is special */
     if ( this->cmd == MGET_CMD ) {
@@ -932,7 +939,8 @@ RedisExec::exec_bgsave( void )
   return EXEC_OK;
 }
 
-ExecStatus RedisExec::exec_client( void )
+ExecStatus
+RedisExec::exec_client( void )
 {
   switch ( this->msg.match_arg( 1, MARG( "getname" ),
                                    MARG( "kill" ),
