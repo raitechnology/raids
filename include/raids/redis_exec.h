@@ -45,6 +45,7 @@ enum ExecStatus {
   ERR_BAD_TYPE,         /* data type not compatible with operator */
   ERR_BAD_RANGE,        /* index out of range */
   ERR_NO_GROUP,         /* group not found */
+  ERR_STREAM_ID,        /* stream id invalid */
   ERR_ALLOC_FAIL,       /* alloc returned NULL */
   ERR_KEY_EXISTS,       /* when set with NX operator */
   ERR_KEY_DOESNT_EXIST, /* when set with XX operator */
@@ -499,6 +500,7 @@ struct RedisExec {
   void send_err_bad_type( void );
   void send_err_bad_range( void );
   void send_err_no_group( void );
+  void send_err_stream_id( void );
   void send_err_msg( RedisMsgStatus mstatus );
   void send_err_alloc_fail( void );
   void send_err_key_exists( void );

@@ -1313,6 +1313,7 @@ RedisExec::send_err( int status,  KeyStatus kstatus )
     case ERR_BAD_TYPE:          this->send_err_bad_type(); break;
     case ERR_BAD_RANGE:         this->send_err_bad_range(); break;
     case ERR_NO_GROUP:          this->send_err_no_group(); break;
+    case ERR_STREAM_ID:         this->send_err_stream_id(); break;
     case EXEC_QUIT:
     case EXEC_DEBUG:            this->send_ok(); break;
     case ERR_ALLOC_FAIL:        this->send_err_alloc_fail(); break;
@@ -1472,6 +1473,23 @@ RedisExec::send_err_no_group( void )
     arg0len = ( arg0len < 24 ? arg0len : 24 );
     bsz = ::snprintf( buf, bsz,
                       "-ERR group not found for command: '%.*s'\r\n",
+                     (int) arg0len, arg0 );
+    strm.sz += bsz;
+  }
+}
+
+void
+RedisExec::send_err_stream_id( void )
+{
+  size_t       arg0len;
+  const char * arg0 = this->msg.command( arg0len );
+  size_t       bsz  = 64 + 24;
+  char       * buf  = this->strm.alloc( bsz );
+
+  if ( buf != NULL ) {
+    arg0len = ( arg0len < 24 ? arg0len : 24 );
+    bsz = ::snprintf( buf, bsz,
+                      "-ERR stream id invalid for command: '%.*s'\r\n",
                      (int) arg0len, arg0 );
     strm.sz += bsz;
   }

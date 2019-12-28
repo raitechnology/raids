@@ -361,6 +361,22 @@ RedisExec::exec_xadd( EvKeyCtx &ctx )
     idlen = sz;
     ndata += sz - 1;
   }
+  else {
+    StreamId sid;
+    if ( ! sid.str_to_id( idval, idlen ) )
+      return ERR_STREAM_ID;
+    size_t cnt = stream.x->stream.count();
+    if ( cnt > 0 ) {
+      ListVal lv;
+      StreamStatus xstat;
+      xstat = stream.x->sindex_id( stream.x->stream, cnt - 1, lv, tmp );
+      if ( xstat != STRM_OK )
+        return ERR_STREAM_ID;
+      StreamId sid2;
+      if ( ! sid2.str_to_id( lv, tmp ) || sid.compare( sid2 ) <= 0 )
+        return ERR_STREAM_ID;
+    }
+  }
   sz = ListData::alloc_size( count, ndata );
   tmp.alloc( sizeof( ListData ) + sz, &mem );
   p   = &((char *) mem)[ sizeof( ListData ) ];
