@@ -30,9 +30,13 @@ do_complete( LineCook *state,  const char * /*buf*/,  size_t off,
              size_t /*len*/ )
 {
   if ( off == 0 ) {
+    char cmd[ 64 ];
     for ( size_t i = 0; i < cmd_db_cnt; i++ ) {
-      lc_add_completion( state, cmd_db[ i ].name,
-                         ::strlen( cmd_db[ i ].name ) );
+      size_t len = ::strlen( cmd_db[ i ].name );
+      if ( len > 64 ) len = 64;
+      for ( size_t j = 0; j < len; j++ )
+        cmd[ j ] = tolower( cmd_db[ i ].name[ j ] );
+      lc_add_completion( state, cmd, len );
     }
   }
   return 0;
@@ -109,6 +113,74 @@ Term::tty_release( void )
 }
 
 void
+Term::show_help( void )
+{
+  int  arg_num,   /* which arg is completed, 0 = first */
+       arg_count, /* how many args */
+       arg_off[ 32 ],  /* offset of args */
+       arg_len[ 32 ];  /* length of args */
+  char buf[ 1024 ], line[ 80 ];
+  int n = lc_tty_get_completion_cmd( this->tty, buf, sizeof( buf ),
+                                     &arg_num, &arg_count, arg_off,
+                                     arg_len, 32 );
+  if ( n <= 0 )
+    return;
+
+  for ( size_t i = 0; i < cmd_db_cnt; i++ ) {
+    const char * name     = cmd_db[ i ].name;
+    size_t       name_len = ::strlen( name );
+    if ( (size_t) arg_len[ 0 ] == name_len &&
+         ::strncasecmp( name, &buf[ arg_off[ 0 ] ], name_len ) == 0 ) {
+      const char * descr = cmd_db[ i ].descr,
+                 * ptr   = ::strstr( descr, " ; " );
+      size_t len;
+      bool first = true;
+      for (;;) {
+        if ( ptr >= descr )
+          len = ptr - descr;
+        else
+          len = ::strlen( descr );
+        if ( len > 0 ) {
+          size_t       j,
+                       k    = len,
+                       off  = 0;
+          if ( ptr == NULL )
+            j = 3;
+          else
+            j = name_len;
+          if ( ! first || ptr == NULL )
+            name = "";
+          for (;;) {
+            k = len - off;
+            if ( k == 0 )
+              break;
+            if ( j + k > 76 ) {
+              for ( k = 76 - j; ; k -= 1 ) {
+                if ( descr[ off + k ] == ' ' || descr[ off + k ] == '|' )
+                  break;
+                if ( k < 20 )
+                  break;
+              }
+            }
+            int n = ::snprintf( line, 79, "%*s %.*s", (int) j, name, 
+                                (int) k, &descr[ off ] );
+            lc_add_completion( this->lc, line, n );
+            off += k;
+            name = "";
+          }
+          first = false;
+        }
+        if ( ptr == NULL )
+          break;
+        descr = &ptr[ 3 ];
+        ptr   = NULL;
+      }
+      break;
+    }
+  }
+}
+
+void
 Term::tty_input( const void *buf,  size_t buflen )
 {
   this->in_buf = buf;
@@ -127,6 +199,11 @@ Term::tty_input( const void *buf,  size_t buflen )
         lc_tty_set_continue( tty, 0 ); /* cancel continue */
         lc_tty_break_history( tty );   /* cancel buffered line */
         continue;
+      }
+      if ( this->tty->lc_status == LINE_STATUS_COMPLETE ) {
+        CompleteType ctype = lc_get_complete_type( lc );
+        if ( ctype == COMPLETE_HELP )
+          this->show_help();
       }
       if ( this->tty->lc_status == LINE_STATUS_EXEC ) {
         size_t len = this->tty->line_len;

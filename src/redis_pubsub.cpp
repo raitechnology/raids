@@ -209,7 +209,7 @@ RedisExec::do_pub( EvPublish &pub,  RedisContinueMsg *&cm )
           if ( ( rt->continue_msg->state & CM_PUB_HIT ) == 0 ) {
             cm         = rt->continue_msg;
             cm->state |= CM_PUB_HIT;
-            status    |= REDIS_CONTINUE_MSG;
+            status    |= RPUB_CONTINUE_MSG;
           }
 #if 0
           uint32_t keynum, keycnt, i;
@@ -257,7 +257,7 @@ RedisExec::do_pub( EvPublish &pub,  RedisContinueMsg *&cm )
     }
   }
   if ( pub_cnt > 0 )
-    status |= REDIS_FORWARD_MSG;
+    status |= RPUB_FORWARD_MSG;
   return status;
 }
 
@@ -733,6 +733,10 @@ RedisExec::save_blocked_cmd( int64_t timeout_val )
       len = kspc.make_listblkd_subj();
     else if ( catg == STREAM_CATG ) {
       len = kspc.make_strmblkd_subj();
+      /* the xread command mutates the arguments based on the current
+       * end of stream;  the saved continuation data caches this value
+       * so that when xread resumes, it knows what data was added to
+       * the stream */
       if ( ( this->keys[ i ]->flags & EKF_IS_SAVED_CONT ) != 0 &&
            this->keys[ i ]->part != NULL )
         save_len = this->keys[ i ]->part->size;
@@ -795,9 +799,9 @@ RedisExec::drain_continuations( EvSocket *svc )
     cm = this->cont_list.pop_hd();
     cm->state &= ~CM_CONT_LIST;
     if ( ( cm->state & CM_TIMEOUT ) != 0 )
-      this->blk_state |= REDIS_BLOCK_CMD_TIMEOUT;
+      this->blk_state |= RBLK_CMD_TIMEOUT;
     if ( ( cm->state & CM_PUB_HIT ) != 0 )
-      this->blk_state |= REDIS_BLOCK_CMD_KEY_CHANGE;
+      this->blk_state |= RBLK_CMD_KEY_CHANGE;
     mstatus = this->msg.unpack( cm->msg, cm->msglen, this->strm.tmp );
     if ( mstatus == REDIS_MSG_OK ) {
       if ( (status = this->exec( svc, NULL )) == EXEC_OK )
@@ -810,10 +814,7 @@ RedisExec::drain_continuations( EvSocket *svc )
                    k = cm->ptr[ i ].save_len;
             if ( k != 0 ) {
               this->save_data( *this->keys[ i ], &cm->ptr[ i ].value[ j ], k );
-              this->keys[ i ]->flags |= EKF_IS_SAVED_CONT | EKF_IS_CONTINUATION;
-            }
-            else {
-              this->keys[ i ]->flags |= EKF_IS_CONTINUATION;
+              this->keys[ i ]->flags |= EKF_IS_SAVED_CONT;
             }
           }
           this->exec_run_to_completion();
@@ -826,7 +827,7 @@ RedisExec::drain_continuations( EvSocket *svc )
           break;
       }
     }
-    if ( ( this->blk_state & REDIS_BLOCK_CMD_COMPLETE ) != 0 ) {
+    if ( ( this->blk_state & RBLK_CMD_COMPLETE ) != 0 ) {
       this->pop_continue_tab( cm );
       delete cm;
     }

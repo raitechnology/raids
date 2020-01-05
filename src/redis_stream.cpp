@@ -564,11 +564,11 @@ RedisExec::exec_xrange( EvKeyCtx &ctx )
   }
   off = stream.x->bsearch_str( stream.x->stream, arg, arglen, false, tmp );
   if ( off < 0 )
-    return EXEC_SEND_ZEROARR;
+    return ERR_STREAM_ID;
   x   = (size_t) off;
   off = stream.x->bsearch_str( stream.x->stream, end, endlen, true, tmp );
   if ( off < 0 )
-    return EXEC_SEND_ZEROARR;
+    return ERR_STREAM_ID;
   y   = (size_t) off;
   i   = ( this->cmd == XRANGE_CMD ? x : y );
   j   = ( this->cmd == XRANGE_CMD ? y : x );
@@ -686,7 +686,7 @@ RedisExec::exec_xread( EvKeyCtx &ctx )
       /* find the id (arg) in the stream */
       off = stream.x->bsearch_str( stream.x->stream, arg, arglen, true, tmp );
       if ( off < 0 )
-        return ERR_BAD_ARGS;
+        return ERR_STREAM_ID;
       size_t cnt = 0,
              i   = (size_t) off,
              j   = stream.x->stream.count();
@@ -801,8 +801,11 @@ RedisExec::exec_xreadgroup( EvKeyCtx &ctx )
         return ERR_KV_STATUS;
       break;
   }
-  if ( stream.x->group_query( sa, maxcnt, grp, tmp ) != STRM_OK )
-    return ERR_NO_GROUP;
+  switch ( stream.x->group_query( sa, maxcnt, grp, tmp ) ) {
+    default: break;
+    case STRM_NOT_FOUND: return ERR_NO_GROUP;
+    case STRM_BAD_ID:    return ERR_STREAM_ID;
+  }
 
   size_t cnt = 0;
   /* if new data */
@@ -986,7 +989,7 @@ RedisExec::exec_xgroup( EvKeyCtx &ctx )
       }
       else {
         if ( this->msg.match_arg( 5, MARG( "mkstream" ), NULL ) == 0 )
-          return ERR_NO_GROUP; /* must mkstream to create it */
+          return ERR_KEY_DOESNT_EXIST; /* must mkstream to create it */
       }
       if ( ! stream.create( 8, 64 ) )
         return ERR_KV_STATUS;
@@ -1006,13 +1009,24 @@ RedisExec::exec_xgroup( EvKeyCtx &ctx )
         return ERR_BAD_ARGS;
     }
   }
-  if ( subcmd == 4 ) {
+  if ( subcmd == 4 ) { /* must have consumer to delete */
     if ( ! this->msg.get_arg( 4, sa.cname, sa.clen ) )
       return ERR_BAD_ARGS;
   }
   switch ( subcmd ) {
-    case 1: /* create key groupname id */
-    case 2: /* setid key groupname id */
+    case 1: /* create key groupname id (group must not exist) */
+      if ( stream.x->group_exists( sa, tmp ) )
+        return ERR_GROUP_EXISTS;
+       break;
+    case 2: /* setid key groupname id (group must exist) */
+      if ( ! stream.x->group_exists( sa, tmp ) )
+        return ERR_NO_GROUP;
+      break;
+    default: /* destroy or delconsumer */
+      break;
+  }
+  switch ( subcmd ) {
+    default: /* create or setid */
       while ( (xstat = stream.x->update_group( sa, tmp )) == STRM_FULL )
         if ( ! stream.realloc( 0, sa.glen + sa.idlen + 8, 0 ) )
           return ERR_BAD_ARGS;
@@ -1026,6 +1040,14 @@ RedisExec::exec_xgroup( EvKeyCtx &ctx )
   }
 
   if ( xstat == STRM_OK ) {
+    if ( subcmd >= 3 ) {
+      if ( sa.cnt > 0 ) /* if 0, nothing done */
+        ctx.flags |= EKF_KEYSPACE_EVENT | EKF_KEYSPACE_STREAM;
+      ctx.ival = sa.cnt;
+      if ( ctx.ival > 1 && subcmd == 3 ) /* 1 or 0 */
+        ctx.ival = 1;
+      return EXEC_SEND_INT;
+    } /* create or setid return "OK" */
     ctx.flags |= EKF_KEYSPACE_EVENT | EKF_KEYSPACE_STREAM;
     return EXEC_SEND_OK;
   }
@@ -1355,14 +1377,25 @@ RedisExec::exec_xpending( EvKeyCtx &ctx )
   }
   /* pending already built */
   if ( list_pending ) {
-    if ( id_cnt == 0 )
+    if ( id_cnt == 0 ) {
+      if ( ! stream.x->group_exists( sa, tmp ) )
+        return ERR_NO_GROUP;
       return EXEC_SEND_ZEROARR;
+    }
     q.prepend_array( id_cnt );
   }
   /* count, first, last, array of consumers */
   else {
-    q.append_uint( id_cnt );
-    if ( id_cnt != 0 ) {
+    if ( id_cnt == 0 ) {
+      if ( ! stream.x->group_exists( sa, tmp ) )
+        return ERR_NO_GROUP;
+      q.append_uint( id_cnt );
+      q.append_nil();
+      q.append_nil();
+      q.append_nil();
+    }
+    else {
+      q.append_uint( id_cnt );
       q.append_string( first_id.data, first_id.sz, first_id.data2,
                        first_id.sz2 );
       q.append_string( last_id.data, last_id.sz, last_id.data2, last_id.sz2 );
@@ -1380,11 +1413,6 @@ RedisExec::exec_xpending( EvKeyCtx &ctx )
       }
       ar.prepend_array( num_consumers );
       q.append_list( ar );
-    }
-    else {
-      q.append_nil();
-      q.append_nil();
-      q.append_nil();
     }
     q.prepend_array( 4 );
   }

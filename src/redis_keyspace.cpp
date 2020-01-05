@@ -129,7 +129,7 @@ RedisKeyspace::pub_keyspace_events( RedisExec &exec )
   const char * e      = NULL;
   size_t       elen   = 0;
   uint16_t     key_fl = exec.sub_route.rte.key_flags |
-                        EKF_KEYSPACE_DEL | EKF_KEYSPACE_TRIM;
+                        EKF_KEYSPACE_DEL | EKF_KEYSPACE_TRIM | EKF_IS_EXPIRED;
   bool         b      = true;
 #define EVT( STR ) e = STR; elen = sizeof( STR ) - 1
   /*printf( "key_fl %u\n", key_fl );*/
@@ -201,25 +201,46 @@ RedisKeyspace::pub_keyspace_events( RedisExec &exec )
     case XSETID_CMD:           EVT( "xsetid" ); break;
   }
 #undef EVT
+  RedisKeyspace ev( exec );
+  uint32_t i;
+  /* take care of expired keys */
+  if ( (exec.key_flags & EKF_IS_EXPIRED) != 0 ) {
+    ev.evt    = "expired"; 
+    ev.evtlen = 7;
+    for ( i = 0; i < exec.key_cnt; i++ ) {
+      uint16_t fl = exec.keys[ i ]->flags & key_fl;
+      if ( ( fl & ( EKF_KEYSPACE_FWD | EKF_KEYEVENT_FWD ) ) != 0 ) {
+        if ( ( fl & EKF_IS_EXPIRED ) != 0 ) {
+          ev.key    = (const char *) exec.keys[ i ]->kbuf.u.buf;
+          ev.keylen = exec.keys[ i ]->kbuf.keylen - 1;
+          if ( ( fl & EKF_KEYSPACE_FWD ) != 0 )
+            b &= ev.fwd_keyspace();
+          if ( ( fl & EKF_KEYEVENT_FWD ) != 0 )
+            b &= ev.fwd_keyevent();
+        }
+      }
+    }
+  }
+  /* if a cmd updates a key, a simple event is usually attached to it */
   if ( e != NULL ) {
-    RedisKeyspace ev( exec );
     if ( exec.key_cnt == 1 ) {
       uint16_t fl = exec.key->flags & key_fl;
       ev.key    = (const char *) exec.key->kbuf.u.buf;
       ev.keylen = exec.key->kbuf.keylen - 1;
       ev.evt    = e;
       ev.evtlen = elen;
-      if ( ( fl & EKF_KEYSPACE_FWD ) != 0 )
+      if ( ( fl & EKF_KEYSPACE_FWD ) != 0 ) /* __keyspace.. */
         b &= ev.fwd_keyspace();
-      if ( ( fl & EKF_KEYEVENT_FWD ) != 0 )
+      if ( ( fl & EKF_KEYEVENT_FWD ) != 0 ) /* __keyevent.. */
         b &= ev.fwd_keyevent();
-      if ( ( fl & EKF_LISTBLKD_NOT ) != 0 )
+      if ( ( fl & EKF_LISTBLKD_NOT ) != 0 ) /* __listblkd.. notify b(lr)pop */
         b &= ev.fwd_listblkd();
-      if ( ( fl & EKF_ZSETBLKD_NOT ) != 0 )
+      if ( ( fl & EKF_ZSETBLKD_NOT ) != 0 ) /* __zsetblkd.. notify bzpop */
         b &= ev.fwd_zsetblkd();
-      if ( ( fl & EKF_STRMBLKD_NOT ) != 0 )
+      if ( ( fl & EKF_STRMBLKD_NOT ) != 0 ) /* __strmblkd.. notify readers */
         b &= ev.fwd_strmblkd();
 
+      /* if a pop or xadd maxcount caused other events */
       if ( ( fl & ( EKF_KEYSPACE_DEL | EKF_KEYSPACE_TRIM ) ) != 0 ) {
         if ( ( fl & EKF_KEYSPACE_DEL ) != 0 ) {
           ev.evt    = "del";
@@ -240,7 +261,6 @@ RedisKeyspace::pub_keyspace_events( RedisExec &exec )
       }
     }
     else {
-      uint32_t i;
       ev.evt    = e;
       ev.evtlen = elen;
       for ( i = 0; i < exec.key_cnt; i++ ) {
@@ -282,7 +302,7 @@ RedisKeyspace::pub_keyspace_events( RedisExec &exec )
       }
     }
   }
-  else {
+  else { /* cmds that cause irregular event patterns */
     const char * first,
                * second;
     size_t       firstlen,
@@ -322,8 +342,7 @@ RedisKeyspace::pub_keyspace_events( RedisExec &exec )
         break;
     }
     if ( first != NULL ) {
-      RedisKeyspace ev( exec );
-      uint16_t fl = exec.key_flags & key_fl;
+      uint16_t fl = exec.keys[ 0 ]->flags & key_fl;
       ev.key    = (const char *) exec.keys[ 0 ]->kbuf.u.buf;
       ev.keylen = exec.keys[ 0 ]->kbuf.keylen - 1;
       ev.evt    = first;
@@ -343,6 +362,7 @@ RedisKeyspace::pub_keyspace_events( RedisExec &exec )
       }
 
       if ( second != NULL ) {
+        uint16_t fl = exec.keys[ 1 ]->flags & key_fl;
         ev.key    = (const char *) exec.keys[ 1 ]->kbuf.u.buf;
         ev.keylen = exec.keys[ 1 ]->kbuf.keylen - 1;
         ev.evt    = second;

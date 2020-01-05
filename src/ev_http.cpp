@@ -306,11 +306,11 @@ EvHttpService::on_msg( EvPublish &pub )
   RedisContinueMsg * cm = NULL;
   bool flow_good = true;
   int  status    = this->RedisExec::do_pub( pub, cm );
-  if ( ( status & REDIS_FORWARD_MSG ) != 0 ) {
+  if ( ( status & RPUB_FORWARD_MSG ) != 0 ) {
     flow_good = ( this->strm.pending() <= this->send_highwater );
     this->idle_push( flow_good ? EV_WRITE : EV_WRITE_HI );
   }
-  if ( ( status & REDIS_CONTINUE_MSG ) != 0 ) {
+  if ( ( status & RPUB_CONTINUE_MSG ) != 0 ) {
     this->push_continue_list( cm );
     this->idle_push( EV_PROCESS );
   }

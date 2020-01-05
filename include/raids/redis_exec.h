@@ -40,11 +40,12 @@ enum ExecStatus {
   /* errors v v v / ok ^ ^ ^ */
   ERR_KV_STATUS,        /* kstatus != ok */
   ERR_MSG_STATUS,       /* mstatus != ok */
-  ERR_BAD_ARGS,         /* argument mismatch or malformed command */
   ERR_BAD_CMD,          /* command unknown or not implmented */
+  ERR_BAD_ARGS,         /* argument mismatch or malformed command */
   ERR_BAD_TYPE,         /* data type not compatible with operator */
   ERR_BAD_RANGE,        /* index out of range */
   ERR_NO_GROUP,         /* group not found */
+  ERR_GROUP_EXISTS,     /* group exists */
   ERR_STREAM_ID,        /* stream id invalid */
   ERR_ALLOC_FAIL,       /* alloc returned NULL */
   ERR_KEY_EXISTS,       /* when set with NX operator */
@@ -479,7 +480,6 @@ struct RedisExec {
 
   /* result senders */
   void send_err( int status,  kv::KeyStatus kstatus = KEY_OK );
-  void send_err_string( const char *s,  size_t slen );
   void send_ok( void );
   void send_nil( void );
   void send_null( void );
@@ -492,38 +492,34 @@ struct RedisExec {
   void send_neg_one( void );
   void send_zero_string( void );
   void send_queued( void );
+
   size_t send_string( const void *data,  size_t size );
   size_t send_simple_string( const void *data,  size_t size );
   size_t send_concat_string( const void *data,  size_t size,
                              const void *data2,  size_t size2 );
-  void send_err_bad_args( void );
-  void send_err_kv( kv::KeyStatus kstatus );
-  void send_err_bad_cmd( void );
-  void send_err_bad_type( void );
-  void send_err_bad_range( void );
-  void send_err_no_group( void );
-  void send_err_stream_id( void );
-  void send_err_msg( RedisMsgStatus mstatus );
-  void send_err_alloc_fail( void );
-  void send_err_key_exists( void );
-  void send_err_key_doesnt_exist( void );
 
   bool save_string_result( EvKeyCtx &ctx,  const void *data,  size_t size );
   bool save_data( EvKeyCtx &ctx,  const void *data,  size_t size );
   void *save_data2( EvKeyCtx &ctx,  const void *data,  size_t size,
                                     const void *data2,  size_t size2 );
   void array_string_result( void );
+
+  void send_err_string( const char *s,  size_t slen );
+  void send_err_kv( kv::KeyStatus kstatus );
+  void send_err_msg( RedisMsgStatus mstatus );
+  void send_err_bad_cmd( void );
+  void send_err_fmt( int status );
 };
 
 enum RedisDoPubState {
-  REDIS_FORWARD_MSG  = 1, /* forward message to client */
-  REDIS_CONTINUE_MSG = 2  /* trigger continuation message */
+  RPUB_FORWARD_MSG  = 1, /* forward message to client */
+  RPUB_CONTINUE_MSG = 2  /* trigger continuation message */
 };
 
 enum RedisBlockState {
-  REDIS_BLOCK_CMD_TIMEOUT    = 1, /* a timer expired caused retry */
-  REDIS_BLOCK_CMD_KEY_CHANGE = 2, /* key change caused retry */
-  REDIS_BLOCK_CMD_COMPLETE   = 4  /* command continuation success */
+  RBLK_CMD_TIMEOUT    = 1, /* a timer expired caused retry */
+  RBLK_CMD_KEY_CHANGE = 2, /* key change caused retry */
+  RBLK_CMD_COMPLETE   = 4  /* command continuation success */
 };
 
 static inline void

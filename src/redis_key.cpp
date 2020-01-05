@@ -275,15 +275,24 @@ RedisExec::exec_pttl( EvKeyCtx &ctx )
 ExecStatus
 RedisExec::do_pttl( EvKeyCtx &ctx,  int64_t units )
 {
-  if ( this->exec_key_fetch( ctx ) == KEY_OK ) {
-    uint64_t exp = 0, upd;
-    this->kctx.get_stamps( exp, upd );
-    if ( exp > 0 )
-      exp -= this->kctx.ht.hdr.current_stamp;
-    ctx.ival = (int64_t) exp / units;
-  }
-  else {
-    ctx.ival = -1;
+  uint64_t exp = 0, upd;
+  /* (P)TTL key */
+  switch ( this->exec_key_fetch( ctx ) ) {
+    case KEY_OK:
+      this->kctx.get_stamps( exp, upd );
+      if ( exp != 0 ) {
+        exp -= this->kctx.ht.hdr.current_stamp;
+        ctx.ival = (int64_t) exp / units;
+      }
+      else {
+        ctx.ival = -1;
+      }
+      break;
+    case KEY_NOT_FOUND:
+      ctx.ival = -2;
+      break;
+    default:
+      return ERR_KV_STATUS;
   }
   return EXEC_SEND_INT;
 }

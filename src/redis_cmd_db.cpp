@@ -18,9 +18,9 @@ CommandDB cmd_db[] = {
            "NODES|REPLICATE|RESET|SAVECONFIG|SET-CONFIG-EPOCH|"
            "SETSLOT|SLAVES|SLOTS] ; Cluster cmds",
   "[\"cluster\",-2,['admin'],0,0,0]"},
-{ "READONLY", "; Enables readonly",
+{ "READONLY", " ; Enables readonly",
   "[\"readonly\",1,['fast'],0,0,0]" },
-{ "READWRITE", "; Enables readwrite",
+{ "READWRITE", " ; Enables readwrite",
   "[\"readwrite\",1,['fast'],0,0,0]" },
 
 #define CONNECTION_CNT 6
@@ -31,7 +31,7 @@ CommandDB cmd_db[] = {
   "[\"echo\",2,['fast'],0,0,0]" },
 { "PING", "[msg] ; Ping",
   "[\"ping\",-1,['stale','fast'],0,0,0]" },
-{ "QUIT", "; Close",
+{ "QUIT", " ; Close",
   "[\"quit\",-1,['admin','loading','stale'],0,0,0]" },
 { "SELECT", "idx ; Change DB",
   "[\"select\",2,['loading','fast'],0,0,0]" },
@@ -48,8 +48,8 @@ CommandDB cmd_db[] = {
   "[\"geopos\",-2,['readonly'],1,1,1]" },
 { "GEODIST", "key mem1 mem2 [unit] ; Get distance",
   "[\"geodist\",-4,['readonly'],1,1,1]" },
-{ "GEORADIUS", "key long lat rad m|km|ft|mi [WITHCOORD] [WITHDIST]"
-            "[WITHHASH] [COUNT count] [ASC|DESC] [STORE key] [STOREDIST key]"
+{ "GEORADIUS", "key long lat rad m|km|ft|mi [WITHCOORD] [WITHDIST] "
+            "[WITHHASH] [COUNT count] [ASC|DESC] [STORE key] [STOREDIST key] "
             "; Get members within geo spatual info",
   "[\"georadius\",-6,['write','movablekeys'],1,1,1]" },
 { "GEORADIUSBYMEMBER", "key mem (georadis opts) ; by mem",
@@ -60,7 +60,7 @@ CommandDB cmd_db[] = {
  */
 #define HASH_CNT 22
   /* hashes */
-{ "HAPPEND", "key field val [val ...]; Append value to a field",
+{ "HAPPEND", "key field val [val ...] ; Append value to a field",
   "[\"happend\",-4,['write','denyoom','fast'],1,1,1]" },
 { "HDEL", "key field [field ...] ; Delete fields",
   "[\"hdel\",-3,['write','fast'],1,1,1]" },
@@ -101,7 +101,7 @@ CommandDB cmd_db[] = {
   "[\"hstrlen\",3,['readonly','fast'],1,1,1]" },
 { "HVALS", "key ; Get all field values",
   "[\"hvals\",2,['readonly','sort_for_script'],1,1,1]" },
-{ "HSCAN", "key cursor [MATCH pat]; Iterate fields",
+{ "HSCAN", "key cursor [MATCH pat] ; Iterate fields",
   "[\"hscan\",-3,['readonly','random'],1,1,1]" },
 
 { "HUNION", "key [key ...] ; Union hashes",
@@ -151,7 +151,7 @@ CommandDB cmd_db[] = {
   "[\"pexpireat\",3,['write','fast'],1,1,1]" },
 { "PTTL", "key ; Get expire ttl in ms",
   "[\"pttl\",2,['readonly','fast'],1,1,1]" },
-{ "RANDOMKEY", "; Get a random key",
+{ "RANDOMKEY", " ; Get a random key",
   "[\"randomkey\",1,['readonly','random'],0,0,0]" },
 { "RENAME", "key newkey ; Rename key",
   "[\"rename\",3,['write'],1,2,1]" },
@@ -244,9 +244,9 @@ CommandDB cmd_db[] = {
 
 #define SERVER_CNT 20
   /* server */
-{ "BGREWRITEAOF", "; Asynchronously write append only file (AOF)",
+{ "BGREWRITEAOF", " ; Asynchronously write append only file (AOF)",
   "[\"bgrewriteaof\",1,['admin'],0,0,0]" },
-{ "BGSAVE", "; Async save dataset",
+{ "BGSAVE", " ; Async save dataset",
   "[\"bgsave\",-1,['admin'],0,0,0]" },
 { "CLIENT", "[KILL|LIST|GETNAME|PAUSE|REPLY|SETNAME] ; client ops",
   "[\"client\",-2,['admin','noscript'],0,0,0]" },
@@ -255,7 +255,7 @@ CommandDB cmd_db[] = {
 { "CONFIG", "[GET|REWRITE|SET|RESETSTAT] ; Get config details",
   "[\"config\",-2,['admin','loading','stale'],0,0,0]" },
 
-{ "DBSIZE", "; Get number of keys",
+{ "DBSIZE", " ; Get number of keys",
   "[\"dbsize\",1,['readonly','fast'],0,0,0]" },
 { "DEBUG", "OBJECT key ; Get debug info about key",
   "[\"debug\",-1,['admin','noscript'],0,0,0]" },
@@ -267,16 +267,16 @@ CommandDB cmd_db[] = {
   "[\"info\",-1,['loading','stale'],0,0,0]" },
 
 /* LOLWUT [VERSION ver] */
-{ "LASTSAVE", "; Get the unix timestamp of the last save",
+{ "LASTSAVE", " ; Get the unix timestamp of the last save",
   "[\"lastsave\",1,['random','fast'],0,0,0]" },
 { "MEMORY", "[DOCTOR|HELP|MALLOC-STATS|PURGE|STATS|USAGE] ; Mem stats",
   "[\"memory\",-2,['readonly'],0,0,0]" },
 /* MODULE [list|load|unload] */
-{ "MONITOR", "; Listen for requests received by server",
+{ "MONITOR", " ; Listen for requests received by server",
   "[\"monitor\",1,['admin','noscript'],0,0,0]" },
-{ "ROLE", "; What is role of the instance for replication",
+{ "ROLE", " ; What is role of the instance for replication",
   "[\"role\",1,['noscript','loading','stale'],0,0,0]" },
-{ "SAVE", "; Synchronously save",
+{ "SAVE", " ; Synchronously save",
   "[\"save\",1,['admin','noscript'],0,0,0]" },
 
 { "SHUTDOWN", "[nosave|save] ; Shutdown server",
@@ -286,9 +286,9 @@ CommandDB cmd_db[] = {
 /* REPLICAOF host port */
 { "SLOWLOG", "subcmd [arg] ; Manage slow queries log",
   "[\"slowlog\",-2,['admin'],0,0,0]" },
-{ "SYNC", "; Internal cmd for replication",
+{ "SYNC", " ; Internal cmd for replication",
   "[\"sync\",1,['readonly','admin','noscript'],0,0,0]" },
-{ "TIME", "; Get server time",
+{ "TIME", " ; Get server time",
   "[\"time\",1,['random','fast'],0,0,0]" },
 
 #define SET_CNT 15
@@ -323,7 +323,7 @@ CommandDB cmd_db[] = {
   "[\"sunion\",-2,['readonly','sort_for_script'],1,-1,1]" },
 { "SUNIONSTORE", "dest key [key ...] ; Union sets and store",
   "[\"sunionstore\",-3,['write','denyoom'],1,-1,1]" },
-{ "SSCAN", "key curs [MATCH pat] [COUNT cnt]; Iterate over set",
+{ "SSCAN", "key curs [MATCH pat] [COUNT cnt] ; Iterate over set",
   "[\"sscan\",-3,['readonly','random'],1,1,1]" },
 
 #define SORTED_SET_CNT 25
@@ -373,7 +373,7 @@ CommandDB cmd_db[] = {
 { "ZUNIONSTORE", "dest num key [key ...] WEIGHTS [] AGGR []",
   "[\"zunionstore\",-4,['write','denyoom','movablekeys'],0,0,0]" },
 
-{ "ZSCAN", "key curs [MATCH pat] [COUNT cnt]; Iterate over set",
+{ "ZSCAN", "key curs [MATCH pat] [COUNT cnt] ; Iterate over set",
   "[\"zscan\",-3,['readonly','random'],1,1,1]" },
 { "ZPOPMIN", "key [count] ; Remove up to count member(s) with lowest score",
   "[\"zpopmin\",-2,['write','fast'],1,1,1]" },
@@ -443,20 +443,20 @@ CommandDB cmd_db[] = {
 
 #define TRANSACTION_CNT 5
   /* transactions */
-{ "DISCARD", "; Discard cmds issued after multi",
+{ "DISCARD", " ; Discard cmds issued after multi",
   "[\"discard\",1,['noscript','fast'],0,0,0]" },
-{ "EXEC", "; Execute all commands after multi",
+{ "EXEC", " ; Execute all commands after multi",
   "[\"exec\",1,['noscript','skip_monitor'],0,0,0]" },
-{ "MULTI", "; Multi start transaction",
+{ "MULTI", " ; Multi start transaction",
   "[\"multi\",1,['noscript','fast'],0,0,0]" },
-{ "UNWATCH", "; Forget watched keys",
+{ "UNWATCH", " ; Forget watched keys",
   "[\"unwatch\",1,['noscript','fast'],0,0,0]" },
 { "WATCH", "key [key ...] ; Watch keys to determine multi/exec blk",
   "[\"watch\",-2,['readonly','noscript','fast'],1,-1,1]" },
 
 #define STREAM_CNT 14
   /* streams -- https://redis.io/topics/streams-intro */
-{ "XINFO", "[CONSUMERS key groupname] [GROUPS key] [STREAM key] [HELP]; "
+{ "XINFO", "[CONSUMERS key groupname] [GROUPS key] [STREAM key] [HELP] ; "
   "Get info for a stream",
   "[\"xinfo\",-2,['readonly'],2,2,1]" },
 { "XADD", "key id field string [field string ...] ; Add to stream at key, id",
@@ -472,7 +472,7 @@ CommandDB cmd_db[] = {
   "[\"xrevrange\",-4,['readonly'],1,1,1]" },
 { "XLEN", "key ; Number of items in a stream",
   "[\"xlen\",2,['readonly','fast'],1,1,1]" },
-{ "XREAD", "[COUNT N] [BLOCK N] STREAMS key [key ...] id [id ...]; "
+{ "XREAD", "[COUNT N] [BLOCK N] STREAMS key [key ...] id [id ...] ; "
   "Listen for new items on one or more streams",
   "[\"xread\",-3,['readonly','noscript','movablekeys'],1,1,1]" },
 { "XGROUP", "[CREATE key groupname id [mkstream]] [SETID key groupname id] "
@@ -483,16 +483,16 @@ CommandDB cmd_db[] = {
   "STREAMS key [key ...] id [id ...] ; Read streams through consumer group",
   "[\"xreadgroup\",-3,['write','noscript','movablekeys'],1,1,1]" },
 
-{ "XACK", "key group entry-id [id ...]; Remove entry-id(s)",
+{ "XACK", "key group entry-id [id ...] ; Remove entry-id(s)",
   "[\"xack\",-4,['write','fast'],1,1,1]" },
 { "XCLAIM", "key group consumer min-idle-time id [id ...] "
-  "[IDLE ms] [TIME ms-utc] [RETRYCOUNT cnt] [FORCE] [JUSTID]; "
+  "[IDLE ms] [TIME ms-utc] [RETRYCOUNT cnt] [FORCE] [JUSTID] ; "
   "Recover consumer stream",
   "[\"xclaim\",-5,['write','fast'],1,1,1]" },
-{ "XPENDING", "key group [start end count] [consumer]; "
+{ "XPENDING", "key group [start end count] [consumer] ; "
   "Get the unread entry-ids",
   "[\"xpending\",-3,['readonly'],1,1,1]" },
-{ "XSETID", "key group id; Set the last id of a group",
+{ "XSETID", "key group id ; Set the last id of a group",
   "[\"xpending\",4,['write','fast'],1,1,1]" }
 };
 
