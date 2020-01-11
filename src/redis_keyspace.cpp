@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <sys/time.h>
 #include <raids/redis_exec.h>
 #include <raids/redis_keyspace.h>
 #include <raids/ev_publish.h>
@@ -53,7 +54,6 @@ RedisKeyspace::db_str( size_t off )
   }
   return off;
 }
-
 /* append "@db__:" to subject */
 inline size_t
 RedisKeyspace::db_to_subj( size_t off )
@@ -80,7 +80,7 @@ RedisKeyspace::make_bsubj( const char *blk )
   this->subj[ subj_len ] = '\0';
   return subj_len;
 }
-
+/* blk = blocking subject (listblkd, zsetblkd, strmblkd), or keyspace */
 bool
 RedisKeyspace::fwd_bsubj( const char *blk )
 {
@@ -92,21 +92,16 @@ RedisKeyspace::fwd_bsubj( const char *blk )
                  this->exec.sub_id, kv_crc_c( this->subj, subj_len, 0 ),
                  NULL, 0, MD_STRING, ':' );
   /*printf( "%s <- %s\n", this->subj, this->evt );*/
-  this->exec.sub_route.rte.forward_msg( pub, NULL, 0, NULL );
-  return true;
+  return this->exec.sub_route.rte.forward_msg( pub, NULL, 0, NULL );
 }
-
 /* publish __keyevent@N__:event <- key */
 bool
 RedisKeyspace::fwd_keyevent( void )
 {
-  static const uint8_t kevt[ 8 ] = { '_', '_', 'k', 'e', 'y', 'e', 'v', 'e' };
   size_t subj_len = 20 + this->evtlen;
   if ( ! this->alloc_subj( subj_len ) )
     return false;
-  ::memcpy( this->subj, kevt, 8 );
-  this->subj[ 8 ] = 'n';
-  this->subj[ 9 ] = 't';
+  ::memcpy( this->subj, "__keyevent", 10 );
   subj_len = this->db_to_subj( 10 );
 
   ::memcpy( &this->subj[ subj_len ], this->evt, this->evtlen );
@@ -117,20 +112,112 @@ RedisKeyspace::fwd_keyevent( void )
                  this->exec.sub_id, kv_crc_c( this->subj, subj_len, 0 ),
                  NULL, 0, MD_STRING, ';' );
   /*printf( "%s <- %s\n", this->subj, this->key );*/
-  this->exec.sub_route.rte.forward_msg( pub, NULL, 0, NULL );
-  return true;
+  return this->exec.sub_route.rte.forward_msg( pub, NULL, 0, NULL );
 }
+/* publish __monitor_@N__:peer_address <- [ msg, result, time ] */
+bool
+RedisKeyspace::fwd_monitor( void )
+{
+  size_t addr_len = this->exec.route_name.peer_strlen();
+  if ( ! this->alloc_subj( 20 + addr_len ) )
+    return false;
+  ::memcpy( this->subj, "__monitor_", 10 );
 
+  char  * timestamp,
+        * result;
+  StreamBuf & strm  = this->exec.strm;
+  size_t  subj_len  = this->db_to_subj( 10 ),
+          pack_sz   = this->exec.msg.pack_size(),
+          start     = this->exec.strm_start,
+          result_sz = strm.pending() - start,
+          msg_sz    = /* *3 \r\n */
+                       4 +
+                      pack_sz +
+                      ( result_sz != 0 ? result_sz : 5 ) +
+                      /* $17 \r\n */
+                       3  + 2 +
+                      /* 1578737366.890420 \r\n*/
+                       17 + 2;
+  timeval tv;
+  char  * msg = strm.alloc_temp( msg_sz );
+
+  if ( msg == NULL )
+    return false;
+  if ( addr_len > 0 ) {
+    ::memcpy( &this->subj[ subj_len ], this->exec.route_name.peer_address,
+              addr_len );
+    subj_len += addr_len;
+    this->subj[ subj_len ] = '\0';
+  }
+  ::memcpy( msg, "*3\r\n", 4 );
+  this->exec.msg.pack( &msg[ 4 ] );
+
+  result = &msg[ 4 + pack_sz ];
+  if ( result_sz == 0 ) {
+    ::memcpy( result, "*-1\r\n", 5 ); /* null */
+    result_sz = 5;
+  }
+  else {
+    if ( strm.sz > 0 )
+      strm.flush();
+    size_t off = 0;
+    for ( size_t i = 0; i < strm.idx; i++ ) {
+      char * base = (char *) strm.iov[ i ].iov_base;
+      size_t len  = strm.iov[ i ].iov_len;
+      if ( off >= start )
+        ::memcpy( &result[ off - start ], base, len );
+      else if ( off + len > start ) {
+        size_t j = ( off + len ) - start;
+        ::memcpy( &result[ 0 ], &base[ i ], len - j );
+      }
+      off += len;
+    }
+  }
+
+  timestamp = &msg[ 4 + pack_sz + result_sz ];
+  ::memcpy( timestamp, "$17\r\n", 5 );
+  ::gettimeofday( &tv, NULL );
+  uint_to_str( tv.tv_sec, &timestamp[ 5 ], 10 ); /* in year 2288 == 11 */
+  tv.tv_usec += 1000000; /* make all usec digits show */
+  uint_to_str( tv.tv_usec, &timestamp[ 15 ], 7 );
+  timestamp[ 15 ] = '.';
+  crlf( timestamp, 17 + 5 );
+
+  EvPublish pub( this->subj, subj_len, NULL, 0, msg, msg_sz,
+                 this->exec.sub_id, kv_crc_c( this->subj, subj_len, 0 ),
+                 NULL, 0, MD_MESSAGE, '<' );
+  return this->exec.sub_route.rte.forward_msg( pub, NULL, 0, NULL );
+}
 /* given a command and keys, publish keyspace events */
 bool
 RedisKeyspace::pub_keyspace_events( RedisExec &exec )
 {
   /* translate cmd into an event */
-  const char * e      = NULL;
-  size_t       elen   = 0;
-  uint16_t     key_fl = exec.sub_route.rte.key_flags |
-                        EKF_KEYSPACE_DEL | EKF_KEYSPACE_TRIM | EKF_IS_EXPIRED;
-  bool         b      = true;
+  RedisKeyspace ev( exec );
+  const char  * e      = NULL;
+  size_t        elen   = 0;
+  uint32_t      i;
+  uint16_t      key_fl = exec.sub_route.rte.key_flags |
+                         EKF_KEYSPACE_DEL | EKF_KEYSPACE_TRIM | EKF_IS_EXPIRED;
+  bool          b      = true;
+  /* take care of expired keys */
+  if ( ( exec.key_flags & EKF_IS_EXPIRED ) != 0 ) {
+    ev.evt    = "expired"; 
+    ev.evtlen = 7;
+    for ( i = 0; i < exec.key_cnt; i++ ) {
+      uint16_t fl = exec.keys[ i ]->flags & key_fl;
+      if ( ( fl & ( EKF_KEYSPACE_FWD | EKF_KEYEVENT_FWD ) ) != 0 ) {
+        if ( ( fl & EKF_IS_EXPIRED ) != 0 ) {
+          ev.key    = (const char *) exec.keys[ i ]->kbuf.u.buf;
+          ev.keylen = exec.keys[ i ]->kbuf.keylen - 1;
+          if ( ( fl & EKF_KEYSPACE_FWD ) != 0 )
+            b &= ev.fwd_keyspace();
+          if ( ( fl & EKF_KEYEVENT_FWD ) != 0 )
+            b &= ev.fwd_keyevent();
+        }
+      }
+    }
+  }
 #define EVT( STR ) e = STR; elen = sizeof( STR ) - 1
   /*printf( "key_fl %u\n", key_fl );*/
   switch ( exec.cmd ) {
@@ -201,103 +288,53 @@ RedisKeyspace::pub_keyspace_events( RedisExec &exec )
     case XSETID_CMD:           EVT( "xsetid" ); break;
   }
 #undef EVT
-  RedisKeyspace ev( exec );
-  uint32_t i;
-  /* take care of expired keys */
-  if ( (exec.key_flags & EKF_IS_EXPIRED) != 0 ) {
-    ev.evt    = "expired"; 
-    ev.evtlen = 7;
-    for ( i = 0; i < exec.key_cnt; i++ ) {
-      uint16_t fl = exec.keys[ i ]->flags & key_fl;
-      if ( ( fl & ( EKF_KEYSPACE_FWD | EKF_KEYEVENT_FWD ) ) != 0 ) {
-        if ( ( fl & EKF_IS_EXPIRED ) != 0 ) {
-          ev.key    = (const char *) exec.keys[ i ]->kbuf.u.buf;
-          ev.keylen = exec.keys[ i ]->kbuf.keylen - 1;
-          if ( ( fl & EKF_KEYSPACE_FWD ) != 0 )
-            b &= ev.fwd_keyspace();
-          if ( ( fl & EKF_KEYEVENT_FWD ) != 0 )
-            b &= ev.fwd_keyevent();
-        }
-      }
-    }
-  }
   /* if a cmd updates a key, a simple event is usually attached to it */
   if ( e != NULL ) {
-    if ( exec.key_cnt == 1 ) {
-      uint16_t fl = exec.key->flags & key_fl;
-      ev.key    = (const char *) exec.key->kbuf.u.buf;
-      ev.keylen = exec.key->kbuf.keylen - 1;
-      ev.evt    = e;
-      ev.evtlen = elen;
-      if ( ( fl & EKF_KEYSPACE_FWD ) != 0 ) /* __keyspace.. */
-        b &= ev.fwd_keyspace();
-      if ( ( fl & EKF_KEYEVENT_FWD ) != 0 ) /* __keyevent.. */
-        b &= ev.fwd_keyevent();
-      if ( ( fl & EKF_LISTBLKD_NOT ) != 0 ) /* __listblkd.. notify b(lr)pop */
-        b &= ev.fwd_listblkd();
-      if ( ( fl & EKF_ZSETBLKD_NOT ) != 0 ) /* __zsetblkd.. notify bzpop */
-        b &= ev.fwd_zsetblkd();
-      if ( ( fl & EKF_STRMBLKD_NOT ) != 0 ) /* __strmblkd.. notify readers */
-        b &= ev.fwd_strmblkd();
-
-      /* if a pop or xadd maxcount caused other events */
-      if ( ( fl & ( EKF_KEYSPACE_DEL | EKF_KEYSPACE_TRIM ) ) != 0 ) {
-        if ( ( fl & EKF_KEYSPACE_DEL ) != 0 ) {
-          ev.evt    = "del";
-          ev.evtlen = 3;
-          if ( ( fl & EKF_KEYSPACE_FWD ) != 0 )
-            b &= ev.fwd_keyspace();
-          if ( ( fl & EKF_KEYEVENT_FWD ) != 0 )
-            b &= ev.fwd_keyevent();
-        }
-        else if ( ( fl & EKF_KEYSPACE_TRIM ) != 0 ) {
-          ev.evt    = "xtrim";
-          ev.evtlen = 5;
-          if ( ( fl & EKF_KEYSPACE_FWD ) != 0 )
-            b &= ev.fwd_keyspace();
-          if ( ( fl & EKF_KEYEVENT_FWD ) != 0 )
-            b &= ev.fwd_keyevent();
-        }
+    ev.evt    = e;
+    ev.evtlen = elen;
+    for ( i = 0; i < exec.key_cnt; i++ ) {
+      uint16_t fl = exec.keys[ i ]->flags & key_fl;
+      if ( ( fl & ( EKF_KEYSPACE_FWD | EKF_KEYEVENT_FWD |
+                    EKF_LISTBLKD_NOT | EKF_ZSETBLKD_NOT |
+                    EKF_STRMBLKD_NOT ) ) != 0 ) {
+        ev.key    = (const char *) exec.keys[ i ]->kbuf.u.buf;
+        ev.keylen = exec.keys[ i ]->kbuf.keylen - 1;
+        if ( ( fl & EKF_KEYSPACE_FWD ) != 0 ) /* __keyspace.. */
+          b &= ev.fwd_keyspace();
+        if ( ( fl & EKF_KEYEVENT_FWD ) != 0 ) /* __keyevent.. */
+          b &= ev.fwd_keyevent();
+        if ( ( fl & EKF_LISTBLKD_NOT ) != 0 ) /* __listblkd.. -> b(lr)pop */
+          b &= ev.fwd_listblkd();
+        if ( ( fl & EKF_ZSETBLKD_NOT ) != 0 ) /* __zsetblkd.. -> bzpop */
+          b &= ev.fwd_zsetblkd();
+        if ( ( fl & EKF_STRMBLKD_NOT ) != 0 ) /* __strmblkd.. -> str readers */
+          b &= ev.fwd_strmblkd();
       }
     }
-    else {
-      ev.evt    = e;
-      ev.evtlen = elen;
+    /* if a pop or xadd maxcount caused other events */
+    if ( ( exec.key_flags & ( EKF_KEYSPACE_DEL | EKF_KEYSPACE_TRIM ) ) != 0 ) {
       for ( i = 0; i < exec.key_cnt; i++ ) {
         uint16_t fl = exec.keys[ i ]->flags & key_fl;
         if ( ( fl & ( EKF_KEYSPACE_FWD | EKF_KEYEVENT_FWD |
-                      EKF_LISTBLKD_NOT | EKF_ZSETBLKD_NOT |
-                      EKF_STRMBLKD_NOT ) ) != 0 ) {
+                      EKF_KEYSPACE_DEL | EKF_KEYSPACE_TRIM ) ) != 0 ) {
           ev.key    = (const char *) exec.keys[ i ]->kbuf.u.buf;
           ev.keylen = exec.keys[ i ]->kbuf.keylen - 1;
-          if ( ( fl & EKF_KEYSPACE_FWD ) != 0 )
-            b &= ev.fwd_keyspace();
-          if ( ( fl & EKF_KEYEVENT_FWD ) != 0 )
-            b &= ev.fwd_keyevent();
-          if ( ( fl & EKF_LISTBLKD_NOT ) != 0 )
-            b &= ev.fwd_listblkd();
-          if ( ( fl & EKF_ZSETBLKD_NOT ) != 0 )
-            b &= ev.fwd_zsetblkd();
-          if ( ( fl & EKF_STRMBLKD_NOT ) != 0 )
-            b &= ev.fwd_strmblkd();
-        }
-      }
-      if ( ( exec.key_flags & EKF_KEYSPACE_DEL ) != 0 ) {
-        ev.evt    = "del";
-        ev.evtlen = 3;
-        for ( i = 0; i < exec.key_cnt; i++ ) {
-          uint16_t fl = exec.keys[ i ]->flags & key_fl;
-          if ( ( fl & ( EKF_KEYSPACE_FWD | EKF_KEYEVENT_FWD ) ) != 0 ) {
-            if ( ( fl & EKF_KEYSPACE_DEL ) != 0 ) {
-              ev.key    = (const char *) exec.keys[ i ]->kbuf.u.buf;
-              ev.keylen = exec.keys[ i ]->kbuf.keylen - 1;
-              if ( ( fl & EKF_KEYSPACE_FWD ) != 0 )
-                b &= ev.fwd_keyspace();
-              if ( ( fl & EKF_KEYEVENT_FWD ) != 0 )
-                b &= ev.fwd_keyevent();
-            }
+          if ( ( fl & EKF_KEYSPACE_DEL ) != 0 ) {
+            ev.evt    = "del";
+            ev.evtlen = 3;
+            if ( ( fl & EKF_KEYSPACE_FWD ) != 0 )
+              b &= ev.fwd_keyspace();
+            if ( ( fl & EKF_KEYEVENT_FWD ) != 0 )
+              b &= ev.fwd_keyevent();
           }
-          /* no xtrim possible with multiple keys */
+          else if ( ( fl & EKF_KEYSPACE_TRIM ) != 0 ) {
+            ev.evt    = "xtrim";
+            ev.evtlen = 5;
+            if ( ( fl & EKF_KEYSPACE_FWD ) != 0 )
+              b &= ev.fwd_keyspace();
+            if ( ( fl & EKF_KEYEVENT_FWD ) != 0 )
+              b &= ev.fwd_keyevent();
+          }
         }
       }
     }
@@ -374,5 +411,7 @@ RedisKeyspace::pub_keyspace_events( RedisExec &exec )
       }
     }
   }
+  if ( ( exec.sub_route.rte.key_flags & EKF_MONITOR ) != 0 )
+    b &= ev.fwd_monitor();
   return b;
 }

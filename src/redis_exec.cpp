@@ -57,6 +57,7 @@ RedisExec::release( void )
     this->continue_tab.release();
   }
   this->wrk.release_all();
+  this->monitor_state = false;
 }
 
 size_t
@@ -416,9 +417,10 @@ RedisExec::exec( EvSocket *svc,  EvPrefetchQueue *q )
   }
   else if ( (size_t) -this->arity > this->argc )
     return ERR_BAD_ARGS;
-  this->cmd_flags = get_cmd_flag_mask( this->cmd );
-  this->key_flags = 0;
-  this->step_mask = 0;
+  this->cmd_flags  = get_cmd_flag_mask( this->cmd );
+  this->key_flags  = EKF_MONITOR; /* monitor always published if subscribed */
+  this->step_mask  = 0;
+  this->strm_start = this->strm.pending();
   if ( test_cmd_mask( this->cmd_flags, CMD_MOVABLEKEYS_FLAG ) )
     if ( ! this->locate_movablekeys() )
       return ERR_BAD_ARGS;
@@ -1205,8 +1207,10 @@ RedisExec::exec_monitor( void )
   /* monitor commands:
    * 1339518083.107412 [0 127.0.0.1:60866] "keys" "*"
    * 1339518087.877697 [0 127.0.0.1:60866] "dbsize" */
-  this->send_ok();
-  return EXEC_OK;
+  this->monitor_state = ! this->monitor_state;
+  if ( this->monitor_state )
+    return this->do_psubscribe( "__monitor_@*", 12 );
+  return this->do_punsubscribe( "__monitor_@*", 12 );
 }
 
 ExecStatus

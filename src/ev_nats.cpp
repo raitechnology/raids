@@ -115,7 +115,7 @@ EvNatsListen::accept( void )
   static int on = 1;
   struct sockaddr_storage addr;
   socklen_t addrlen = sizeof( addr );
-  int sock = ::accept( this->fd, (struct sockaddr *) &addr, &addrlen );
+  int sock = ::accept( this->rte.fd, (struct sockaddr *) &addr, &addrlen );
   if ( sock < 0 ) {
     if ( errno != EINTR ) {
       if ( errno != EAGAIN )
@@ -147,15 +147,19 @@ EvNatsListen::accept( void )
     uint64_t h1, h2;
     struct sockaddr_storage myaddr;
     socklen_t myaddrlen = sizeof( myaddr );
-    if ( ::getsockname( sock, (sockaddr *) &myaddr, &myaddrlen ) == 0 )
-      port = ntohs( ((sockaddr_in *) &myaddr)->sin_port );
+    if ( ::getsockname( sock, (sockaddr *) &myaddr, &myaddrlen ) == 0 ) {
+      if ( myaddr.ss_family == AF_INET )
+        port = ntohs( ((sockaddr_in *) &myaddr)->sin_port );
+      else if ( myaddr.ss_family == AF_INET6 )
+        port = ntohs( ((sockaddr_in6 *) &myaddr)->sin6_port );
+    }
     this->poll.map->hdr.get_hash_seed( KV_DB_COUNT-1, h1, h2 );
     init_server_info( h1, h2, port );
   }
-  c->fd = sock;
+  c->rte.fd = sock;
   c->initialize_state();
   c->idle_push( EV_WRITE_HI );
-  if ( this->poll.add_sock( c ) < 0 ) {
+  if ( this->poll.add_sock( c, (struct sockaddr *) &addr, "nats" ) < 0 ) {
     printf( "failed to add sock %d\n", sock );
     ::close( sock );
     c->push_free_list();
@@ -419,9 +423,10 @@ EvNatsService::add_sub( void )
       this->add_wild( xsubj );
     }
     else {
-      uint32_t rcnt = this->poll.sub_route.add_route( xsubj.hash(), this->fd );
+      uint32_t rcnt = this->poll.sub_route.add_route( xsubj.hash(),
+                                                      this->rte.fd );
       this->poll.notify_sub( xsubj.hash(), xsubj.str, xsubj.len,
-                             this->fd, rcnt, 'N' );
+                             this->rte.fd, rcnt, 'N' );
     }
   }
 #if 0
@@ -462,9 +467,10 @@ EvNatsService::add_wild( NatsStr &xsubj )
       this->map.rem_wild( h, xsubj );
       return;
     }
-    rcnt = this->poll.sub_route.add_pattern_route( h, this->fd, cvt.prefixlen );
+    rcnt = this->poll.sub_route.add_pattern_route( h, this->rte.fd,
+                                                   cvt.prefixlen );
     this->poll.notify_psub( h, buf, cvt.off, xsubj.str, cvt.prefixlen,
-                            this->fd, rcnt, 'N' );
+                            this->rte.fd, rcnt, 'N' );
   }
 }
 
@@ -496,9 +502,10 @@ EvNatsService::rem_wild( NatsStr &xsubj )
   if ( cvt.convert_rv( xsubj.str, xsubj.len ) == 0 ) {
     h = kv_crc_c( xsubj.str, cvt.prefixlen,
                   this->poll.sub_route.prefix_seed( cvt.prefixlen ) );
-    rcnt = this->poll.sub_route.del_pattern_route( h, this->fd, cvt.prefixlen );
+    rcnt = this->poll.sub_route.del_pattern_route( h, this->rte.fd,
+                                                   cvt.prefixlen );
     this->poll.notify_punsub( h, buf, cvt.off, xsubj.str, cvt.prefixlen,
-                              this->fd, rcnt, 'N' );
+                              this->rte.fd, rcnt, 'N' );
     this->map.rem_wild( h, xsubj );
   }
 }
@@ -523,9 +530,9 @@ EvNatsService::rem_sid( uint32_t max_msgs )
         else {
           uint32_t rcnt = 0;
           if ( this->map.sub_map.find_by_hash( h ) == NULL )
-            rcnt = this->poll.sub_route.del_route( h, this->fd );
+            rcnt = this->poll.sub_route.del_route( h, this->rte.fd );
           this->poll.notify_unsub( h, xsubj.str, xsubj.len,
-                                   this->fd, rcnt, 'N' );
+                                   this->rte.fd, rcnt, 'N' );
         }
       }
       if ( status != NATS_OK ) {
@@ -570,9 +577,9 @@ EvNatsService::rem_all_sub( void )
     if ( xsubj.is_wild() )
       this->rem_wild( xsubj );
     else {
-      uint32_t rcnt = this->poll.sub_route.del_route( rt->hash, this->fd );
+      uint32_t rcnt = this->poll.sub_route.del_route( rt->hash, this->rte.fd );
       this->poll.notify_unsub( rt->hash, xsubj.str, xsubj.len,
-                               this->fd, rcnt, 'N' );
+                               this->rte.fd, rcnt, 'N' );
     }
   }
 }
@@ -584,7 +591,7 @@ EvNatsService::fwd_pub( void )
   EvPublish pub( this->subject, this->subject_len,
                  this->reply, this->reply_len,
                  this->msg_ptr, this->msg_len,
-                 this->fd, xsub.hash(),
+                 this->rte.fd, xsub.hash(),
                  this->msg_len_ptr, this->msg_len_digits,
                  MD_STRING, 'p' );
   return this->poll.forward_msg( pub, NULL, 0, NULL );
@@ -595,7 +602,7 @@ EvNatsService::on_msg( EvPublish &pub )
 {
   bool flow_good = true;
 
-  if ( this->echo || (uint32_t) this->fd != pub.src_route ) {
+  if ( this->echo || (uint32_t) this->rte.fd != pub.src_route ) {
     for ( uint8_t cnt = 0; cnt < pub.prefix_cnt; cnt++ ) {
       NatsStr       xsid;
       NatsLookup    look;
@@ -615,9 +622,9 @@ EvNatsService::on_msg( EvPublish &pub )
             uint32_t rcnt = 0;
             /* check for duplicate hashes */
             if ( this->map.sub_map.find_by_hash( h ) == NULL )
-              rcnt = this->poll.sub_route.del_route( h, this->fd );
+              rcnt = this->poll.sub_route.del_route( h, this->rte.fd );
             this->poll.notify_unsub( h, xsubj.str, xsubj.len,
-                                     this->fd, rcnt, 'N' );
+                                     this->rte.fd, rcnt, 'N' );
           }
         }
       }
@@ -842,7 +849,7 @@ finished:; /* update amount of buffer available */
 void
 EvNatsService::release( void )
 {
-  //printf( "nats release fd=%d\n", this->fd );
+  //printf( "nats release fd=%d\n", this->rte.fd );
   this->rem_all_sub();
   this->map.release();
   this->EvConnection::release_buffers();

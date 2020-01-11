@@ -67,6 +67,7 @@ struct EvSocket;
 struct EvPublish;
 struct RedisExec;
 struct RouteDB;
+struct RouteName;
 struct KvPubSub;
 struct ExecStreamCtx;
 
@@ -125,6 +126,7 @@ struct RedisExec {
   kv::WorkAllocT< 1024 > wrk; /* kv work buffer, reset before each key lookup */
   kv::DLinkList<RedisContinueMsg> cont_list, wait_list;
   StreamBuf      & strm;      /* output buffer, result of command execution */
+  size_t           strm_start;/* output offset before command starts */
   RedisMsg         msg;       /* current command msg */
   EvKeyCtx       * key,       /* currently executing key */
                 ** keys;      /* all of the keys in command */
@@ -133,8 +135,8 @@ struct RedisExec {
   RedisMultiExec * multi;     /* MULTI .. EXEC block */
   RedisCmd         cmd;       /* current command (GET_CMD) */
   RedisMsgStatus   mstatus;   /* command message parse status */
-  uint8_t          blk_state, /* if blocking command timed out */
-                   pad;
+  uint8_t          blk_state; /* if blocking cmd timed out (RBLK_CMD_TIMEOUT) */
+  bool             monitor_state; /* if monitor is active (true=yes) */
   uint16_t         cmd_flags, /* command flags (CMD_READONLY_FLAG) */
                    key_flags; /* EvKeyFlags, if a key has a keyspace event */
   int16_t          arity,     /* number of command args */
@@ -147,16 +149,17 @@ struct RedisExec {
   RedisPatternMap  pat_tab;   /* pub/sub pattern sub table */
   RedisContinueMap continue_tab; /* blocked continuations */
   RouteDB        & sub_route; /* map subject to sub_id */
+  RouteName      & route_name; /* name and address of this peer */
   uint32_t         sub_id,    /* fd, set this after accept() */
                    next_event_id; /* next event id for timers */
   uint64_t         timer_id;  /* timer id of this service */
 
   RedisExec( kv::HashTab &map,  uint32_t ctx_id,  StreamBuf &s,
-             RouteDB &rdb ) :
-      kctx( map, ctx_id, NULL ), strm( s ),
+             RouteDB &rdb,  RouteName &rt ) :
+      kctx( map, ctx_id, NULL ), strm( s ), strm_start( s.pending() ),
       key( 0 ), keys( 0 ), key_cnt( 0 ), key_done( 0 ), multi( 0 ),
-      blk_state( 0 ), key_flags( 0 ), sub_route( rdb ), sub_id( ~0U ),
-      next_event_id( 0 ), timer_id( 0 ) {
+      blk_state( 0 ), monitor_state( false ), key_flags( 0 ), sub_route( rdb ),
+      route_name( rt ), sub_id( ~0U ), next_event_id( 0 ), timer_id( 0 ) {
     this->kctx.ht.hdr.get_hash_seed( this->kctx.db_num, this->seed,
                                      this->seed2 );
     this->kctx.set( kv::KEYCTX_NO_COPY_ON_READ );

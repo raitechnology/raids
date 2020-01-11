@@ -36,7 +36,6 @@ struct RedisMsg {
     BULK_STRING   = '$', /* 36 */
     BULK_ARRAY    = '*'  /* 42 */
   };
-
   DataType type;
   int64_t  len;   /* size of string or array, no value for ints */
 
@@ -47,10 +46,17 @@ struct RedisMsg {
   };
 
 #define DTBit( t ) ( 1U << ( (uint8_t) t - (uint8_t) RedisMsg::BULK_STRING ) )
+  static const uint32_t string_bits = DTBit( SIMPLE_STRING ) |
+                                      DTBit( BULK_STRING );
   bool is_string( void ) const {
-    static const uint32_t valid_bits = DTBit( SIMPLE_STRING ) |
-                                       DTBit( BULK_STRING );
-    return ( DTBit( this->type ) & valid_bits ) != 0;
+    return ( DTBit( this->type ) & string_bits ) != 0;
+  }
+  static const uint32_t all_data_bits = string_bits |
+                                        DTBit( ERROR_STRING ) |
+                                        DTBit( INTEGER_VALUE ) |
+                                        DTBit( BULK_ARRAY );
+  static inline bool valid_type_char( char b ) {
+    return b >= '$' && b <= '$' + 31 && ( DTBit( b ) & all_data_bits ) != 0;
   }
   /* copy msg reference */
   void ref( RedisMsg &m ) {

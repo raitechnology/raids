@@ -69,10 +69,10 @@ EvShmClient::init_exec( void )
   if ( ::pipe2( this->pfd, O_NONBLOCK ) < 0 )
     return -1;
   this->exec = new ( e ) RedisExec( *this->map, this->ctx_id, *this,
-                                    this->poll.sub_route );
-  this->fd = this->pfd[ 0 ];
-  this->exec->sub_id = this->fd;
-  this->poll.add_sock( this );
+                                    this->poll.sub_route, this->rte );
+  this->rte.fd = this->pfd[ 0 ];
+  this->exec->sub_id = this->rte.fd;
+  this->poll.add_sock( this, NULL, "shm" );
   return 0;
 }
 
@@ -160,10 +160,10 @@ EvShmClient::stream_to_msg( void )
 EvShmSvc::~EvShmSvc() {}
 int EvShmSvc::init_poll( void ) {
   int status;
-  this->fd = 0;
-  if ( (status = this->poll.add_sock( this )) == 0 )
+  this->rte.fd = 0;
+  if ( (status = this->poll.add_sock( this, NULL, "shm-svc" )) == 0 )
     return 0;
-  this->fd = -1;
+  this->rte.fd = -1;
   return status;
 }
 bool EvShmSvc::timer_expire( uint64_t,  uint64_t ) { return false; }

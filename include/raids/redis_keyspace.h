@@ -48,6 +48,8 @@ struct RedisKeyspace {
   bool fwd_strmblkd( void ) { return this->fwd_bsubj( "__strmblkd" ); }
   /* publish __keyevent@N__:event <- key  (different than :key <- event above)*/
   bool fwd_keyevent( void );
+  /* publish __monitor_@N__ <- cmd */
+  bool fwd_monitor( void );
   /* convert command into keyspace events and publish them */
   static bool pub_keyspace_events( RedisExec &e );
 };

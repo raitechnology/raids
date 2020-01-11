@@ -49,7 +49,7 @@ EvMemcachedListen::accept( void )
   static int on = 1;
   struct sockaddr_storage addr;
   socklen_t addrlen = sizeof( addr );
-  int sock = ::accept( this->fd, (struct sockaddr *) &addr, &addrlen );
+  int sock = ::accept( this->rte.fd, (struct sockaddr *) &addr, &addrlen );
   if ( sock < 0 ) {
     if ( errno != EINTR ) {
       if ( errno != EAGAIN )
@@ -80,8 +80,8 @@ EvMemcachedListen::accept( void )
     perror( "warning: TCP_NODELAY" );
 
   ::fcntl( sock, F_SETFL, O_NONBLOCK | ::fcntl( sock, F_GETFL ) );
-  c->fd = sock;
-  if ( this->poll.add_sock( c ) < 0 ) {
+  c->rte.fd = sock;
+  if ( this->poll.add_sock( c, (struct sockaddr *) &addr, "memcached" ) < 0 ) {
     ::close( sock );
     c->push_free_list();
   }

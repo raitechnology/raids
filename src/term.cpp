@@ -31,7 +31,7 @@ do_complete( LineCook *state,  const char * /*buf*/,  size_t off,
 {
   if ( off == 0 ) {
     char cmd[ 64 ];
-    for ( size_t i = 0; i < cmd_db_cnt; i++ ) {
+    for ( size_t i = 1; i < cmd_db_cnt; i++ ) {
       size_t len = ::strlen( cmd_db[ i ].name );
       if ( len > 64 ) len = 64;
       for ( size_t j = 0; j < len; j++ )
@@ -126,7 +126,7 @@ Term::show_help( void )
   if ( n <= 0 )
     return;
 
-  for ( size_t i = 0; i < cmd_db_cnt; i++ ) {
+  for ( size_t i = 1; i < cmd_db_cnt; i++ ) {
     const char * name     = cmd_db[ i ].name;
     size_t       name_len = ::strlen( name );
     if ( (size_t) arg_len[ 0 ] == name_len &&

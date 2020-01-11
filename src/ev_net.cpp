@@ -9,6 +9,8 @@
 #include <sys/socket.h>
 #include <netinet/tcp.h>
 #include <netdb.h>
+#include <arpa/inet.h>
+#include <sys/un.h>
 #include <raids/ev_net.h>
 #include <raids/ev_service.h>
 #include <raids/ev_client.h>
@@ -504,8 +506,10 @@ RoutePublish::update_keyspace_count( const char *sub,  size_t len,  int add )
                     kevt[] = "__keyevent@",
                     lblk[] = "__listblkd@",
                     zblk[] = "__zsetblkd@",
-                    sblk[] = "__strmblkd@";
-  if ( ::memcmp( kspc, sub, len ) == 0 )
+                    sblk[] = "__strmblkd@",
+                    moni[] = "__monitor_@";
+
+  if ( ::memcmp( kspc, sub, len ) == 0 ) /* len <= 11, could match multiple */
     this->keyspace_cnt += add;
   if ( ::memcmp( kevt, sub, len ) == 0 )
     this->keyevent_cnt += add;
@@ -515,12 +519,15 @@ RoutePublish::update_keyspace_count( const char *sub,  size_t len,  int add )
     this->zsetblkd_cnt += add;
   if ( ::memcmp( sblk, sub, len ) == 0 )
     this->strmblkd_cnt += add;
+  if ( ::memcmp( moni, sub, len ) == 0 )
+    this->monitor__cnt += add;
 
   this->key_flags = ( ( this->keyspace_cnt == 0 ? 0 : EKF_KEYSPACE_FWD ) |
                       ( this->keyevent_cnt == 0 ? 0 : EKF_KEYEVENT_FWD ) |
                       ( this->listblkd_cnt == 0 ? 0 : EKF_LISTBLKD_NOT ) |
                       ( this->zsetblkd_cnt == 0 ? 0 : EKF_ZSETBLKD_NOT ) |
-                      ( this->strmblkd_cnt == 0 ? 0 : EKF_STRMBLKD_NOT ) );
+                      ( this->strmblkd_cnt == 0 ? 0 : EKF_STRMBLKD_NOT ) |
+                      ( this->monitor__cnt == 0 ? 0 : EKF_MONITOR      ) );
   /*printf( "%.*s %d key_flags %x\n", (int) len, sub, add, this->key_flags );*/
 }
 /* external patterns from kv pubsub */
@@ -645,13 +652,88 @@ EvPoll::process_quit( void )
     this->quit++;
   }
 }
+/* convert sockaddr into a string and set peer_address[] */
+bool
+RouteName::set_addr( const sockaddr *sa )
+{
+  char       * s      = this->peer_address,
+             * t      = NULL;
+  const size_t maxlen = sizeof( this->peer_address );
+  const char * p;
+  size_t       len;
+  in_addr    * in;
+  in6_addr   * in6;
+  uint16_t     in_port;
+
+  ::memset( s, 0, maxlen ); /* peer_address[ maxlen - 1 ] == strlen() */
+  if ( sa == NULL )
+    return true;
+  switch ( sa->sa_family ) {
+    case AF_INET6:
+      in6     = &((struct sockaddr_in6 *) sa)->sin6_addr;
+      in_port = ((struct sockaddr_in6 *) sa)->sin6_port;
+      /* check if ::ffff: prefix */
+      if ( ((uint64_t *) in6)[ 0 ] == 0 &&
+           ((uint16_t *) in6)[ 4 ] == 0 &&
+           ((uint16_t *) in6)[ 5 ] == 0xffffU ) {
+        in = &((in_addr *) in6)[ 3 ];
+        goto do_af_inet;
+      }
+      p = inet_ntop( AF_INET6, in6, &s[ 1 ], maxlen - 9 );
+      if ( p == NULL )
+        break;
+      /* make [ip6]:port */
+      len = ::strlen( &s[ 1 ] ) + 1;
+      t   = &s[ len ];
+      s[ 0 ] = '[';
+      t[ 0 ] = ']';
+      t[ 1 ] = ':';
+      len = uint_to_str( ntohs( in_port ), &t[ 2 ] );
+      t   = &t[ 2 + len ];
+      break;
+
+    case AF_INET:
+      in      = &((struct sockaddr_in *) sa)->sin_addr;
+      in_port = ((struct sockaddr_in *) sa)->sin_port;
+    do_af_inet:;
+      p = inet_ntop( AF_INET, in, s, maxlen - 7 );
+      if ( p == NULL )
+        break;
+      /* make ip4:port */
+      len = ::strlen( s );
+      t   = &s[ len ];
+      t[ 0 ] = ':';
+      len = uint_to_str( ntohs( in_port ), &t[ 1 ] );
+      t   = &t[ 1 + len ];
+      break;
+
+    case AF_LOCAL:
+      len = ::strnlen( ((struct sockaddr_un *) sa)->sun_path,
+                       sizeof( ((struct sockaddr_un *) sa)->sun_path ) );
+      if ( len > maxlen - 1 )
+        len = maxlen - 1;
+      ::memcpy( s, ((struct sockaddr_un *) sa)->sun_path, len );
+      t = &s[ len ];
+      break;
+
+    default:
+      break;
+  }
+  if ( t != NULL ) {
+    /* set strlen */
+    this->set_strlen( t - s );
+    return true;
+  }
+  return false;
+}
+
 /* enable epolling of sock fd */
 int
-EvPoll::add_sock( EvSocket *s )
+EvPoll::add_sock( EvSocket *s,  const sockaddr *addr,  const char *kind )
 {
   /* make enough space for fd */
-  if ( s->fd > this->maxfd ) {
-    int xfd = align<int>( s->fd + 1, EvPoll::ALLOC_INCR );
+  if ( s->rte.fd > this->maxfd ) {
+    int xfd = align<int>( s->rte.fd + 1, EvPoll::ALLOC_INCR );
     EvSocket **tmp;
     if ( xfd < this->nfds )
       xfd = this->nfds;
@@ -661,7 +743,7 @@ EvPoll::add_sock( EvSocket *s )
     if ( tmp == NULL ) {
       perror( "realloc" );
       xfd /= 2;
-      if ( xfd > s->fd )
+      if ( xfd > s->rte.fd )
         goto try_again;
       return -1;
     }
@@ -674,14 +756,17 @@ EvPoll::add_sock( EvSocket *s )
     /* add to poll set */
     struct epoll_event event;
     ::memset( &event, 0, sizeof( struct epoll_event ) );
-    event.data.fd = s->fd;
+    event.data.fd = s->rte.fd;
     event.events  = EPOLLIN | EPOLLRDHUP | EPOLLET;
-    if ( ::epoll_ctl( this->efd, EPOLL_CTL_ADD, s->fd, &event ) < 0 ) {
+    if ( ::epoll_ctl( this->efd, EPOLL_CTL_ADD, s->rte.fd, &event ) < 0 ) {
       perror( "epoll_ctl" );
       return -1;
     }
   }
-  this->sock[ s->fd ] = s;
+  this->sock[ s->rte.fd ] = s;
+  s->rte.set_addr( addr );
+  s->rte.id   = 0;
+  s->rte.kind = kind;
   this->fdcnt++;
   /* add to active list */
   s->listfl = IN_ACTIVE_LIST;
@@ -731,25 +816,25 @@ void
 EvPoll::remove_sock( EvSocket *s )
 {
   struct epoll_event event;
-  if ( s->fd < 0 )
+  if ( s->rte.fd < 0 )
     return;
   /* remove poll set */
-  if ( s->fd <= this->maxfd && this->sock[ s->fd ] == s ) {
+  if ( s->rte.fd <= this->maxfd && this->sock[ s->rte.fd ] == s ) {
     if ( s->type != EV_SHM_SVC ) {
       ::memset( &event, 0, sizeof( struct epoll_event ) );
-      event.data.fd = s->fd;
+      event.data.fd = s->rte.fd;
       event.events  = 0;
-      if ( ::epoll_ctl( this->efd, EPOLL_CTL_DEL, s->fd, &event ) < 0 )
+      if ( ::epoll_ctl( this->efd, EPOLL_CTL_DEL, s->rte.fd, &event ) < 0 )
         perror( "epoll_ctl" );
     }
-    this->sock[ s->fd ] = NULL;
+    this->sock[ s->rte.fd ] = NULL;
     this->fdcnt--;
   }
   /* terms are stdin, stdout */
   if ( s->type != EV_TERMINAL && s->type != EV_SHM_SVC ) {
-    if ( ::close( s->fd ) != 0 ) {
+    if ( ::close( s->rte.fd ) != 0 ) {
       fprintf( stderr, "close: errno %d/%s, fd %d type %d\n",
-               errno, strerror( errno ), s->fd, s->type );
+               errno, strerror( errno ), s->rte.fd, s->type );
     }
   }
   if ( s->listfl == IN_ACTIVE_LIST ) {
@@ -758,7 +843,7 @@ EvPoll::remove_sock( EvSocket *s )
   }
   /* release memory buffers */
   s->v_release();
-  s->fd = -1;
+  s->rte.fd = -1;
 }
 /* fill up recv buffers */
 void
@@ -767,7 +852,7 @@ EvConnection::read( void )
   this->adjust_recv();
   for (;;) {
     if ( this->len < this->recv_size ) {
-      ssize_t nbytes = ::read( this->fd, &this->recv[ this->len ],
+      ssize_t nbytes = ::read( this->rte.fd, &this->recv[ this->len ],
                                this->recv_size - this->len );
       if ( nbytes > 0 ) {
         this->len += nbytes;
@@ -845,15 +930,15 @@ EvConnection::write( void )
   h.msg_iov    = &strm.iov[ strm.woff ];
   h.msg_iovlen = strm.idx - strm.woff;
   if ( h.msg_iovlen == 1 ) {
-    nbytes = ::send( this->fd, h.msg_iov[ 0 ].iov_base,
+    nbytes = ::send( this->rte.fd, h.msg_iov[ 0 ].iov_base,
                      h.msg_iov[ 0 ].iov_len, MSG_NOSIGNAL );
   }
   else {
-    nbytes = ::sendmsg( this->fd, &h, MSG_NOSIGNAL );
+    nbytes = ::sendmsg( this->rte.fd, &h, MSG_NOSIGNAL );
     while ( nbytes < 0 && errno == EMSGSIZE ) {
       if ( (h.msg_iovlen /= 2) == 0 )
         break;
-      nbytes = ::sendmsg( this->fd, &h, MSG_NOSIGNAL );
+      nbytes = ::sendmsg( this->rte.fd, &h, MSG_NOSIGNAL );
     }
   }
   if ( nbytes > 0 ) {
@@ -885,7 +970,7 @@ EvConnection::write( void )
   if ( nbytes == 0 || ( nbytes < 0 && errno != EAGAIN && errno != EINTR ) ) {
     if ( nbytes < 0 && errno != ECONNRESET && errno != EPIPE ) {
       fprintf( stderr, "sendmsg: errno %d/%s, fd %d, state %d\n",
-               errno, strerror( errno ), this->fd, this->state );
+               errno, strerror( errno ), this->rte.fd, this->state );
     }
     this->popall();
     this->push( EV_CLOSE );
@@ -954,11 +1039,11 @@ EvUdp::read( void )
     }
   }
   if ( this->in_moff + 1 < this->in_size ) {
-    nmsgs = ::recvmmsg( this->fd, &this->in_mhdr[ this->in_moff ],
+    nmsgs = ::recvmmsg( this->rte.fd, &this->in_mhdr[ this->in_moff ],
                         this->in_size - this->in_moff, 0, NULL );
   }
   else {
-    ssize_t nbytes = ::recvmsg( this->fd,
+    ssize_t nbytes = ::recvmsg( this->rte.fd,
                                 &this->in_mhdr[ this->in_moff ].msg_hdr, 0 );
     if ( nbytes > 0 ) {
       this->in_mhdr[ this->in_moff ].msg_len = nbytes;
@@ -992,7 +1077,7 @@ EvUdp::write( void )
 {
   int nmsgs = 0;
   if ( this->out_nmsgs > 1 ) {
-    nmsgs = ::sendmmsg( this->fd, this->out_mhdr, this->out_nmsgs, 0 );
+    nmsgs = ::sendmmsg( this->rte.fd, this->out_mhdr, this->out_nmsgs, 0 );
     if ( nmsgs > 0 ) {
       for ( uint32_t i = 0; i < this->out_nmsgs; i++ )
         this->nbytes_sent += this->out_mhdr[ i ].msg_len;
@@ -1002,7 +1087,7 @@ EvUdp::write( void )
     }
   }
   else {
-    ssize_t nbytes = ::sendmsg( this->fd, &this->out_mhdr[ 0 ].msg_hdr, 0 );
+    ssize_t nbytes = ::sendmsg( this->rte.fd, &this->out_mhdr[ 0 ].msg_hdr, 0 );
     if ( nbytes > 0 ) {
       this->nbytes_sent += nbytes;
       this->clear_buffers();
@@ -1015,7 +1100,7 @@ EvUdp::write( void )
   if ( nmsgs < 0 && errno != EAGAIN && errno != EINTR ) {
     if ( errno != ECONNRESET && errno != EPIPE ) {
       fprintf( stderr, "sendmsg: errno %d/%s, fd %d, state %d\n",
-               errno, strerror( errno ), this->fd, this->state );
+               errno, strerror( errno ), this->rte.fd, this->state );
     }
     this->popall();
     this->push( EV_CLOSE );

@@ -110,7 +110,7 @@ EvRvListen::accept( void )
   static int on = 1;
   struct sockaddr_storage addr;
   socklen_t addrlen = sizeof( addr );
-  int sock = ::accept( this->fd, (struct sockaddr *) &addr, &addrlen );
+  int sock = ::accept( this->rte.fd, (struct sockaddr *) &addr, &addrlen );
   if ( sock < 0 ) {
     if ( errno != EINTR ) {
       if ( errno != EAGAIN )
@@ -140,7 +140,7 @@ EvRvListen::accept( void )
   if ( this->ipport == 0 ) {
     struct sockaddr_storage xaddr;
     addrlen = sizeof( xaddr );
-    if ( ::getsockname( this->fd, (struct sockaddr *) &xaddr,
+    if ( ::getsockname( this->rte.fd, (struct sockaddr *) &xaddr,
                         &addrlen ) == 0 ) {
       if ( xaddr.ss_family == AF_INET ) {
         struct sockaddr_in * sin = (struct sockaddr_in *) &xaddr;
@@ -155,10 +155,10 @@ EvRvListen::accept( void )
   c->ipaddr = this->ipaddr;
   c->ipport = this->ipport;
 
-  c->fd = sock;
+  c->rte.fd = sock;
   c->initialize_state( ++this->timer_id );
   c->idle_push( EV_WRITE_HI );
-  if ( this->poll.add_sock( c ) < 0 ) {
+  if ( this->poll.add_sock( c, (struct sockaddr *) &addr, "rv" ) < 0 ) {
     printf( "failed to add sock %d\n", sock );
     ::close( sock );
     c->push_free_list();
@@ -167,7 +167,7 @@ EvRvListen::accept( void )
   uint32_t ver_rec[ 3 ] = { 0, 4, 0 };
   ver_rec[ 1 ] = get_u32<MD_BIG>( &ver_rec[ 1 ] ); /* flip */
   c->append( ver_rec, sizeof( ver_rec ) );
-  /*this->poll.timer_queue->add_timer( c->fd, RV_SESSION_IVAL, c->timer_id,
+  /*this->poll.timer_queue->add_timer( c->rte.fd, RV_SESSION_IVAL, c->timer_id,
                                      IVAL_SECS, 0 );*/
 #if 0
   MDOutput out;
@@ -413,8 +413,8 @@ EvRvService::add_sub( void )
     uint32_t h = kv_crc_c( sub, len, 0 ),
              rcnt;
     if ( this->sub_tab.put( h, sub, len ) == RV_SUB_OK ) {
-      rcnt = this->poll.sub_route.add_route( h, this->fd );
-      this->poll.notify_sub( h, sub, len, this->fd, rcnt, 'V',
+      rcnt = this->poll.sub_route.add_route( h, this->rte.fd );
+      this->poll.notify_sub( h, sub, len, this->rte.fd, rcnt, 'V',
                              this->msg_in.reply, this->msg_in.replylen );
     }
   }
@@ -446,10 +446,10 @@ EvRvService::add_sub( void )
         if ( rt->re == NULL )
           this->pat_tab.tab.remove( h, sub, len );
         else {
-          rcnt = this->poll.sub_route.add_pattern_route( h, this->fd,
+          rcnt = this->poll.sub_route.add_pattern_route( h, this->rte.fd,
                                                          cvt.prefixlen );
           this->poll.notify_psub( h, buf, cvt.off, sub, cvt.prefixlen,
-                                  this->fd, rcnt, 'V' );
+                                  this->rte.fd, rcnt, 'V' );
         }
       }
     }
@@ -468,8 +468,8 @@ EvRvService::rem_sub( void )
     if ( this->sub_tab.rem( h, sub, len ) == RV_SUB_OK ) {
       printf( "rem sub %s\n", sub );
       if ( this->sub_tab.tab.find_by_hash( h ) == NULL )
-        rcnt = this->poll.sub_route.del_route( h, this->fd );
-      this->poll.notify_unsub( h, sub, len, this->fd, rcnt, 'V' );
+        rcnt = this->poll.sub_route.del_route( h, this->rte.fd );
+      this->poll.notify_unsub( h, sub, len, this->rte.fd, rcnt, 'V' );
     }
   }
   else {
@@ -492,10 +492,10 @@ EvRvService::rem_sub( void )
           rt->re = NULL;
         }
         this->pat_tab.tab.remove( loc );
-        rcnt = this->poll.sub_route.del_pattern_route( h, this->fd,
+        rcnt = this->poll.sub_route.del_pattern_route( h, this->rte.fd,
                                                        cvt.prefixlen );
         this->poll.notify_punsub( h, buf, cvt.off, sub, cvt.prefixlen,
-                                  this->fd, rcnt, 'V' );
+                                  this->rte.fd, rcnt, 'V' );
       }
     }
   }
@@ -510,9 +510,9 @@ EvRvService::rem_all_sub( void )
 
   if ( this->sub_tab.first( pos ) ) {
     do {
-      rcnt = this->poll.sub_route.del_route( pos.rt->hash, this->fd );
+      rcnt = this->poll.sub_route.del_route( pos.rt->hash, this->rte.fd );
       this->poll.notify_unsub( pos.rt->hash, pos.rt->value, pos.rt->len,
-                               this->fd, rcnt, 'V' );
+                               this->rte.fd, rcnt, 'V' );
     } while ( this->sub_tab.next( pos ) );
   }
   if ( this->pat_tab.first( ppos ) ) {
@@ -520,11 +520,11 @@ EvRvService::rem_all_sub( void )
     PatternCvt cvt( buf, sizeof( buf ) );
     do {
       if ( cvt.convert_rv( ppos.rt->value, ppos.rt->len ) == 0 ) {
-        rcnt = this->poll.sub_route.del_pattern_route( ppos.rt->hash, this->fd,
-                                                  cvt.prefixlen );
+        rcnt = this->poll.sub_route.del_pattern_route( ppos.rt->hash,
+                                                  this->rte.fd, cvt.prefixlen );
         this->poll.notify_punsub( ppos.rt->hash, buf, cvt.off,
                                   ppos.rt->value, cvt.prefixlen,
-                                  this->fd, rcnt, 'V' );
+                                  this->rte.fd, rcnt, 'V' );
       }
     } while ( this->pat_tab.next( ppos ) );
   }
@@ -558,7 +558,7 @@ EvRvService::fwd_pub( void )
       ftype = (uint8_t) m->get_type_id();
   }
   EvPublish pub( sub, sublen, rep, replen, msg, msg_len,
-                 this->fd, h, NULL, 0, ftype, 'p' );
+                 this->rte.fd, h, NULL, 0, ftype, 'p' );
   return this->poll.forward_msg( pub, NULL, 0, NULL );
 }
 
@@ -730,7 +730,7 @@ RvPatternMap::release( void )
 void
 EvRvService::release( void )
 {
-  printf( "rv release fd=%d\n", this->fd );
+  printf( "rv release fd=%d\n", this->rte.fd );
   this->rem_all_sub();
   this->sub_tab.release();
   this->pat_tab.release();

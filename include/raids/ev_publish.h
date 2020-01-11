@@ -36,7 +36,11 @@ namespace ds {
  * @  :  quality   heartbeat
  * ?  :  ping      ping req, respond with ack reply or reject
  * :  :  keyspace  a cache key operation       __keyspace@db__:key oper
+ *                                             __listblkd@db__:key oper
+ *                                             __zsetblkd@db__:key oper
+ *                                             __strmblkd@db__:key oper
  * ;  :  keyevent  a cache operation on a key  __keyevent@db__:oper key
+ * <  :  monitor   a cache command             __monitor_@db__ msg
  *
  * subscriptions ('A' -> 'Z')
  * C  :  cancel     subcription

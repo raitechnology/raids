@@ -7,6 +7,8 @@
 #include <raikv/util.h>
 #include <raikv/prio_queue.h>
 
+struct sockaddr;
+
 namespace rai {
 namespace ds {
 
@@ -73,9 +75,9 @@ struct CodeRef { /* refs to a route space, which is a list of fds */
 
 struct EvPublish;
 struct RoutePublishData {   /* structure for publish queue heap */
-  unsigned int prefix : 7,  /* prefix size */
-               rcount : 25; /* count of routes */
-  uint32_t     hash;        /* hash of prefix */
+  unsigned int prefix : 7,  /* prefix size (how much of subject matches) */
+               rcount : 25; /* count of routes (32 million max (fd)) */
+  uint32_t     hash;        /* hash of prefix (is subject hash if prefix=64) */
   uint32_t   * routes;      /* routes for this hash */
 
   static inline uint32_t precmp( uint32_t p ) {
@@ -99,13 +101,39 @@ struct RoutePublishData {   /* structure for publish queue heap */
 typedef struct kv::PrioQueue<RoutePublishData *, RoutePublishData::is_greater>
  RoutePublishQueue;
 
+struct RouteName {
+  int32_t      fd;   /* fildes */
+  uint32_t     id;   /* identifies peer */
+  const char * kind; /* what protocol type */
+  char         peer_address[ 64 ]; /* ip4 1.2.3.4:p, ip6 [ab::cd]:p, other */
+  RouteName( int fildes = -1,  uint32_t ident = 0,  const char * k = NULL )
+    : fd( fildes ), id( ident ), kind( k ) { this->peer_address[ 0 ] = '\0'; }
+
+  bool set_addr( const sockaddr *sa );
+
+  void set_strlen( size_t len ) {
+    if ( len < sizeof( this->peer_address ) - 1 )
+      this->peer_address[ sizeof( this->peer_address ) - 1 ] = (char) len;
+  }
+  size_t peer_strlen( void ) const {  /* strlen( peer_address ) */
+    /* try 32, 16 -> 0 or 32, 48 -> 64 */
+    const size_t len = sizeof( this->peer_address );
+    if ( this->peer_address[ 0 ] == '\0' )
+      return 0;
+    if ( this->peer_address[ len - 1 ] == '\0' )
+      return len - 1;
+    return (size_t) (uint8_t) this->peer_address[ len - 1 ];
+  }
+};
+
 struct KvPrefHash;
 struct RoutePublish {
   int32_t keyspace_cnt, /* count of __keyspace@N__ subscribes active */
           keyevent_cnt, /* count of __keyevent@N__ subscribes active */
           listblkd_cnt, /* count of __listblkd@N__ subscribes active */
           zsetblkd_cnt, /* count of __zsetblkd@N__ subscribes active */
-          strmblkd_cnt; /* count of __strmblkd@N__ subscribes active */
+          strmblkd_cnt, /* count of __strmblkd@N__ subscribes active */
+          monitor__cnt; /* count of __monitor_@N__ subscribes active */
   uint16_t key_flags;    /* bits set for key subs above (EKF_KEYSPACE_FWD|..) */
   bool forward_msg( EvPublish &pub,  uint32_t *rcount_total,  uint8_t pref_cnt,
                     KvPrefHash *ph );
@@ -129,7 +157,8 @@ struct RoutePublish {
   bool remove_timer( int id,  uint64_t timer_id,  uint64_t event_id );
 
   RoutePublish() : keyspace_cnt( 0 ), keyevent_cnt( 0 ), listblkd_cnt( 0 ),
-                   zsetblkd_cnt( 0 ), strmblkd_cnt( 0 ), key_flags( 0 ) {}
+                   zsetblkd_cnt( 0 ), strmblkd_cnt( 0 ), monitor__cnt( 0 ),
+                   key_flags( 0 ) {}
 };
 
 struct RouteDB {

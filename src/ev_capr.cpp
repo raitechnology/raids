@@ -117,7 +117,7 @@ EvCaprListen::accept( void )
   static int on = 1;
   struct sockaddr_storage addr;
   socklen_t addrlen = sizeof( addr );
-  int sock = ::accept( this->fd, (struct sockaddr *) &addr, &addrlen );
+  int sock = ::accept( this->rte.fd, (struct sockaddr *) &addr, &addrlen );
   if ( sock < 0 ) {
     if ( errno != EINTR ) {
       if ( errno != EAGAIN )
@@ -152,18 +152,18 @@ EvCaprListen::accept( void )
     ::gethostname( host, sizeof( host ) );
     this->sess = CaprSession::create( "localhost", user, host, "ds", h1 );
   }
-  c->fd = sock;
+  c->rte.fd = sock;
   c->initialize_state( ++this->timer_id );
   c->sess = this->sess->copy();
   c->idle_push( EV_WRITE_HI );
-  if ( this->poll.add_sock( c ) < 0 ) {
+  if ( this->poll.add_sock( c, (struct sockaddr *) &addr, "capr" ) < 0 ) {
     printf( "failed to add sock %d\n", sock );
     ::close( sock );
     c->push_free_list();
     return;
   }
   c->pub_session( CAPR_SESSION_START );
-  this->poll.add_timer_seconds( c->fd, CAPR_SESSION_IVAL, c->timer_id, 0 );
+  this->poll.add_timer_seconds( c->rte.fd, CAPR_SESSION_IVAL, c->timer_id, 0 );
 }
 
 static void
@@ -333,8 +333,8 @@ EvCaprService::add_subscription( const char *sub,  uint32_t len,
     uint32_t h = kv_crc_c( sub, len, 0 ),
              rcnt;
     if ( this->sub_tab.put( h, sub, len ) == CAPR_SUB_OK ) {
-      rcnt = this->poll.sub_route.add_route( h, this->fd );
-      this->poll.notify_sub( h, sub, len, this->fd, rcnt, 'C',
+      rcnt = this->poll.sub_route.add_route( h, this->rte.fd );
+      this->poll.notify_sub( h, sub, len, this->rte.fd, rcnt, 'C',
                              reply, replylen );
     }
   }
@@ -366,10 +366,10 @@ EvCaprService::add_subscription( const char *sub,  uint32_t len,
         if ( rt->re == NULL )
           this->pat_tab.tab.remove( h, sub, len );
         else {
-          rcnt = this->poll.sub_route.add_pattern_route( h, this->fd,
+          rcnt = this->poll.sub_route.add_pattern_route( h, this->rte.fd,
                                                          cvt.prefixlen );
           this->poll.notify_psub( h, buf, cvt.off, sub, cvt.prefixlen,
-                                  this->fd, rcnt, 'C' );
+                                  this->rte.fd, rcnt, 'C' );
         }
       }
     }
@@ -389,8 +389,8 @@ EvCaprService::rem_sub( CaprMsgIn &rec )
     if ( this->sub_tab.rem( h, sub, len ) == CAPR_SUB_OK ) {
       printf( "rem sub %s\n", sub );
       if ( this->sub_tab.tab.find_by_hash( h ) == NULL )
-        rcnt = this->poll.sub_route.del_route( h, this->fd );
-      this->poll.notify_unsub( h, sub, len, this->fd, rcnt, 'C' );
+        rcnt = this->poll.sub_route.del_route( h, this->rte.fd );
+      this->poll.notify_unsub( h, sub, len, this->rte.fd, rcnt, 'C' );
     }
   }
   else {
@@ -413,10 +413,10 @@ EvCaprService::rem_sub( CaprMsgIn &rec )
           rt->re = NULL;
         }
         this->pat_tab.tab.remove( loc );
-        rcnt = this->poll.sub_route.del_pattern_route( h, this->fd,
+        rcnt = this->poll.sub_route.del_pattern_route( h, this->rte.fd,
                                                        cvt.prefixlen );
         this->poll.notify_punsub( h, buf, cvt.off, sub, cvt.prefixlen,
-                                  this->fd, rcnt, 'C' );
+                                  this->rte.fd, rcnt, 'C' );
       }
     }
   }
@@ -431,9 +431,9 @@ EvCaprService::rem_all_sub( void )
 
   if ( this->sub_tab.first( pos ) ) {
     do {
-      rcnt = this->poll.sub_route.del_route( pos.rt->hash, this->fd );
+      rcnt = this->poll.sub_route.del_route( pos.rt->hash, this->rte.fd );
       this->poll.notify_unsub( pos.rt->hash, pos.rt->value, pos.rt->len,
-                               this->fd, rcnt, 'C' );
+                               this->rte.fd, rcnt, 'C' );
     } while ( this->sub_tab.next( pos ) );
   }
   if ( this->pat_tab.first( ppos ) ) {
@@ -441,11 +441,11 @@ EvCaprService::rem_all_sub( void )
     PatternCvt cvt( buf, sizeof( buf ) );
     do {
       if ( cvt.convert_rv( ppos.rt->value, ppos.rt->len ) == 0 ) {
-        rcnt = this->poll.sub_route.del_pattern_route( ppos.rt->hash, this->fd,
-                                                  cvt.prefixlen );
+        rcnt = this->poll.sub_route.del_pattern_route( ppos.rt->hash,
+                                                  this->rte.fd, cvt.prefixlen );
         this->poll.notify_punsub( ppos.rt->hash, buf, cvt.off,
                                   ppos.rt->value, cvt.prefixlen,
-                                  this->fd, rcnt, 'C' );
+                                  this->rte.fd, rcnt, 'C' );
       }
     } while ( this->pat_tab.next( ppos ) );
   }
@@ -458,7 +458,7 @@ EvCaprService::fwd_pub( CaprMsgIn &rec )
   uint32_t len = rec.get_subject( sub ),
            h   = kv_crc_c( sub, len, 0 );
   EvPublish pub( sub, len, NULL, 0, rec.msg_data, rec.msg_data_len,
-                 this->fd, h, NULL, 0, rec.msg_enc, rec.code );
+                 this->rte.fd, h, NULL, 0, rec.msg_enc, rec.code );
   return this->poll.forward_msg( pub, NULL, 0, NULL );
 }
 
@@ -589,7 +589,7 @@ CaprPatternMap::release( void )
 void
 EvCaprService::release( void )
 {
-  printf( "capr release fd=%d\n", this->fd );
+  printf( "capr release fd=%d\n", this->rte.fd );
   if ( this->sess != NULL )
     delete this->sess;
   this->rem_all_sub();

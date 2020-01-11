@@ -27,29 +27,30 @@ enum EvKeyState { /* status for exec_key_continue(), memcached_key_continue() */
  * when something is subscribed to a keyspace event, it causes a publish to
  * occur for the event if the bits subscribed & flags != 0 */
 enum EvKeyFlags { /* bits for EvKeyCtx::flags */
-  EKF_IS_READ_ONLY    = 1, /* key is read only (no write access) */
-  EKF_IS_NEW          = 2, /* key doesn't exist */
-  EKF_IS_SAVED_CONT   = 4, /* key has saved data on continuation */
-  EKF_IS_EXPIRED      = 8, /* a key read oper caused expired data */
-  EKF_KEYSPACE_FWD    = 16, /* operation resulted in a keyspace modification */
-  EKF_KEYEVENT_FWD    = 32, /* operation resulted in a keyevent modification */
-  EKF_KEYSPACE_EVENT  = 48, /* when a key is updated, this is set */
-  EKF_KEYSPACE_DEL    = 64, /* keyspace event (pop, srem, etc) caused key del */
-  EKF_KEYSPACE_TRIM   = 128,  /* xadd with maxcnt caused a trim event */
-  EKF_LISTBLKD_NOT    = 256, /* notify a blocked list an element available */
-  EKF_ZSETBLKD_NOT    = 512, /* notify a blocked zset an element available */
-  EKF_STRMBLKD_NOT    = 1024, /* notify a blocked stream an element available */
+  EKF_IS_READ_ONLY    = 1,     /* key is read only (no write access) */
+  EKF_IS_NEW          = 2,     /* key doesn't exist */
+  EKF_IS_SAVED_CONT   = 4,     /* key has saved data on continuation */
+  EKF_IS_EXPIRED      = 8,     /* a key read oper caused expired data */
+  EKF_KEYSPACE_FWD    = 0x10,  /* operation resulted in a keyspace mod */
+  EKF_KEYEVENT_FWD    = 0x20,  /* operation resulted in a keyevent mod */
+  EKF_KEYSPACE_EVENT  = 0x30,  /* when a key is updated, this is set */
+  EKF_KEYSPACE_DEL    = 0x40,  /* keyspace event (pop, srem, etc) -> key del */
+  EKF_KEYSPACE_TRIM   = 0x80,  /* xadd with maxcnt caused a trim event */
+  EKF_LISTBLKD_NOT    = 0x100, /* notify a blocked list an element available */
+  EKF_ZSETBLKD_NOT    = 0x200, /* notify a blocked zset */
+  EKF_STRMBLKD_NOT    = 0x400, /* notify a blocked stream */
+  EKF_MONITOR         = 0x800, /* command monitor is enabled */
 
-#define EKF_TYPE_SHIFT 11
+#define EKF_TYPE_SHIFT 12
   /* the type of the key that event occurred */
-  EKF_KEYSPACE_STRING = ( 1 << EKF_TYPE_SHIFT ), /* 2048 */
+  EKF_KEYSPACE_STRING = ( 1 << EKF_TYPE_SHIFT ), /* 4092 */
   EKF_KEYSPACE_LIST   = ( 2 << EKF_TYPE_SHIFT ),
   EKF_KEYSPACE_HASH   = ( 3 << EKF_TYPE_SHIFT ),
   EKF_KEYSPACE_SET    = ( 4 << EKF_TYPE_SHIFT ),
   EKF_KEYSPACE_ZSET   = ( 5 << EKF_TYPE_SHIFT ),
   EKF_KEYSPACE_GEO    = ( 6 << EKF_TYPE_SHIFT ),
   EKF_KEYSPACE_HLL    = ( 7 << EKF_TYPE_SHIFT ),
-  EKF_KEYSPACE_STREAM = ( 8 << EKF_TYPE_SHIFT )  /* 16384 */
+  EKF_KEYSPACE_STREAM = ( 8 << EKF_TYPE_SHIFT )  /* 32768 */
   /* must fit into 16 bits */
 };
 

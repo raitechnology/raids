@@ -47,25 +47,25 @@ struct SubTest : public EvShmSvc {
     this->ih = kv_crc_c( this->ibx, this->ilen, 0 );
     /* if using inbox for reply */
     if ( this->ilen > 0 ) {
-      rcnt = this->poll.sub_route.add_route( this->ih, this->fd );
+      rcnt = this->poll.sub_route.add_route( this->ih, this->rte.fd );
       this->poll.notify_sub( this->ih, this->ibx, this->ilen,
-                             this->fd, rcnt, 'K' );
+                             this->rte.fd, rcnt, 'K' );
     }
-    rcnt = this->poll.sub_route.add_route( this->h, this->fd );
+    rcnt = this->poll.sub_route.add_route( this->h, this->rte.fd );
     this->poll.notify_sub( this->h, this->sub, this->len,
-                           this->fd, rcnt, 'K' );
+                           this->rte.fd, rcnt, 'K' );
   }
   /* remove subcriptions for sub or inbox */
   void unsubscribe( void ) {
     uint32_t rcnt;
     if ( this->ilen > 0 ) {
-      rcnt = this->poll.sub_route.del_route( this->ih, this->fd );
+      rcnt = this->poll.sub_route.del_route( this->ih, this->rte.fd );
       this->poll.notify_unsub( this->ih, this->ibx, this->ilen,
-                               this->fd, rcnt, 'K' );
+                               this->rte.fd, rcnt, 'K' );
     }
-    rcnt = this->poll.sub_route.del_route( this->h, this->fd );
+    rcnt = this->poll.sub_route.del_route( this->h, this->rte.fd );
     this->poll.notify_unsub( this->h, this->sub, this->len,
-                             this->fd, rcnt, 'K' );
+                             this->rte.fd, rcnt, 'K' );
   }
   /* recv an incoming message from a subscription above, sent from a peer or
    * myself if subscribing to the same subject as publishing */

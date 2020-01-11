@@ -73,10 +73,10 @@ break_loop:;
     status = -1;
     goto fail;
   }
-  this->fd = sock;
+  this->rte.fd = sock;
   ::fcntl( sock, F_SETFL, O_NONBLOCK | ::fcntl( sock, F_GETFL ) );
-  if ( (status = this->poll.add_sock( this )) < 0 ) {
-    this->fd = -1;
+  if ( (status = this->poll.add_sock( this, NULL, "udp-listen" )) < 0 ) {
+    this->rte.fd = -1;
 fail:;
     if ( sock != -1 )
       ::close( sock );
@@ -141,10 +141,10 @@ break_loop:;
     status = -1;
     goto fail;
   }
-  this->fd = sock;
+  this->rte.fd = sock;
   ::fcntl( sock, F_SETFL, O_NONBLOCK | ::fcntl( sock, F_GETFL ) );
-  if ( (status = this->poll.add_sock( this )) < 0 ) {
-    this->fd = -1;
+  if ( (status = this->poll.add_sock( this, NULL, "udp-client" )) < 0 ) {
+    this->rte.fd = -1;
 fail:;
     if ( sock != -1 )
       ::close( sock );

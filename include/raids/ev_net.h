@@ -10,27 +10,27 @@
 namespace rai {
 namespace ds {
 
-struct EvSocket;            /* base class for anything with a fd */
-struct EvPrefetchQueue;     /* queue for prefetching key memory */
-struct EvPublish;           /* data for publishing, key + msg */
-struct EvPoll;              /* manages events with epoll() */
-struct KvPubSub;            /* manages pubsub through kv shm */
-struct EvRedisService;      /* service redis protocol */
-struct EvHttpService;       /* service http + websock protocol */
-struct EvNatsService;       /* service nats protocol */
-struct EvCaprService;       /* service capr protocol */
-struct EvRvService;         /* service rv protocol */
-struct EvMemcachedService;  /* service memcached protocol */
-struct EvMemcachedUdp;      /* service memcached udp protocol */
-struct EvUdpClient;         /* client for memcached udp protocol */
-struct EvShm;               /* kv shm + ctx_id */
-struct EvShmSvc;            /* shm direct service */
-struct EvShmClient;         /* shm direct client */
-struct EvTimerQueue;        /* timerfd with heap queue of events */
-struct EvTimerEvent;        /* a timer event signal */
-struct EvNetClient;         /* a redis client */
-struct EvTerminal;          /* terminal fd */
-struct EvKeyCtx;
+struct EvSocket;           /* base class for anything with a fd */
+struct EvPrefetchQueue;    /* queue for prefetching key memory */
+struct EvPublish;          /* data for publishing, key + msg */
+struct EvPoll;             /* manages events with epoll() */
+struct KvPubSub;           /* manages pubsub through kv shm */
+struct EvRedisService;     /* service redis protocol */
+struct EvHttpService;      /* service http + websock protocol */
+struct EvNatsService;      /* service nats protocol */
+struct EvCaprService;      /* service capr protocol */
+struct EvRvService;        /* service rv protocol */
+struct EvMemcachedService; /* service memcached protocol */
+struct EvMemcachedUdp;     /* service memcached udp protocol */
+struct EvUdpClient;        /* client for memcached udp protocol */
+struct EvShm;              /* kv shm + ctx_id */
+struct EvShmSvc;           /* shm direct service */
+struct EvShmClient;        /* shm direct client */
+struct EvTimerQueue;       /* timerfd with heap queue of events */
+struct EvTimerEvent;       /* a timer event signal */
+struct EvNetClient;        /* a redis client using tcp/unix */
+struct EvTerminal;         /* terminal line editor */
+struct EvKeyCtx;           /* a key operand, an expr may have multiple keys */
 
 enum EvSockType {
   EV_REDIS_SOCK     = 0, /* redis protocol */
@@ -110,16 +110,15 @@ enum EvListFlag {
 struct EvSocket {
   EvSocket * next,     /* link for sock lists */
            * back;
+  RouteName  rte;
   EvPoll   & poll;     /* the parent container */
   uint64_t   prio_cnt; /* timeslice each socket for a slot to run */
-  int        fd;       /* the socket fd */
   uint32_t   state;    /* bit mask of states, the queues the sock is in */
   EvSockType type;     /* listen or cnnection */
   EvListFlag listfl;   /* in active list or free list */
-  uint64_t   pad[ 2 ];
 
   EvSocket( EvPoll &p,  EvSockType t )
-    : next( 0 ), back( 0 ), poll( p ), prio_cnt( 0 ), fd( -1 ),
+    : next( 0 ), back( 0 ), rte( -1, 0, NULL ), poll( p ), prio_cnt( 0 ),
       state( 0 ), type( t ), listfl( IN_NO_LIST ) {}
 
   /* priority queue states */
@@ -161,7 +160,7 @@ struct EvSocket {
 
 #if __cplusplus >= 201103L
   /* 64b align */
-  static_assert( 64 == sizeof( EvSocket ), "socket size" );
+  static_assert( 128 == sizeof( EvSocket ), "socket size" );
 #endif
 
 static inline void *aligned_malloc( size_t sz ) {
@@ -274,8 +273,8 @@ struct EvPoll : public RoutePublish {
   bool publish_multi( EvPublish &pub,  uint32_t *rcount_total,
                       RoutePublishData *rpd );
   bool publish_queue( EvPublish &pub,  uint32_t *rcount_total );
-
-  int add_sock( EvSocket *s );     /* add to poll set */
+  /* add to poll set, name is a peer, alt is if listening or shm direct */
+  int add_sock( EvSocket *s,  const sockaddr *name,  const char *alt );
   void remove_sock( EvSocket *s ); /* remove from poll set */
   bool timer_expire( EvTimerEvent &ev ); /* process timer event fired */
   void process_quit( void );     /* quit state close socks */

@@ -226,7 +226,7 @@ struct KvPubSub : public EvSocket {
                p.map->ctx[ p.ctx_id ].db_num2, NULL ),
       mcast( *(new ( mcptr ) KvMsgQueue( this->kctx, mc, mclen )) ) {
     ::memset( this->inbox, 0, sizeof( this->inbox ) );
-    this->EvSocket::fd = sock;
+    this->EvSocket::rte.fd = sock;
     this->session_id = p.map->ctx[ p.ctx_id ].rng.next();
     this->kctx.ht.hdr.get_hash_seed( this->kctx.db_num, this->seed1,
                                      this->seed2 );

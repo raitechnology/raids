@@ -121,20 +121,30 @@ RedisExec::pub_message( EvPublish &pub,  RedisPatternRoute *rt )
   size_t              sz, off,
                       sdigits,
                       pdigits;
-  size_t              msg_len_digits =
-                       ( pub.msg_len_digits > 0 ? pub.msg_len_digits :
-                         uint_digits( pub.msg_len ) );
+  size_t              msg_len_digits,
+                      msg_len_frame;
   char              * msg;
 
   off     = 0;
   sdigits = uint_digits( pub.subject_len );
   pdigits = 0;
 
+  if ( pub.msg_enc == MD_MESSAGE &&
+       pub.msg_len > 0 &&
+       RedisMsg::valid_type_char( ((const char *) pub.msg)[ 0 ] ) ) {
+    msg_len_digits = 0;
+    msg_len_frame  = 0;
+  }
+  else {
+    msg_len_digits = ( pub.msg_len_digits > 0 ? pub.msg_len_digits :
+                       uint_digits( pub.msg_len ) );
+    msg_len_frame  = 1 + msg_len_digits + 2 + 2;
+  }
   if ( rt == NULL ) {
         /* *3 .. $subject_len       subject ..        */
     sz = hdr_sz + 1 + sdigits + 2 + pub.subject_len + 2 +
-      /* $msg_len ..                  msg */
-         1 + msg_len_digits + 2 + pub.msg_len + 2;
+      /* $msg_len ..     msg */
+         msg_len_frame + pub.msg_len;
 
     msg = this->strm.alloc( sz );
     if ( msg == NULL )
@@ -147,11 +157,11 @@ RedisExec::pub_message( EvPublish &pub,  RedisPatternRoute *rt )
         /* *4 .. */
     sz = phdr_sz +
       /* $pattern_len       pattern ..        */
-         1 + pdigits + 2 + rt->len +
+         1 + pdigits + 2 + rt->len + 2 +
       /* $subject_len       subject ..        */
          1 + sdigits + 2 + pub.subject_len + 2 +
-      /* $msg_len ..                  msg */
-         1 + msg_len_digits + 2 + pub.msg_len + 2;
+      /* $msg_len ..     msg */
+         msg_len_frame + pub.msg_len;
 
     msg = this->strm.alloc( sz );
     if ( msg == NULL )
@@ -169,16 +179,21 @@ RedisExec::pub_message( EvPublish &pub,  RedisPatternRoute *rt )
   off  = crlf( msg, off );
   ::memcpy( &msg[ off ], pub.subject, pub.subject_len );
   off  = crlf( msg, off + pub.subject_len );
-  msg[ off++ ] = '$';
-  if ( pub.msg_len_digits == 0 )
-    uint_to_str( pub.msg_len, &msg[ off ], msg_len_digits );
-  else
-    ::memcpy( &msg[ off ], pub.msg_len_buf, msg_len_digits );
-  off += msg_len_digits;
-  off  = crlf( msg, off );
-  ::memcpy( &msg[ off ], pub.msg, pub.msg_len );
-  crlf( msg, off + pub.msg_len );
 
+  if ( msg_len_frame != 0 ) {
+    msg[ off++ ] = '$';
+    if ( pub.msg_len_digits == 0 )
+      uint_to_str( pub.msg_len, &msg[ off ], msg_len_digits );
+    else
+      ::memcpy( &msg[ off ], pub.msg_len_buf, msg_len_digits );
+    off += msg_len_digits;
+    off  = crlf( msg, off );
+    ::memcpy( &msg[ off ], pub.msg, pub.msg_len );
+    crlf( msg, off + pub.msg_len );
+  }
+  else {
+    ::memcpy( &msg[ off ], pub.msg, pub.msg_len );
+  }
   this->strm.sz += sz;
   return true;
 }

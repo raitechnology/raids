@@ -50,17 +50,12 @@ static inline uint32_t data_type_mask( T t ) {
 }
 
 static inline bool is_valid( uint32_t tb ) {
-  static const uint32_t valid_bits = DTBit( RedisMsg::SIMPLE_STRING ) |
-                                     DTBit( RedisMsg::ERROR_STRING ) |
-                                     DTBit( RedisMsg::INTEGER_VALUE ) |
-                                     DTBit( RedisMsg::BULK_STRING ) |
-                                     DTBit( RedisMsg::BULK_ARRAY );
-  return ( valid_bits & tb ) != 0;
+  return ( RedisMsg::all_data_bits & tb ) != 0;
 }
 
 static inline bool is_simple_type( uint32_t tb ) {
-  static const uint32_t valid_bits = DTBit( RedisMsg::SIMPLE_STRING ) |
-                                     DTBit( RedisMsg::ERROR_STRING );
+ static const uint32_t valid_bits = DTBit( RedisMsg::SIMPLE_STRING ) |
+                                    DTBit( RedisMsg::ERROR_STRING );
   return ( valid_bits & tb ) != 0;
 }
 

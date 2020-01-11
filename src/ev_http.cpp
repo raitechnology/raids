@@ -22,7 +22,7 @@ EvHttpListen::accept( void )
   static int on = 1;
   struct sockaddr_storage addr;
   socklen_t addrlen = sizeof( addr );
-  int sock = ::accept( this->fd, (struct sockaddr *) &addr, &addrlen );
+  int sock = ::accept( this->rte.fd, (struct sockaddr *) &addr, &addrlen );
   if ( sock < 0 ) {
     if ( errno != EINTR ) {
       if ( errno != EAGAIN )
@@ -48,10 +48,10 @@ EvHttpListen::accept( void )
   if ( ::setsockopt( sock, SOL_TCP, TCP_NODELAY, &on, sizeof( on ) ) != 0 )
     perror( "warning: TCP_NODELAY" );
   ::fcntl( sock, F_SETFL, O_NONBLOCK | ::fcntl( sock, F_GETFL ) );
-  c->fd = sock;
+  c->rte.fd = sock;
   c->sub_id = sock;
   c->initialize_state();
-  if ( this->poll.add_sock( c ) < 0 ) {
+  if ( this->poll.add_sock( c, (struct sockaddr *) &addr, "http" ) < 0 ) {
     ::close( sock );
     c->push_free_list();
   }
