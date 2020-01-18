@@ -34,6 +34,7 @@ enum ExecStatus {
   EXEC_BLOCKED,          /* cmd blocked waiting for elements */
   EXEC_QUIT,             /* quit/shutdown command */
   EXEC_DEBUG,            /* debug command */
+  EXEC_SKIP,             /* client skip set */
   EXEC_ABORT_SEND_ZERO,  /* abort multiple key operation and return 0 */
   EXEC_ABORT_SEND_NIL,   /* abort multiple key operation and return nil */
   EXEC_SEND_DATA,        /* multiple key, first to succeed wins */
@@ -67,7 +68,8 @@ struct EvSocket;
 struct EvPublish;
 struct RedisExec;
 struct RouteDB;
-struct RouteName;
+struct PeerData;
+struct PeerMatchArgs;
 struct KvPubSub;
 struct ExecStreamCtx;
 
@@ -84,7 +86,7 @@ struct RedisMsgList {
   void operator delete( void *ptr ) { ::free( ptr ); }
   RedisMsgList * next,
                * back;
-  RedisMsg     * msg;
+  RedisMsg     * msg;  /* pending multi exec msg */
 
   RedisMsgList() : next( 0 ), back( 0 ), msg( 0 ) {}
 };
@@ -94,7 +96,7 @@ struct RedisWatchList {
   void operator delete( void *ptr ) { ::free( ptr ); }
   RedisWatchList * next,
                  * back;
-  uint64_t hash1, hash2, serial, pos;
+  uint64_t hash1, hash2, serial, pos; /* the location of the watch */
 
   RedisWatchList( uint64_t h1,  uint64_t h2,  uint64_t sn,  uint64_t p )
     : next( 0 ), back( 0 ), hash1( h1 ), hash2( h2 ), serial( sn ), pos( p ) {}
@@ -103,18 +105,25 @@ struct RedisWatchList {
 struct RedisMultiExec {
   void * operator new( size_t, void *ptr ) { return ptr; }
   void operator delete( void *ptr ) { ::free( ptr ); }
-  kv::WorkAllocT< 1024 >        wrk;
-  kv::DLinkList<RedisMsgList>   msg_list;
-  kv::DLinkList<RedisWatchList> watch_list;
-  size_t                        msg_count,
-                                watch_count;
-  bool                          multi_start;
+  kv::WorkAllocT< 1024 >        wrk;         /* space to use for msgs below */
+  kv::DLinkList<RedisMsgList>   msg_list;    /* msgs in the multi section */
+  kv::DLinkList<RedisWatchList> watch_list;  /* watched keys */
+  size_t                        msg_count,   /* how many msgs queued */
+                                watch_count; /* how many watches */
+  bool                          multi_start; /* whether in MULTI before EXEC */
 
   RedisMultiExec() : msg_count( 0 ), watch_count( 0 ), multi_start( false ) {}
 
   bool append_msg( RedisMsg &msg );
 
   bool append_watch( uint64_t h1,  uint64_t h2,  uint64_t sn,  uint64_t pos );
+};
+
+enum ExecCmdState { /* cmd_state flags */
+  CMD_STATE_NORMAL            = 0, /* no flags */
+  CMD_STATE_MONITOR           = 1, /* monitor cmd on */
+  CMD_STATE_CLIENT_REPLY_SKIP = 2, /* skip output of next cmd */
+  CMD_STATE_CLIENT_REPLY_OFF  = 4  /* mute output until client reply on again */
 };
 
 struct RedisExec {
@@ -124,7 +133,8 @@ struct RedisExec {
   uint64_t seed,   seed2;     /* kv map hash seeds, different for each db */
   kv::KeyCtx       kctx;      /* key context used for every key in command */
   kv::WorkAllocT< 1024 > wrk; /* kv work buffer, reset before each key lookup */
-  kv::DLinkList<RedisContinueMsg> cont_list, wait_list;
+  kv::DLinkList<RedisContinueMsg> cont_list, /* continuations ready to run */
+                                  wait_list; /* these are waiting on a timer */
   StreamBuf      & strm;      /* output buffer, result of command execution */
   size_t           strm_start;/* output offset before command starts */
   RedisMsg         msg;       /* current command msg */
@@ -135,8 +145,8 @@ struct RedisExec {
   RedisMultiExec * multi;     /* MULTI .. EXEC block */
   RedisCmd         cmd;       /* current command (GET_CMD) */
   RedisMsgStatus   mstatus;   /* command message parse status */
-  uint8_t          blk_state; /* if blocking cmd timed out (RBLK_CMD_TIMEOUT) */
-  bool             monitor_state; /* if monitor is active (true=yes) */
+  uint8_t          blk_state, /* if blocking cmd timed out (RBLK_CMD_TIMEOUT) */
+                   cmd_state; /* if monitor is active or skipping */
   uint16_t         cmd_flags, /* command flags (CMD_READONLY_FLAG) */
                    key_flags; /* EvKeyFlags, if a key has a keyspace event */
   int16_t          arity,     /* number of command args */
@@ -149,17 +159,18 @@ struct RedisExec {
   RedisPatternMap  pat_tab;   /* pub/sub pattern sub table */
   RedisContinueMap continue_tab; /* blocked continuations */
   RouteDB        & sub_route; /* map subject to sub_id */
-  RouteName      & route_name; /* name and address of this peer */
+  PeerData       & peer;      /* name and address of this peer */
   uint32_t         sub_id,    /* fd, set this after accept() */
                    next_event_id; /* next event id for timers */
   uint64_t         timer_id;  /* timer id of this service */
 
   RedisExec( kv::HashTab &map,  uint32_t ctx_id,  StreamBuf &s,
-             RouteDB &rdb,  RouteName &rt ) :
+             RouteDB &rdb,  PeerData &pd ) :
       kctx( map, ctx_id, NULL ), strm( s ), strm_start( s.pending() ),
       key( 0 ), keys( 0 ), key_cnt( 0 ), key_done( 0 ), multi( 0 ),
-      blk_state( 0 ), monitor_state( false ), key_flags( 0 ), sub_route( rdb ),
-      route_name( rt ), sub_id( ~0U ), next_event_id( 0 ), timer_id( 0 ) {
+      cmd( NO_CMD ), blk_state( 0 ), cmd_state( 0 ), key_flags( 0 ),
+      sub_route( rdb ), peer( pd ), sub_id( ~0U ), next_event_id( 0 ),
+      timer_id( 0 ) {
     this->kctx.ht.hdr.get_hash_seed( this->kctx.db_num, this->seed,
                                      this->seed2 );
     this->kctx.set( kv::KEYCTX_NO_COPY_ON_READ );
@@ -186,6 +197,8 @@ struct RedisExec {
   void exec_run_to_completion( void );
   /* parse set up a command */
   ExecStatus exec( EvSocket *svc,  EvPrefetchQueue *q );
+  /* run cmd that doesn't have keys */
+  ExecStatus exec_nokeys( void );
   /* execute a key operation */
   ExecStatus exec_key_continue( EvKeyCtx &ctx );
   /* subscribe to keyspace subjects and wait for publish to continue */
@@ -350,7 +363,9 @@ struct RedisExec {
   /* SERVER */
   ExecStatus exec_bgrewriteaof( void );
   ExecStatus exec_bgsave( void );
+  bool get_peer_match_args( PeerMatchArgs &ka );
   ExecStatus exec_client( void );
+  int client_list( char *buf,  size_t buflen );
   ExecStatus exec_command( void );
   ExecStatus exec_config( void );
   ExecStatus exec_dbsize( void );

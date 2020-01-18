@@ -17,8 +17,12 @@ struct CaprSession;
 struct EvCaprListen : public EvTcpListen {
   CaprSession * sess;
   uint64_t      timer_id;
+  EvListenOps   ops;
   EvCaprListen( EvPoll &p );
   virtual void accept( void );
+  int listen( const char *ip,  int port ) {
+    return this->EvTcpListen::listen( ip, port, "capr-listen" );
+  }
 };
 
 struct EvPrefetchQueue;
@@ -58,7 +62,7 @@ struct CaprSubMap {
   }
 
   size_t sub_count( void ) const {
-    return this->tab.pop();
+    return this->tab.pop_count();
   }
   void release( void ) {
     this->tab.release();
@@ -133,7 +137,7 @@ struct CaprPatternMap {
   }
 
   size_t sub_count( void ) const {
-    return this->tab.pop();
+    return this->tab.pop_count();
   }
   void release( void );
   /* put in new sub
@@ -177,8 +181,9 @@ struct EvCaprService : public EvConnection {
   char           inbox[ 32 + 4 ]; /* _INBOX.127-000-000-001.6EB8C0CB.> */
   uint32_t       inboxlen;
   uint64_t       sid;
+  EvConnectionOps ops;
 
-  EvCaprService( EvPoll &p ) : EvConnection( p, EV_CAPR_SOCK ) {}
+  EvCaprService( EvPoll &p ) : EvConnection( p, EV_CAPR_SOCK, this->ops ) {}
   void initialize_state( uint64_t id ) {
     this->sess = NULL;
     this->ms = this->bs = 0;

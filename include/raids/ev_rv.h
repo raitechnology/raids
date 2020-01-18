@@ -16,11 +16,15 @@ namespace ds {
 struct RvSession;
 
 struct EvRvListen : public EvTcpListen {
-  uint64_t timer_id;
-  uint32_t ipaddr;
-  uint16_t ipport;
+  uint64_t    timer_id;
+  uint32_t    ipaddr;
+  uint16_t    ipport;
+  EvListenOps ops;
   EvRvListen( EvPoll &p );
   virtual void accept( void );
+  int listen( const char *ip,  int port ) {
+    return this->EvTcpListen::listen( ip, port, "rv-listen" );
+  }
 };
 
 struct EvPrefetchQueue;
@@ -58,7 +62,7 @@ struct RvSubMap {
   }
 
   size_t sub_count( void ) const {
-    return this->tab.pop();
+    return this->tab.pop_count();
   }
   void release( void ) {
     this->tab.release();
@@ -133,7 +137,7 @@ struct RvPatternMap {
   }
 
   size_t sub_count( void ) const {
-    return this->tab.pop();
+    return this->tab.pop_count();
   }
   void release( void );
   /* put in new sub
@@ -221,8 +225,9 @@ struct EvRvService : public EvConnection {
   uint32_t     vmaj,
                vmin,
                vupd;
+  EvConnectionOps ops;
 
-  EvRvService( EvPoll &p ) : EvConnection( p, EV_RV_SOCK ) {}
+  EvRvService( EvPoll &p ) : EvConnection( p, EV_RV_SOCK, this->ops ) {}
   void initialize_state( uint64_t id ) {
     this->state = VERS_RECV;
     this->ms = this->bs = 0;

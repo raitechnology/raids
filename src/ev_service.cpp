@@ -17,65 +17,8 @@ using namespace rai;
 using namespace ds;
 using namespace kv;
 
-#if 0
-static char *
-get_ip_str( const struct sockaddr_storage *ss, char *s, size_t maxlen )
-{
-  const char * p;
-  char       * t;
-  size_t       len;
-  in_addr    * in;
-  in6_addr   * in6;
-  uint16_t     in_port;
-
-  switch ( ss->ss_family ) {
-    case AF_INET6:
-      in6     = &((struct sockaddr_in6 *) ss)->sin6_addr;
-      in_port = ((struct sockaddr_in6 *) ss)->sin6_port;
-      /* check if ::ffff: prefix */
-      if ( ((uint64_t *) in6)[ 0 ] == 0 &&
-           ((uint16_t *) in6)[ 4 ] == 0 &&
-           ((uint16_t *) in6)[ 5 ] == 0xffffU ) {
-        in = &((in_addr *) in6)[ 3 ];
-        goto do_af_inet;
-      }
-      p = inet_ntop( AF_INET6, in6, &s[ 1 ], maxlen - 9 );
-      if ( p == NULL )
-        return NULL;
-      /* make [ip6]:port */
-      len = ::strlen( &s[ 1 ] ) + 1;
-      t = &s[ len ];
-      s[ 0 ] = '[';
-      t[ 0 ] = ']';
-      t[ 1 ] = ':';
-      len = uint_to_str( ntohs( in_port ), &t[ 2 ] );
-      t[ len + 2 ] = '\0';
-      break;
-
-    case AF_INET:
-      in      = &((struct sockaddr_in *) ss)->sin_addr;
-      in_port = ((struct sockaddr_in *) ss)->sin_port;
-    do_af_inet:;
-      p = inet_ntop( AF_INET, in, s, maxlen - 7 );
-      if ( p == NULL )
-        return NULL;
-      /* make ip4:port */
-      len = ::strlen( s );
-      t = &s[ len ];
-      t[ 0 ] = ':';
-      len = uint_to_str( ntohs( in_port ), &t[ 1 ] );
-      t[ len + 1 ] = '\0';
-      break;
-
-    default: strncpy( s, "Unknown AF", maxlen ); return NULL;
-  }
-
-  return s;
-}
-#endif
-
 EvRedisListen::EvRedisListen( EvPoll &p )
-             : EvTcpListen( p ),
+             : EvTcpListen( p, this->ops ),
                timer_id( (uint64_t) EV_REDIS_SOCK << 56 )
 {
 }
@@ -86,7 +29,7 @@ EvRedisListen::accept( void )
   static int on = 1;
   struct sockaddr_storage addr;
   socklen_t addrlen = sizeof( addr );
-  int sock = ::accept( this->rte.fd, (struct sockaddr *) &addr, &addrlen );
+  int sock = ::accept( this->fd, (struct sockaddr *) &addr, &addrlen );
   if ( sock < 0 ) {
     if ( errno != EINTR ) {
       if ( errno != EAGAIN )
@@ -115,11 +58,11 @@ EvRedisListen::accept( void )
     perror( "warning: TCP_NODELAY" );
 
   ::fcntl( sock, F_SETFL, O_NONBLOCK | ::fcntl( sock, F_GETFL ) );
-  c->rte.fd   = sock;
+  c->PeerData::init_peer( sock, (struct sockaddr *) &addr, "redis" );
   c->sub_id   = sock;
   c->timer_id = ++this->timer_id;
 
-  if ( this->poll.add_sock( c, (struct sockaddr *) &addr, "redis" ) < 0 ) {
+  if ( this->poll.add_sock( c ) < 0 ) {
     ::close( sock );
     c->push_free_list();
   }
@@ -133,12 +76,11 @@ EvRedisService::process( void )
 
   StreamBuf       & strm = *this;
   EvPrefetchQueue * q    = this->poll.prefetch_queue;
-  size_t            buflen;
   RedisMsgStatus    mstatus;
   ExecStatus        status;
 
   for (;;) {
-    buflen = this->len - this->off;
+    size_t buflen = this->len - this->off;
     if ( buflen == 0 ) {
       this->pop( EV_PROCESS );
       break;
@@ -188,6 +130,8 @@ EvRedisService::process( void )
   }
   if ( strm.pending() > 0 )
     this->push( EV_WRITE );
+  else
+    strm.reset();
 }
 
 bool
@@ -255,6 +199,37 @@ EvRedisService::pop_free_list( void )
   }
 }
 
+bool
+EvRedisServiceOps::client_matches( PeerData &pd,  PeerMatchArgs &ka )
+{
+  EvRedisService & svc = (EvRedisService &) pd;
+  if ( svc.sub_tab.sub_count() + svc.pat_tab.sub_count() != 0 )
+    return this->EvSocketOps::client_matches( pd, ka, MARG( "pubsub" ), NULL );
+  return this->EvSocketOps::client_matches( pd, ka, MARG( "normal" ), NULL );
+}
+
+int
+EvRedisServiceOps::client_list( PeerData &pd,  PeerMatchArgs &ka,
+                                char *buf,  size_t buflen )
+{
+  if ( ! this->client_matches( pd, ka ) )
+    return 0;
+  PeerMatchArgs tmp; /* matches everything */
+  int i = this->EvConnectionOps::client_list( pd, tmp, buf, buflen );
+  if ( i >= 0 )
+    i += ((EvRedisService &) pd).client_list( &buf[ i ], buflen - i );
+  return i;
+}
+
+bool
+EvRedisServiceOps::client_kill( PeerData &pd,  PeerMatchArgs &ka )
+{
+  if ( ! this->client_matches( pd, ka ) )
+    return false;
+  this->EvSocketOps::do_shutdown( pd );
+  return true;
+}
+
 void
 EvRedisService::debug( void )
 {
@@ -272,7 +247,7 @@ EvRedisService::debug( void )
     s = this->poll.queue.heap[ i ];
     if ( s->type != EV_LISTEN_SOCK ) {
       addrlen = sizeof( addr );
-      getpeername( s->rte.fd, (struct sockaddr*) &addr, &addrlen );
+      getpeername( s->fd, (struct sockaddr*) &addr, &addrlen );
       getnameinfo( (struct sockaddr*) &addr, addrlen, buf, sizeof( buf ),
                    svc, sizeof( svc ), NI_NUMERICHOST | NI_NUMERICSERV );
     }
@@ -280,7 +255,7 @@ EvRedisService::debug( void )
       buf[ 0 ] = 'L'; buf[ 1 ] = '\0';
       svc[ 0 ] = 0;
     }
-    printf( "%d/%s:%s ", s->rte.fd, buf, svc );
+    printf( "%d/%s:%s ", s->fd, buf, svc );
   }
   printf( "\n" );
   if ( this->poll.prefetch_queue == NULL ||

@@ -31,11 +31,11 @@ EvTimerQueue::create_timer_queue( EvPoll &p )
     return NULL;
   }
   EvTimerQueue * q = new ( m ) EvTimerQueue( p );
-  q->rte.fd = tfd;
+  q->PeerData::init_peer( tfd, NULL, "timer" );
   q->last   = current_monotonic_time_ns();
   q->now    = q->last;
   q->delta  = MAX_DELTA;
-  if ( p.add_sock( q, NULL, "timer" ) < 0 ) {
+  if ( p.add_sock( q ) < 0 ) {
     printf( "failed to add timer %d\n", tfd );
     ::close( tfd );
     delete q;
@@ -93,7 +93,7 @@ EvTimerQueue::read( void )
   size_t  total = 0;
   ssize_t n;
   for (;;) {
-    n = ::read( this->rte.fd, buf, sizeof( buf ) );
+    n = ::read( this->fd, buf, sizeof( buf ) );
     if ( n < 0 ) {
       if ( errno != EINTR ) {
         if ( errno != EAGAIN ) {
@@ -122,7 +122,7 @@ EvTimerQueue::set_timer( void )
   ts.it_value.tv_sec  = this->delta / (uint64_t) 1000000000;
   ts.it_value.tv_nsec = this->delta % (uint64_t) 1000000000;
 
-  if ( timerfd_settime( this->rte.fd, 0, &ts, NULL ) < 0 ) {
+  if ( timerfd_settime( this->fd, 0, &ts, NULL ) < 0 ) {
     perror( "set timer" );
     return false;
   }

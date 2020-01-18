@@ -49,7 +49,8 @@ struct EvMemcachedUdp : public EvUdp {
   MemcachedExec  * exec;     /* execution context */
   uint32_t       * out_idx;  /* index into strm.iov[] for each result */
   EvMemcachedMerge sav;
-  EvMemcachedUdp( EvPoll &p ) : EvUdp( p, EV_MEMUDP_SOCK ),
+  EvUdpOps         ops;
+  EvMemcachedUdp( EvPoll &p ) : EvUdp( p, EV_MEMUDP_SOCK, this->ops ),
     exec( 0 ), out_idx( 0 ) {}
   int listen( const char *ip,  int port );
   void init( void );
@@ -90,6 +91,7 @@ struct MemcachedUdpFraming {
 
 
 struct EvMemcachedListen : public EvTcpListen {
+  EvListenOps ops;
   EvMemcachedListen( EvPoll &p );
   int listen( const char *ip,  int port );
   virtual void accept( void );
@@ -98,10 +100,11 @@ struct EvMemcachedListen : public EvTcpListen {
 struct EvPrefetchQueue;
 
 struct EvMemcachedService : public EvConnection, public MemcachedExec {
+  EvConnectionOps ops;
   void * operator new( size_t, void *ptr ) { return ptr; }
 
   EvMemcachedService( EvPoll &p,  MemcachedStats &st )
-    : EvConnection( p, EV_MEMCACHED_SOCK ),
+    : EvConnection( p, EV_MEMCACHED_SOCK, this->ops ),
       MemcachedExec( *p.map, p.ctx_id, *this, st ) {}
   void process( void );
   bool timer_expire( uint64_t, uint64_t ) { return false; }

@@ -17,7 +17,7 @@ using namespace kv;
 static MemcachedStats stat;
 
 EvMemcachedListen::EvMemcachedListen( EvPoll &p )
-                 : EvTcpListen( p )
+                 : EvTcpListen( p, this->ops )
 {
   if ( stat.boot_time == 0 )
     stat.boot_time = kv_current_realtime_ns();
@@ -30,7 +30,7 @@ EvMemcachedListen::listen( const char *ip,  int port )
     ::strncpy( stat.interface, ip, sizeof( stat.interface ) - 1 );
   stat.tcpport = port;
   stat.max_connections = this->poll.nfds;
-  return this->EvTcpListen::listen( ip, port );
+  return this->EvTcpListen::listen( ip, port, "memcached-listen" );
 }
 
 int
@@ -40,7 +40,7 @@ EvMemcachedUdp::listen( const char *ip,  int port )
     ::strncpy( stat.interface, ip, sizeof( stat.interface ) - 1 );
   stat.udpport = port;
   stat.max_connections = this->poll.nfds;
-  return this->EvUdp::listen( ip, port );
+  return this->EvUdp::listen( ip, port, "memcached-udp" );
 }
 
 void
@@ -49,7 +49,7 @@ EvMemcachedListen::accept( void )
   static int on = 1;
   struct sockaddr_storage addr;
   socklen_t addrlen = sizeof( addr );
-  int sock = ::accept( this->rte.fd, (struct sockaddr *) &addr, &addrlen );
+  int sock = ::accept( this->fd, (struct sockaddr *) &addr, &addrlen );
   if ( sock < 0 ) {
     if ( errno != EINTR ) {
       if ( errno != EAGAIN )
@@ -80,8 +80,8 @@ EvMemcachedListen::accept( void )
     perror( "warning: TCP_NODELAY" );
 
   ::fcntl( sock, F_SETFL, O_NONBLOCK | ::fcntl( sock, F_GETFL ) );
-  c->rte.fd = sock;
-  if ( this->poll.add_sock( c, (struct sockaddr *) &addr, "memcached" ) < 0 ) {
+  c->PeerData::init_peer( sock, (struct sockaddr *) &addr, "memcached" );
+  if ( this->poll.add_sock( c ) < 0 ) {
     ::close( sock );
     c->push_free_list();
   }

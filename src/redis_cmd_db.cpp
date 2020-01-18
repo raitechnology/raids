@@ -1,3 +1,4 @@
+#include <ctype.h>
 #include <string.h>
 #include <raids/redis_cmd_db.h>
 
@@ -506,6 +507,19 @@ const char *cmd_flag[] = {
 
 const size_t cmd_flag_cnt = sizeof( cmd_flag ) /
                             sizeof( cmd_flag[ 0 ] );
+
+char *
+cmd_tolower( int i,  char *buf )
+{
+  if ( i < 0 || i >= (int) cmd_db_cnt )
+    i = 0;
+  const char *name = cmd_db[ i ].name;
+  size_t j;
+  for ( j = 0; name[ j ] != '\0'; j++ )
+    buf[ j ] = tolower( name[ j ] );
+  buf[ j ] = '\0';
+  return buf;
+}
 
 }
 }

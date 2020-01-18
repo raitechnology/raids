@@ -35,9 +35,10 @@ struct PubTest : public EvShmSvc, public KvSubNotifyList {
   uint64_t     last_time;
   MDMsgMem     mem;
   MDDict     * dict;
+  PeerOps      ops;
 
   PubTest( EvPoll &poll,  const char *s,  uint32_t ps_rate )
-    : EvShmSvc( poll ), sub( s ), len( ::strlen( s ) ),
+    : EvShmSvc( poll, this->ops ), sub( s ), len( ::strlen( s ) ),
       h( 0 ), per_sec( ps_rate ), ns_ival( 1e9 / ps_rate ),
       count( 0 ), last_time( 0 ), dict( 0 ) {
   }
@@ -54,12 +55,12 @@ struct PubTest : public EvShmSvc, public KvSubNotifyList {
     this->poll.pubsub->sub_notifyq.push_tl( this );
     this->KvSubNotifyList::in_list = true;
     if ( this->per_sec >= 1000 ) {
-      this->poll.timer_queue->add_timer_units( this->rte.fd, this->ns_ival,
+      this->poll.timer_queue->add_timer_units( this->fd, this->ns_ival,
                                                IVAL_NANOS, 1, 0 );
     }
     else {
       uint32_t us_ival = this->ns_ival / 1000;
-      this->poll.timer_queue->add_timer_units( this->rte.fd, us_ival,
+      this->poll.timer_queue->add_timer_units( this->fd, us_ival,
                                                IVAL_MICROS, 1, 0 );
     }
   }
@@ -80,7 +81,7 @@ struct PubTest : public EvShmSvc, public KvSubNotifyList {
       size_t sz = tibmsg.update_hdr();
 
       EvPublish p( submsg.reply(), submsg.replylen, NULL, 0, buf,
-                   sz, this->rte.fd, this->h,
+                   sz, this->fd, this->h,
                    NULL, 0, (uint8_t) RAIMSG_TYPE_ID, 'i' );
       this->poll.forward_msg( p, NULL, 0, NULL );
     }
@@ -101,7 +102,7 @@ struct PubTest : public EvShmSvc, public KvSubNotifyList {
       size_t sz = tibmsg.update_hdr();
 
       EvPublish p( this->sub, this->len, NULL, 0, buf,
-                   sz, this->rte.fd, this->h,
+                   sz, this->fd, this->h,
                    NULL, 0, (uint8_t) RAIMSG_TYPE_ID, 'u' );
       this->poll.forward_msg( p, NULL, 0, NULL );
       if ( this->per_sec < 100 )

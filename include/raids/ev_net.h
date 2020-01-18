@@ -50,7 +50,8 @@ enum EvSockType {
   EV_CLIENTUDP_SOCK = 14 /* udp client */
 };
 
-/* vtable dispatch, without vtable */
+/* vtable dispatch, without vtable, this allows compiler to inline the
+ * functions and discard the empty ones (how a final qualifier should work) */
 #define SOCK_CALL( S, F ) \
   switch ( S->type ) { \
     case EV_REDIS_SOCK:     ((EvRedisService *) S)->F; break; \
@@ -107,18 +108,16 @@ enum EvListFlag {
   IN_FREE_LIST   = 2  /* in a free list */
 };
 
-struct EvSocket {
-  EvSocket * next,     /* link for sock lists */
-           * back;
-  RouteName  rte;
+struct EvSocket : public PeerData /* fd and address of peer */ {
   EvPoll   & poll;     /* the parent container */
   uint64_t   prio_cnt; /* timeslice each socket for a slot to run */
   uint32_t   state;    /* bit mask of states, the queues the sock is in */
   EvSockType type;     /* listen or cnnection */
   EvListFlag listfl;   /* in active list or free list */
+  uint64_t   pad[ 4 ]; /* align to 256 bytes */
 
-  EvSocket( EvPoll &p,  EvSockType t )
-    : next( 0 ), back( 0 ), rte( -1, 0, NULL ), poll( p ), prio_cnt( 0 ),
+  EvSocket( EvPoll &p,  EvSockType t,  PeerOps &o )
+    : PeerData( o ), poll( p ), prio_cnt( 0 ),
       state( 0 ), type( t ), listfl( IN_NO_LIST ) {}
 
   /* priority queue states */
@@ -160,8 +159,15 @@ struct EvSocket {
 
 #if __cplusplus >= 201103L
   /* 64b align */
-  static_assert( 128 == sizeof( EvSocket ), "socket size" );
+  static_assert( 256 == sizeof( EvSocket ), "socket size" );
 #endif
+
+struct EvSocketOps : public PeerOps {
+  virtual int client_list( PeerData &pd,  PeerMatchArgs &ka,
+                           char *buf,  size_t buflen );
+  static bool client_matches( PeerData &pd,  PeerMatchArgs &ka,  ... );
+  void do_shutdown( PeerData &pd );
+};
 
 static inline void *aligned_malloc( size_t sz ) {
 #ifdef _ISOC11_SOURCE
@@ -183,7 +189,8 @@ struct EvPoll : public RoutePublish {
   EvPrefetchQueue    * prefetch_queue;  /* ordering keys */
   KvPubSub           * pubsub;          /* cross process pubsub */
   EvTimerQueue       * timer_queue;     /* timer events */
-  uint64_t             prio_tick;       /* priority queue ticker */
+  uint64_t             prio_tick,       /* priority queue ticker */
+                       next_id;         /* unique id for connection */
   uint32_t             ctx_id,          /* this thread context */
                        fdcnt;           /* num fds in poll set */
   int                  efd,             /* epoll fd */
@@ -248,8 +255,8 @@ struct EvPoll : public RoutePublish {
 
   EvPoll()
     : sock( 0 ), ev( 0 ), map( 0 ), prefetch_queue( 0 ), pubsub( 0 ),
-      timer_queue( 0 ), prio_tick( 0 ), ctx_id( 0 ), fdcnt( 0 ), efd( -1 ),
-      nfds( -1 ), maxfd( -1 ), quit( 0 ), prefetch_pending( 0 ),
+      timer_queue( 0 ), prio_tick( 0 ), next_id( 0 ), ctx_id( 0 ), fdcnt( 0 ),
+      efd( -1 ), nfds( -1 ), maxfd( -1 ), quit( 0 ), prefetch_pending( 0 ),
       sub_route( *this ) /*, single_thread( false )*/ {
     ::memset( this->prefetch_cnt, 0, sizeof( this->prefetch_cnt ) );
   }
@@ -273,8 +280,9 @@ struct EvPoll : public RoutePublish {
   bool publish_multi( EvPublish &pub,  uint32_t *rcount_total,
                       RoutePublishData *rpd );
   bool publish_queue( EvPublish &pub,  uint32_t *rcount_total );
+  uint64_t current_coarse_ns( void ) const;
   /* add to poll set, name is a peer, alt is if listening or shm direct */
-  int add_sock( EvSocket *s,  const sockaddr *name,  const char *alt );
+  int add_sock( EvSocket *s );
   void remove_sock( EvSocket *s ); /* remove from poll set */
   bool timer_expire( EvTimerEvent &ev ); /* process timer event fired */
   void process_quit( void );     /* quit state close socks */
@@ -284,11 +292,13 @@ struct EvListen : public EvSocket {
   void * operator new( size_t, void *ptr ) { return ptr; }
   void operator delete( void *ptr ) { ::free( ptr ); }
 
-  EvListen( EvPoll &p ) : EvSocket( p, EV_LISTEN_SOCK ) {}
+  uint64_t accept_cnt;
+  EvListen( EvPoll &p,  PeerOps &o )
+    : EvSocket( p, EV_LISTEN_SOCK, o ), accept_cnt( 0 ) {}
 
   virtual void accept( void ) {}
   void write( void ) {}
-  void read( void ) { this->accept(); }
+  void read( void ) { this->accept_cnt++; this->accept(); }
   void process( void ) {}
   void release( void ) {}
   bool timer_expire( uint64_t, uint64_t ) { return false; }
@@ -298,6 +308,12 @@ struct EvListen : public EvSocket {
   int exec_key_continue( EvKeyCtx & ) { return 0; }
   void process_shutdown( void ) { this->pushpop( EV_CLOSE, EV_SHUTDOWN ); }
   void process_close( void ) {}
+};
+
+struct EvListenOps : public EvSocketOps {
+  virtual int client_list( PeerData &pd,  PeerMatchArgs &ka,
+                           char *buf,  size_t buflen );
+  virtual bool client_kill( PeerData &pd,  PeerMatchArgs &ka );
 };
 
 struct EvConnection : public EvSocket, public StreamBuf {
@@ -312,7 +328,7 @@ struct EvConnection : public EvSocket, public StreamBuf {
            nbytes_sent;
   char     recv_buf[ 16 * 1024 ] __attribute__((__aligned__( 64 )));
 
-  EvConnection( EvPoll &p, EvSockType t ) : EvSocket( p, t ) {
+  EvConnection( EvPoll &p, EvSockType t,  PeerOps &o ) : EvSocket( p, t, o ) {
     this->recv           = this->recv_buf;
     this->off            = 0;
     this->len            = 0;
@@ -360,6 +376,12 @@ struct EvConnection : public EvSocket, public StreamBuf {
   void process_shutdown( void ) { this->pushpop( EV_CLOSE, EV_SHUTDOWN ); }
 };
 
+struct EvConnectionOps : public EvSocketOps {
+  virtual int client_list( PeerData &pd,  PeerMatchArgs &ka,
+                           char *buf,  size_t buflen );
+  virtual bool client_kill( PeerData &pd,  PeerMatchArgs &ka );
+};
+
 struct EvUdp : public EvSocket, public StreamBuf {
   uint64_t  nbytes_recv,
             nbytes_sent;
@@ -372,7 +394,7 @@ struct EvUdp : public EvSocket, public StreamBuf {
             out_nmsgs;
   uint32_t  pad[ 3 ];
 
-  EvUdp( EvPoll &p, EvSockType t ) : EvSocket( p, t ),
+  EvUdp( EvPoll &p, EvSockType t, PeerOps &o ) : EvSocket( p, t, o ),
     nbytes_recv( 0 ), nbytes_sent( 0 ),
     in_mhdr( 0 ), out_mhdr( 0 ), in_moff( 0 ), in_nmsgs( 0 ), in_size( 0 ),
     in_nsize( 1 ), out_nmsgs( 0 ) {}
@@ -382,7 +404,7 @@ struct EvUdp : public EvSocket, public StreamBuf {
     this->out_nmsgs = this->in_size = 0;
   }
   bool alloc_mmsg( void );
-  int listen( const char *ip,  int port );
+  int listen( const char *ip,  int port,  const char *k );
   int connect( const char *ip,  int port );
 
   void release_buffers( void ) { /* release all buffs */
@@ -396,6 +418,12 @@ struct EvUdp : public EvSocket, public StreamBuf {
   void read( void );             /* fill recv buf, return true if read some */
   void write( void );            /* flush stream buffer */
   void process_shutdown( void ) { this->pushpop( EV_CLOSE, EV_SHUTDOWN ); }
+};
+
+struct EvUdpOps : public EvSocketOps {
+  virtual int client_list( PeerData &pd,  PeerMatchArgs &ka,
+                           char *buf,  size_t buflen );
+  virtual bool client_kill( PeerData &pd,  PeerMatchArgs &ka );
 };
 
 }

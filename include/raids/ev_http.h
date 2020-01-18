@@ -9,27 +9,39 @@ namespace rai {
 namespace ds {
 
 struct EvHttpListen : public EvTcpListen {
-  EvHttpListen( EvPoll &p ) : EvTcpListen( p ) {}
+  EvListenOps ops;
+  EvHttpListen( EvPoll &p ) : EvTcpListen( p, this->ops ) {}
   virtual void accept( void );
+  int listen( const char *ip,  int port ) {
+    return this->EvTcpListen::listen( ip, port, "http-listen" );
+  }
 };
 
 struct EvPrefetchQueue;
 
+struct EvHttpServiceOps : public EvConnectionOps {
+  bool client_matches( PeerData &pd,  PeerMatchArgs &ka );
+  virtual int client_list( PeerData &pd,  PeerMatchArgs &ka,
+                           char *buf,  size_t buflen );
+  virtual bool client_kill( PeerData &pd,  PeerMatchArgs &ka );
+};
+
 struct EvHttpService : public EvConnection, public RedisExec {
-  char   * wsbuf;   /* decoded websocket frames */
-  size_t   wsoff,   /* start offset of wsbuf */
-           wslen,   /* length of wsbuf used */
-           wsalloc, /* sizeof wsbuf alloc */
-           wsmsgcnt;
-  uint64_t websock_off;  /* on output pointer that frames msgs with ws */
-  int      term_int;
-  bool     is_not_found, /* a 404 page closes socket */
-           is_using_term;
-  Term     term;
+  char           * wsbuf;   /* decoded websocket frames */
+  size_t           wsoff,   /* start offset of wsbuf */
+                   wslen,   /* length of wsbuf used */
+                   wsalloc, /* sizeof wsbuf alloc */
+                   wsmsgcnt;
+  uint64_t         websock_off;  /* on output pointer that frames msgs with ws */
+  int              term_int;
+  bool             is_not_found, /* a 404 page closes socket */
+                   is_using_term;
+  Term             term;
+  EvHttpServiceOps ops;
   void * operator new( size_t, void *ptr ) { return ptr; }
 
-  EvHttpService( EvPoll &p ) : EvConnection( p, EV_HTTP_SOCK ),
-    RedisExec( *p.map, p.ctx_id, *this, p.sub_route, this->rte ),
+  EvHttpService( EvPoll &p ) : EvConnection( p, EV_HTTP_SOCK, this->ops ),
+    RedisExec( *p.map, p.ctx_id, *this, p.sub_route, *this ),
     wsbuf( 0 ), wsoff( 0 ), wslen( 0 ), websock_off( 0 ),
     term_int( 0 ), is_not_found( false ), is_using_term( false ) {}
   void initialize_state( void ) {

@@ -36,9 +36,11 @@ struct EvTimerQueue : public EvSocket {
   void operator delete( void *ptr ) { ::free( ptr ); }
   kv::PrioQueue<EvTimerEvent, EvTimerEvent::is_greater> queue;
   uint64_t last, now, delta;
+  EvSocketOps ops;
 
   EvTimerQueue( EvPoll &p )
-    : EvSocket( p, EV_TIMER_QUEUE ), last( 0 ), now( 0 ), delta( 0 ) {}
+    : EvSocket( p, EV_TIMER_QUEUE, this->ops ),
+      last( 0 ), now( 0 ), delta( 0 ) {}
   /* add timer that expires in ival seconds */
   bool add_timer_seconds( int id,  uint32_t ival,  uint64_t timer_id,
                           uint64_t event_id ) {

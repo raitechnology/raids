@@ -15,13 +15,13 @@ using namespace rai;
 using namespace ds;
 
 int
-EvTcpListen::listen( const char *ip,  int port )
+EvTcpListen::listen( const char *ip,  int port,  const char *k )
 {
   static int on = 1, off = 0;
   int  status = 0,
        sock;
   char svc[ 16 ];
-  struct addrinfo hints, * ai = NULL, * p;
+  struct addrinfo hints, * ai = NULL, * p = NULL;
 
   ::snprintf( svc, sizeof( svc ), "%d", port );
   ::memset( &hints, 0, sizeof( struct addrinfo ) );
@@ -80,10 +80,10 @@ break_loop:;
     perror( "error: listen" );
     goto fail;
   }
-  this->rte.fd = sock;
+  this->PeerData::init_peer( sock, p->ai_addr, k );
   ::fcntl( sock, F_SETFL, O_NONBLOCK | ::fcntl( sock, F_GETFL ) );
-  if ( (status = this->poll.add_sock( this, NULL, "tcp-listen" )) < 0 ) {
-    this->rte.fd = -1;
+  if ( (status = this->poll.add_sock( this )) < 0 ) {
+    this->fd = -1;
 fail:;
     if ( sock != -1 )
       ::close( sock );
@@ -101,7 +101,7 @@ EvTcpClient::connect( const char *ip,  int port )
   int  status = 0,
        sock;
   char svc[ 16 ];
-  struct addrinfo hints, * ai = NULL, * p;
+  struct addrinfo hints, * ai = NULL, * p = NULL;
 
   ::snprintf( svc, sizeof( svc ), "%d", port );
   ::memset( &hints, 0, sizeof( struct addrinfo ) );
@@ -157,11 +157,11 @@ break_loop:;
     status = -1;
     goto fail;
   }
-  this->rte.fd = sock;
+  this->PeerData::init_peer( sock, p->ai_addr, "tcp-client" );
   ::fcntl( sock, F_SETFL, O_NONBLOCK | ::fcntl( sock, F_GETFL ) );
 
-  if ( this->poll.add_sock( this, NULL, "tcp-client" ) < 0 ) {
-    this->rte.fd = -1;
+  if ( this->poll.add_sock( this ) < 0 ) {
+    this->fd = -1;
 fail:;
     if ( sock != -1 )
       ::close( sock );

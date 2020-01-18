@@ -16,7 +16,7 @@ using namespace rai;
 using namespace ds;
 
 int
-EvUnixListen::listen( const char *path )
+EvUnixListen::listen( const char *path,  const char *k )
 {
   static int on = 1;
   int sock;
@@ -46,14 +46,14 @@ EvUnixListen::listen( const char *path )
     perror( "error: listen" );
     goto fail;
   }
-  this->rte.fd = sock;
+  this->PeerData::init_peer( sock, (struct sockaddr *) &sunaddr, k );
   ::fcntl( sock, F_SETFL, O_NONBLOCK | ::fcntl( sock, F_GETFL ) );
-  if ( this->poll.add_sock( this, NULL, "unix-listen" ) < 0 )
+  if ( this->poll.add_sock( this ) < 0 )
     goto fail;
   return 0;
 fail:;
   ::close( sock );
-  this->rte.fd = -1;
+  this->fd = -1;
   return -1;
 }
 
@@ -62,7 +62,7 @@ EvRedisUnixListen::accept( void )
 {
   struct sockaddr_un sunaddr;
   socklen_t addrlen = sizeof( sunaddr );
-  int sock = ::accept( this->rte.fd, (struct sockaddr *) &sunaddr, &addrlen );
+  int sock = ::accept( this->fd, (struct sockaddr *) &sunaddr, &addrlen );
   if ( sock < 0 ) {
     if ( errno != EINTR ) {
       if ( errno != EAGAIN )
@@ -79,9 +79,9 @@ EvRedisUnixListen::accept( void )
     return;
   }
   ::fcntl( sock, F_SETFL, O_NONBLOCK | ::fcntl( sock, F_GETFL ) );
-  c->rte.fd = sock;
+  this->PeerData::init_peer( sock, (struct sockaddr *) &sunaddr, "redis" );
   c->sub_id = sock;
-  if ( this->poll.add_sock( c, (struct sockaddr *) &sunaddr, "redis" ) < 0 ) {
+  if ( this->poll.add_sock( c ) < 0 ) {
     ::close( sock );
     c->push_free_list();
   }
@@ -106,11 +106,11 @@ EvUnixClient::connect( const char *path )
     perror( "error: connect" );
     goto fail;
   }
-  this->rte.fd = sock;
+  this->PeerData::init_peer( sock, (struct sockaddr *) &sunaddr, "unix-client");
   ::fcntl( sock, F_SETFL, O_NONBLOCK | ::fcntl( sock, F_GETFL ) );
-  if ( this->poll.add_sock( this, NULL, "unix-client" ) < 0 ) {
+  if ( this->poll.add_sock( this ) < 0 ) {
   fail:;
-    this->rte.fd = -1;
+    this->fd = -1;
     ::close( sock );
     return -1;
   }

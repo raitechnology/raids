@@ -8,8 +8,12 @@ namespace rai {
 namespace ds {
 
 struct EvNatsListen : public EvTcpListen {
-  EvNatsListen( EvPoll &p ) : EvTcpListen( p ) {}
+  EvListenOps ops;
+  EvNatsListen( EvPoll &p ) : EvTcpListen( p, this->ops ) {}
   virtual void accept( void );
+  int listen( const char *ip,  int port ) {
+    return this->EvTcpListen::listen( ip, port, "nats-listen" );
+  }
 };
 
 struct EvPrefetchQueue;
@@ -49,8 +53,9 @@ struct EvNatsService : public EvConnection {
            * user,
            * pass,
            * auth_token;
+  EvConnectionOps ops;
 
-  EvNatsService( EvPoll &p ) : EvConnection( p, EV_NATS_SOCK ) {}
+  EvNatsService( EvPoll &p ) : EvConnection( p, EV_NATS_SOCK, this->ops ) {}
   void initialize_state( void ) {
     this->msg_ptr   = NULL;
     this->msg_len   = 0;

@@ -46,9 +46,10 @@ struct EvShmClient : public EvShm, public EvClient, public StreamBuf,
                      public EvSocket {
   RedisExec * exec;
   int         pfd[ 2 ];
+  EvSocketOps ops;
 
   EvShmClient( EvPoll &p,  EvCallback &callback )
-    : EvClient( callback ), EvSocket( p, EV_SHM_SOCK ), exec( 0 ) {
+    : EvClient( callback ), EvSocket( p, EV_SHM_SOCK, this->ops ), exec( 0 ) {
     this->pfd[ 0 ] = this->pfd[ 1 ] = -1;
   }
   ~EvShmClient();
@@ -72,7 +73,7 @@ struct EvShmClient : public EvShm, public EvClient, public StreamBuf,
 struct EvShmSvc : public EvShm, public EvSocket {
   void * operator new( size_t, void *ptr ) { return ptr; }
   void operator delete( void *ptr ) { ::free( ptr ); }
-  EvShmSvc( EvPoll &p ) : EvSocket( p, EV_SHM_SVC ) {}
+  EvShmSvc( EvPoll &p, PeerOps &o ) : EvSocket( p, EV_SHM_SVC, o ) {}
   virtual ~EvShmSvc();
 
   int init_poll( void );
@@ -92,10 +93,11 @@ struct EvShmSvc : public EvShm, public EvSocket {
 struct EvNetClient : public EvClient, public EvConnection {
   void * operator new( size_t, void *ptr ) { return ptr; }
   void operator delete( void *ptr ) { ::free( ptr ); }
-  RedisMsg msg;         /* current msg */
+  RedisMsg        msg;         /* current msg */
+  EvConnectionOps ops;
 
   EvNetClient( EvPoll &p, EvCallback &callback,  EvSockType t = EV_CLIENT_SOCK )
-    : EvClient( callback ), EvConnection( p, t ) {}
+    : EvClient( callback ), EvConnection( p, t, this->ops ) {}
   /*virtual void send_msg( RedisMsg &msg );*/
   virtual void send_data( char *buf,  size_t size );
   void process( void );
@@ -133,11 +135,12 @@ struct EvUdpClient : public EvClient, public EvUdp {
   void operator delete( void *ptr ) { ::free( ptr ); }
 
   EvMemcachedMerge * sav;
-  uint16_t req_id;
+  uint16_t           req_id;
+  EvSocketOps        ops;
 
   EvUdpClient( EvPoll &p, EvCallback &callback,
                EvSockType t = EV_CLIENTUDP_SOCK )
-    : EvClient( callback ), EvUdp( p, t ), sav( 0 ), req_id( 0 ) {}
+    : EvClient( callback ), EvUdp( p, t, this->ops ), sav( 0 ), req_id( 0 ) {}
   void process( void );
   void process_close( void );
   void release( void );

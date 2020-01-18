@@ -39,7 +39,6 @@ static const char   sys_mc[]  = "_SYS.MC",
                     sys_ibx[] = "_SYS.IBX.";
 static const size_t mc_name_size  = sizeof( sys_mc ),
                     ibx_name_size = 12;
-int use_dsunix = 0;
 
 static void
 make_ibx( char *ibname,  uint16_t ctx_id )
@@ -135,41 +134,26 @@ KvMsg::print( void )
 KvPubSub *
 KvPubSub::create( EvPoll &poll )
 {
-  struct sockaddr_un un;
   KvPubSub * ps;
   int        fd;
   void     * p,
            * ibptr,
            * mcptr;
-  size_t     i, len;
+  size_t     i;
   char       ibname[ 12 ];
+  sigset_t   mask;
 
-  if ( use_dsunix ) {
-    if ( (fd = socket( AF_UNIX, SOCK_DGRAM, 0 )) < 0 )
-      return NULL;
-    len = make_dsunix_sockname( un, poll.ctx_id );
-    ::unlink( un.sun_path );
-    if ( ::bind( fd, (struct sockaddr *) &un, len ) < 0 ) {
-      ::close( fd );
-      return NULL;
-    }
-    ::fcntl( fd, F_SETFL, O_NONBLOCK | ::fcntl( fd, F_GETFL ) );
+  sigemptyset( &mask );
+  sigaddset( &mask, SIGUSR1 );
+
+  if ( sigprocmask( SIG_BLOCK, &mask, NULL ) == -1 ) {
+    perror("sigprocmask");
+    return NULL;
   }
-  else {
-    sigset_t mask;
-
-    sigemptyset( &mask );
-    sigaddset( &mask, SIGUSR1 );
-
-    if ( sigprocmask( SIG_BLOCK, &mask, NULL ) == -1 ) {
-      perror("sigprocmask");
-      return NULL;
-    }
-    fd = signalfd( -1, &mask, SFD_NONBLOCK );
-    if ( fd == -1 ) {
-      perror( "signalfd" );
-      return NULL;
-    }
+  fd = signalfd( -1, &mask, SFD_NONBLOCK );
+  if ( fd == -1 ) {
+    perror( "signalfd" );
+    return NULL;
   }
   i = MAX_CTX_ID + 1;
   if ( (p = aligned_malloc( sizeof( KvPubSub ) +
@@ -178,13 +162,14 @@ KvPubSub::create( EvPoll &poll )
   mcptr = (void *) &((uint8_t *) p)[ sizeof( KvPubSub ) ];
   ibptr = (void *) &((uint8_t *) mcptr)[ sizeof( KvMsgQueue ) + 32 ];
   ps = new ( p ) KvPubSub( poll, fd, mcptr, sys_mc, mc_name_size );
+  /* for each ctx_id create queue */
   for ( i = 0; i < MAX_CTX_ID; i++ ) {
     make_ibx( ibname, i );
     ps->inbox[ i ] =
       new ( ibptr ) KvMsgQueue( ps->kctx, ibname, ibx_name_size );
     ibptr = &((uint8_t *) ibptr)[ sizeof( KvMsgQueue ) + 32 ];
   }
-  if ( ! ps->register_mcast( true ) || poll.add_sock( ps, NULL, "kv" ) < 0 ) {
+  if ( ! ps->register_mcast() || poll.add_sock( ps ) < 0 ) {
     ::close( fd );
     return NULL;
   }
@@ -194,35 +179,123 @@ KvPubSub::create( EvPoll &poll )
 }
 
 bool
-KvPubSub::register_mcast( bool activate )
+KvPubSub::register_mcast( void )
 {
   void    * val;
   KeyStatus status;
   bool      res = false;
 
+  this->dead_cr.zero();
   this->kctx.set_key( this->mcast.kbuf );
   this->kctx.set_hash( this->mcast.hash1, this->mcast.hash2 );
+  /* add my ctx_id to the mcast key, which is the set of all ctx_ids */
   if ( (status = this->kctx.acquire( &this->wrk )) <= KEY_IS_NEW ) {
     bool is_new = ( status == KEY_IS_NEW );
     if ( (status = this->kctx.resize( &val, KV_CTX_BYTES, true )) == KEY_OK ) {
       CubeRoute128 &cr = *(CubeRoute128 *) val;
       if ( is_new )
         cr.zero();
-      if ( activate ) {
-        cr.set( this->ctx_id );
-        this->create_kvmsg( KV_MSG_HELLO, sizeof( KvMsg ) );
-        res = true;
+      else {
+        for ( uint32_t ctx_id = 1; ctx_id < MAX_CTX_ID; ctx_id++ ) {
+          if ( this->ctx_id == ctx_id )
+            continue;
+          /* check that this route is valid by pinging the pid */
+          if ( cr.is_set( ctx_id ) ) {
+            uint32_t pid = this->kctx.ht.ctx[ ctx_id ].ctx_pid;
+            if ( pid == 0 ||
+                 this->kctx.ht.ctx[ ctx_id ].ctx_id == KV_NO_CTX_ID ||
+                 ::kill( pid, 0 ) != 0 ) {
+              this->dead_cr.set( ctx_id );
+              fprintf( stderr, "ctx %u pid %u is dead\n", ctx_id, pid );
+            }
+          }
+        }
       }
-      else if ( cr.is_set( this->ctx_id ) ) {
-        cr.clear( this->ctx_id );
-        this->create_kvmsg( KV_MSG_BYE, sizeof( KvMsg ) );
+      cr.set( this->ctx_id );
+      this->create_kvmsg( KV_MSG_HELLO, sizeof( KvMsg ) );
+      res = true;
+    }
+    this->kctx.release();
+  }
+  if ( ! res ) {
+    fprintf( stderr, "Unable to register mcast, kv status %d\n",
+             (int) status );
+  }
+  return res;
+}
+
+bool
+KvPubSub::clear_mcast_dead_routes( void )
+{
+  void    * val;
+  uint64_t  sz;
+  KeyStatus status;
+  bool      res = false;
+
+  this->kctx.set_key( this->mcast.kbuf );
+  this->kctx.set_hash( this->mcast.hash1, this->mcast.hash2 );
+  if ( (status = this->kctx.acquire( &this->wrk )) <= KEY_IS_NEW ) {
+    bool is_new = ( status == KEY_IS_NEW ); /* shouldn't be new */
+    if ( ! is_new ) {
+      status = this->kctx.value( &val, sz );
+      if ( status == KEY_OK && sz == KV_CTX_BYTES ) {
+        CubeRoute128 &cr = *(CubeRoute128 *) val;
+        cr.not_bits( this->dead_cr );
         res = true;
       }
     }
     this->kctx.release();
   }
-  if ( ! res && activate ) {
-    fprintf( stderr, "Unable to register mcast, kv status %d\n",
+  if ( ! res ) {
+    fprintf( stderr, "Unable to clear mcast dead routes, kv status %d\n",
+             (int) status );
+  }
+  else {
+    size_t i;
+    if ( this->dead_cr.first_set( i ) ) {
+      do {
+        KvMsgQueue & ibx = *this->inbox[ i ];
+        this->kctx.set_key( ibx.kbuf );
+        this->kctx.set_hash( ibx.hash1, ibx.hash2 );
+        if ( (status = this->kctx.acquire( &this->wrk )) == KEY_OK ) {
+          fprintf( stderr, "drop kv inbox %lu\n", i );
+          this->kctx.tombstone();
+        }
+        this->kctx.release();
+      } while ( this->dead_cr.next_set( i ) );
+      this->dead_cr.zero();
+    }
+  }
+  return res;
+}
+
+bool
+KvPubSub::unregister_mcast( void )
+{
+  void    * val;
+  uint64_t  sz;
+  KeyStatus status;
+  bool      res = false;
+
+  this->kctx.set_key( this->mcast.kbuf );
+  this->kctx.set_hash( this->mcast.hash1, this->mcast.hash2 );
+  if ( (status = this->kctx.acquire( &this->wrk )) <= KEY_IS_NEW ) {
+    bool is_new = ( status == KEY_IS_NEW ); /* shouldn't be new */
+    if ( ! is_new ) {
+      status = this->kctx.value( &val, sz );
+      if ( status == KEY_OK && sz == KV_CTX_BYTES ) {
+        CubeRoute128 &cr = *(CubeRoute128 *) val;
+        if ( cr.is_set( this->ctx_id ) ) {
+          cr.clear( this->ctx_id );
+          this->create_kvmsg( KV_MSG_BYE, sizeof( KvMsg ) );
+        }
+        res = true;
+      }
+    }
+    this->kctx.release();
+  }
+  if ( ! res ) {
+    fprintf( stderr, "Unable to unregister mcast, kv status %d\n",
              (int) status );
   }
   return res;
@@ -409,7 +482,7 @@ KvPubSub::do_sub( uint32_t h,  const char *sub,  size_t len,
   if ( rcnt == 1 ) /* first route added */
     use_find = false;
   else if ( rcnt == 2 ) { /* if first route and subscribed elsewhere */
-    if ( this->poll.sub_route.is_member( h, this->rte.fd ) )
+    if ( this->poll.sub_route.is_member( h, this->fd ) )
       use_find = false;
   }
   /* subscribe must check the route is set because the hash used for the route
@@ -433,7 +506,7 @@ KvPubSub::do_unsub( uint32_t h,  const char *sub,  size_t len,
   if ( rcnt == 0 ) /* no more routes left */
     do_unsubscribe = true;
   else if ( rcnt == 1 ) { /* if the only route left is not in my server */
-    if ( this->poll.sub_route.is_member( h, this->rte.fd ) )
+    if ( this->poll.sub_route.is_member( h, this->fd ) )
       do_unsubscribe = true;
   }
   if ( do_unsubscribe )
@@ -456,7 +529,7 @@ KvPubSub::do_psub( uint32_t h,  const char *pattern,  size_t len,
   if ( rcnt == 1 ) /* first route added */
     use_find = false;
   else if ( rcnt == 2 ) { /* if first route and subscribed elsewhere */
-    if ( this->poll.sub_route.is_member( h, this->rte.fd ) )
+    if ( this->poll.sub_route.is_member( h, this->fd ) )
       use_find = false;
   }
   /* subscribe must check the route is set because the hash used for the route
@@ -484,7 +557,7 @@ KvPubSub::do_punsub( uint32_t h,  const char *pattern,  size_t len,
   if ( rcnt == 0 ) /* no more routes left */
     do_unsubscribe = true;
   else if ( rcnt == 1 ) { /* if the only route left is not in my server */
-    if ( this->poll.sub_route.is_member( h, this->rte.fd ) )
+    if ( this->poll.sub_route.is_member( h, this->fd ) )
       do_unsubscribe = true;
   }
   SysWildSub w( prefix, prefix_len );
@@ -510,16 +583,19 @@ KvPubSub::process( void )
   uint64_t      ht_size = map->hdr.ht_size, sz;
   void        * val;
   KeyStatus     status;
+  bool          have_dead_routes = ! this->dead_cr.is_empty();
+
   for ( uint64_t pos = 0; pos < ht_size; pos++ ) {
     status = scan_kctx.fetch( &this->wrk, pos );
     if ( status == KEY_OK && scan_kctx.entry->test( FL_DROPPED ) == 0 ) {
       if ( scan_kctx.get_db() == this->kctx.db_num ) {
         status = scan_kctx.get_key( kp );
         if ( status == KEY_OK ) {
-          bool    is_sys = false,
+          bool    is_sys      = false,
                   is_sys_wild = false;
-          uint8_t prefixlen = 0;
-          size_t  plen = sizeof( SYS_WILD_PREFIX ) - 1;
+          uint8_t prefixlen   = 0;
+          size_t  plen        = sizeof( SYS_WILD_PREFIX ) - 1;
+          /* is it a wildcard? */
           if ( ::memcmp( kp->u.buf, "_SYS.", 5 ) == 0 ) {
             if ( ::memcmp( kp->u.buf, SYS_WILD_PREFIX, plen ) == 0 &&
                  kp->u.buf[ plen ] >= '0' && kp->u.buf[ plen ] <= '9' ) {
@@ -534,10 +610,40 @@ KvPubSub::process( void )
             }
             is_sys = true;
           }
+          /* if not an inbox or mcast, absorb the routes */
           if ( ! is_sys || is_sys_wild ) {
             if ( (status = scan_kctx.value( &val, sz )) == KEY_OK &&
                  sz == sizeof( CubeRoute128 ) ) {
               cr.copy_from( val );
+              if ( have_dead_routes ) {
+                /* if some routes are bad, fix them */
+                if ( cr.test_bits( this->dead_cr ) ) {
+                  printf( "fixkey: %.*s\n", kp->keylen, kp->u.buf );
+                  for (;;) {
+                    status = scan_kctx.try_acquire_position( pos );
+                    if ( status != KEY_BUSY )
+                      break;
+                  }
+                  /* copy and del if empty */
+                  if ( status == KEY_OK ) { /* could be dropped already */
+                    status = scan_kctx.resize( &val, KV_CTX_BYTES );
+                    if ( status == KEY_OK ) {
+                      CubeRoute128 &cr2 = *(CubeRoute128 *) val;
+                      cr2.not_bits( this->dead_cr );
+                      cr2.clear( this->ctx_id );
+                      cr.copy_from( val );
+                      if ( cr.is_empty() ) {
+                        printf( "emptykey: %.*s\n", kp->keylen, kp->u.buf );
+                        scan_kctx.tombstone();
+                      }
+                    }
+                  }
+                  else {
+                    cr.zero();
+                  }
+                  scan_kctx.release();
+                }
+              }
               cr.clear( this->ctx_id );
               if ( ! cr.is_empty() && kp->keylen > 0 ) {
               /*printf( "addkey: %.*s\r\n", kp->keylen, kp->u.buf );*/
@@ -547,10 +653,10 @@ KvPubSub::process( void )
                 cr.copy_to( rt->rt_bits );
                 if ( ! is_sys_wild )
                   this->poll.add_route( kp->u.buf, kp->keylen - 1, hash,
-                                        this->rte.fd );
+                                        this->fd );
                 else
                   this->poll.add_pattern_route( &kp->u.buf[ plen ], prefixlen,
-                                                hash, this->rte.fd );
+                                                hash, this->fd );
               }
             }
           }
@@ -559,12 +665,15 @@ KvPubSub::process( void )
     }
   }
   this->pop( EV_PROCESS );
+  if ( have_dead_routes ) {
+    this->clear_mcast_dead_routes();
+  }
 }
 
 void
 KvPubSub::process_shutdown( void )
 {
-  if ( this->register_mcast( false ) )
+  if ( this->unregister_mcast() )
     this->push( EV_WRITE );
   /*else if ( this->test( EV_WRITE ) == 0 )
     this->pushpop( EV_CLOSE, EV_SHUTDOWN );*/
@@ -573,11 +682,6 @@ KvPubSub::process_shutdown( void )
 void
 KvPubSub::process_close( void )
 {
-  if ( use_dsunix ) {
-    struct sockaddr_un un;
-    make_dsunix_sockname( un, this->ctx_id );
-    ::unlink( un.sun_path );
-  }
 }
 
 bool
@@ -769,27 +873,12 @@ KvPubSub::write( void )
     }
     if ( ( this->flags & KV_DO_NOTIFY ) != 0 ) {
       /* notify each dest fd through poll() */
-      if ( use_dsunix ) {
-        if ( used.first_set( dest ) ) {
-          do {
-            struct sockaddr_un un;
-            size_t len;
-            uint8_t buf[ 1 ];
-            buf[ 0 ] = (uint8_t) this->ctx_id;
-            len = make_dsunix_sockname( un, dest );
-            ::sendto( this->rte.fd, buf, sizeof( buf ), 0,
-                      (struct sockaddr *) &un, len );
-          } while ( used.next_set( dest ) );
-        }
-      }
-      else {
-        if ( used.first_set( dest ) ) {
-          do {
-            uint32_t pid = this->poll.map->ctx[ dest ].ctx_pid;
-            if ( pid > 0 )
-              ::kill( pid, SIGUSR1 );
-          } while ( used.next_set( dest ) );
-        }
+      if ( used.first_set( dest ) ) {
+        do {
+          uint32_t pid = this->poll.map->ctx[ dest ].ctx_pid;
+          if ( pid > 0 )
+            ::kill( pid, SIGUSR1 );
+        } while ( used.next_set( dest ) );
       }
     }
   }
@@ -885,7 +974,7 @@ KvPubSub::route_msg_from_shm( KvMsg &msg ) /* inbound from shm */
         this->sub_tab.remove( submsg.hash, submsg.subject(), submsg.sublen );
         if ( this->sub_tab.find_by_hash( submsg.hash ) == NULL )
           this->poll.del_route( submsg.subject(), submsg.sublen, submsg.hash,
-                                this->rte.fd );
+                                this->fd );
       }
       /* adding a route, publishes will be forwarded to shm */
       else {
@@ -894,7 +983,7 @@ KvPubSub::route_msg_from_shm( KvMsg &msg ) /* inbound from shm */
                                    submsg.sublen );
         cr.copy_to( rt->rt_bits );
         this->poll.add_route( submsg.subject(), submsg.sublen, submsg.hash,
-                              this->rte.fd );
+                              this->fd );
       }
       if ( ! this->sub_notifyq.is_empty() )
         this->forward_sub( submsg );
@@ -915,7 +1004,7 @@ KvPubSub::route_msg_from_shm( KvMsg &msg ) /* inbound from shm */
           this->sub_tab.remove( submsg.hash, w.sub, w.len );
           if ( this->sub_tab.find_by_hash( submsg.hash ) == NULL )
             this->poll.del_pattern_route( submsg.reply(), pf.pref, submsg.hash,
-                                          this->rte.fd );
+                                          this->fd );
         }
         /* adding a route, publishes will be forwarded to shm */
         else {
@@ -923,7 +1012,7 @@ KvPubSub::route_msg_from_shm( KvMsg &msg ) /* inbound from shm */
           rt = this->sub_tab.upsert( submsg.hash, w.sub, w.len );
           cr.copy_to( rt->rt_bits );
           this->poll.add_pattern_route( submsg.reply(), pf.pref, submsg.hash,
-                                        this->rte.fd );
+                                        this->fd );
         }
       }
       if ( ! this->sub_notifyq.is_empty() )
@@ -936,7 +1025,7 @@ KvPubSub::route_msg_from_shm( KvMsg &msg ) /* inbound from shm */
       EvPublish pub( submsg.subject(), submsg.sublen,
                      submsg.reply(), submsg.replylen,
                      submsg.msg_data(), submsg.msg_size,
-                     this->rte.fd, submsg.hash, NULL, 0,
+                     this->fd, submsg.hash, NULL, 0,
                      submsg.msg_enc, submsg.code );
       this->poll.forward_msg( pub, NULL, submsg.prefix_cnt(),
                               submsg.prefix_array() );
@@ -951,22 +1040,15 @@ void
 KvPubSub::read( void )
 {
   static const size_t veclen = 1024;
-  void   * data[ veclen ];
-  uint64_t data_sz[ veclen ];
+  void       * data[ veclen ];
+  uint64_t     data_sz[ veclen ];
   KvMsgQueue & ibx = *this->inbox[ this->ctx_id ];
-  size_t count = 0;
-  char buf[ 8 ];
+  size_t       count = 0;
+  struct signalfd_siginfo fdsi;
 
   this->pop3( EV_READ, EV_READ_LO, EV_READ_HI );
-  if ( use_dsunix ) {
-    while ( ::recv( this->rte.fd, buf, sizeof( buf ), 0 ) > 0 )
-      ;
-  }
-  else {
-    struct signalfd_siginfo fdsi;
-    while ( ::read( this->rte.fd, &fdsi, sizeof( fdsi ) ) > 0 )
-      ;
-  }
+  while ( ::read( this->fd, &fdsi, sizeof( fdsi ) ) > 0 )
+    ;
   this->kctx.set_key( ibx.kbuf );
   this->kctx.set_hash( ibx.hash1, ibx.hash2 );
   if ( this->kctx.find( &this->wrk ) == KEY_OK ) {
@@ -1056,7 +1138,7 @@ bool
 KvPubSub::on_msg( EvPublish &pub )
 {
   /* no publish to self */
-  if ( (uint32_t) this->rte.fd != pub.src_route ) {
+  if ( (uint32_t) this->fd != pub.src_route ) {
     this->create_kvpublish( pub.subj_hash, pub.subject, pub.subject_len,
                             pub.prefix, pub.hash, pub.prefix_cnt,
                             (const char *) pub.reply, pub.reply_len, pub.msg,

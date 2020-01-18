@@ -92,6 +92,13 @@ struct CubeRoute {
       this->w[ j++ ] = 0;
   }
 
+  bool test_bits( const CubeRoute &b ) const {
+    for ( size_t j = 0; j < BITS_W; j++ )
+      if ( ( this->w[ j ] & b.w[ j ] ) != 0 )
+        return true;
+    return false;
+  }
+
   void or_bits( const CubeRoute &b ) {
     for ( size_t j = 0; j < BITS_W; j++ )
       this->w[ j ] |= b.w[ j ];

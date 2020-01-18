@@ -419,7 +419,7 @@ struct RouteVec {
     }
   }
 
-  size_t pop( void ) const {
+  size_t pop_count( void ) const {
     size_t cnt = 0, rem = 0;
     for ( uint32_t i = 0; i < this->vec_size; i++ ) {
       cnt += this->vec[ i ]->count;

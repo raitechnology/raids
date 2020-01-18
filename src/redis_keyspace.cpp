@@ -118,7 +118,7 @@ RedisKeyspace::fwd_keyevent( void )
 bool
 RedisKeyspace::fwd_monitor( void )
 {
-  size_t addr_len = this->exec.route_name.peer_strlen();
+  size_t addr_len = this->exec.peer.get_peer_address_strlen();
   if ( ! this->alloc_subj( 20 + addr_len ) )
     return false;
   ::memcpy( this->subj, "__monitor_", 10 );
@@ -144,7 +144,7 @@ RedisKeyspace::fwd_monitor( void )
   if ( msg == NULL )
     return false;
   if ( addr_len > 0 ) {
-    ::memcpy( &this->subj[ subj_len ], this->exec.route_name.peer_address,
+    ::memcpy( &this->subj[ subj_len ], this->exec.peer.peer_address,
               addr_len );
     subj_len += addr_len;
     this->subj[ subj_len ] = '\0';

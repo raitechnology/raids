@@ -13,13 +13,13 @@ using namespace rai;
 using namespace ds;
 
 int
-EvUdp::listen( const char *ip,  int port )
+EvUdp::listen( const char *ip,  int port,  const char *k )
 {
   static int on = 1, off = 0;
   int  status = 0,
        sock;
   char svc[ 16 ];
-  struct addrinfo hints, * ai = NULL, * p;
+  struct addrinfo hints, * ai = NULL, * p = NULL;
 
   ::snprintf( svc, sizeof( svc ), "%d", port );
   ::memset( &hints, 0, sizeof( struct addrinfo ) );
@@ -73,10 +73,10 @@ break_loop:;
     status = -1;
     goto fail;
   }
-  this->rte.fd = sock;
+  this->PeerData::init_peer( sock, p->ai_addr, k );
   ::fcntl( sock, F_SETFL, O_NONBLOCK | ::fcntl( sock, F_GETFL ) );
-  if ( (status = this->poll.add_sock( this, NULL, "udp-listen" )) < 0 ) {
-    this->rte.fd = -1;
+  if ( (status = this->poll.add_sock( this )) < 0 ) {
+    this->fd = -1;
 fail:;
     if ( sock != -1 )
       ::close( sock );
@@ -93,7 +93,7 @@ EvUdp::connect( const char *ip,  int port )
   int  status = 0,
        sock;
   char svc[ 16 ];
-  struct addrinfo hints, * ai = NULL, * p;
+  struct addrinfo hints, * ai = NULL, * p = NULL;
 
   ::snprintf( svc, sizeof( svc ), "%d", port );
   ::memset( &hints, 0, sizeof( struct addrinfo ) );
@@ -141,10 +141,10 @@ break_loop:;
     status = -1;
     goto fail;
   }
-  this->rte.fd = sock;
+  this->PeerData::init_peer( sock, p->ai_addr, "udp-client" );
   ::fcntl( sock, F_SETFL, O_NONBLOCK | ::fcntl( sock, F_GETFL ) );
-  if ( (status = this->poll.add_sock( this, NULL, "udp-client" )) < 0 ) {
-    this->rte.fd = -1;
+  if ( (status = this->poll.add_sock( this )) < 0 ) {
+    this->fd = -1;
 fail:;
     if ( sock != -1 )
       ::close( sock );

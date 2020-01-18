@@ -8,8 +8,8 @@ namespace rai {
 namespace ds {
 
 struct EvTcpListen : public EvListen {
-  EvTcpListen( EvPoll &p ) : EvListen( p ) {}
-  int listen( const char *ip,  int port );
+  EvTcpListen( EvPoll &p,  PeerOps &o ) : EvListen( p, o ) {}
+  int listen( const char *ip,  int port,  const char *k );
   virtual void accept( void ) {}
 };
 

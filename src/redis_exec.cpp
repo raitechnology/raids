@@ -57,7 +57,10 @@ RedisExec::release( void )
     this->continue_tab.release();
   }
   this->wrk.release_all();
-  this->monitor_state = false;
+  this->cmd = NO_CMD;
+  this->blk_state = 0;
+  this->key_flags = 0;
+  this->cmd_state = CMD_STATE_NORMAL;
 }
 
 size_t
@@ -399,6 +402,7 @@ RedisExec::exec( EvSocket *svc,  EvPrefetchQueue *q )
   const char * arg0;
   size_t       arg0len;
   char         upper_cmd[ 32 ];
+  ExecStatus   status;
 
   arg0 = this->msg.command( arg0len, this->argc );
   /* max command len is 17 (GEORADIUSBYMEMBER) */
@@ -439,7 +443,6 @@ RedisExec::exec( EvSocket *svc,  EvPrefetchQueue *q )
   /* if there are keys, setup a keyctx for each one */
   if ( this->first > 0 ) {
     int i = this->first;
-    ExecStatus status;
 
     this->key_cnt  = 1;
     this->key_done = 0;
@@ -470,6 +473,20 @@ RedisExec::exec( EvSocket *svc,  EvPrefetchQueue *q )
     return status; /* cmds with keys return setup ok */
   }
   /* cmd has no key when first == 0 */
+  status = this->exec_nokeys();
+  if ( status != EXEC_SKIP &&
+       ( this->cmd_state & ( CMD_STATE_CLIENT_REPLY_OFF |
+                             CMD_STATE_CLIENT_REPLY_SKIP ) ) != 0 ) {
+    this->cmd_state &= ~CMD_STATE_CLIENT_REPLY_SKIP;
+    this->strm.truncate( this->strm_start );
+    return EXEC_OK;
+  }
+  return status;
+}
+
+ExecStatus
+RedisExec::exec_nokeys( void )
+{
   switch ( this->cmd ) {
     /* CLUSTER */
     case CLUSTER_CMD:      return this->exec_cluster();
@@ -477,7 +494,7 @@ RedisExec::exec( EvSocket *svc,  EvPrefetchQueue *q )
     case READWRITE_CMD:    return this->exec_readwrite();
     /* CONNECTION */
     case AUTH_CMD:         return this->exec_auth();
-    case ECHO_CMD:         /* same as ping */
+    case ECHO_CMD:         return this->exec_echo();
     case PING_CMD:         return this->exec_ping();
     case QUIT_CMD:         return this->exec_quit(); //EXEC_QUIT;
     case SELECT_CMD:       return this->exec_select();
@@ -888,394 +905,13 @@ success:;
   /*printf( "kf %x rte kf %x\n", this->key_flags, this->sub_route.rte.key_flags );*/
   if ( ( this->key_flags & this->sub_route.rte.key_flags ) != 0 )
     RedisKeyspace::pub_keyspace_events( *this );
+
+  if ( ( this->cmd_state & ( CMD_STATE_CLIENT_REPLY_OFF |
+                             CMD_STATE_CLIENT_REPLY_SKIP ) ) != 0 ) {
+    this->cmd_state &= ~CMD_STATE_CLIENT_REPLY_SKIP;
+    this->strm.truncate( this->strm_start );
+  }
   return EXEC_SUCCESS;
-}
-
-/* CLUSTER */
-ExecStatus
-RedisExec::exec_cluster( void )
-{
-  return ERR_BAD_CMD;
-}
-
-ExecStatus
-RedisExec::exec_readonly( void )
-{
-  return ERR_BAD_CMD;
-}
-
-ExecStatus
-RedisExec::exec_readwrite( void )
-{
-  return ERR_BAD_CMD;
-}
-
-/* CONNECTION */
-ExecStatus
-RedisExec::exec_auth( void )
-{
-  return ERR_BAD_CMD;
-}
-
-ExecStatus
-RedisExec::exec_echo( void )
-{
-  return this->exec_ping();
-}
-
-ExecStatus
-RedisExec::exec_ping( void )
-{
-  if ( this->argc > 1 ) {
-    this->send_msg( this->msg.array[ 1 ] );
-  }
-  else {
-    static char pong[] = "+PONG\r\n";
-    this->strm.append( pong, sizeof( pong ) - 1 );
-  }
-  return EXEC_OK;
-}
-
-ExecStatus
-RedisExec::exec_quit( void )
-{
-  return EXEC_QUIT;
-}
-
-ExecStatus
-RedisExec::exec_select( void )
-{
-  return ERR_BAD_CMD;
-}
-
-ExecStatus
-RedisExec::exec_swapdb( void )
-{
-  return ERR_BAD_CMD;
-}
-
-/* SERVER */
-ExecStatus
-RedisExec::exec_bgrewriteaof( void )
-{
-  /* start a AOF */
-  this->send_ok();
-  return EXEC_OK;
-}
-
-ExecStatus
-RedisExec::exec_bgsave( void )
-{
-  /* save in the bg */
-  this->send_ok();
-  return EXEC_OK;
-}
-
-ExecStatus
-RedisExec::exec_client( void )
-{
-  switch ( this->msg.match_arg( 1, MARG( "getname" ),
-                                   MARG( "kill" ),
-                                   MARG( "list" ),
-                                   MARG( "pause" ),
-                                   MARG( "reply" ),
-                                   MARG( "setname" ), NULL ) ) {
-    default: return ERR_BAD_ARGS;
-    case 1: /* getname */
-      this->send_nil();  /* get my name */
-      return EXEC_OK;
-    case 2: /* kill (ip) (ID id) (TYPE norm|mast|slav|pubsub)
-                    (ADDR ip) (SKIPME y/n) */
-      this->send_zero(); /* number of clients killed */
-      return EXEC_OK;
-    case 3: /* list */
-      /* list: 'id=1082 addr=[::1]:43362 fd=8 name= age=1 idle=0 flags=N db=0
-       * sub=0 psub=0 multi=-1 qbuf=0 qbuf-free=32768 obl=0 oll=0 omem=0
-       * events=r cmd=client\n' id=unique id, addr=peer addr, fd=sock, age=time
-       * conn, idle=time idle, flags=mode, db=cur db, sub=channel subs,
-       * psub=pattern subs, multi=cmds qbuf=query buf size, qbuf-free=free
-       * qbuf, obl=output buf len, oll=outut list len, omem=output mem usage,
-       * events=sock rd/wr, cmd=last cmd issued */
-    case 4: /* pause (ms) pause clients for ms time*/
-    case 5: /* reply (on/off/skip) en/disable replies */
-    case 6: /* setname (name) set the name of this conn */
-      return ERR_BAD_ARGS;
-  }
-}
-
-ExecStatus
-RedisExec::exec_command( void )
-{
-  RedisMsg     m;
-  const char * name;
-  size_t       j = 0, len;
-  RedisCmd     cmd;
-
-  this->mstatus = REDIS_MSG_OK;
-  switch ( this->msg.match_arg( 1, MARG( "info" ),
-                                   MARG( "getkeys" ),
-                                   MARG( "count" ),
-                                   MARG( "help" ), NULL ) ) {
-    case 0: { /* no args */
-      if ( ! m.alloc_array( this->strm.tmp, REDIS_CMD_COUNT - 1 ) )
-        return ERR_ALLOC_FAIL;
-      for ( size_t i = 1; i < REDIS_CMD_COUNT; i++ ) {
-        this->mstatus = m.array[ j++ ].unpack_json( cmd_db[ i ].attr,
-                                                    this->strm.tmp );
-        if ( this->mstatus != REDIS_MSG_OK )
-          break;
-      }
-      m.len = j;
-      break;
-    }
-    case 1: { /* info */
-      if ( ! m.alloc_array( this->strm.tmp, this->msg.len - 2 ) )
-        return ERR_ALLOC_FAIL;
-      if ( m.len > 0 ) {
-        for ( int i = 2; this->msg.get_arg( i, name, len ); i++ ) {
-          cmd = get_upper_cmd( name, len );
-          m.array[ j++ ].unpack_json( cmd_db[ cmd ].attr, this->strm.tmp );
-        }
-        m.len = j;
-      }
-      break;
-    }
-    case 2: /* getkeys */
-      return ERR_BAD_ARGS;
-    case 3: /* count */
-      m.set_int( REDIS_CMD_COUNT - 1 );
-      break;
-    case 4: { /* help */
-      if ( ! m.alloc_array( this->strm.tmp, this->msg.len * 2 ) )
-        return ERR_ALLOC_FAIL;
-      for ( int i = 2; this->msg.get_arg( i, name, len ); i++ ) {
-        cmd = get_upper_cmd( name, len );
-        m.array[ j++ ].set_simple_string( (char *) cmd_db[ cmd ].name );
-        m.array[ j++ ].set_simple_string( (char *) cmd_db[ cmd ].descr );
-      }
-      if ( j == 0 ) {
-        m.array[ j++ ].set_simple_string( (char *) cmd_db[ COMMAND_CMD ].name );
-        m.array[ j++ ].set_simple_string( (char *) cmd_db[ COMMAND_CMD ].descr);
-      }
-      m.len = j;
-      break;
-    }
-    default:
-      return ERR_BAD_ARGS;
-  }
-  if ( this->mstatus == REDIS_MSG_OK ) {
-    size_t sz  = m.pack_size();
-    void * buf = this->strm.alloc_temp( sz );
-    if ( buf == NULL )
-      return ERR_ALLOC_FAIL;
-    this->strm.append_iov( buf, m.pack( buf ) );
-  }
-  if ( this->mstatus != REDIS_MSG_OK )
-    return ERR_MSG_STATUS;
-  return EXEC_OK;
-}
-
-ExecStatus
-RedisExec::exec_config( void )
-{
-  RedisMsg m;
-  size_t   sz;
-  void   * buf;
-  switch ( this->msg.match_arg( 1, MARG( "get" ),
-                                   MARG( "resetstat" ),
-                                   MARG( "rewrite" ),
-                                   MARG( "set" ), NULL ) ) {
-    default: return ERR_BAD_ARGS;
-    case 1: /* get */
-      switch ( this->msg.match_arg( 2, MARG( "appendonly" ),
-                                       MARG( "save" ), NULL ) ) {
-        default: return ERR_BAD_ARGS;
-        case 1:
-          if ( ! m.alloc_array( this->strm.tmp, 2 ) )
-            return ERR_ALLOC_FAIL;
-          m.array[ 0 ].set_bulk_string( (char *) MARG( "appendonly" ) );
-          m.array[ 1 ].set_bulk_string( (char *) MARG( "no" ) );
-          break;
-        case 2:
-          if ( ! m.alloc_array( this->strm.tmp, 2 ) )
-            return ERR_ALLOC_FAIL;
-          m.array[ 0 ].set_bulk_string( (char *) MARG( "save" ) );
-          m.array[ 1 ].set_bulk_string( (char *) MARG( "" ) );
-          break;
-      }
-      sz  = m.pack_size();
-      buf = this->strm.alloc_temp( sz );
-      if ( buf == NULL )
-        return ERR_ALLOC_FAIL;
-      this->strm.append_iov( buf, m.pack( buf ) );
-      return EXEC_OK;
-    case 2: /* resetstat */
-    case 3: /* rewrite */
-    case 4: /* set */
-      break;
-  }
-  return ERR_BAD_CMD;
-}
-
-ExecStatus
-RedisExec::exec_dbsize( void )
-{
-  this->send_int( this->kctx.ht.hdr.last_entry_count );
-  return EXEC_OK;
-}
-
-ExecStatus
-RedisExec::exec_debug( void )
-{
-  return EXEC_DEBUG;
-}
-
-ExecStatus
-RedisExec::exec_flushall( void )
-{
-  /* delete all keys */
-  this->send_ok();
-  return EXEC_OK;
-}
-
-ExecStatus
-RedisExec::exec_flushdb( void )
-{
-  /* delete current db */
-  this->send_ok();
-  return EXEC_OK;
-}
-
-ExecStatus
-RedisExec::exec_info( void )
-{
-  size_t len = 256;
-  char * buf = (char *) this->strm.tmp.alloc( len );
-  if ( buf != NULL ) {
-    int n = ::snprintf( &buf[ 32 ], len-32,
-      "# Server\r\n"
-      "redis_version:4.0\r\n"
-      "raids_version:%s\r\n"
-      "gcc_version:%d.%d.%d\r\n"
-      "process_id:%d\r\n",
-      kv_stringify( DS_VER ),
-      __GNUC__, __GNUC_MINOR__, __GNUC_PATCHLEVEL__,
-      ::getpid() );
-    size_t dig = uint_digits( n ),
-           off = 32 - ( dig + 3 );
-
-    buf[ off ] = '$';
-    uint_to_str( n, &buf[ off + 1 ], dig );
-    crlf( buf, off + 1 + dig );
-    crlf( buf, 32 + n );
-    this->strm.append_iov( &buf[ off ], n + dig + 3 + 2 );
-    return EXEC_OK;
-  }
-  return ERR_ALLOC_FAIL;
-}
-
-ExecStatus
-RedisExec::exec_lastsave( void )
-{
-  this->send_int( this->kctx.ht.hdr.create_stamp / 1000000000 );
-  return EXEC_OK;
-}
-
-ExecStatus
-RedisExec::exec_memory( void )
-{
-  switch ( this->msg.match_arg( 1, MARG( "doctor" ),
-                                   MARG( "help" ),
-                                   MARG( "malloc-stats" ),
-                                   MARG( "purge" ),
-                                   MARG( "stats" ),
-                                   MARG( "usage" ), NULL ) ) {
-    default: return ERR_BAD_ARGS;
-    case 1: /* doctor */
-    case 2: /* help */
-    case 3: /* malloc-stats */
-    case 4: /* purge */
-    case 5: /* stats */
-    case 6: /* usage */
-      return ERR_BAD_CMD;
-  }
-}
-
-ExecStatus
-RedisExec::exec_monitor( void )
-{
-  /* monitor commands:
-   * 1339518083.107412 [0 127.0.0.1:60866] "keys" "*"
-   * 1339518087.877697 [0 127.0.0.1:60866] "dbsize" */
-  this->monitor_state = ! this->monitor_state;
-  if ( this->monitor_state )
-    return this->do_psubscribe( "__monitor_@*", 12 );
-  return this->do_punsubscribe( "__monitor_@*", 12 );
-}
-
-ExecStatus
-RedisExec::exec_role( void )
-{
-  /* master/slave
-   * replication offset
-   * slaves connected */
-  RedisMsg m;
-  if ( m.alloc_array( this->strm.tmp, 3 ) ) {
-    static char master[] = "master";
-    m.array[ 0 ].set_bulk_string( master, sizeof( master ) - 1 );
-    m.array[ 1 ].set_int( 0 );
-    m.array[ 2 ].set_mt_array();
-    this->send_msg( m );
-    return EXEC_OK;
-  }
-  return ERR_ALLOC_FAIL;
-}
-
-ExecStatus
-RedisExec::exec_save( void )
-{
-  return ERR_BAD_CMD;
-}
-
-ExecStatus
-RedisExec::exec_shutdown( void )
-{
-  return EXEC_QUIT;
-}
-
-ExecStatus
-RedisExec::exec_slaveof( void )
-{
-  this->send_ok();
-  return EXEC_OK;
-}
-
-ExecStatus
-RedisExec::exec_slowlog( void )
-{
-  return ERR_BAD_CMD;
-}
-
-ExecStatus
-RedisExec::exec_sync( void )
-{
-  return ERR_BAD_CMD;
-}
-
-ExecStatus
-RedisExec::exec_time( void )
-{
-  RedisMsg m;
-  char     sb[ 32 ], ub[ 32 ];
-  struct timeval tv;
-  ::gettimeofday( &tv, 0 );
-  if ( m.string_array( this->strm.tmp, 2,
-                  uint_to_str( tv.tv_sec, sb ), sb,
-                  uint_to_str( tv.tv_usec, ub ), ub ) ) {
-    this->send_msg( m );
-    return EXEC_OK;
-  }
-  return ERR_ALLOC_FAIL;
 }
 
 void
@@ -1362,6 +998,7 @@ RedisExec::send_err( int status,  KeyStatus kstatus )
     case ERR_KEY_DOESNT_EXIST:  this->send_err_fmt( status ); break;
     case EXEC_QUIT:
     case EXEC_DEBUG:            this->send_ok(); break;
+    case EXEC_SKIP:             break;
     case ERR_BAD_MULTI: {
       static const char bad_multi[] = "MULTI calls can not be nested";
       this->send_err_string( bad_multi, sizeof( bad_multi ) - 1 );

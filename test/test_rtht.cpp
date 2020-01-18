@@ -69,7 +69,8 @@ main( int, char ** )
         /*::memcpy( data->route, cr, sizeof( cr ) );*/
       }
     }
-    printf( "cnt %lu, vec_count %u pop %lu\n", cnt, vec.vec_size, vec.pop() );
+    printf( "cnt %lu, vec_count %u pop %lu\n", cnt, vec.vec_size,
+            vec.pop_count() );
     fseek( fp, 0, SEEK_SET );
     cnt = 0;
     while ( fgets( buf, sizeof( buf ), fp ) != NULL ) {
@@ -84,7 +85,8 @@ main( int, char ** )
         /*::memcpy( data->route, cr, sizeof( cr ) );*/
       }
     }
-    printf( "cnt %lu, vec_count %u pop %lu\n", cnt, vec.vec_size, vec.pop() );
+    printf( "cnt %lu, vec_count %u pop %lu\n", cnt, vec.vec_size,
+            vec.pop_count() );
     fseek( fp, 0, SEEK_SET );
     cnt = 0;
     while ( fgets( buf, sizeof( buf ), fp ) != NULL ) {
@@ -99,7 +101,8 @@ main( int, char ** )
         /*::memcpy( data->route, cr, sizeof( cr ) );*/
       }
     }
-    printf( "cnt %lu, vec_count %u pop %lu\n", cnt, vec.vec_size, vec.pop() );
+    printf( "cnt %lu, vec_count %u pop %lu\n", cnt, vec.vec_size,
+            vec.pop_count() );
   }
 #if 0
   for ( size_t i = 0; i < vec.vec_size; i++ ) {

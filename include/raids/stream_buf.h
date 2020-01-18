@@ -63,14 +63,14 @@ struct StreamBuf {
   };
 
   static const size_t BUFSIZE = 1600;
-  size_t wr_pending;  /* how much is in send buffers total */
-  char * out_buf;     /* current buffer to fill, up to BUFSIZE */
-  size_t sz,          /* sz bytes in out_buf */
-         idx,         /* head data in iov[] to send */
-         woff;        /* offset of iov[] sent, tail, idx >= woff */
-  bool   alloc_fail;  /* if alloc send buffers below failed */
-  struct iovec * iov;
-  size_t vlen;
+  size_t  wr_pending;  /* how much is in send buffers total */
+  char  * out_buf;     /* current buffer to fill, up to BUFSIZE */
+  size_t  sz,          /* sz bytes in out_buf */
+          idx,         /* head data in iov[] to send */
+          woff;        /* offset of iov[] sent, tail, idx >= woff */
+  bool    alloc_fail;  /* if alloc send buffers below failed */
+  iovec * iov;         /* output vectors written to stream */
+  size_t  vlen;        /* length of iov[] */
 
   kv::WorkAllocT< 5 * 1024 > tmp;
   struct iovec iovbuf[ 32 ]; /* vec of send buffers */
@@ -80,6 +80,36 @@ struct StreamBuf {
   void release( void ) {
     this->reset();
     this->tmp.release_all();
+  }
+
+  void truncate( size_t offset ) {
+    /* normal case, reset sizes */
+    if ( offset == 0 ) {
+      this->sz         = 0;
+      this->idx        = 0;
+      this->woff       = 0;
+      this->wr_pending = 0;
+      this->out_buf    = NULL;
+    }
+    /* find truncate offset, add iovs together with out_buf/sz */
+    else {
+      size_t i, len = 0, off = offset;
+      for ( i = 0; i < this->idx; i++ ) {
+        len = this->iov[ i ].iov_len;
+        if ( len >= off ) {
+          this->iov[ i ].iov_len = off;
+          this->idx = i + 1;
+          off = 0;
+          break;
+        }
+        off -= len;
+      }
+      if ( (this->sz = off) == 0 ) {
+        this->out_buf = NULL;
+        this->sz      = 0;
+      }
+      this->wr_pending = offset - this->sz;
+    }
   }
 
   size_t pending( void ) const { /* how much is read to send */
@@ -98,6 +128,15 @@ struct StreamBuf {
   }
   void expand_iov( void );
 
+  void prepend_flush( size_t i ) { /* move work buffer to front of iov */
+    this->flush();
+    if ( i < this->idx ) {
+      iovec v = this->iov[ this->idx - 1 ];
+      ::memmove( &this->iov[ i + 1 ], &this->iov[ i ],
+                 sizeof( this->iov[ 0 ] ) * ( ( this->idx - i ) - 1 ) );
+      this->iov[ i ] = v;
+    }
+  }
   void flush( void ) { /* move work buffer to send iov */
     if ( this->idx == this->vlen )
       this->expand_iov();

@@ -11,15 +11,27 @@ struct EvPrefetchQueue;
 
 struct EvRedisListen : public EvTcpListen {
   uint64_t timer_id;
+  EvListenOps ops;
   EvRedisListen( EvPoll &p );/* : EvTcpListen( p ) {}*/
   virtual void accept( void );
+  int listen( const char *ip,  int port ) {
+    return this->EvTcpListen::listen( ip, port, "redis-listen" );
+  }
+};
+
+struct EvRedisServiceOps : public EvConnectionOps {
+  bool client_matches( PeerData &pd,  PeerMatchArgs &ka );
+  virtual int client_list( PeerData &pd,  PeerMatchArgs &ka,
+                           char *buf,  size_t buflen );
+  virtual bool client_kill( PeerData &pd,  PeerMatchArgs &ka );
 };
 
 struct EvRedisService : public EvConnection, public RedisExec {
+  EvRedisServiceOps ops;
   void * operator new( size_t, void *ptr ) { return ptr; }
 
-  EvRedisService( EvPoll &p ) : EvConnection( p, EV_REDIS_SOCK ),
-      RedisExec( *p.map, p.ctx_id, *this, p.sub_route, this->rte ) {}
+  EvRedisService( EvPoll &p ) : EvConnection( p, EV_REDIS_SOCK, this->ops ),
+      RedisExec( *p.map, p.ctx_id, *this, p.sub_route, *this ) {}
   void process( void );
   bool on_msg( EvPublish &pub );
   bool timer_expire( uint64_t tid,  uint64_t event_id );

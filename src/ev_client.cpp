@@ -227,7 +227,7 @@ EvTerminal::flush_out( void )
 int
 EvTerminal::start( void )
 {
-  this->rte.fd = STDIN_FILENO;
+  this->PeerData::init_peer( STDIN_FILENO, NULL, "term" );
   lc_tty_set_locale();
   this->term.tty_init();
   lc_tty_init_fd( this->term.tty, STDIN_FILENO, STDOUT_FILENO );
@@ -235,7 +235,7 @@ EvTerminal::start( void )
   lc_tty_init_sigwinch( this->term.tty ); /* install sigwinch handler */
   this->term.tty_prompt();
   this->flush_out();
-  return this->poll.add_sock( this, NULL, "term" );
+  return this->poll.add_sock( this );
 }
 
 void

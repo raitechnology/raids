@@ -101,28 +101,84 @@ struct RoutePublishData {   /* structure for publish queue heap */
 typedef struct kv::PrioQueue<RoutePublishData *, RoutePublishData::is_greater>
  RoutePublishQueue;
 
-struct RouteName {
-  int32_t      fd;   /* fildes */
-  uint32_t     id;   /* identifies peer */
-  const char * kind; /* what protocol type */
-  char         peer_address[ 64 ]; /* ip4 1.2.3.4:p, ip6 [ab::cd]:p, other */
-  RouteName( int fildes = -1,  uint32_t ident = 0,  const char * k = NULL )
-    : fd( fildes ), id( ident ), kind( k ) { this->peer_address[ 0 ] = '\0'; }
+struct PeerData;
+struct PeerMatchArgs {
+  int64_t      id;
+  const char * ip,
+             * type;
+  size_t       ip_len,
+               type_len;
+  bool         skipme;
+  PeerMatchArgs() { ::memset( this, 0, sizeof( *this ) ); }
+};
 
-  bool set_addr( const sockaddr *sa );
-
-  void set_strlen( size_t len ) {
-    if ( len < sizeof( this->peer_address ) - 1 )
-      this->peer_address[ sizeof( this->peer_address ) - 1 ] = (char) len;
+struct PeerOps {
+  PeerOps() {}
+  virtual int client_list( PeerData &,  PeerMatchArgs &,  char *,  size_t ) {
+    return 0;
   }
-  size_t peer_strlen( void ) const {  /* strlen( peer_address ) */
-    /* try 32, 16 -> 0 or 32, 48 -> 64 */
-    const size_t len = sizeof( this->peer_address );
-    if ( this->peer_address[ 0 ] == '\0' )
+  virtual bool client_kill( PeerData &,  PeerMatchArgs & ) { return false; }
+};
+
+struct PeerData {
+  PeerData   * next,
+             * back;
+  int32_t      fd,         /* fildes */
+               pad;        /* 64 * 3 */
+  uint64_t     id,         /* identifies peer */
+               start_ns,   /* start time */
+               active_ns;  /* last read time */
+  const char * kind;       /* what protocol type */
+  PeerOps    & op;
+  char         name[ 64 ], /* name assigned to peer */
+               peer_address[ 64 ]; /* ip4 1.2.3.4:p, ip6 [ab::cd]:p, other */
+
+  PeerData( PeerOps &o ) : next( 0 ), back( 0 ), op( o ) {
+    this->init_peer( -1, NULL, NULL );
+  }
+
+  void init_peer( int fildes,  const sockaddr *sa,  const char *k ) {
+    this->fd = fildes;
+    this->id = 0;
+    this->start_ns = this->active_ns = 0;
+    this->kind = k;
+    this->name[ 0 ] = '\0';
+    this->peer_address[ 0 ] = '\0';
+    if ( sa != NULL )
+      this->set_addr( sa );
+  }
+
+  void set_addr( const sockaddr *sa );
+
+  void set_peer_address( const char *s,  size_t len ) {
+    this->set_strlen64( this->peer_address, s, len );
+  }
+  void set_name( const char *s,  size_t len ) {
+    this->set_strlen64( this->name, s, len );
+  }
+  void set_strlen64( char *buf,  const char *s,  size_t len ) {
+    if ( len < 63 ) {
+      ::memcpy( buf, s, len );
+      ::memset( &buf[ len ], 0, 63 - len );
+    }
+    else {
+      ::memcpy( buf, s, 63 );
+      len = 0;
+    }
+    buf[ 63 ] = (char) len;
+  }
+  size_t get_peer_address_strlen( void ) const {
+    return this->get_strlen64( this->peer_address );
+  }
+  size_t get_name_strlen( void ) const {
+    return this->get_strlen64( this->name );
+  }
+  size_t get_strlen64( const char *buf ) const {  /* strlen( peer_address ) */
+    if ( buf[ 0 ] == '\0' )
       return 0;
-    if ( this->peer_address[ len - 1 ] == '\0' )
-      return len - 1;
-    return (size_t) (uint8_t) this->peer_address[ len - 1 ];
+    if ( buf[ 63 ] == '\0' )
+      return 63;
+    return (size_t) (uint8_t) buf[ 63 ];
   }
 };
 

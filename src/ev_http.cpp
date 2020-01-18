@@ -22,7 +22,7 @@ EvHttpListen::accept( void )
   static int on = 1;
   struct sockaddr_storage addr;
   socklen_t addrlen = sizeof( addr );
-  int sock = ::accept( this->rte.fd, (struct sockaddr *) &addr, &addrlen );
+  int sock = ::accept( this->fd, (struct sockaddr *) &addr, &addrlen );
   if ( sock < 0 ) {
     if ( errno != EINTR ) {
       if ( errno != EAGAIN )
@@ -48,10 +48,10 @@ EvHttpListen::accept( void )
   if ( ::setsockopt( sock, SOL_TCP, TCP_NODELAY, &on, sizeof( on ) ) != 0 )
     perror( "warning: TCP_NODELAY" );
   ::fcntl( sock, F_SETFL, O_NONBLOCK | ::fcntl( sock, F_GETFL ) );
-  c->rte.fd = sock;
+  c->PeerData::init_peer( sock, (struct sockaddr *) &addr, "http" );
   c->sub_id = sock;
   c->initialize_state();
-  if ( this->poll.add_sock( c, (struct sockaddr *) &addr, "http" ) < 0 ) {
+  if ( this->poll.add_sock( c ) < 0 ) {
     ::close( sock );
     c->push_free_list();
   }
@@ -89,7 +89,9 @@ EvHttpService::process( void )
     if ( this->websock_off > 0 ) {
       char * inptr;
       size_t inoff,
-             inlen;
+             inlen,
+             msgcnt = 0,
+             nlcnt  = 0;
       used = this->recv_wsframe( start, end );
       if ( used <= 1 ) { /* 0 == not enough data for hdr, 1 == closed */
         if ( used == 0 )
@@ -113,22 +115,52 @@ EvHttpService::process( void )
         inlen = this->wslen;
       }
       while ( inoff < inlen ) {
+        int status;
         sz = inlen - inoff;
         p  = &inptr[ inoff ];
-        RedisMsgStatus mstatus = this->msg.unpack( p, sz, strm.tmp );
-        if ( mstatus != REDIS_MSG_OK ) {
-          if ( mstatus == REDIS_MSG_PARTIAL ) {
+        switch ( p[ 0 ] ) {
+          default:
+          case RedisMsg::SIMPLE_STRING: /* + */
+          case RedisMsg::ERROR_STRING:  /* - */
+          case RedisMsg::INTEGER_VALUE: /* : */
+          case RedisMsg::BULK_STRING:   /* $ */
+          case RedisMsg::BULK_ARRAY:    /* * */
+            status = this->msg.unpack( p, sz, strm.tmp );
+            break;
+          case '\n':
+            nlcnt++;
+            /* FALLTHRU */
+          case ' ':
+          case '\t':
+          case '\r':
+            sz = 1; /* eat the whitespace */
+            status = -1;
+            break;
+          case '"': /* possible json */
+          case '\'':
+          case '[':
+          case '0': case '1': case '2': case '3': case '4':
+          case '5': case '6': case '7': case '8': case '9':
+            status = this->msg.unpack_json( p, sz, strm.tmp );
+            break;
+        }
+        if ( status != REDIS_MSG_OK ) {
+          if ( status < 0 ) {
+            inoff += sz;
+            continue;
+          }
+          if ( status == REDIS_MSG_PARTIAL ) {
             /*printf( "partial [%.*s]\n", (int)sz, p );*/
             break;
           }
           fprintf( stderr, "protocol error(%d/%s), ignoring %lu bytes\n",
-                   mstatus, redis_msg_status_string( mstatus ),
+                   status, redis_msg_status_string( (RedisMsgStatus) status ),
                    inlen - inoff );
           inoff = inlen;
           break;
         }
+        msgcnt++;
         inoff += sz;
-        ExecStatus status;
         if ( (status = this->exec( this, NULL )) == EXEC_OK )
           if ( strm.alloc_fail )
             status = ERR_ALLOC_FAIL;
@@ -152,8 +184,13 @@ EvHttpService::process( void )
             break;
         }
       }
-      if ( this->is_using_term )
+      if ( this->is_using_term ) {
+        if ( msgcnt == 0 && nlcnt != 0 ) {
+          if ( this->term.tty_prompt() )
+            this->flush_term();
+        }
         this->term.line_off = inoff;
+      }
       else
         this->wsoff = inoff;
       continue;
@@ -755,4 +792,34 @@ EvHttpService::pop_free_list( void )
   }
 }
 
+bool
+EvHttpServiceOps::client_matches( PeerData &pd,  PeerMatchArgs &ka )
+{
+  EvHttpService & svc = (EvHttpService &) pd;
+  if ( svc.sub_tab.sub_count() + svc.pat_tab.sub_count() != 0 )
+    return this->EvSocketOps::client_matches( pd, ka, MARG( "pubsub" ), NULL );
+  return this->EvSocketOps::client_matches( pd, ka, MARG( "normal" ), NULL );
+}
+
+int
+EvHttpServiceOps::client_list( PeerData &pd,  PeerMatchArgs &ka,
+                               char *buf,  size_t buflen )
+{
+  if ( ! this->client_matches( pd, ka ) )
+    return 0;
+  PeerMatchArgs tmp; /* matches everything */
+  int i = this->EvConnectionOps::client_list( pd, tmp, buf, buflen );
+  if ( i >= 0 )
+    i += ((EvHttpService &) pd).client_list( &buf[ i ], buflen - i );
+  return i;
+}
+
+bool
+EvHttpServiceOps::client_kill( PeerData &pd,  PeerMatchArgs &ka )
+{
+  if ( ! this->client_matches( pd, ka ) )
+    return false;
+  this->EvSocketOps::do_shutdown( pd );
+  return true;
+}
 

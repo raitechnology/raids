@@ -43,10 +43,11 @@ struct PingTest : public EvShmSvc, public KvSubNotifyList {
                last_time;
   bool         active_ping, /* initiates the round trip or one way */
                round_trip;
+  PeerOps      ops;
 
   PingTest( EvPoll &poll,  const char *s,  const char *p,  const char *i,
             bool act,  bool round,  uint32_t ps_rate,  uint32_t pub_cnt )
-    : EvShmSvc( poll ), sub( s ), pub( p ), ibx( i ),
+    : EvShmSvc( poll, this->ops ), sub( s ), pub( p ), ibx( i ),
       len( ::strlen( s ) ), plen( ::strlen( p ) ),
       ilen( i ? ::strlen( i ) : 0 ),
       h( 0 ), ph( 0 ), ih( 0 ), per_sec( ps_rate ), pub_left( pub_cnt ),
@@ -63,14 +64,14 @@ struct PingTest : public EvShmSvc, public KvSubNotifyList {
     if ( this->round_trip || ! this->active_ping ) {
       /* if using inbox for reply */
       if ( this->active_ping && this->ilen > 0 ) {
-        rcnt = this->poll.sub_route.add_route( this->ih, this->rte.fd );
+        rcnt = this->poll.sub_route.add_route( this->ih, this->fd );
         this->poll.notify_sub( this->ih, this->ibx, this->ilen,
-                               this->rte.fd, rcnt, 'K' );
+                               this->fd, rcnt, 'K' );
       }
       else {
-        rcnt = this->poll.sub_route.add_route( this->h, this->rte.fd );
+        rcnt = this->poll.sub_route.add_route( this->h, this->fd );
         this->poll.notify_sub( this->h, this->sub, this->len,
-                               this->rte.fd, rcnt, 'K' );
+                               this->fd, rcnt, 'K' );
       }
     }
   }
@@ -79,14 +80,14 @@ struct PingTest : public EvShmSvc, public KvSubNotifyList {
     uint32_t rcnt;
     if ( this->round_trip || ! this->active_ping ) {
       if ( this->active_ping && this->ilen > 0 ) {
-        rcnt = this->poll.sub_route.del_route( this->ih, this->rte.fd );
+        rcnt = this->poll.sub_route.del_route( this->ih, this->fd );
         this->poll.notify_unsub( this->ih, this->ibx, this->ilen,
-                                 this->rte.fd, rcnt, 'K' );
+                                 this->fd, rcnt, 'K' );
       }
       else {
-        rcnt = this->poll.sub_route.del_route( this->h, this->rte.fd );
+        rcnt = this->poll.sub_route.del_route( this->h, this->fd );
         this->poll.notify_unsub( this->h, this->sub, this->len,
-                                 this->rte.fd, rcnt, 'K' );
+                                 this->fd, rcnt, 'K' );
       }
     }
   }
@@ -110,7 +111,7 @@ struct PingTest : public EvShmSvc, public KvSubNotifyList {
         out_hash = this->ph;
       }
       EvPublish rp( out, out_len, NULL, 0, p.msg,
-                    p.msg_len, this->rte.fd, out_hash,
+                    p.msg_len, this->fd, out_hash,
                     p.msg_len_buf, p.msg_len_digits,
                     p.msg_enc, p.pub_type );
       this->poll.forward_msg( rp, NULL, 0, NULL );
@@ -152,12 +153,12 @@ struct PingTest : public EvShmSvc, public KvSubNotifyList {
   /* start a timer at per_sec interval */
   void start_timer( void ) {
     if ( this->per_sec >= 1000 ) {
-      this->poll.timer_queue->add_timer_units( this->rte.fd, this->ns_ival,
+      this->poll.timer_queue->add_timer_units( this->fd, this->ns_ival,
                                                IVAL_NANOS, 1, 0 );
     }
     else {
       uint32_t us_ival = this->ns_ival / 1000;
-      this->poll.timer_queue->add_timer_units( this->rte.fd, us_ival,
+      this->poll.timer_queue->add_timer_units( this->fd, us_ival,
                                                IVAL_MICROS, 1, 0 );
     }
   }
@@ -173,7 +174,7 @@ struct PingTest : public EvShmSvc, public KvSubNotifyList {
       uint64_t t = kv_current_monotonic_time_ns();
       /*uint64_t t = kv_get_rdtsc();*/
       EvPublish p( this->pub, this->plen, this->ibx, this->ilen, &t,
-                   sizeof( t ), this->rte.fd, this->ph,
+                   sizeof( t ), this->fd, this->ph,
                    NULL, 0, MD_UINT, 'u' );
       this->poll.forward_msg( p, NULL, 0, NULL );
       if ( this->per_sec < 100 )

@@ -34,9 +34,10 @@ struct SubTest : public EvShmSvc {
                ih;
   MDMsgMem     mem;
   MDDict     * dict;
+  PeerOps      ops;
 
   SubTest( EvPoll &poll,  const char *s,  const char *i )
-    : EvShmSvc( poll ), sub( s ), ibx( i ),
+    : EvShmSvc( poll, ops ), sub( s ), ibx( i ),
       len( ::strlen( s ) ), ilen( i ? ::strlen( i ) : 0 ),
       h( 0 ), ih( 0 ), dict( 0 ) {
   }
@@ -47,25 +48,25 @@ struct SubTest : public EvShmSvc {
     this->ih = kv_crc_c( this->ibx, this->ilen, 0 );
     /* if using inbox for reply */
     if ( this->ilen > 0 ) {
-      rcnt = this->poll.sub_route.add_route( this->ih, this->rte.fd );
+      rcnt = this->poll.sub_route.add_route( this->ih, this->fd );
       this->poll.notify_sub( this->ih, this->ibx, this->ilen,
-                             this->rte.fd, rcnt, 'K' );
+                             this->fd, rcnt, 'K' );
     }
-    rcnt = this->poll.sub_route.add_route( this->h, this->rte.fd );
+    rcnt = this->poll.sub_route.add_route( this->h, this->fd );
     this->poll.notify_sub( this->h, this->sub, this->len,
-                           this->rte.fd, rcnt, 'K' );
+                           this->fd, rcnt, 'K' );
   }
   /* remove subcriptions for sub or inbox */
   void unsubscribe( void ) {
     uint32_t rcnt;
     if ( this->ilen > 0 ) {
-      rcnt = this->poll.sub_route.del_route( this->ih, this->rte.fd );
+      rcnt = this->poll.sub_route.del_route( this->ih, this->fd );
       this->poll.notify_unsub( this->ih, this->ibx, this->ilen,
-                               this->rte.fd, rcnt, 'K' );
+                               this->fd, rcnt, 'K' );
     }
-    rcnt = this->poll.sub_route.del_route( this->h, this->rte.fd );
+    rcnt = this->poll.sub_route.del_route( this->h, this->fd );
     this->poll.notify_unsub( this->h, this->sub, this->len,
-                             this->rte.fd, rcnt, 'K' );
+                             this->fd, rcnt, 'K' );
   }
   /* recv an incoming message from a subscription above, sent from a peer or
    * myself if subscribing to the same subject as publishing */

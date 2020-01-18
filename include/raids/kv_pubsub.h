@@ -214,10 +214,12 @@ struct KvPubSub : public EvSocket {
                            wrkq;       /* for pending sends to shm */
   kv::DLinkList<KvMsgList> sendq;      /* sendq is to the network */
   kv::DLinkList<KvSubNotifyList> sub_notifyq; /* notify for subscribes */
+  EvSocketOps              ops;
+  CubeRoute128             dead_cr;
 
   void * operator new( size_t, void *ptr ) { return ptr; }
   KvPubSub( EvPoll &p,  int sock,  void *mcptr,  const char *mc,  size_t mclen )
-    : EvSocket( p, EV_KV_PUBSUB ),
+    : EvSocket( p, EV_KV_PUBSUB, this->ops ),
       ctx_id( p.ctx_id ), flags( KV_DO_NOTIFY ), seed1( 0 ), seed2( 0 ),
       session_id( 0 ), next_seqno( 0 ),
       kctx( *p.map, p.map->ctx[ p.ctx_id ], p.map->ctx[ p.ctx_id ].stat2,
@@ -226,14 +228,16 @@ struct KvPubSub : public EvSocket {
                p.map->ctx[ p.ctx_id ].db_num2, NULL ),
       mcast( *(new ( mcptr ) KvMsgQueue( this->kctx, mc, mclen )) ) {
     ::memset( this->inbox, 0, sizeof( this->inbox ) );
-    this->EvSocket::rte.fd = sock;
+    this->PeerData::init_peer( sock, NULL, "kv" );
     this->session_id = p.map->ctx[ p.ctx_id ].rng.next();
     this->kctx.ht.hdr.get_hash_seed( this->kctx.db_num, this->seed1,
                                      this->seed2 );
   }
 
   static KvPubSub *create( EvPoll &p );
-  bool register_mcast( bool activate );
+  bool register_mcast( void );
+  bool clear_mcast_dead_routes( void );
+  bool unregister_mcast( void );
   bool subscribe_mcast( const char *sub,  size_t len,  bool activate,
                         bool use_find );
   bool get_mcast_route( CubeRoute128 &cr );

@@ -16,6 +16,8 @@ extern const size_t cmd_db_cnt;
 extern const char *cmd_flag[];
 extern const size_t cmd_flag_cnt;
 
+char *cmd_tolower( int i,  char *buf );
+
 }
 }
 

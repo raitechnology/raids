@@ -44,7 +44,7 @@ struct RedisSubMap {
   }
 
   size_t sub_count( void ) const {
-    return this->tab.pop();
+    return this->tab.pop_count();
   }
   void release( void ) {
     this->tab.release();
@@ -119,7 +119,7 @@ struct RedisPatternMap {
   }
 
   size_t sub_count( void ) const {
-    return this->tab.pop();
+    return this->tab.pop_count();
   }
   void release( void );
   /* put in new sub
@@ -210,6 +210,9 @@ struct RedisContinueMap {
 
   bool is_null( void ) const {
     return this->tab.vec_size == 0;
+  }
+  size_t continue_count( void ) const {
+    return this->tab.pop_count();
   }
   void release( void );
   /* put in new sub

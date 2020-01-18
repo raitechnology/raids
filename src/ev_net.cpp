@@ -2,6 +2,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <stdarg.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <errno.h>
@@ -210,11 +211,20 @@ EvPoll::drain_prefetch( void )
   }
 }
 
+uint64_t
+EvPoll::current_coarse_ns( void ) const
+{
+  if ( this->map != NULL )
+    return this->map->hdr.current_stamp;
+  return current_realtime_coarse_ns();
+}
+
 bool
 EvPoll::dispatch( void )
 {
   EvSocket * s;
-  uint64_t busy_ns = this->timer_queue->busy_delta();
+  uint64_t busy_ns = this->timer_queue->busy_delta(),
+           curr_ns = this->current_coarse_ns();
   uint64_t start   = this->prio_tick;
   int      state;
 
@@ -247,6 +257,7 @@ EvPoll::dispatch( void )
       case EV_READ:
       case EV_READ_LO:
       case EV_READ_HI:
+        s->active_ns = curr_ns;
         s->v_read();
         break;
       case EV_PROCESS:
@@ -648,92 +659,260 @@ EvPoll::process_quit( void )
       else if ( ! s->test( EV_SHUTDOWN | EV_CLOSE ) ) {
         s->idle_push( EV_SHUTDOWN );
       }
-    } while ( (s = s->next) != NULL );
+    } while ( (s = (EvSocket *) s->next) != NULL );
     this->quit++;
   }
 }
 /* convert sockaddr into a string and set peer_address[] */
-bool
-RouteName::set_addr( const sockaddr *sa )
+void
+PeerData::set_addr( const sockaddr *sa )
 {
-  char       * s      = this->peer_address,
-             * t      = NULL;
   const size_t maxlen = sizeof( this->peer_address );
+  char         buf[ maxlen ],
+             * s = buf,
+             * t = NULL;
   const char * p;
   size_t       len;
   in_addr    * in;
   in6_addr   * in6;
   uint16_t     in_port;
 
-  ::memset( s, 0, maxlen ); /* peer_address[ maxlen - 1 ] == strlen() */
-  if ( sa == NULL )
-    return true;
-  switch ( sa->sa_family ) {
-    case AF_INET6:
-      in6     = &((struct sockaddr_in6 *) sa)->sin6_addr;
-      in_port = ((struct sockaddr_in6 *) sa)->sin6_port;
-      /* check if ::ffff: prefix */
-      if ( ((uint64_t *) in6)[ 0 ] == 0 &&
-           ((uint16_t *) in6)[ 4 ] == 0 &&
-           ((uint16_t *) in6)[ 5 ] == 0xffffU ) {
-        in = &((in_addr *) in6)[ 3 ];
-        goto do_af_inet;
-      }
-      p = inet_ntop( AF_INET6, in6, &s[ 1 ], maxlen - 9 );
-      if ( p == NULL )
+  if ( sa != NULL ) {
+    switch ( sa->sa_family ) {
+      case AF_INET6:
+        in6     = &((struct sockaddr_in6 *) sa)->sin6_addr;
+        in_port = ((struct sockaddr_in6 *) sa)->sin6_port;
+        /* check if ::ffff: prefix */
+        if ( ((uint64_t *) in6)[ 0 ] == 0 &&
+             ((uint16_t *) in6)[ 4 ] == 0 &&
+             ((uint16_t *) in6)[ 5 ] == 0xffffU ) {
+          in = &((in_addr *) in6)[ 3 ];
+          goto do_af_inet;
+        }
+        p = inet_ntop( AF_INET6, in6, &s[ 1 ], maxlen - 9 );
+        if ( p == NULL )
+          break;
+        /* make [ip6]:port */
+        len = ::strlen( &s[ 1 ] ) + 1;
+        t   = &s[ len ];
+        s[ 0 ] = '[';
+        t[ 0 ] = ']';
+        t[ 1 ] = ':';
+        len = uint_to_str( ntohs( in_port ), &t[ 2 ] );
+        t   = &t[ 2 + len ];
         break;
-      /* make [ip6]:port */
-      len = ::strlen( &s[ 1 ] ) + 1;
-      t   = &s[ len ];
-      s[ 0 ] = '[';
-      t[ 0 ] = ']';
-      t[ 1 ] = ':';
-      len = uint_to_str( ntohs( in_port ), &t[ 2 ] );
-      t   = &t[ 2 + len ];
-      break;
 
-    case AF_INET:
-      in      = &((struct sockaddr_in *) sa)->sin_addr;
-      in_port = ((struct sockaddr_in *) sa)->sin_port;
-    do_af_inet:;
-      p = inet_ntop( AF_INET, in, s, maxlen - 7 );
-      if ( p == NULL )
+      case AF_INET:
+        in      = &((struct sockaddr_in *) sa)->sin_addr;
+        in_port = ((struct sockaddr_in *) sa)->sin_port;
+      do_af_inet:;
+        p = inet_ntop( AF_INET, in, s, maxlen - 7 );
+        if ( p == NULL )
+          break;
+        /* make ip4:port */
+        len = ::strlen( s );
+        t   = &s[ len ];
+        t[ 0 ] = ':';
+        len = uint_to_str( ntohs( in_port ), &t[ 1 ] );
+        t   = &t[ 1 + len ];
         break;
-      /* make ip4:port */
-      len = ::strlen( s );
-      t   = &s[ len ];
-      t[ 0 ] = ':';
-      len = uint_to_str( ntohs( in_port ), &t[ 1 ] );
-      t   = &t[ 1 + len ];
-      break;
 
-    case AF_LOCAL:
-      len = ::strnlen( ((struct sockaddr_un *) sa)->sun_path,
-                       sizeof( ((struct sockaddr_un *) sa)->sun_path ) );
-      if ( len > maxlen - 1 )
-        len = maxlen - 1;
-      ::memcpy( s, ((struct sockaddr_un *) sa)->sun_path, len );
-      t = &s[ len ];
-      break;
+      case AF_LOCAL:
+        len = ::strnlen( ((struct sockaddr_un *) sa)->sun_path,
+                         sizeof( ((struct sockaddr_un *) sa)->sun_path ) );
+        if ( len > maxlen - 1 )
+          len = maxlen - 1;
+        ::memcpy( s, ((struct sockaddr_un *) sa)->sun_path, len );
+        t = &s[ len ];
+        break;
 
-    default:
-      break;
+      default:
+        break;
+    }
   }
   if ( t != NULL ) {
     /* set strlen */
-    this->set_strlen( t - s );
-    return true;
+    this->set_peer_address( buf, t - s );
   }
-  return false;
+  else {
+    this->set_peer_address( NULL, 0 );
+  }
+}
+
+int
+EvSocketOps::client_list( PeerData &pd,  PeerMatchArgs &ka,
+                          char *buf,  size_t buflen )
+{
+  if ( ! this->client_matches( pd, ka ) )
+    return 0;
+  /* id=1082 addr=[::1]:43362 fd=8 name= age=1 idle=0 flags=N */
+  static const uint64_t ONE_NS = 1000000000;
+  uint64_t cur_time_ns = ((EvSocket &) pd).poll.current_coarse_ns();
+  /* list: 'id=1082 addr=[::1]:43362 fd=8 name= age=1 idle=0 flags=N db=0
+   * sub=0 psub=0 multi=-1 qbuf=0 qbuf-free=32768 obl=0 oll=0 omem=0
+   * events=r cmd=client\n'
+   * id=unique id, addr=peer addr, fd=sock, age=time
+   * conn, idle=time idle, flags=mode, db=cur db, sub=channel subs,
+   * psub=pattern subs, multi=cmds qbuf=query buf size, qbuf-free=free
+   * qbuf, obl=output buf len, oll=outut list len, omem=output mem usage,
+   * events=sock rd/wr, cmd=last cmd issued */
+  return ::snprintf( buf, buflen,
+    "id=%lu addr=%.*s fd=%d name=%.*s kind=%s age=%ld idle=%ld ",
+    pd.id,
+    (int) pd.get_peer_address_strlen(), pd.peer_address,
+    pd.fd,
+    (int) pd.get_name_strlen(), pd.name,
+    pd.kind,
+    ( cur_time_ns - pd.start_ns ) / ONE_NS,
+    ( cur_time_ns - pd.active_ns ) / ONE_NS );
+}
+
+bool
+EvSocketOps::client_matches( PeerData &pd,  PeerMatchArgs &ka,  ... )
+{
+  /* match filters, if any don't match return false */
+  if ( ka.id != 0 )
+    if ( (uint64_t) ka.id != pd.id ) /* match id */
+      return false;
+  if ( ka.ip_len != 0 ) /* match ip address string */
+    if ( ka.ip_len != pd.get_peer_address_strlen() ||
+         ::memcmp( ka.ip, pd.peer_address, ka.ip_len ) != 0 )
+      return false;
+  if ( ka.type_len != 0 ) {
+    va_list    args;
+    size_t     k, sz;
+    const char * str;
+    va_start( args, ka );
+    for ( k = 1; ; k++ ) {
+      str = va_arg( args, const char * );
+      if ( str == NULL ) {
+        k = 0; /* no match */
+        break;
+      }
+      sz = va_arg( args, size_t );
+      if ( sz == ka.type_len &&
+           ::strncasecmp( ka.type, str, sz ) == 0 )
+        break; /* match */
+    }
+    va_end( args );
+    if ( k != 0 )
+      return true;
+    /* match the kind */
+    if ( pd.kind != NULL && ka.type_len == ::strlen( pd.kind ) &&
+         ::strncasecmp( ka.type, pd.kind, ka.type_len ) == 0 )
+      return true;
+    return false;
+  }
+  return true;
+}
+
+void
+EvSocketOps::do_shutdown( PeerData &pd )
+{
+  EvSocket &s = (EvSocket &) pd;
+  /* if already shutdown, close up immediately */
+  if ( s.test( EV_SHUTDOWN ) != 0 ) {
+    if ( s.state != 0 ) {
+      s.poll.queue.remove( &s ); /* close state */
+      s.popall();
+    }
+    s.idle_push( EV_CLOSE );
+  }
+  else { /* close after writing pending data */
+    s.idle_push( EV_SHUTDOWN );
+  }
+}
+
+int
+EvConnectionOps::client_list( PeerData &pd,  PeerMatchArgs &ka,
+                              char *buf,  size_t buflen )
+{
+  if ( ! this->EvSocketOps::client_matches( pd, ka, MARG( "normal" ), NULL ) )
+    return 0;
+  EvConnection & c = (EvConnection &) pd;
+  PeerMatchArgs tmp;
+  int i = this->EvSocketOps::client_list( pd, tmp, buf, buflen );
+  if ( i >= 0 ) {
+    i += ::snprintf( &buf[ i ], buflen - (size_t) i,
+                     "rbuf=%u rsz=%u br=%lu "
+                     "wbuf=%lu wsz=%lu bs=%lu ",
+                     c.len - c.off, c.recv_size, c.nbytes_recv,
+                     c.wr_pending,
+                     c.tmp.fast_len + c.tmp.block_cnt * c.tmp.alloc_size,
+                     c.nbytes_sent );
+  }
+  return i;
+}
+
+bool
+EvConnectionOps::client_kill( PeerData &pd,  PeerMatchArgs &ka )
+{
+  if ( ! this->EvSocketOps::client_matches( pd, ka, MARG( "normal" ), NULL ) )
+    return false;
+  this->do_shutdown( pd );
+  return true;
+}
+
+int
+EvListenOps::client_list( PeerData &pd,  PeerMatchArgs &ka,
+                          char *buf,  size_t buflen )
+{
+  if ( ! this->EvSocketOps::client_matches( pd, ka, MARG( "listen" ), NULL ) )
+    return 0;
+  EvListen & l = (EvListen &) pd;
+  PeerMatchArgs tmp;
+  int i = this->EvSocketOps::client_list( pd, tmp, buf, buflen );
+  if ( i >= 0 ) {
+    i += ::snprintf( &buf[ i ], buflen - (size_t) i,
+                     "acpt=%lu ",
+                     l.accept_cnt );
+  }
+  return i;
+}
+
+bool
+EvListenOps::client_kill( PeerData &pd,  PeerMatchArgs &ka )
+{
+  if ( ! this->EvSocketOps::client_matches( pd, ka, MARG( "listen" ), NULL ) )
+    return false;
+  this->do_shutdown( pd );
+  return true;
+}
+
+int
+EvUdpOps::client_list( PeerData &pd,  PeerMatchArgs &ka,
+                       char *buf,  size_t buflen )
+{
+  if ( ! this->EvSocketOps::client_matches( pd, ka, MARG( "udp" ), NULL ) )
+    return 0;
+  EvUdp & u = (EvUdp &) pd;
+  PeerMatchArgs tmp;
+  int i = this->EvSocketOps::client_list( pd, tmp, buf, buflen );
+  if ( i >= 0 ) {
+    i += ::snprintf( &buf[ i ], buflen - (size_t) i,
+                     "imsg=%u omsg=%u br=%lu bs=%lu ",
+                     u.in_nmsgs, u.out_nmsgs,
+                     u.nbytes_recv, u.nbytes_sent );
+  }
+  return i;
+}
+
+bool
+EvUdpOps::client_kill( PeerData &pd,  PeerMatchArgs &ka )
+{
+  if ( ! this->EvSocketOps::client_matches( pd, ka, MARG( "udp" ), NULL ) )
+    return false;
+  this->do_shutdown( pd );
+  return true;
 }
 
 /* enable epolling of sock fd */
 int
-EvPoll::add_sock( EvSocket *s,  const sockaddr *addr,  const char *kind )
+EvPoll::add_sock( EvSocket *s )
 {
   /* make enough space for fd */
-  if ( s->rte.fd > this->maxfd ) {
-    int xfd = align<int>( s->rte.fd + 1, EvPoll::ALLOC_INCR );
+  if ( s->fd > this->maxfd ) {
+    int xfd = align<int>( s->fd + 1, EvPoll::ALLOC_INCR );
     EvSocket **tmp;
     if ( xfd < this->nfds )
       xfd = this->nfds;
@@ -743,7 +922,7 @@ EvPoll::add_sock( EvSocket *s,  const sockaddr *addr,  const char *kind )
     if ( tmp == NULL ) {
       perror( "realloc" );
       xfd /= 2;
-      if ( xfd > s->rte.fd )
+      if ( xfd > s->fd )
         goto try_again;
       return -1;
     }
@@ -756,17 +935,14 @@ EvPoll::add_sock( EvSocket *s,  const sockaddr *addr,  const char *kind )
     /* add to poll set */
     struct epoll_event event;
     ::memset( &event, 0, sizeof( struct epoll_event ) );
-    event.data.fd = s->rte.fd;
+    event.data.fd = s->fd;
     event.events  = EPOLLIN | EPOLLRDHUP | EPOLLET;
-    if ( ::epoll_ctl( this->efd, EPOLL_CTL_ADD, s->rte.fd, &event ) < 0 ) {
+    if ( ::epoll_ctl( this->efd, EPOLL_CTL_ADD, s->fd, &event ) < 0 ) {
       perror( "epoll_ctl" );
       return -1;
     }
   }
-  this->sock[ s->rte.fd ] = s;
-  s->rte.set_addr( addr );
-  s->rte.id   = 0;
-  s->rte.kind = kind;
+  this->sock[ s->fd ] = s;
   this->fdcnt++;
   /* add to active list */
   s->listfl = IN_ACTIVE_LIST;
@@ -775,6 +951,10 @@ EvPoll::add_sock( EvSocket *s,  const sockaddr *addr,  const char *kind )
   s->prio_cnt = this->prio_tick;
   if ( s->state != 0 )
     this->queue.push( s );
+  uint64_t ns = this->current_coarse_ns();
+  s->start_ns  = ns;
+  s->active_ns = ns;
+  s->id        = ++this->next_id;
   return 0;
 }
 /* start a timer event */
@@ -816,25 +996,25 @@ void
 EvPoll::remove_sock( EvSocket *s )
 {
   struct epoll_event event;
-  if ( s->rte.fd < 0 )
+  if ( s->fd < 0 )
     return;
   /* remove poll set */
-  if ( s->rte.fd <= this->maxfd && this->sock[ s->rte.fd ] == s ) {
+  if ( s->fd <= this->maxfd && this->sock[ s->fd ] == s ) {
     if ( s->type != EV_SHM_SVC ) {
       ::memset( &event, 0, sizeof( struct epoll_event ) );
-      event.data.fd = s->rte.fd;
+      event.data.fd = s->fd;
       event.events  = 0;
-      if ( ::epoll_ctl( this->efd, EPOLL_CTL_DEL, s->rte.fd, &event ) < 0 )
+      if ( ::epoll_ctl( this->efd, EPOLL_CTL_DEL, s->fd, &event ) < 0 )
         perror( "epoll_ctl" );
     }
-    this->sock[ s->rte.fd ] = NULL;
+    this->sock[ s->fd ] = NULL;
     this->fdcnt--;
   }
   /* terms are stdin, stdout */
   if ( s->type != EV_TERMINAL && s->type != EV_SHM_SVC ) {
-    if ( ::close( s->rte.fd ) != 0 ) {
+    if ( ::close( s->fd ) != 0 ) {
       fprintf( stderr, "close: errno %d/%s, fd %d type %d\n",
-               errno, strerror( errno ), s->rte.fd, s->type );
+               errno, strerror( errno ), s->fd, s->type );
     }
   }
   if ( s->listfl == IN_ACTIVE_LIST ) {
@@ -843,7 +1023,7 @@ EvPoll::remove_sock( EvSocket *s )
   }
   /* release memory buffers */
   s->v_release();
-  s->rte.fd = -1;
+  s->fd = -1;
 }
 /* fill up recv buffers */
 void
@@ -852,7 +1032,7 @@ EvConnection::read( void )
   this->adjust_recv();
   for (;;) {
     if ( this->len < this->recv_size ) {
-      ssize_t nbytes = ::read( this->rte.fd, &this->recv[ this->len ],
+      ssize_t nbytes = ::read( this->fd, &this->recv[ this->len ],
                                this->recv_size - this->len );
       if ( nbytes > 0 ) {
         this->len += nbytes;
@@ -930,15 +1110,15 @@ EvConnection::write( void )
   h.msg_iov    = &strm.iov[ strm.woff ];
   h.msg_iovlen = strm.idx - strm.woff;
   if ( h.msg_iovlen == 1 ) {
-    nbytes = ::send( this->rte.fd, h.msg_iov[ 0 ].iov_base,
+    nbytes = ::send( this->fd, h.msg_iov[ 0 ].iov_base,
                      h.msg_iov[ 0 ].iov_len, MSG_NOSIGNAL );
   }
   else {
-    nbytes = ::sendmsg( this->rte.fd, &h, MSG_NOSIGNAL );
+    nbytes = ::sendmsg( this->fd, &h, MSG_NOSIGNAL );
     while ( nbytes < 0 && errno == EMSGSIZE ) {
       if ( (h.msg_iovlen /= 2) == 0 )
         break;
-      nbytes = ::sendmsg( this->rte.fd, &h, MSG_NOSIGNAL );
+      nbytes = ::sendmsg( this->fd, &h, MSG_NOSIGNAL );
     }
   }
   if ( nbytes > 0 ) {
@@ -970,7 +1150,7 @@ EvConnection::write( void )
   if ( nbytes == 0 || ( nbytes < 0 && errno != EAGAIN && errno != EINTR ) ) {
     if ( nbytes < 0 && errno != ECONNRESET && errno != EPIPE ) {
       fprintf( stderr, "sendmsg: errno %d/%s, fd %d, state %d\n",
-               errno, strerror( errno ), this->rte.fd, this->state );
+               errno, strerror( errno ), this->fd, this->state );
     }
     this->popall();
     this->push( EV_CLOSE );
@@ -1039,11 +1219,11 @@ EvUdp::read( void )
     }
   }
   if ( this->in_moff + 1 < this->in_size ) {
-    nmsgs = ::recvmmsg( this->rte.fd, &this->in_mhdr[ this->in_moff ],
+    nmsgs = ::recvmmsg( this->fd, &this->in_mhdr[ this->in_moff ],
                         this->in_size - this->in_moff, 0, NULL );
   }
   else {
-    ssize_t nbytes = ::recvmsg( this->rte.fd,
+    ssize_t nbytes = ::recvmsg( this->fd,
                                 &this->in_mhdr[ this->in_moff ].msg_hdr, 0 );
     if ( nbytes > 0 ) {
       this->in_mhdr[ this->in_moff ].msg_len = nbytes;
@@ -1077,7 +1257,7 @@ EvUdp::write( void )
 {
   int nmsgs = 0;
   if ( this->out_nmsgs > 1 ) {
-    nmsgs = ::sendmmsg( this->rte.fd, this->out_mhdr, this->out_nmsgs, 0 );
+    nmsgs = ::sendmmsg( this->fd, this->out_mhdr, this->out_nmsgs, 0 );
     if ( nmsgs > 0 ) {
       for ( uint32_t i = 0; i < this->out_nmsgs; i++ )
         this->nbytes_sent += this->out_mhdr[ i ].msg_len;
@@ -1087,7 +1267,7 @@ EvUdp::write( void )
     }
   }
   else {
-    ssize_t nbytes = ::sendmsg( this->rte.fd, &this->out_mhdr[ 0 ].msg_hdr, 0 );
+    ssize_t nbytes = ::sendmsg( this->fd, &this->out_mhdr[ 0 ].msg_hdr, 0 );
     if ( nbytes > 0 ) {
       this->nbytes_sent += nbytes;
       this->clear_buffers();
@@ -1100,7 +1280,7 @@ EvUdp::write( void )
   if ( nmsgs < 0 && errno != EAGAIN && errno != EINTR ) {
     if ( errno != ECONNRESET && errno != EPIPE ) {
       fprintf( stderr, "sendmsg: errno %d/%s, fd %d, state %d\n",
-               errno, strerror( errno ), this->rte.fd, this->state );
+               errno, strerror( errno ), this->fd, this->state );
     }
     this->popall();
     this->push( EV_CLOSE );

@@ -240,17 +240,26 @@ TermCallback::on_close( void )
 void
 ClientCallback::on_msg( RedisMsg &msg )
 {
-  char buf[ 1024 ], *b = buf;
-  size_t sz = msg.to_almost_json_size();
-
-  if ( sz > sizeof( buf ) ) {
-    b = (char *) this->me.wrk.alloc( sz );
-    if ( b == NULL )
-      this->me.term.printf( "msg too large\n" );
+  /* if bulk string with newline termination, just print it */
+  if ( msg.type == RedisMsg::BULK_STRING &&
+       msg.len > 0 &&
+       msg.strval[ msg.len - 1 ] == '\n' ) {
+    this->me.term.printf( "%.*s\n", (int) msg.len, msg.strval );
   }
-  if ( b != NULL ) {
-    msg.to_almost_json( b );
-    this->me.term.printf( "%.*s\n", (int) sz, b );
+  else {
+    char buf[ 1024 ], *b = buf;
+    size_t sz;
+
+    sz = msg.to_almost_json_size();
+    if ( sz > sizeof( buf ) ) {
+      b = (char *) this->me.wrk.alloc( sz );
+      if ( b == NULL )
+        this->me.term.printf( "msg too large\n" );
+    }
+    if ( b != NULL ) {
+      msg.to_almost_json( b );
+      this->me.term.printf( "%.*s\n", (int) sz, b );
+    }
   }
   this->me.msg_recv++;
 }
