@@ -30,7 +30,7 @@ EvMemcachedListen::listen( const char *ip,  int port )
     ::strncpy( stat.interface, ip, sizeof( stat.interface ) - 1 );
   stat.tcpport = port;
   stat.max_connections = this->poll.nfds;
-  return this->EvTcpListen::listen( ip, port, "memcached-listen" );
+  return this->EvTcpListen::listen( ip, port, "memcached_listen" );
 }
 
 int
@@ -40,10 +40,10 @@ EvMemcachedUdp::listen( const char *ip,  int port )
     ::strncpy( stat.interface, ip, sizeof( stat.interface ) - 1 );
   stat.udpport = port;
   stat.max_connections = this->poll.nfds;
-  return this->EvUdp::listen( ip, port, "memcached-udp" );
+  return this->EvUdp::listen( ip, port, "memcached_udp" );
 }
 
-void
+bool
 EvMemcachedListen::accept( void )
 {
   static int on = 1;
@@ -56,7 +56,7 @@ EvMemcachedListen::accept( void )
 	perror( "accept" );
       this->pop3( EV_READ, EV_READ_LO, EV_READ_HI );
     }
-    return;
+    return false;
   }
   bool was_empty = this->poll.free_memcached.is_empty();
   EvMemcachedService * c =
@@ -65,7 +65,7 @@ EvMemcachedListen::accept( void )
   if ( c == NULL ) {
     perror( "accept: no memory" );
     ::close( sock );
-    return;
+    return false;
   }
   if ( was_empty )
     stat.conn_structs += EvPoll::ALLOC_INCR;
@@ -84,11 +84,13 @@ EvMemcachedListen::accept( void )
   if ( this->poll.add_sock( c ) < 0 ) {
     ::close( sock );
     c->push_free_list();
+    return false;
   }
   stat.curr_connections++;
   stat.total_connections++;
   if ( stat.curr_connections > stat.max_connections )
     stat.max_connections = stat.curr_connections;
+  return true;
 }
 
 void
@@ -607,25 +609,25 @@ MemcachedUdpFraming::construct_frames( void )
 void
 EvMemcachedService::read( void )
 {
-  size_t nb = this->nbytes_recv;
+  size_t nb = this->bytes_recv;
   this->EvConnection::read();
-  stat.bytes_read += this->nbytes_recv - nb;
+  stat.bytes_read += this->bytes_recv - nb;
 }
 
 void
 EvMemcachedService::write( void )
 {
-  size_t nb = this->nbytes_sent;
+  size_t nb = this->bytes_sent;
   this->EvConnection::write();
-  stat.bytes_written += this->nbytes_sent - nb;
+  stat.bytes_written += this->bytes_sent - nb;
 }
 
 void
 EvMemcachedUdp::read( void )
 {
-  size_t nb = this->nbytes_recv;
+  size_t nb = this->bytes_recv;
   this->EvUdp::read();
-  stat.bytes_read += this->nbytes_recv - nb;
+  stat.bytes_read += this->bytes_recv - nb;
 }
 
 void
@@ -640,9 +642,9 @@ EvMemcachedUdp::write( void )
   this->out_nmsgs = g.out_nmsgs;
   this->out_mhdr  = g.out_mhdr;
   this->out_idx   = NULL;
-  size_t nb = this->nbytes_sent;
+  size_t nb = this->bytes_sent;
   this->EvUdp::write();
-  stat.bytes_written += this->nbytes_sent - nb;
+  stat.bytes_written += this->bytes_sent - nb;
 }
 
 void

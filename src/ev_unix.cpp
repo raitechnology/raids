@@ -57,7 +57,7 @@ fail:;
   return -1;
 }
 
-void
+bool
 EvRedisUnixListen::accept( void )
 {
   struct sockaddr_un sunaddr;
@@ -69,14 +69,14 @@ EvRedisUnixListen::accept( void )
 	perror( "accept" );
       this->pop3( EV_READ, EV_READ_LO, EV_READ_HI );
     }
-    return;
+    return false;
   }
   EvRedisService *c =
     this->poll.get_free_list<EvRedisService>( this->poll.free_redis );
   if ( c == NULL ) {
     perror( "accept: no memory" );
     ::close( sock );
-    return;
+    return false;
   }
   ::fcntl( sock, F_SETFL, O_NONBLOCK | ::fcntl( sock, F_GETFL ) );
   this->PeerData::init_peer( sock, (struct sockaddr *) &sunaddr, "redis" );
@@ -84,7 +84,9 @@ EvRedisUnixListen::accept( void )
   if ( this->poll.add_sock( c ) < 0 ) {
     ::close( sock );
     c->push_free_list();
+    return false;
   }
+  return true;
 }
 
 int
@@ -106,7 +108,7 @@ EvUnixClient::connect( const char *path )
     perror( "error: connect" );
     goto fail;
   }
-  this->PeerData::init_peer( sock, (struct sockaddr *) &sunaddr, "unix-client");
+  this->PeerData::init_peer( sock, (struct sockaddr *) &sunaddr, "unix_client");
   ::fcntl( sock, F_SETFL, O_NONBLOCK | ::fcntl( sock, F_GETFL ) );
   if ( this->poll.add_sock( this ) < 0 ) {
   fail:;

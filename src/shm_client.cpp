@@ -160,7 +160,7 @@ EvShmClient::stream_to_msg( void )
 EvShmSvc::~EvShmSvc() {}
 int EvShmSvc::init_poll( void ) {
   int status;
-  this->PeerData::init_peer( 0, NULL, "shm-svc" );
+  this->PeerData::init_peer( 0, NULL, "shm_svc" );
   if ( (status = this->poll.add_sock( this )) == 0 )
     return 0;
   this->fd = -1;

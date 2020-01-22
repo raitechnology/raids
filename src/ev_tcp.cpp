@@ -157,7 +157,7 @@ break_loop:;
     status = -1;
     goto fail;
   }
-  this->PeerData::init_peer( sock, p->ai_addr, "tcp-client" );
+  this->PeerData::init_peer( sock, p->ai_addr, "tcp_client" );
   ::fcntl( sock, F_SETFL, O_NONBLOCK | ::fcntl( sock, F_GETFL ) );
 
   if ( this->poll.add_sock( this ) < 0 ) {

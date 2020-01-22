@@ -13,17 +13,15 @@ struct EvRedisListen : public EvTcpListen {
   uint64_t timer_id;
   EvListenOps ops;
   EvRedisListen( EvPoll &p );/* : EvTcpListen( p ) {}*/
-  virtual void accept( void );
+  virtual bool accept( void );
   int listen( const char *ip,  int port ) {
-    return this->EvTcpListen::listen( ip, port, "redis-listen" );
+    return this->EvTcpListen::listen( ip, port, "redis_listen" );
   }
 };
 
 struct EvRedisServiceOps : public EvConnectionOps {
-  bool client_matches( PeerData &pd,  PeerMatchArgs &ka );
-  virtual int client_list( PeerData &pd,  PeerMatchArgs &ka,
-                           char *buf,  size_t buflen );
-  virtual bool client_kill( PeerData &pd,  PeerMatchArgs &ka );
+  virtual int client_list( PeerData &pd,  char *buf,  size_t buflen );
+  virtual bool match( PeerData &pd,  PeerMatchArgs &ka );
 };
 
 struct EvRedisService : public EvConnection, public RedisExec {

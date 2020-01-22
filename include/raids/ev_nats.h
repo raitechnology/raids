@@ -10,9 +10,9 @@ namespace ds {
 struct EvNatsListen : public EvTcpListen {
   EvListenOps ops;
   EvNatsListen( EvPoll &p ) : EvTcpListen( p, this->ops ) {}
-  virtual void accept( void );
+  virtual bool accept( void );
   int listen( const char *ip,  int port ) {
-    return this->EvTcpListen::listen( ip, port, "nats-listen" );
+    return this->EvTcpListen::listen( ip, port, "nats_listen" );
   }
 };
 

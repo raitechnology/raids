@@ -21,9 +21,9 @@ struct EvRvListen : public EvTcpListen {
   uint16_t    ipport;
   EvListenOps ops;
   EvRvListen( EvPoll &p );
-  virtual void accept( void );
+  virtual bool accept( void );
   int listen( const char *ip,  int port ) {
-    return this->EvTcpListen::listen( ip, port, "rv-listen" );
+    return this->EvTcpListen::listen( ip, port, "rv_listen" );
   }
 };
 

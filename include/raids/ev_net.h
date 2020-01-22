@@ -114,11 +114,15 @@ struct EvSocket : public PeerData /* fd and address of peer */ {
   uint32_t   state;    /* bit mask of states, the queues the sock is in */
   EvSockType type;     /* listen or cnnection */
   EvListFlag listfl;   /* in active list or free list */
-  uint64_t   pad[ 4 ]; /* align to 256 bytes */
+  uint64_t   bytes_recv, /* stat counters for bytes and msgs */
+             bytes_sent,
+             msgs_recv,
+             msgs_sent;
 
   EvSocket( EvPoll &p,  EvSockType t,  PeerOps &o )
     : PeerData( o ), poll( p ), prio_cnt( 0 ),
-      state( 0 ), type( t ), listfl( IN_NO_LIST ) {}
+      state( 0 ), type( t ), listfl( IN_NO_LIST ),
+      bytes_recv( 0 ), bytes_sent( 0 ), msgs_recv( 0 ), msgs_sent( 0 ) {}
 
   /* priority queue states */
   int test( int s ) const { return this->state & ( 1U << s ); }
@@ -163,10 +167,12 @@ struct EvSocket : public PeerData /* fd and address of peer */ {
 #endif
 
 struct EvSocketOps : public PeerOps {
-  virtual int client_list( PeerData &pd,  PeerMatchArgs &ka,
-                           char *buf,  size_t buflen );
-  static bool client_matches( PeerData &pd,  PeerMatchArgs &ka,  ... );
-  void do_shutdown( PeerData &pd );
+  virtual int client_list( PeerData &pd,  char *buf,  size_t buflen );
+  virtual bool client_kill( PeerData &pd );
+  virtual bool match( PeerData &pd,  PeerMatchArgs &ka );
+  virtual void client_stats( PeerData &pd,  PeerStats &ps );
+  virtual void retired_stats( PeerData &pd,  PeerStats &ps );
+  static bool client_match( PeerData &pd,  PeerMatchArgs &ka,  ... );
 };
 
 static inline void *aligned_malloc( size_t sz ) {
@@ -203,6 +209,7 @@ struct EvPoll : public RoutePublish {
                        prefetch_cnt[ PREFETCH_SIZE + 1 ];
   RouteDB              sub_route;       /* subscriptions */
   RoutePublishQueue    pub_queue;       /* temp routing queue: */
+  PeerStats            peer_stats;      /* accumulator after sock closes */
      /* this causes a message matching multiple wildcards to be sent once */
 
   /* socket lists, active and free lists, multiple socks are allocated at a
@@ -296,9 +303,9 @@ struct EvListen : public EvSocket {
   EvListen( EvPoll &p,  PeerOps &o )
     : EvSocket( p, EV_LISTEN_SOCK, o ), accept_cnt( 0 ) {}
 
-  virtual void accept( void ) {}
+  virtual bool accept( void ) { return false; }
   void write( void ) {}
-  void read( void ) { this->accept_cnt++; this->accept(); }
+  void read( void ) { if ( this->accept() ) this->accept_cnt++; }
   void process( void ) {}
   void release( void ) {}
   bool timer_expire( uint64_t, uint64_t ) { return false; }
@@ -311,9 +318,9 @@ struct EvListen : public EvSocket {
 };
 
 struct EvListenOps : public EvSocketOps {
-  virtual int client_list( PeerData &pd,  PeerMatchArgs &ka,
-                           char *buf,  size_t buflen );
-  virtual bool client_kill( PeerData &pd,  PeerMatchArgs &ka );
+  virtual int client_list( PeerData &pd,  char *buf,  size_t buflen );
+  virtual bool match( PeerData &pd,  PeerMatchArgs &ka );
+  virtual void client_stats( PeerData &pd,  PeerStats &ps );
 };
 
 struct EvConnection : public EvSocket, public StreamBuf {
@@ -324,8 +331,6 @@ struct EvConnection : public EvSocket, public StreamBuf {
            recv_highwater, /* recv_highwater: switch to low priority read */
            send_highwater, /* send_highwater: switch to high priority write */
            pad;
-  uint64_t nbytes_recv,
-           nbytes_sent;
   char     recv_buf[ 16 * 1024 ] __attribute__((__aligned__( 64 )));
 
   EvConnection( EvPoll &p, EvSockType t,  PeerOps &o ) : EvSocket( p, t, o ) {
@@ -336,8 +341,6 @@ struct EvConnection : public EvSocket, public StreamBuf {
     this->recv_highwater = this->recv_size - this->recv_size / 8;
     this->send_highwater = this->recv_size * 2;
     this->pad            = 0xaa99bb88U;
-    this->nbytes_recv    = 0;
-    this->nbytes_sent    = 0;
   }
   void release_buffers( void ) { /* release all buffs */
     this->clear_buffers();
@@ -346,8 +349,6 @@ struct EvConnection : public EvSocket, public StreamBuf {
   void clear_buffers( void ) {   /* clear any allocations and counters */
     this->StreamBuf::reset();
     this->off = this->len = 0;
-    this->nbytes_recv = 0;
-    this->nbytes_sent = 0;
     if ( this->recv != this->recv_buf ) {
       ::free( this->recv );
       this->recv = this->recv_buf;
@@ -377,14 +378,11 @@ struct EvConnection : public EvSocket, public StreamBuf {
 };
 
 struct EvConnectionOps : public EvSocketOps {
-  virtual int client_list( PeerData &pd,  PeerMatchArgs &ka,
-                           char *buf,  size_t buflen );
-  virtual bool client_kill( PeerData &pd,  PeerMatchArgs &ka );
+  virtual int client_list( PeerData &pd,  char *buf,  size_t buflen );
+  virtual bool match( PeerData &pd,  PeerMatchArgs &ka );
 };
 
 struct EvUdp : public EvSocket, public StreamBuf {
-  uint64_t  nbytes_recv,
-            nbytes_sent;
   struct    mmsghdr * in_mhdr,
                     * out_mhdr;
   uint32_t  in_moff,
@@ -392,10 +390,8 @@ struct EvUdp : public EvSocket, public StreamBuf {
             in_size,
             in_nsize,
             out_nmsgs;
-  uint32_t  pad[ 3 ];
 
   EvUdp( EvPoll &p, EvSockType t, PeerOps &o ) : EvSocket( p, t, o ),
-    nbytes_recv( 0 ), nbytes_sent( 0 ),
     in_mhdr( 0 ), out_mhdr( 0 ), in_moff( 0 ), in_nmsgs( 0 ), in_size( 0 ),
     in_nsize( 1 ), out_nmsgs( 0 ) {}
   void zero( void ) {
@@ -421,9 +417,8 @@ struct EvUdp : public EvSocket, public StreamBuf {
 };
 
 struct EvUdpOps : public EvSocketOps {
-  virtual int client_list( PeerData &pd,  PeerMatchArgs &ka,
-                           char *buf,  size_t buflen );
-  virtual bool client_kill( PeerData &pd,  PeerMatchArgs &ka );
+  virtual int client_list( PeerData &pd,  char *buf,  size_t buflen );
+  virtual bool match( PeerData &pd,  PeerMatchArgs &ka );
 };
 
 }

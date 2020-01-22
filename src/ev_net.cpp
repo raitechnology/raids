@@ -176,6 +176,7 @@ EvPoll::drain_prefetch( void )
     switch( s->v_exec_key_continue( k ) ) {
       default:
       case EK_SUCCESS:
+        s->msgs_sent++;
         s->v_process();
         if ( s->test( EV_PREFETCH ) != 0 ) {
           s->pop( EV_PREFETCH ); /* continue prefetching */
@@ -739,12 +740,15 @@ PeerData::set_addr( const sockaddr *sa )
   }
 }
 
-int
-EvSocketOps::client_list( PeerData &pd,  PeerMatchArgs &ka,
-                          char *buf,  size_t buflen )
+bool
+EvSocketOps::match( PeerData &pd,  PeerMatchArgs &ka )
 {
-  if ( ! this->client_matches( pd, ka ) )
-    return 0;
+  return this->client_match( pd, ka, NULL );
+}
+
+int
+EvSocketOps::client_list( PeerData &pd,  char *buf,  size_t buflen )
+{
   /* id=1082 addr=[::1]:43362 fd=8 name= age=1 idle=0 flags=N */
   static const uint64_t ONE_NS = 1000000000;
   uint64_t cur_time_ns = ((EvSocket &) pd).poll.current_coarse_ns();
@@ -768,7 +772,7 @@ EvSocketOps::client_list( PeerData &pd,  PeerMatchArgs &ka,
 }
 
 bool
-EvSocketOps::client_matches( PeerData &pd,  PeerMatchArgs &ka,  ... )
+EvSocketOps::client_match( PeerData &pd,  PeerMatchArgs &ka,  ... )
 {
   /* match filters, if any don't match return false */
   if ( ka.id != 0 )
@@ -806,8 +810,8 @@ EvSocketOps::client_matches( PeerData &pd,  PeerMatchArgs &ka,  ... )
   return true;
 }
 
-void
-EvSocketOps::do_shutdown( PeerData &pd )
+bool
+EvSocketOps::client_kill( PeerData &pd )
 {
   EvSocket &s = (EvSocket &) pd;
   /* if already shutdown, close up immediately */
@@ -821,47 +825,64 @@ EvSocketOps::do_shutdown( PeerData &pd )
   else { /* close after writing pending data */
     s.idle_push( EV_SHUTDOWN );
   }
+  return true;
+}
+
+bool
+EvConnectionOps::match( PeerData &pd,  PeerMatchArgs &ka )
+{
+  return this->client_match( pd, ka, MARG( "tcp" ), NULL );
 }
 
 int
-EvConnectionOps::client_list( PeerData &pd,  PeerMatchArgs &ka,
-                              char *buf,  size_t buflen )
+EvConnectionOps::client_list( PeerData &pd,  char *buf,  size_t buflen )
 {
-  if ( ! this->EvSocketOps::client_matches( pd, ka, MARG( "normal" ), NULL ) )
-    return 0;
   EvConnection & c = (EvConnection &) pd;
-  PeerMatchArgs tmp;
-  int i = this->EvSocketOps::client_list( pd, tmp, buf, buflen );
+  int i = this->EvSocketOps::client_list( pd, buf, buflen );
   if ( i >= 0 ) {
     i += ::snprintf( &buf[ i ], buflen - (size_t) i,
-                     "rbuf=%u rsz=%u br=%lu "
-                     "wbuf=%lu wsz=%lu bs=%lu ",
-                     c.len - c.off, c.recv_size, c.nbytes_recv,
+                     "rbuf=%u rsz=%u imsg=%lu br=%lu "
+                     "wbuf=%lu wsz=%lu omsg=%lu bs=%lu ",
+                     c.len - c.off, c.recv_size, c.msgs_recv, c.bytes_recv,
                      c.wr_pending,
                      c.tmp.fast_len + c.tmp.block_cnt * c.tmp.alloc_size,
-                     c.nbytes_sent );
+                     c.msgs_sent, c.bytes_sent );
   }
   return i;
 }
 
-bool
-EvConnectionOps::client_kill( PeerData &pd,  PeerMatchArgs &ka )
+void
+EvSocketOps::client_stats( PeerData &pd,  PeerStats &ps )
 {
-  if ( ! this->EvSocketOps::client_matches( pd, ka, MARG( "normal" ), NULL ) )
-    return false;
-  this->do_shutdown( pd );
-  return true;
+  EvSocket & s = (EvSocket &) pd;
+  ps.bytes_recv += s.bytes_recv;
+  ps.bytes_sent += s.bytes_sent;
+  ps.msgs_recv  += s.msgs_recv;
+  ps.msgs_sent  += s.msgs_sent;
+}
+
+void
+EvSocketOps::retired_stats( PeerData &pd,  PeerStats &ps )
+{
+  EvSocket & s = (EvSocket &) pd;
+  ps.bytes_recv += s.poll.peer_stats.bytes_recv;
+  ps.bytes_sent += s.poll.peer_stats.bytes_sent;
+  ps.msgs_recv  += s.poll.peer_stats.msgs_recv;
+  ps.msgs_sent  += s.poll.peer_stats.msgs_sent;
+  ps.accept_cnt += s.poll.peer_stats.accept_cnt;
+}
+
+bool
+EvListenOps::match( PeerData &pd,  PeerMatchArgs &ka )
+{
+  return this->client_match( pd, ka, MARG( "listen" ), NULL );
 }
 
 int
-EvListenOps::client_list( PeerData &pd,  PeerMatchArgs &ka,
-                          char *buf,  size_t buflen )
+EvListenOps::client_list( PeerData &pd,  char *buf,  size_t buflen )
 {
-  if ( ! this->EvSocketOps::client_matches( pd, ka, MARG( "listen" ), NULL ) )
-    return 0;
   EvListen & l = (EvListen &) pd;
-  PeerMatchArgs tmp;
-  int i = this->EvSocketOps::client_list( pd, tmp, buf, buflen );
+  int i = this->EvSocketOps::client_list( pd, buf, buflen );
   if ( i >= 0 ) {
     i += ::snprintf( &buf[ i ], buflen - (size_t) i,
                      "acpt=%lu ",
@@ -870,40 +891,31 @@ EvListenOps::client_list( PeerData &pd,  PeerMatchArgs &ka,
   return i;
 }
 
-bool
-EvListenOps::client_kill( PeerData &pd,  PeerMatchArgs &ka )
+void
+EvListenOps::client_stats( PeerData &pd,  PeerStats &ps )
 {
-  if ( ! this->EvSocketOps::client_matches( pd, ka, MARG( "listen" ), NULL ) )
-    return false;
-  this->do_shutdown( pd );
-  return true;
+  EvListen & l = (EvListen &) pd;
+  ps.accept_cnt += l.accept_cnt;
+}
+
+bool
+EvUdpOps::match( PeerData &pd,  PeerMatchArgs &ka )
+{
+  return this->client_match( pd, ka, MARG( "udp" ), NULL );
 }
 
 int
-EvUdpOps::client_list( PeerData &pd,  PeerMatchArgs &ka,
-                       char *buf,  size_t buflen )
+EvUdpOps::client_list( PeerData &pd,  char *buf,  size_t buflen )
 {
-  if ( ! this->EvSocketOps::client_matches( pd, ka, MARG( "udp" ), NULL ) )
-    return 0;
   EvUdp & u = (EvUdp &) pd;
-  PeerMatchArgs tmp;
-  int i = this->EvSocketOps::client_list( pd, tmp, buf, buflen );
+  int i = this->EvSocketOps::client_list( pd, buf, buflen );
   if ( i >= 0 ) {
     i += ::snprintf( &buf[ i ], buflen - (size_t) i,
-                     "imsg=%u omsg=%u br=%lu bs=%lu ",
-                     u.in_nmsgs, u.out_nmsgs,
-                     u.nbytes_recv, u.nbytes_sent );
+                     "imsg=%lu omsg=%lu br=%lu bs=%lu ",
+                     u.msgs_recv, u.msgs_sent,
+                     u.bytes_recv, u.bytes_sent );
   }
   return i;
-}
-
-bool
-EvUdpOps::client_kill( PeerData &pd,  PeerMatchArgs &ka )
-{
-  if ( ! this->EvSocketOps::client_matches( pd, ka, MARG( "udp" ), NULL ) )
-    return false;
-  this->do_shutdown( pd );
-  return true;
 }
 
 /* enable epolling of sock fd */
@@ -952,9 +964,13 @@ EvPoll::add_sock( EvSocket *s )
   if ( s->state != 0 )
     this->queue.push( s );
   uint64_t ns = this->current_coarse_ns();
-  s->start_ns  = ns;
-  s->active_ns = ns;
-  s->id        = ++this->next_id;
+  s->start_ns   = ns;
+  s->active_ns  = ns;
+  s->id         = ++this->next_id;
+  s->bytes_recv = 0;
+  s->bytes_sent = 0;
+  s->msgs_recv  = 0;
+  s->msgs_sent  = 0;
   return 0;
 }
 /* start a timer event */
@@ -1018,6 +1034,7 @@ EvPoll::remove_sock( EvSocket *s )
     }
   }
   if ( s->listfl == IN_ACTIVE_LIST ) {
+    s->op.client_stats( *s, this->peer_stats );
     s->listfl = IN_NO_LIST;
     this->active_list.pop( s );
   }
@@ -1036,7 +1053,7 @@ EvConnection::read( void )
                                this->recv_size - this->len );
       if ( nbytes > 0 ) {
         this->len += nbytes;
-        this->nbytes_recv += nbytes;
+        this->bytes_recv += nbytes;
         this->push( EV_PROCESS );
         /* if buf almost full, switch to low priority read */
         if ( this->len >= this->recv_highwater )
@@ -1123,7 +1140,7 @@ EvConnection::write( void )
   }
   if ( nbytes > 0 ) {
     strm.wr_pending -= nbytes;
-    this->nbytes_sent += nbytes;
+    this->bytes_sent += nbytes;
     nb += nbytes;
     if ( strm.wr_pending == 0 ) {
       strm.reset();
@@ -1233,7 +1250,7 @@ EvUdp::read( void )
   if ( nmsgs > 0 ) {
     this->in_nmsgs += nmsgs;
     for ( int i = 0; i < nmsgs; i++ )
-      this->nbytes_recv += this->in_mhdr[ this->in_moff + i ].msg_len;
+      this->bytes_recv += this->in_mhdr[ this->in_moff + i ].msg_len;
     this->in_nsize = ( ( this->in_nmsgs < 8 ) ? this->in_nmsgs + 1 : 8 );
     this->push( EV_PROCESS );
     this->pushpop( EV_READ_LO, EV_READ );
@@ -1260,7 +1277,7 @@ EvUdp::write( void )
     nmsgs = ::sendmmsg( this->fd, this->out_mhdr, this->out_nmsgs, 0 );
     if ( nmsgs > 0 ) {
       for ( uint32_t i = 0; i < this->out_nmsgs; i++ )
-        this->nbytes_sent += this->out_mhdr[ i ].msg_len;
+        this->bytes_sent += this->out_mhdr[ i ].msg_len;
       this->clear_buffers();
       this->pop2( EV_WRITE, EV_WRITE_HI );
       return;
@@ -1269,7 +1286,7 @@ EvUdp::write( void )
   else {
     ssize_t nbytes = ::sendmsg( this->fd, &this->out_mhdr[ 0 ].msg_hdr, 0 );
     if ( nbytes > 0 ) {
-      this->nbytes_sent += nbytes;
+      this->bytes_sent += nbytes;
       this->clear_buffers();
       this->pop2( EV_WRITE, EV_WRITE_HI );
       return;

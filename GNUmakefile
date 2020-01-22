@@ -162,7 +162,7 @@ all_dlls    :=
 all_depends :=
 gen_files   :=
 emain_defines          := -DDS_VER=$(ver_build)
-redis_exec_defines     := -DDS_VER=$(ver_build)
+redis_server_defines   := -DDS_VER=$(ver_build) -DGIT_HEAD=$(shell git rev-parse HEAD | cut -c 1-8)
 memcached_exec_defines := -DDS_VER=$(ver_build)
 
 redis_geo_includes        = -Ih3/src/h3lib/include -I/usr/include/h3lib

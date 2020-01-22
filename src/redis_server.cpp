@@ -2,8 +2,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <stdarg.h>
 #include <unistd.h>
+#include <fcntl.h>
+#include <math.h>
 #include <sys/time.h>
+#include <sys/utsname.h>
+#include <sys/resource.h>
 #include <raikv/util.h>
 #include <raids/redis_exec.h>
 #include <raids/redis_cmd_db.h>
@@ -145,6 +150,29 @@ RedisExec::get_peer_match_args( PeerMatchArgs &ka )
   return true;
 }
 
+PeerData *
+PeerMatchIter::first( void )
+{
+  /* go to the front */
+  for ( this->p = &this->me; this->p->back != NULL; this->p = this->p->back )
+    ;
+  return this->next(); /* match the next */
+}
+
+PeerData *
+PeerMatchIter::next( void )
+{
+  while ( this->p != NULL ) { /* while peers to match */
+    PeerData & x = *this->p;
+    this->p = x.next;
+    if ( ( &x == &this->me && this->ka.skipme ) || /* match peer */
+         ! x.op.match( x, this->ka ) )
+      continue;
+    return &x;
+  }
+  return NULL;
+}
+
 ExecStatus
 RedisExec::exec_client( void )
 {
@@ -153,6 +181,7 @@ RedisExec::exec_client( void )
   PeerData    * p;
   size_t        d, i, off, sz;
   PeerMatchArgs ka;
+  PeerMatchIter iter( this->peer, ka );
 
   switch ( this->msg.match_arg( 1, MARG( "getname" ),
                                    MARG( "id" ),
@@ -171,40 +200,29 @@ RedisExec::exec_client( void )
     case 2: /* id - get the id associated with this connection */
       this->send_int( this->peer.id );
       return EXEC_OK;
-    case 3: /* kill (ip) (ID id) (TYPE norm|mast|slav|pubsub)
-                    (ADDR ip) (SKIPME y/n) */
+    case 3: { /* kill (ip) (ID id) (TYPE norm|mast|slav|pubsub)
+                      (ADDR ip) (SKIPME y/n) */
       if ( ! this->get_peer_match_args( ka ) )
         return ERR_BAD_ARGS;
       i = 0;
-      for ( p = &this->peer; p->back != NULL; p = p->back )
-        ;
-      for ( ; p != NULL; p = p->next ) {
-        if ( ka.skipme && p == &this->peer )
-          continue;
-        if ( p->op.client_kill( *p, ka ) )
+      for ( p = iter.first(); p != NULL; p = iter.next() ) {
+        if ( p->op.client_kill( *p ) )
           i++;
       }
       this->send_int( i ); /* number of clients killed */
       return EXEC_OK;
-    case 4: /* list (ip) (ID id) (TYPE norm|mast|slav|pubsub)
-                    (ADDR ip) (SKIPME y/n) */
+    }
+    case 4: { /* list (ip) (ID id) (TYPE norm|mast|slav|pubsub)
+                      (ADDR ip) (SKIPME y/n) */
       if ( this->argc > 2 && ! this->get_peer_match_args( ka ) )
         return ERR_BAD_ARGS;
       if ( this->strm.sz > 0 )
         this->strm.flush();
       off = this->strm.pending(); /* record location at start of list */
       i   = this->strm.idx;
-      for ( p = &this->peer; p->back != NULL; p = p->back )
-        ;
-      /* this iterates all the fds in the system and calls the client_list
-       * virtual function, which is different based on the protocol type,
-       * a redis protocol type will use the client_list() defined below */
-      /* XXX needs to hook into pubsub for multi-process listing */
-      for ( ; p != NULL; p = p->next ) {
-        if ( ka.skipme && p == &this->peer )
-          continue;
+      for ( p = iter.first(); p != NULL; p = iter.next() ) {
         char buf[ 8 * 1024 ];
-        int  sz = p->op.client_list( *p, ka, buf, sizeof( buf ) );
+        int  sz = p->op.client_list( *p, buf, sizeof( buf ) );
         if ( sz > 0 ) {
           char *str = this->strm.alloc( sz );
           ::memcpy( str, buf, sz );
@@ -224,6 +242,7 @@ RedisExec::exec_client( void )
       this->strm.sz = crlf( s, 1 + d );
       this->strm.prepend_flush( i );
       return EXEC_OK;
+    }
     case 5: /* pause (ms) pause clients for ms time */
       return ERR_BAD_ARGS;
     case 6: /* reply (on/off/skip) en/disable replies */
@@ -442,32 +461,283 @@ RedisExec::exec_flushdb( void )
   return EXEC_OK;
 }
 
+static int xnprintf( char *&b,  size_t &sz,  const char *format, ... )
+  __attribute__((format(printf,3,4)));
+
+static int
+xnprintf( char *&b,  size_t &sz,  const char *format, ... )
+{
+#ifndef va_copy
+#define va_copy( dst, src ) memcpy( &( dst ), &( src ), sizeof( va_list ) )
+#endif
+  va_list args;
+  size_t  x;
+  va_start( args, format );
+  x = vsnprintf( b, sz, format, args );
+  va_end( args );
+  b   = &b[ x ];
+  sz -= x;
+  return x;
+}
+
+static int
+get_proc_status_size( const char *s,  size_t *ival,  ... )
+{
+  /* find a set of strings in status and parse the ints */
+  int fd = ::open( "/proc/self/status", O_RDONLY );
+  if ( fd < 0 )
+    return 0;
+  char buf[ 4096 ];
+  ssize_t n = ::read( fd, buf, sizeof( buf ) - 1 );
+  ::close( fd );
+  if ( n < 0 )
+    return 0;
+  buf[ n ] = '\0';
+  char * b = buf,
+       * p;
+  int    i, j, cnt = 0;
+
+  va_list args;
+  va_start( args, ival );
+  for (;;) {
+    /* find the string: VmPeak: */
+    if ( (p = (char *) ::memchr( b, s[ 0 ], n )) == NULL )
+      break;
+    n -= ( p - b );
+    b = p;
+    for ( i = 1; s[ i ] != '\0'; i++ )
+      if ( b[ i ] != s[ i ] )
+        break;
+    /* if string matches */
+    if ( s[ i ] == '\0' && b[ i ] == '\t' ) {
+      while ( b[ ++i ] == ' ' )
+        ;
+      if ( b[ i ] >= '0' && b[ i ] <= '9' ) {
+        for ( j = i + 1; b[ j ] >= '0' && b[ j ] <= '9'; j++ )
+          ;
+        /* parse the integer after the string */
+        string_to_uint( &b[ i ], j - i, *ival );
+        i = j;
+        cnt++;
+        /* match next string */
+        s = va_arg( args, const char * );
+        if ( s == NULL )
+          break;
+        ival = va_arg( args, size_t * );
+      }
+    }
+    n -= i;
+    b = &b[ i ];
+  }
+  va_end( args );
+  return cnt;
+}
+
+char *
+mstring( double f,  char *buf,  int64_t k )
+{
+  return mem_to_string( (int64_t) ceil( f ), buf, k );
+}
+
 ExecStatus
 RedisExec::exec_info( void )
 {
-  size_t len = 256;
-  char * buf = (char *) this->strm.tmp.alloc( len );
-  if ( buf != NULL ) {
-    int n = ::snprintf( &buf[ 32 ], len-32,
-      "# Server\r\n"
-      "redis_version:4.0\r\n"
-      "raids_version:%s\r\n"
-      "gcc_version:%d.%d.%d\r\n"
-      "process_id:%d\r\n",
-      kv_stringify( DS_VER ),
-      __GNUC__, __GNUC_MINOR__, __GNUC_PATCHLEVEL__,
-      ::getpid() );
-    size_t dig = uint_digits( n ),
-           off = 32 - ( dig + 3 );
+  enum { INFO_SERVER = 1, INFO_CLIENTS = 2, INFO_MEMORY = 4, INFO_PERSIST = 8,
+         INFO_STATS  = 16, INFO_REPLIC = 32, INFO_CPU = 64, INFO_CMDSTATS = 128,
+         INFO_CLUSTER = 256, INFO_KEYSPACE = 512 };
+  PeerMatchArgs ka;
+  PeerMatchIter iter( this->peer, ka );
+  PeerStats     stats;
+  PeerData    * p;
+  size_t        len = 1024 * 8;
+  char        * buf = (char *) this->strm.tmp.alloc( len ),
+              * b   = &buf[ 32 ];
+  size_t        sz  = len - 32;
+  HashTab     & map = this->kctx.ht;
+  char          tmp[ 64 ];
+  int           info;
 
-    buf[ off ] = '$';
-    uint_to_str( n, &buf[ off + 1 ], dig );
-    crlf( buf, off + 1 + dig );
-    crlf( buf, 32 + n );
-    this->strm.append_iov( &buf[ off ], n + dig + 3 + 2 );
-    return EXEC_OK;
+  if ( buf == NULL )
+    return ERR_ALLOC_FAIL;
+
+  switch ( this->msg.match_arg( 1, MARG( "server" ),
+                                   MARG( "clients" ),
+                                   MARG( "memory" ),
+                                   MARG( "persistence" ),
+                                   MARG( "stats" ),
+                                   MARG( "replication" ),
+                                   MARG( "cpu" ),
+                                   MARG( "commandstats" ),
+                                   MARG( "cluster" ),
+                                   MARG( "keyspace" ), NULL ) ) {
+    default: info = 0xffff;        break; /* all */
+    case 1:  info = INFO_SERVER;   break; /* server */
+    case 2:  info = INFO_CLIENTS;  break; /* clients */
+    case 3:  info = INFO_MEMORY;   break; /* memory */
+    case 4:  info = INFO_PERSIST;  break; /* persistence  XXX <- no output */
+    case 5:  info = INFO_STATS;    break; /* stats */
+    case 6:  info = INFO_REPLIC;   break; /* replication  XXX */
+    case 7:  info = INFO_CPU;      break; /* cpu */
+    case 8:  info = INFO_CMDSTATS; break; /* commandstats XXX */
+    case 9:  info = INFO_CLUSTER;  break; /* cluster      XXX */
+    case 10: info = INFO_KEYSPACE; break; /* keyspace     XXX */
   }
-  return ERR_ALLOC_FAIL;
+
+  if ( ( info & INFO_SERVER ) != 0 ) {
+    static utsname name;
+    if ( name.sysname[ 0 ] == '\0' )
+      uname( &name );
+
+    xnprintf( b, sz, "raids_version:        %s\r\n", kv_stringify( DS_VER ) );
+    xnprintf( b, sz, "raids_git:            %s\r\n", kv_stringify( GIT_HEAD ) );
+    xnprintf( b, sz, "gcc_version:          %d.%d.%d\r\n",
+      __GNUC__, __GNUC_MINOR__, __GNUC_PATCHLEVEL__ );
+    xnprintf( b, sz, "process_id:           %d\r\n", ::getpid() );
+    xnprintf( b, sz, "os:                   %s %s %s\r\n",
+      name.sysname, name.release, name.machine );
+
+    char    path[ 256 ];
+    ssize_t lsz = ::readlink( "/proc/self/exe", path, sizeof( path ) );
+    if ( lsz > 0 )
+      xnprintf( b, sz, "executable:           %.*s\r\n", (int) lsz, path );
+
+    /* the ports open */
+    ka.set_type( MARG( "listen" ) );
+    for ( p = iter.first(); p != NULL; p = iter.next() ) {
+      xnprintf( b, sz, "%s: %*s%s\r\n", p->kind,
+                20 - (int) ::strlen( p->kind ), "", p->peer_address );
+    }
+  }
+
+  if ( ( info & INFO_CLIENTS ) != 0 ) {
+    ka.set_type( MARG( "redis" ) );
+    xnprintf( b, sz, "redis_clients:        %lu\r\n", iter.length() );
+    ka.set_type( MARG( "pubsub" ) );
+    xnprintf( b, sz, "pubsub_clients:       %lu\r\n", iter.length() );
+  }
+
+  if ( ( info & INFO_SERVER ) != 0 ) {
+    print_map_geom( &map, this->kctx.thr_ctx.ctx_id, b, sz );
+    size_t x = ::strlen( b );
+    b   = &b[ x ];
+    sz -= x;
+  }
+  if ( ( info & INFO_STATS ) != 0 ) {
+    HashTabStats *hts = HashTabStats::create( map );
+    if ( hts != NULL ) {
+      hts->fetch();
+      HashCounters & ops  = hts->hops,
+                   & tot  = hts->htot;
+      MemCounters  & chg  = hts->mops;
+
+      double op, ch;
+      if ( ops.rd + ops.wr == 0 ) {
+        op = 0;
+        ch = 0;
+      }
+      else {
+        op = (double) ( ops.rd + ops.wr );
+        ch = 1.0 + ( (double) ops.chains / (double) ( ops.rd + ops.wr ) );
+      }
+      xnprintf( b, sz, "ht_operations:        %s\r\n",
+                mstring( op, tmp, 1000 ) );
+      xnprintf( b, sz, "ht_chains:            %.1f\r\n", ch );
+      xnprintf( b, sz, "ht_read:              %s\r\n",
+                mstring( (double) ops.rd, tmp, 1000 ) );
+      xnprintf( b, sz, "ht_write:             %s\r\n",
+                mstring( (double) ops.wr, tmp, 1000 ) );
+      xnprintf( b, sz, "ht_spins:             %s\r\n",
+                mstring( (double) ops.spins, tmp, 1000 ) );
+      xnprintf( b, sz, "ht_map_load:          %u\r\n",
+                (uint32_t) ( map.hdr.ht_load * 100.0 + 0.5 ) );
+      xnprintf( b, sz, "ht_value_load:        %u\r\n",
+                (uint32_t) ( map.hdr.value_load * 100.0 + 0.5 ) );
+      xnprintf( b, sz, "ht_entries            %s\r\n",
+                mstring( tot.add - tot.drop, tmp, 1000 ) );
+      xnprintf( b, sz, "ht_gc                 %s\r\n",
+                mstring( (double) chg.move_msgs, tmp, 1000 ) );
+      xnprintf( b, sz, "ht_drop               %s\r\n",
+                mstring( (double) ops.drop, tmp, 1000 ) );
+      xnprintf( b, sz, "ht_hit                %s\r\n",
+                mstring( (double) ops.hit, tmp, 1000 ) );
+      xnprintf( b, sz, "ht_miss               %s\r\n",
+                mstring( (double) ops.miss, tmp, 1000 ) );
+
+      delete hts;
+    }
+  }
+  if ( ( info & INFO_CPU ) != 0 ) {
+    struct rusage usage;
+    if ( ::getrusage( RUSAGE_SELF, &usage ) == 0 ) {
+      xnprintf( b, sz, "used_cpu_sys:         %lu.%06lu\r\n", 
+        usage.ru_stime.tv_sec, usage.ru_stime.tv_usec );
+      xnprintf( b, sz, "used_cpu_user:        %lu.%06lu\r\n", 
+        usage.ru_utime.tv_sec, usage.ru_utime.tv_usec );
+
+      uint64_t sec  = usage.ru_stime.tv_sec + usage.ru_utime.tv_sec,
+               usec = usage.ru_stime.tv_usec + usage.ru_utime.tv_usec;
+      if ( usec >= 1000000 ) {
+        sec++;
+        usec -= 1000000;
+      }
+      xnprintf( b, sz, "used_cpu_total:       %lu.%06lu\r\n", sec, usec );
+      xnprintf( b, sz, "minor_page_fault:     %lu\r\n", usage.ru_minflt );
+      xnprintf( b, sz, "major_page_fault:     %lu\r\n", usage.ru_majflt );
+      xnprintf( b, sz, "voluntary_cswitch:    %lu\r\n", usage.ru_nvcsw );
+      xnprintf( b, sz, "involuntary_cswitch:  %lu\r\n", usage.ru_nivcsw );
+    }
+  }
+  if ( ( info & INFO_MEMORY ) != 0 ) {
+    size_t vm_peak, vm_size, vm_hwm, vm_rss, vm_pte;
+    if ( get_proc_status_size( "VmPeak:", &vm_peak,
+                               "VmSize:", &vm_size,
+                               "VmHWM:", &vm_hwm,
+                               "VmRSS:", &vm_rss,
+                               "VmPTE:", &vm_pte, NULL ) == 5 ) {
+      vm_peak *= 1024;
+      xnprintf( b, sz, "vm_peak:              %s\r\n",
+                mstring( vm_peak, tmp, 1024 ) );
+      vm_size *= 1024;
+      xnprintf( b, sz, "vm_size:              %s\r\n",
+                mstring( vm_size, tmp, 1024 ) );
+      vm_hwm *= 1024;
+      xnprintf( b, sz, "vm_hwm:               %s\r\n",
+                mstring( vm_hwm, tmp, 1024 ) );
+      vm_rss *= 1024;
+      xnprintf( b, sz, "vm_rss:               %s\r\n",
+                mstring( vm_rss, tmp, 1024 ) );
+      vm_pte *= 1024;
+      xnprintf( b, sz, "vm_pte:               %s\r\n",
+                mstring( vm_pte, tmp, 1024 ) );
+    }
+  }
+  if ( ( info & INFO_STATS ) != 0 ) {
+    ka.set_type( NULL, 0 );
+    this->peer.op.retired_stats( this->peer, stats );
+    for ( p = iter.first(); p != NULL; p = iter.next() )
+      p->op.client_stats( *p, stats );
+
+    xnprintf( b, sz, "net_bytes_recv:       %s\r\n",
+              mstring( stats.bytes_recv, tmp, 1024 ) );
+    xnprintf( b, sz, "net_bytes_sent:       %s\r\n",
+              mstring( stats.bytes_sent, tmp, 1024 ) );
+    xnprintf( b, sz, "net_msgs_recv:        %s\r\n",
+              mstring( stats.msgs_recv, tmp, 1024 ) );
+    xnprintf( b, sz, "net_msgs_sent:        %s\r\n",
+              mstring( stats.msgs_sent, tmp, 1024 ) );
+    xnprintf( b, sz, "net_accept_count:     %s\r\n",
+              mstring( stats.accept_cnt, tmp, 1024 ) );
+  }
+  size_t n   = len - 32 - sz,
+         dig = uint_digits( n ),
+         off = 32 - ( dig + 3 );
+
+  buf[ off ] = '$';
+  uint_to_str( n, &buf[ off + 1 ], dig );
+  crlf( buf, off + 1 + dig );
+  crlf( b, 0 );
+  this->strm.append_iov( &buf[ off ], n + dig + 3 + 2 );
+  return EXEC_OK;
 }
 
 ExecStatus

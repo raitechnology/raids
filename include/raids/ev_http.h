@@ -11,19 +11,17 @@ namespace ds {
 struct EvHttpListen : public EvTcpListen {
   EvListenOps ops;
   EvHttpListen( EvPoll &p ) : EvTcpListen( p, this->ops ) {}
-  virtual void accept( void );
+  virtual bool accept( void );
   int listen( const char *ip,  int port ) {
-    return this->EvTcpListen::listen( ip, port, "http-listen" );
+    return this->EvTcpListen::listen( ip, port, "http_listen" );
   }
 };
 
 struct EvPrefetchQueue;
 
 struct EvHttpServiceOps : public EvConnectionOps {
-  bool client_matches( PeerData &pd,  PeerMatchArgs &ka );
-  virtual int client_list( PeerData &pd,  PeerMatchArgs &ka,
-                           char *buf,  size_t buflen );
-  virtual bool client_kill( PeerData &pd,  PeerMatchArgs &ka );
+  virtual int client_list( PeerData &pd,  char *buf,  size_t buflen );
+  virtual bool match( PeerData &pd,  PeerMatchArgs &ka );
 };
 
 struct EvHttpService : public EvConnection, public RedisExec {

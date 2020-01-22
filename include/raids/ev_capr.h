@@ -19,9 +19,9 @@ struct EvCaprListen : public EvTcpListen {
   uint64_t      timer_id;
   EvListenOps   ops;
   EvCaprListen( EvPoll &p );
-  virtual void accept( void );
+  virtual bool accept( void );
   int listen( const char *ip,  int port ) {
-    return this->EvTcpListen::listen( ip, port, "capr-listen" );
+    return this->EvTcpListen::listen( ip, port, "capr_listen" );
   }
 };
 

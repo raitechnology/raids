@@ -141,7 +141,7 @@ break_loop:;
     status = -1;
     goto fail;
   }
-  this->PeerData::init_peer( sock, p->ai_addr, "udp-client" );
+  this->PeerData::init_peer( sock, p->ai_addr, "udp_client" );
   ::fcntl( sock, F_SETFL, O_NONBLOCK | ::fcntl( sock, F_GETFL ) );
   if ( (status = this->poll.add_sock( this )) < 0 ) {
     this->fd = -1;

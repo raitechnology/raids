@@ -16,7 +16,7 @@
 using namespace rai;
 using namespace ds;
 
-void
+bool
 EvHttpListen::accept( void )
 {
   static int on = 1;
@@ -29,14 +29,14 @@ EvHttpListen::accept( void )
         perror( "accept" );
       this->pop3( EV_READ, EV_READ_LO, EV_READ_HI );
     }
-    return;
+    return false;
   }
   EvHttpService *c =
     this->poll.get_free_list<EvHttpService>( this->poll.free_http );
   if ( c == NULL ) {
     perror( "accept: no memory" );
     ::close( sock );
-    return;
+    return false;
   }
   struct linger lin;
   lin.l_onoff  = 1;
@@ -54,7 +54,9 @@ EvHttpListen::accept( void )
   if ( this->poll.add_sock( c ) < 0 ) {
     ::close( sock );
     c->push_free_list();
+    return false;
   }
+  return true;
 }
 
 static char page404[] =
@@ -159,6 +161,7 @@ EvHttpService::process( void )
           inoff = inlen;
           break;
         }
+        this->msgs_recv++;
         msgcnt++;
         inoff += sz;
         if ( (status = this->exec( this, NULL )) == EXEC_OK )
@@ -169,8 +172,10 @@ EvHttpService::process( void )
             /*if ( q != NULL )
               return;*/
             this->exec_run_to_completion();
-            if ( ! strm.alloc_fail )
+            if ( ! strm.alloc_fail ) {
+              this->msgs_sent++;
               break;
+            }
             status = ERR_ALLOC_FAIL;
             /* FALLTHRU */
           case EXEC_QUIT:
@@ -178,6 +183,7 @@ EvHttpService::process( void )
               this->push( EV_SHUTDOWN );
             /* FALLTHRU */
           default:
+            this->msgs_sent++;
             this->send_err( status );
             break;
           case EXEC_DEBUG:
@@ -278,7 +284,7 @@ EvHttpService::process( void )
       }
       if ( upgrade && websock && wsver[ 0 ] && wskey[ 0 ] /*&& wspro[ 0 ]*/ ) {
         if ( this->send_ws_upgrade( wsver, wskey, wskeylen, wspro ) ) {
-          this->websock_off = this->nbytes_sent + this->strm.pending();
+          this->websock_off = this->bytes_sent + this->strm.pending();
           if ( ::strncmp( wspro, "term", 4 ) == 0 ) {
             this->flush();
             this->term.tty_init();
@@ -377,7 +383,7 @@ void
 EvHttpService::write( void )
 {
   if ( this->websock_off != 0 &&
-       this->websock_off < this->nbytes_sent + this->pending() )
+       this->websock_off < this->bytes_sent + this->pending() )
     if ( ! this->frame_websock() )
       return;
   return this->EvConnection::write();
@@ -408,7 +414,7 @@ EvHttpService::frame_websock2( void )
   static const char eol[]    = "\r\n";
   static size_t     eol_size = sizeof( eol ) - 1;
   StreamBuf & strm   = *this;
-  size_t      nbytes = this->nbytes_sent,
+  size_t      nbytes = this->bytes_sent,
               off    = strm.woff,
               i;
   char      * newbuf;
@@ -793,33 +799,26 @@ EvHttpService::pop_free_list( void )
 }
 
 bool
-EvHttpServiceOps::client_matches( PeerData &pd,  PeerMatchArgs &ka )
+EvHttpServiceOps::match( PeerData &pd,  PeerMatchArgs &ka )
 {
   EvHttpService & svc = (EvHttpService &) pd;
-  if ( svc.sub_tab.sub_count() + svc.pat_tab.sub_count() != 0 )
-    return this->EvSocketOps::client_matches( pd, ka, MARG( "pubsub" ), NULL );
-  return this->EvSocketOps::client_matches( pd, ka, MARG( "normal" ), NULL );
+  if ( svc.sub_tab.sub_count() + svc.pat_tab.sub_count() != 0 ) {
+    if ( this->EvSocketOps::client_match( pd, ka, MARG( "pubsub" ), MARG( "http" ), NULL ) )
+      return true;
+  }
+  else {
+    if ( this->EvSocketOps::client_match( pd, ka, MARG( "normal" ), MARG( "http" ), NULL ) )
+      return true;
+  }
+  return this->EvConnectionOps::match( pd, ka );
 }
 
 int
-EvHttpServiceOps::client_list( PeerData &pd,  PeerMatchArgs &ka,
-                               char *buf,  size_t buflen )
+EvHttpServiceOps::client_list( PeerData &pd,  char *buf,  size_t buflen )
 {
-  if ( ! this->client_matches( pd, ka ) )
-    return 0;
-  PeerMatchArgs tmp; /* matches everything */
-  int i = this->EvConnectionOps::client_list( pd, tmp, buf, buflen );
+  int i = this->EvConnectionOps::client_list( pd, buf, buflen );
   if ( i >= 0 )
     i += ((EvHttpService &) pd).client_list( &buf[ i ], buflen - i );
   return i;
-}
-
-bool
-EvHttpServiceOps::client_kill( PeerData &pd,  PeerMatchArgs &ka )
-{
-  if ( ! this->client_matches( pd, ka ) )
-    return false;
-  this->EvSocketOps::do_shutdown( pd );
-  return true;
 }
 

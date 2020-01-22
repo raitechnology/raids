@@ -109,7 +109,7 @@ init_server_info( uint64_t h1,  uint64_t h2,  uint16_t port )
   is_server_info_init = true;
 }
 
-void
+bool
 EvNatsListen::accept( void )
 {
   static int on = 1;
@@ -122,14 +122,14 @@ EvNatsListen::accept( void )
         perror( "accept" );
       this->pop3( EV_READ, EV_READ_LO, EV_READ_HI );
     }
-    return;
+    return false;
   }
   EvNatsService *c =
     this->poll.get_free_list<EvNatsService>( this->poll.free_nats );
   if ( c == NULL ) {
     perror( "accept: no memory" );
     ::close( sock );
-    return;
+    return false;
   }
   struct linger lin;
   lin.l_onoff  = 1;
@@ -163,9 +163,10 @@ EvNatsListen::accept( void )
     printf( "failed to add sock %d\n", sock );
     ::close( sock );
     c->push_free_list();
-    return;
+    return false;
   }
   c->append_iov( nats_server_info, sizeof( nats_server_info ) );
+  return true;
 }
 
 static char *

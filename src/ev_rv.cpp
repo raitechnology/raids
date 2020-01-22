@@ -104,7 +104,7 @@ EvRvListen::EvRvListen( EvPoll &p )
   }
 }
 
-void
+bool
 EvRvListen::accept( void )
 {
   static int on = 1;
@@ -117,14 +117,14 @@ EvRvListen::accept( void )
         perror( "accept" );
       this->pop3( EV_READ, EV_READ_LO, EV_READ_HI );
     }
-    return;
+    return false;
   }
   EvRvService *c =
     this->poll.get_free_list<EvRvService>( this->poll.free_rv );
   if ( c == NULL ) {
     perror( "accept: no memory" );
     ::close( sock );
-    return;
+    return false;
   }
   struct linger lin;
   lin.l_onoff  = 1;
@@ -162,18 +162,14 @@ EvRvListen::accept( void )
     printf( "failed to add sock %d\n", sock );
     ::close( sock );
     c->push_free_list();
-    return;
+    return false;
   }
   uint32_t ver_rec[ 3 ] = { 0, 4, 0 };
   ver_rec[ 1 ] = get_u32<MD_BIG>( &ver_rec[ 1 ] ); /* flip */
   c->append( ver_rec, sizeof( ver_rec ) );
+  return true;
   /*this->poll.timer_queue->add_timer( c->fd, RV_SESSION_IVAL, c->timer_id,
                                        IVAL_SECS, 0 );*/
-#if 0
-  MDOutput out;
-  printf( "-> %lu ->\n", sizeof( ver_rec ) );
-  out.print_hex( ver_rec, sizeof( ver_rec ) );
-#endif
 }
 
 void

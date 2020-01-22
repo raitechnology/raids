@@ -94,7 +94,7 @@ struct EvMemcachedListen : public EvTcpListen {
   EvListenOps ops;
   EvMemcachedListen( EvPoll &p );
   int listen( const char *ip,  int port );
-  virtual void accept( void );
+  virtual bool accept( void );
 };
 
 struct EvPrefetchQueue;

@@ -111,7 +111,7 @@ EvCaprListen::EvCaprListen( EvPoll &p )
   md_init_auto_unpack();
 }
 
-void
+bool
 EvCaprListen::accept( void )
 {
   static int on = 1;
@@ -124,14 +124,14 @@ EvCaprListen::accept( void )
         perror( "accept" );
       this->pop3( EV_READ, EV_READ_LO, EV_READ_HI );
     }
-    return;
+    return false;
   }
   EvCaprService *c = 
     this->poll.get_free_list<EvCaprService>( this->poll.free_capr );
   if ( c == NULL ) {
     perror( "accept: no memory" );
     ::close( sock );
-    return;
+    return false;
   }
   struct linger lin;
   lin.l_onoff  = 1;
@@ -160,10 +160,11 @@ EvCaprListen::accept( void )
     printf( "failed to add sock %d\n", sock );
     ::close( sock );
     c->push_free_list();
-    return;
+    return false;
   }
   c->pub_session( CAPR_SESSION_START );
   this->poll.add_timer_seconds( c->fd, CAPR_SESSION_IVAL, c->timer_id, 0 );
+  return true;
 }
 
 static void

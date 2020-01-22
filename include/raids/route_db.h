@@ -103,25 +103,60 @@ typedef struct kv::PrioQueue<RoutePublishData *, RoutePublishData::is_greater>
 
 struct PeerData;
 struct PeerMatchArgs {
-  int64_t      id;
-  const char * ip,
-             * type;
-  size_t       ip_len,
-               type_len;
-  bool         skipme;
-  PeerMatchArgs() { ::memset( this, 0, sizeof( *this ) ); }
+  int64_t      id;       /* each peer is assigned a unique id */
+  const char * ip,       /* the ip address to match */
+             * type;     /* the type of peer to match (pubsub, normal, etc) */
+  size_t       ip_len,   /* len of ip */
+               type_len; /* len of type */
+  bool         skipme;   /* true if don't match the client's peer */
+  PeerMatchArgs() : id( 0 ), ip( 0 ), type( 0 ), ip_len( 0 ), type_len( 0 ),
+                    skipme( false ) {}
+  PeerMatchArgs &set_type( const char *t,  size_t l ) {
+    this->type     = t;
+    this->type_len = l;
+    return *this;
+  }
 };
 
-struct PeerOps {
-  PeerOps() {}
-  virtual int client_list( PeerData &,  PeerMatchArgs &,  char *,  size_t ) {
-    return 0;
+struct PeerStats {
+  uint64_t bytes_recv,
+           bytes_sent,
+           accept_cnt,
+           msgs_recv,
+           msgs_sent;
+  PeerStats() : bytes_recv( 0 ), bytes_sent( 0 ), accept_cnt( 0 ),
+                msgs_recv( 0 ), msgs_sent( 0 ) {}
+};
+
+struct PeerOps { /* interface for the peers */
+  PeerOps() {}   /* list prints the peer, kill shuts the connection down */
+  virtual int client_list( PeerData &,  char *,  size_t ) { return 0; }
+  virtual bool client_kill( PeerData & )                  { return false; }
+  virtual bool match( PeerData &,  PeerMatchArgs & )      { return true; }
+  virtual void client_stats( PeerData &,  PeerStats & )   { return; }
+  virtual void retired_stats( PeerData &,  PeerStats & )  { return; }
+};
+
+struct PeerMatchIter {
+  PeerData      & me,  /* the client using this connection is this */
+                * p;   /* the current position in the list */
+  PeerMatchArgs & ka;  /* the match args to apply to the list */
+  PeerMatchIter( PeerData &m,  PeerMatchArgs &a )
+    : me( m ), p( 0 ), ka( a ) {}
+
+  PeerData *first( void );
+  PeerData *next( void );
+  size_t length( void ) {
+    size_t cnt = 0;
+    if ( this->first() != NULL ) {
+      do { cnt++; } while ( this->next() != NULL );
+    }
+    return cnt;
   }
-  virtual bool client_kill( PeerData &,  PeerMatchArgs & ) { return false; }
 };
 
 struct PeerData {
-  PeerData   * next,
+  PeerData   * next,       /* dbl link list */
              * back;
   int32_t      fd,         /* fildes */
                pad;        /* 64 * 3 */

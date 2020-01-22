@@ -23,7 +23,7 @@ EvRedisListen::EvRedisListen( EvPoll &p )
 {
 }
 
-void
+bool
 EvRedisListen::accept( void )
 {
   static int on = 1;
@@ -36,7 +36,7 @@ EvRedisListen::accept( void )
 	perror( "accept" );
       this->pop3( EV_READ, EV_READ_LO, EV_READ_HI );
     }
-    return;
+    return false;
   }
   /*char buf[ 80 ];*/
   /*printf( "accept from %s\n", get_ip_str( &addr, buf, sizeof( buf ) ) );*/
@@ -45,7 +45,7 @@ EvRedisListen::accept( void )
   if ( c == NULL ) {
     perror( "accept: no memory" );
     ::close( sock );
-    return;
+    return false;
   }
   struct linger lin;
   lin.l_onoff  = 1;
@@ -65,7 +65,9 @@ EvRedisListen::accept( void )
   if ( this->poll.add_sock( c ) < 0 ) {
     ::close( sock );
     c->push_free_list();
+    return false;
   }
+  return true;
 }
 
 void
@@ -101,6 +103,7 @@ EvRedisService::process( void )
       break;
     }
     this->off += buflen;
+    this->msgs_recv++;
 
     if ( (status = this->exec( this, q )) == EXEC_OK )
       if ( strm.alloc_fail )
@@ -112,8 +115,10 @@ EvRedisService::process( void )
           return;
         }
         this->exec_run_to_completion();
-        if ( ! strm.alloc_fail )
+        if ( ! strm.alloc_fail ) {
+          this->msgs_sent++;
           break;
+        }
         status = ERR_ALLOC_FAIL;
         /* FALLTHRU */
       case EXEC_QUIT:
@@ -121,6 +126,7 @@ EvRedisService::process( void )
           this->push( EV_SHUTDOWN );
         /* FALLTHRU */
       default:
+        this->msgs_sent++;
         this->send_err( status );
         break;
       case EXEC_DEBUG:
@@ -200,34 +206,27 @@ EvRedisService::pop_free_list( void )
 }
 
 bool
-EvRedisServiceOps::client_matches( PeerData &pd,  PeerMatchArgs &ka )
+EvRedisServiceOps::match( PeerData &pd,  PeerMatchArgs &ka )
 {
   EvRedisService & svc = (EvRedisService &) pd;
-  if ( svc.sub_tab.sub_count() + svc.pat_tab.sub_count() != 0 )
-    return this->EvSocketOps::client_matches( pd, ka, MARG( "pubsub" ), NULL );
-  return this->EvSocketOps::client_matches( pd, ka, MARG( "normal" ), NULL );
+  if ( svc.sub_tab.sub_count() + svc.pat_tab.sub_count() != 0 ) {
+    if ( this->EvSocketOps::client_match( pd, ka, MARG( "pubsub" ), NULL ) )
+      return true;
+  }
+  else {
+    if ( this->EvSocketOps::client_match( pd, ka, MARG( "normal" ), NULL ) )
+      return true;
+  }
+  return this->EvConnectionOps::match( pd, ka );
 }
 
 int
-EvRedisServiceOps::client_list( PeerData &pd,  PeerMatchArgs &ka,
-                                char *buf,  size_t buflen )
+EvRedisServiceOps::client_list( PeerData &pd,  char *buf,  size_t buflen )
 {
-  if ( ! this->client_matches( pd, ka ) )
-    return 0;
-  PeerMatchArgs tmp; /* matches everything */
-  int i = this->EvConnectionOps::client_list( pd, tmp, buf, buflen );
+  int i = this->EvConnectionOps::client_list( pd, buf, buflen );
   if ( i >= 0 )
     i += ((EvRedisService &) pd).client_list( &buf[ i ], buflen - i );
   return i;
-}
-
-bool
-EvRedisServiceOps::client_kill( PeerData &pd,  PeerMatchArgs &ka )
-{
-  if ( ! this->client_matches( pd, ka ) )
-    return false;
-  this->EvSocketOps::do_shutdown( pd );
-  return true;
 }
 
 void

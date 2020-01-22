@@ -10,7 +10,7 @@ namespace ds {
 struct EvTcpListen : public EvListen {
   EvTcpListen( EvPoll &p,  PeerOps &o ) : EvListen( p, o ) {}
   int listen( const char *ip,  int port,  const char *k );
-  virtual void accept( void ) {}
+  virtual bool accept( void ) { return false; }
 };
 
 struct EvTcpClient : public EvNetClient {
