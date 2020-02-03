@@ -24,6 +24,9 @@ RedisExec::exec_del( EvKeyCtx &ctx )
     ctx.ival = 1;
     ctx.flags |= EKF_KEYSPACE_EVENT;
   }
+  else {
+    ctx.ival = 0;
+  }
   return EXEC_SEND_INT;
 }
 
@@ -34,30 +37,37 @@ RedisExec::exec_dump( EvKeyCtx &ctx )
   switch ( this->exec_key_fetch( ctx ) ) {
     case KEY_OK: {
       uint64_t off,
-               size;
+               size,
+               msg_size,
+               digs;
       char   * buf;
       void   * data;
       ctx.kstatus = this->kctx.value( &data, size );
       if ( ctx.kstatus == KEY_OK ) {
         size = this->kctx.hash_entry_size;
         if ( this->kctx.entry->test( FL_SEGMENT_VALUE ) )
-          size += this->kctx.msg->size;
-        buf = (char *) this->strm.alloc_temp( size + 34 );
+          msg_size = this->kctx.msg->size;
+        else
+          msg_size = 0;
+        digs = uint_digits( size + msg_size );
+        buf = (char *) this->strm.alloc( size + msg_size +
+                                        /* $ nnn \r\n size + msg_size \r\n */
+                                        1 + digs + 2 + 2 );
         if ( buf == NULL )
           return ERR_ALLOC_FAIL;
-        ::memcpy( &buf[ 32 ], this->kctx.entry, this->kctx.hash_entry_size );
-        if ( this->kctx.entry->test( FL_SEGMENT_VALUE ) )
-          ::memcpy( &buf[ 32 + this->kctx.hash_entry_size ], this->kctx.msg,
-                    size - this->kctx.hash_entry_size );
+        buf[ 0 ] = '$';
+        off = 1 + uint_to_str( size + msg_size, &buf[ 1 ], digs );
+        off = crlf( buf, off );
+        ::memcpy( &buf[ off ], this->kctx.entry, size );
+        off += size;
+        if ( msg_size != 0 )
+          ::memcpy( &buf[ off ], this->kctx.msg, msg_size );
+        off = crlf( buf, off + msg_size );
         ctx.kstatus = this->kctx.validate_value();
         if ( ctx.kstatus == KEY_OK ) {
-          buf[ 0 ] = '$';
-          off = 1 + int_to_str( size, &buf[ 1 ] );
-          off = crlf( buf, off );
-          ::memmove( &buf[ 32 - off ], buf, off );
-          off = crlf( buf, 32 + size );
-          crlf( buf, 32 + size );
-          this->strm.append_iov( &buf[ 32 - off ], size + off + 2 );
+          this->strm.sz += off;
+          /*MDOutput out;
+          out.print_hex( buf, off );*/
           return EXEC_OK;
         }
       }
@@ -150,16 +160,19 @@ ExecStatus
 RedisExec::exec_object( EvKeyCtx &ctx )
 {
   /* OBJECT key [refcount|encoding|idletime|freq|help] */
+  int subcmd = this->msg.match_arg( 1, MARG( "refcount" ),
+                                       MARG( "encoding" ),
+                                       MARG( "idletime" ),
+                                       MARG( "freq" ),
+                                       MARG( "help" ), NULL );
+  if ( subcmd < 1 || subcmd > 4 )
+    return ERR_BAD_ARGS;
   switch ( this->exec_key_fetch( ctx ) ) {
     case KEY_OK:        break;
     case KEY_NOT_FOUND: return EXEC_SEND_NIL;
     default:            return ERR_KV_STATUS;
   }
-  switch ( this->msg.match_arg( 1, MARG( "refcount" ),
-                                   MARG( "encoding" ),
-                                   MARG( "idletime" ),
-                                   MARG( "freq" ),
-                                   MARG( "help" ), NULL ) ) {
+  switch ( subcmd ) {
     case 1: /* refcount */
       ctx.ival = 1;
       return EXEC_SEND_INT;

@@ -122,8 +122,10 @@ EvRedisService::process( void )
         status = ERR_ALLOC_FAIL;
         /* FALLTHRU */
       case EXEC_QUIT:
-        if ( status == EXEC_QUIT )
+        if ( status == EXEC_QUIT ) {
           this->push( EV_SHUTDOWN );
+          this->poll.quit++;
+        }
         /* FALLTHRU */
       default:
         this->msgs_sent++;

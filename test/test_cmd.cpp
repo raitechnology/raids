@@ -10,7 +10,7 @@ using namespace rai;
 using namespace ds;
 
 /* examples from http://blog.wjin.org/posts/redis-communication-protocol.html */
-static char auth_str[]     = "AUTH";
+//static char auth_str[]     = "AUTH";
 static char echo_str[]     = "ECHO";
 static char ping_str[]     = "PING";
 static char get_str[]      = "GET";
@@ -26,7 +26,7 @@ static struct {
   size_t   len;
   RedisCmd cmd;
 } examples[] = {
-  { auth_str,    sizeof( auth_str)     - 1, AUTH_CMD },
+  //{ auth_str,    sizeof( auth_str)     - 1, AUTH_CMD },
   { echo_str,    sizeof( echo_str )    - 1, ECHO_CMD },
   { ping_str,    sizeof( ping_str )    - 1, PING_CMD },
   { get_str,     sizeof( get_str )     - 1, GET_CMD },
@@ -44,22 +44,24 @@ main( int, char ** )
   uint32_t readonly = 0, write = 0, arity_cnt[ 8 ];
   int16_t arity, first, last, step;
   double start, end;
+  uint64_t h;
   RedisCmd cmd;
 
   ::memset( arity_cnt, 0, sizeof( arity_cnt ) );
   start = kv_current_monotonic_time_s();
   for ( int repeat = 0; repeat < 10 * 1000 * 1000; repeat++ ) {
     for ( size_t i = 0; i < sizeof( examples ) / sizeof( examples[ 0 ] ); i++ ) {
-      if ( (cmd = get_redis_cmd( examples[ i ].ex, examples[ i ].len )) !=
-           examples[ i ].cmd ) {
-        printf( "failed: %s\n", examples[ i ].ex );
+      h   = get_redis_cmd_hash( examples[ i ].ex, examples[ i ].len );
+      cmd = get_redis_cmd( h );
+      if ( cmd != examples[ i ].cmd ) {
+        printf( "failed: %s (%d)\n", examples[ i ].ex, cmd );
       }
-      const uint16_t mask = get_cmd_flag_mask( cmd );
-      if ( test_cmd_mask( mask, CMD_READONLY_FLAG ) != 0 )
+      const uint16_t mask = cmd_db[ cmd ].flags;
+      if ( ( mask & CMD_READ_FLAG ) != 0 )
         readonly++;
-      else if ( test_cmd_mask( mask, CMD_WRITE_FLAG ) != 0 )
+      else if ( ( mask & CMD_WRITE_FLAG ) != 0 )
         write++;
-      get_cmd_arity( cmd, arity, first, last, step );
+      arity = cmd_db[ cmd ].arity;
       arity_cnt[ arity > 0 ? arity : -arity ]++;
     }
   }
@@ -70,19 +72,31 @@ main( int, char ** )
           arity_cnt[ 1 ], arity_cnt[ 2 ] );
 
   for ( size_t i = 0; i < sizeof( examples ) / sizeof( examples[ 0 ] ); i++ ) {
-    cmd = get_redis_cmd( examples[ i ].ex, examples[ i ].len );
+    h   = get_redis_cmd_hash( examples[ i ].ex, examples[ i ].len );
+    cmd = get_redis_cmd( h );
     printf( "%s: ", cmd_db[ cmd ].name );
     const char *comma = "";
-    for ( uint8_t fl = 0; fl < cmd_flag_cnt; fl++ ) {
-      if ( test_cmd_flag( cmd, (RedisCmdFlag) fl ) ) {
-        printf( "%s%s", comma, cmd_flag[ fl ] );
-        comma = ",";
-      }
+    const uint16_t mask = cmd_db[ cmd ].flags;
+    if ( ( mask & CMD_ADMIN_FLAG ) != 0 ) {
+      printf( "admin" );
+      comma = ",";
     }
-    get_cmd_arity( cmd, arity, first, last, step );
+    if ( ( mask & CMD_READ_FLAG ) != 0 ) {
+      printf( "%sread", comma );
+      comma = ",";
+    }
+    else if ( ( mask & CMD_READ_FLAG ) != 0 ) {
+      printf( "%swrite", comma );
+      comma = ",";
+    }
+    if ( ( mask & CMD_MOVABLE_FLAG ) != 0 )
+      printf( "%smovable", comma );
+    arity = cmd_db[ cmd ].arity;
+    first = cmd_db[ cmd ].first;
+    last  = cmd_db[ cmd ].last;
+    step  = cmd_db[ cmd ].step;
     printf( " arity: %d, first: %d, last %d, step: %d\n", arity, first, last,
             step );
-    printf( "%s\n", cmd_db[ cmd ].attr );
   }
   return 0;
 }

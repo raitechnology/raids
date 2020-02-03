@@ -121,7 +121,6 @@ main( int, char ** )
   char buf[ 1024 ], buf2[ 1024 ], key[ 1024 ];
   RedisMsg msg;
   kv::WorkAllocT< 4096 > tmp;
-  char upper_cmd[ 32 ];
   size_t sz, i, j, count, namelen, keylen;
   size_t cmdlen, arglen, argcount;
   const char *cmdbuf, *arg, *name;
@@ -160,9 +159,7 @@ main( int, char ** )
     }
     if ( cmdlen == 0 )
       continue;
-    str_to_upper( cmdbuf, upper_cmd, cmdlen );
-
-    cmd = get_redis_cmd( upper_cmd, cmdlen );
+    cmd = get_redis_cmd( get_redis_cmd_hash( cmdbuf, cmdlen ) );
     if ( cmd == NO_CMD ) {
       printf( "no cmd\n" );
       continue;

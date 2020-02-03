@@ -326,6 +326,10 @@ RedisExec::do_push( EvKeyCtx &ctx,  int flags,
     default:           return ERR_KV_STATUS;
     case KEY_NO_VALUE: return ERR_BAD_TYPE;
     case KEY_IS_NEW:
+      /* if lpushx */
+      if ( (flags & L_MUST_EXIST) != 0 ) {
+        return EXEC_SEND_ZERO;
+      }
       count = this->argc;
       ndata = 1 + valuelen;
       for ( size_t j = argi; j < this->argc; j++ ) {
@@ -378,9 +382,11 @@ RedisExec::do_push( EvKeyCtx &ctx,  int flags,
           ctx.ival   = list.x->count();
           ctx.flags |= EKF_KEYSPACE_EVENT | EKF_KEYSPACE_LIST |
                        EKF_LISTBLKD_NOT;
-          return EXEC_SEND_INT;
         }
-        return EXEC_SEND_NIL;
+        else {
+          ctx.ival = -1;
+        }
+        return EXEC_SEND_INT;
       case DO_LSET:
         if ( lstatus == LIST_OK ) {
           ctx.flags |= EKF_KEYSPACE_EVENT | EKF_KEYSPACE_LIST |

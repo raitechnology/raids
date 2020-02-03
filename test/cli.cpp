@@ -176,7 +176,7 @@ TermCallback::on_msg( RedisMsg &msg )
     this->me.term.printf( "msg too large\n" );
   else {
     msg.to_almost_json( b );
-    this->me.term.printf( "executing: %.*s\n", (int) sz, b );
+    /*this->me.term.printf( "executing: %.*s\n", (int) sz, b );*/
     msg.pack( b );
     this->me.msg_sent++;
     this->me.client->send_data( b, sz2 );

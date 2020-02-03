@@ -127,7 +127,7 @@ main( int, char ** )
   RedisMsg msg;
   MDMsgMem tmp;
   kv::WorkAllocT< 2048 > wrk;
-  char upper_cmd[ 32 ], id[ 64 ];
+  char id[ 64 ];
   size_t sz, i, j, k, x, y, first, last, cnt;
   size_t cmdlen, arglen, endlen, argcount, namelen, idlen, idxsz, asz;
   uint64_t maxlen;
@@ -189,9 +189,7 @@ main( int, char ** )
     }
     if ( cmdlen == 0 )
       continue;
-    str_to_upper( cmdbuf, upper_cmd, cmdlen );
-
-    cmd = get_redis_cmd( upper_cmd, cmdlen );
+    cmd = get_redis_cmd( get_redis_cmd_hash( cmdbuf, cmdlen ) );
     if ( cmd == NO_CMD ) {
       printf( "no cmd\n" );
       continue;

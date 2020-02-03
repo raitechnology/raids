@@ -1,0 +1,4642 @@
+Rai DS Redis commands
+=====================
+:toc: left
+
+Preface
+-------
+
+*Rai DS* (https://github.com/raitechnology/raids) is an abreviation
+for *Rai Distribution Server*.  It is the consumer end of a data hub.
+It is built on *Rai KV*, which is a shared memory Key Value store.
+The other components which shape a *Rai* data hub are the messaging
+codecs, *Rai MD* (https://github.com/raitechnology/raimd), and the
+multicast data distribution services, *Rai MS*
+(https://github.com/raitechnology/raims (not public yet)).  These are
+direct analogs of a classic Market Data system, in which the center is
+the data hub which servers communicate typically with multicast or
+RDMA protocols, and the edge are the servers which manage the client
+consumption of data (*Rai DS*).
+
+The commands are broken up into categories.  Each category operates on
+a different data type (string, list, hash) or utilizes a special
+mechanism (pubsub, script, transaction).  This is how *Redis*
+(https://github.com/antirez/redis) organizes it's feature set, and
+*Rai DS* follows this convention.  Much or the behavior of the
+commands listed here and implemented in *Rai DS* is derived from the
+documenation of *Redis* (https://github.com/antirez/redis-doc).
+
+Common Return Values
+~~~~~~~~~~~~~~~~~~~~
+
+These are common return values which are used by name in this document
+(and other *Redis* documents), but have a encoded representation where
+this is not clear.
+
+[options="header",cols="3,2"]
+|===========================================
+| Name   | RESP encoding
+| *OK*   | +OK\r\n
+| *nil*  | $-1\r\n
+| *""*   | $0\r\n\r\n
+| *null* | *-1\r\n
+| *[]*   | *0\r\n
+| *0*    | :0\r\n
+| *1*    | :1\r\n
+| *-1*   | :-1\r\n
+|===========================================
+
+The *nil* value is a null string value, and *null* is a null array
+value, but the empty string *""* and the empty array *[]* are also
+valid and different than the nulls.  A *nil* is common when the result
+is a bulk string, a *null* is common when the result is an array, and
+*-1* is common when the result is an integer.
+
+Notation used by the Examples
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The Redis RESP protocol has 5 basic elements.  Each of these is
+displayed in a JSON-like format that is compact and easy to parse.
+
+[options="header",cols="3,2,2"]
+|===========================================
+| Type | RESP | Display
+| A simple string | +OK\r\n | \'OK'
+| An error string | -ERR reason\r\n | \`ERR reason`
+| An integer value | :1234\r\n | 1234
+| A bulk string | $5\r\nhello\r\n | "hello"
+| A bulk array | *2\r\n+array\r\n:1234\r\n | [\'array',1234]
+|===========================================
+
+Format of the Command Arity Table
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Each category lists the commands in a 6 column table:  command, arity,
+first key, last key, step, flags.
+
+The arity is the number of terms present in a command.  A positive
+arity is exact, a negative arity means that it must have at least this
+number of terms.
+
+The first key, last key are the positions in the command terms where
+the keys are located.  The last key may be negative, this indicates
+that it is a position from the end of the command.
+
+The step is the offset added to index the next key, so this loop would
+find the keys in the command:
+
+ end = last_key;
+ if ( last_key < 0 )
+   end = argc + last_key; /* index from argc */
+ for ( index = first_key; index <= end; index += step )
+   next_key = argv[ index ];
+
+[options="header",cols="3,1,1,1,1,1"]
+|===========================================
+| command | arity | first key | last key | step | flags
+| example | -2 | 1 | -1 | 1 | read
+|===========================================
+
+The example command has at least 2 terms, the 1st position is the
+first key and the last key is greater or equal to the 1st.  The step
+between keys is 1.  The following are valid commands.  Note that the
+positions are zero based and the term at position 0 is the command.
+
+----
+example key_one
+example key_one key_two key_three
+----
+
+The flags indicate:
+
+- admin   -- must have admin privileges.
+- read    -- there are keys which need read access.
+- write   -- there are keys which need write access.
+- movable -- some of the keys in the command are not static and need
+  to be parsed according to the command syntax in order to locate
+  them.
+
+Differences with *Redis*
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+There are some differences with the way *Rai DS* works compared to
+*Redis*.
+
+- Decimal is used instead of floating point.  This avoids precision
+  errors inherent in floating point to decimal conversion.
+- The geo hash used is *Uber H3* (https://eng.uber.com/h3/), which
+  uses a hexigon based mapping, not a grid.
+- All of the blocking commands are implemented as pubsub
+  notifications, since multiple threads are possible.
+- All of the data structures are implemented as contiguous messages,
+  allowing speculative read operations, avoiding locking overhead.
+- Many of the memory and latency monitoring commands are different,
+  since the basic structures of system are different.
+
+////
+Cluster
+-------
+
+[options="header",cols="3,1,1,1,1,1"]
+|===========================================
+| command | arity | first key | last key | step | flags
+| <<cluster>> | -2 | 0 | 0 | 0 | admin
+| <<readonly>> | 1 | 0 | 0 | 0 | admin
+| <<readwrite>> | 1 | 0 | 0 | 0 | admin
+|===========================================
+
+[[cluster]]
+cluster | modify cluster
+~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+cluster [addslots | count_failure | countkeysinslot | delslots |
+ failover | forget | getkeysinslot | info | keyslot | meet |
+ nodes | replicate | reset | saveconfig | set-config-epock |
+ setslot | slaves | slots]
+----
+.Description
+cluster commands.
+
+[[readonly]]
+readonly | change to ro
+~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+readonly
+----
+.Description
+Enable readonly mode.
+
+[[readwrite]]
+readwrite | change to rw
+~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+readwrite
+----
+.Description
+Enable readwrite mode.
+////
+Connection
+----------
+
+[options="header",cols="3,1,1,1,1,1"]
+|===========================================
+| command | arity | first key | last key | step | flags
+//| <<auth>> | 2 | 0 | 0 | 0 | 
+| <<echo>> | 2 | 0 | 0 | 0 | 
+| <<ping>> | -1 | 0 | 0 | 0 | 
+| <<quit>> | -1 | 0 | 0 | 0 | 
+//| <<select>> | 2 | 0 | 0 | 0 | 
+//| <<swapdb>> | 3 | 0 | 0 | 0 | admin
+|===========================================
+////
+[[auth]]
+auth | login
+~~~~~~~~~~~~
+.Usage
+----
+auth passwd
+----
+.Description
+Enable authorization using passwd.
+////
+[[echo]]
+echo | echo string
+~~~~~~~~~~~~~~~~~~
+.Usage
+----
+echo string
+----
+.Example
+----
+> echo hello
+"hello"
+----
+.Description
+Echo the string.
+
+.Return
+The string is sent back.
+
+[[ping]]
+ping | reply with pong
+~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+ping [string]
+----
+.Example
+----
+> ping
+'PONG'
+> ping hello
+"hello"
+----
+.Description
+Ping sends PONG when used without a string.  Reply with the string
+when it is present.
+
+.Return
+Either PONG or the string.
+
+[[quit]]
+quit | close connection
+~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+quit
+----
+.Example
+----
+> quit
+'OK'
+(connection closed)
+----
+.Description
+Close the connection.
+
+.Return
+An *OK* is returned, then the connection is closed.
+
+////
+[[select]]
+select | choose db
+~~~~~~~~~~~~~~~~~~
+.Usage
+----
+select db
+----
+.Description
+Change the working database to db, where db is a number between 0 and
+253.  The db number 254 is used for PUBSUB routing, the db number 255
+is used for ACLs.
+
+.Return
+*OK*.
+
+[[swapdb]]
+swapdb | exchange dbs
+~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+swapdb db1 db2
+----
+.Description
+Swap the contents of db1 and db2, changing each of the keys.  This is
+done by swaping the hash function for db1 and db2, then updating the
+db number which is stored with each key.
+
+.Return
+*OK*.
+////
+Geo
+---
+
+[options="header",cols="3,1,1,1,1,1"]
+|===========================================
+| command | arity | first key | last key | step | flags
+| <<geoadd>> | -5 | 1 | 1 | 1 | write
+| <<geohash>> | -2 | 1 | 1 | 1 | read
+| <<geopos>> | -2 | 1 | 1 | 1 | read
+| <<geodist>> | -4 | 1 | 1 | 1 | read
+| <<georadius>> | -6 | 1 | 1 | 1 | write movable
+| <<georadiusbymember>> | -5 | 1 | 1 | 1 | write movable
+|===========================================
+
+[[geoadd]]
+geoadd | add a pos to key
+~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+geoadd key long lat mem [long lat mem ...]
+----
+.Description
+Add longitude, latitude to key as member by converting the position to
+a *Uber H3* hash and adding it to the set.  The members are ordered by
+hash because hashes closest to eachother are also closest by spatual
+distance.
+
+.Return
+An integer is returned indicating how many members were added which
+did not already exist.
+
+[[geohash]]
+geohash | get hash of members
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+geohash key mem [mem ...]
+----
+.Description
+Get geo hash string by finding the members and converting the *Uber
+H3* hash to an encoded hash string as described in on the geohash wiki
+page: https://en.wikipedia.org/wiki/Geohash
+
+.Return
+An array of geohash strings, which may be *nil* if member is not
+found.
+
+[[geopos]]
+geopos | get pos of members
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+geopos key [mem ...]
+----
+.Description
+Get geo positions of members as longitude, latitude pairs.
+
+.Return
+An array of positions or *null* if member is not found.
+
+[[geodist]]
+geodist | get member distance
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+geodist key mem1 mem2 [unit]
+----
+.Description
+Compute the distance in units between members.  Default unit is
+meters, but km, feet, miles are accepted.
+
+.Return
+A decimal string representing the distance or *nil* when member is not
+found.
+
+[[georadius]]
+georadius | get members in radius
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+georadius key long lat rad m | k | ft | mi [withcoord] [withdist]
+ [withhash] [count n] [asc | desc] [storedist key]
+----
+.Description
+Get all members within a radius of position.  This iterates through
+the set using the hash of longitude latitude as the starting point.
+When the endpoints are found, the members are returned or stored.
+When storedist is used, then the distance and members are stored in a
+sorted set.
+
+.Return
+An array of members with optional distance, hash, and/or coordinates.
+The hash is an integer used by the *Uber H3* library.
+
+[[georadiusbymember]]
+georadiusbymember | get members
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+georadiusbymember key member rad m | k | ft | mi [withcoord]
+ [withdist] [withhash] [count n] [asc | desc] [storedist key]
+----
+.Description
+Similar to georadius, get all members within a radius of an existing
+member.  This iterates through the set using the named member as the
+starting point.  When the endpoints are found, the members are
+returned or stored.  When storedist is used, then the distance and
+members are stored in a sorted set.
+
+.Return
+An array of members with optional distance, hash, and/or coordinates.
+The hash is an integer used by the *Uber H3* library.
+
+Hash
+----
+
+[options="header",cols="3,1,1,1,1,1"]
+|===========================================
+| command | arity | first key | last key | step | flags
+| <<happend>> | -4 | 1 | 1 | 1 | write
+| <<hdel>> | -3 | 1 | 1 | 1 | write
+| <<hexists>> | 3 | 1 | 1 | 1 | read
+| <<hget>> | 3 | 1 | 1 | 1 | read
+| <<hgetall>> | 2 | 1 | 1 | 1 | read
+| <<hincrby>> | 4 | 1 | 1 | 1 | write
+| <<hincrbyfloat>> | 4 | 1 | 1 | 1 | write
+| <<hkeys>> | 2 | 1 | 1 | 1 | read
+| <<hlen>> | 2 | 1 | 1 | 1 | read
+| <<hmget>> | -3 | 1 | 1 | 1 | read
+| <<hmset>> | -4 | 1 | 1 | 1 | write
+| <<hset>> | -4 | 1 | 1 | 1 | write
+| <<hsetnx>> | 4 | 1 | 1 | 1 | write
+| <<hstrlen>> | 3 | 1 | 1 | 1 | read
+| <<hvals>> | 2 | 1 | 1 | 1 | read
+| <<hscan>> | -3 | 1 | 1 | 1 | read
+|===========================================
+
+[[happend]]
+happend | append a value
+~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+happend key field val [val ...]
+----
+.Example
+----
+> happend h f v
+1
+> happend h f w
+0
+> hgetall h
+["f","vw"]
+----
+.Description
+Append a string to a field value.
+
+.Return
+An integer 1 or 0 indicating whether the field was created.
+
+[[hdel]]
+hdel | delete fields
+~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+hdel key field [field ...]
+----
+.Example
+----
+> hmset h f 1 g 2
+'OK'
+> hdel h f g
+2
+----
+.Description
+Remove one or more fields from a hash set.
+
+.Return
+An integer indicating how many fields were removed.
+
+[[hexists]]
+hexists | if field exists
+~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+hexists key field
+----
+.Example
+----
+> hmset h f 1 g 2
+'OK'
+> hexists h f
+1
+> hexists h h
+0
+----
+.Description
+Test whether field exists in hash.
+
+.Return
+An integer *1* indicating the field exists or *0* when it doesn't.
+
+[[hget]]
+hget | get a field value
+~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+hget key field
+----
+.Example
+----
+> hmset h f 1 g 2
+'OK'
+> hget h f
+"1"
+> hget h h
+nil
+----
+.Description
+Get the value associated with field.
+
+.Return
+A string value or *nil* when the field does not exist.
+
+[[hgetall]]
+hgetall | get all field values
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+hgetall key
+----
+.Example
+----
+> hmset h f 1 g 2
+'OK'
+> hgetall h
+["f","1","g","2"]
+----
+.Description
+Get all of the fields and values associated with the hash stored at
+key.
+
+.Return
+An array of field value pairs.  An empty array when key doesn't exist.
+
+[[hincrby]]
+hincrby | incr field
+~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+hincrby key field int
+----
+.Example
+----
+> hmset h f 1 g 2
+'OK'
+> hincrby h f 10
+11
+----
+.Description
+Add an integer value to field.
+
+.Return
+The integer value after incrementing the integer or an error if the
+value stored in field is not an integer.
+
+[[hincrbyfloat]]
+hincrbyfloat | incr field
+~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+hincrbyfloat key field num
+----
+.Example
+----
+> hmset h f 1 g 2
+'OK'
+> hincrbyfloat h f 123456.66
+"123457.66"
+----
+.Description
+Add a numeric value to field.  This uses 128 bit decimal arithmetic
+which has a 34 digit range and an exponent from -6143 to +6144.
+https://en.wikipedia.org/wiki/Decimal128_floating-point_format
+
+.Return
+A string numeric value after incrementing the number or an error if
+the value stored in field is not a number.
+
+[[hkeys]]
+hkeys | get all field keys
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+hkeys key
+----
+.Example
+----
+> hmset h f 1 g 2
+'OK'
+> hkeys h
+["f","g"]
+----
+.Description
+Get all field keys in the hash.
+
+.Return
+An array of field names.
+
+[[hlen]]
+hlen | get number of fields
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+hlen key
+----
+.Example
+----
+> hmset h f 1 g 2
+'OK'
+> hlen h
+2
+----
+.Description
+Get the number field value pairs in the hash.
+
+.Return
+An integer count of the number of fields.
+
+[[hmget]]
+hmget | get multiple field vals
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+hmget key field [field ...]
+----
+.Example
+----
+> hmset h f 1 g 2
+'OK'
+> hmget h f g h
+["1","2",nil]
+----
+.Description
+Get multiple values from a hash.  If a field doesn't exist, a *nil* is
+returned.
+
+.Return
+An array of values or *nil*.
+
+[[hmset]]
+hmset | set multiple field vals
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+hmset key field value [field value ...]
+----
+.Example
+----
+> hmset h f 1 g 2
+'OK'
+> hmset h g 3 tree 50
+'OK'
+> hgetall h
+["f","1","g","3","tree","50"]
+----
+.Description
+Set multiple field value pairs in the hash.
+
+.Return
+*OK*.
+
+[[hset]]
+hset | set a field value
+~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+hset key value [field value ...]
+----
+.Example
+----
+> hset h f 1 g 2
+2
+> hset h g 3 tree 50
+1
+> hgetall h
+["f","1","g","3","tree","50"]
+----
+.Description
+Set multiple field value pairs in the hash.  Preexisting fields will
+be overwritten, and new fields will be added to the hash.
+
+.Return
+An integer indicating number of fields created.
+
+[[hsetnx]]
+hsetnx | set if not present
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+hsetnx key field value
+----
+.Example
+----
+> hmset h f 1 g 2
+'OK'
+> hsetnx h tree 50
+1
+> hsetnx h g 3
+0
+> hgetall h
+["f","1","g","2","tree","50"]
+----
+.Description
+Set a field in a hash only when it does not exist.
+
+.Return
+An integer *1* or *0* indicating success.
+
+[[hstrlen]]
+hstrlen | get strlen of field val
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+hstrlen key field
+----
+.Example
+----
+> hsetnx h tree 50
+1
+> hstrlen h tree
+2
+----
+.Description
+Get the string length of value stored with field, *0* if field does
+not exist.
+
+.Return
+An integer string length, which is the count of the 8 bit characters
+in the value.
+
+[[hvals]]
+hvals | get all values
+~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+hvals key
+----
+.Example
+----
+> hmset h f 1 g 2
+'OK'
+> hvals h
+["f","1","g","2"]
+----
+.Description
+Get all of the values stored in the hash.
+
+.Return
+An array of all the values or *nil* when hash does not exist.
+
+[[hscan]]
+hscan | iterate fields
+~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+hscan key cursor [match pattern] [count int]
+----
+.Example
+----
+> hset h abc 1 abb 2 abd 3 xyz 4 zzz 5
+5
+> hscan h 0 match a* count 1
+["2",["abc","1"]]
+> hscan h 2 match a* count 1
+["3",["abb","2"]]
+> hscan h 3 match a* count 1
+["4",["abd","3"]]
+> hscan h 4 match a* count 1
+["0",[]]
+> hscan h 0
+["0",["abc","1","abb","2","abd","3","xyz","4","zzz","5"]]
+> hscan h 5 match a* count 1
+["0",[]]
+----
+.Description
+Get the fields and values which match a pattern.  The cursor is the
+offset into the scan where the results will start.  If the cursor is
+equal to 3, then the match will start at the 3rd field in the hash.
+
+.Return
+An array within an array.  The outer array is the cursor counter, the
+inner array is the fields and values.
+
+Hyperloglog
+-----------
+
+[options="header",cols="3,1,1,1,1,1"]
+|===========================================
+| command | arity | first key | last key | step | flags
+| <<pfadd>> | -2 | 1 | 1 | 1 | write
+| <<pfcount>> | -2 | 1 | -1 | 1 | read
+| <<pfmerge>> | -2 | 1 | -1 | 1 | write
+|===========================================
+
+[[pfadd]]
+pfadd | add elems to hlog
+~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+pfadd key elem [elem ...]
+----
+.Example
+----
+> pfadd hl 1 2 3 4 5 6
+1
+----
+.Description
+Add elems to hyperloglog table.
+
+.Return
+The integer *1* is returned when new elements are added, *0* is
+returned when all elements are collisions or duplicates.
+
+[[pfcount]]
+pfcount | get hlog cardinality
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+pfcount key [key ...]
+----
+.Example
+----
+> pfadd hl 1 2 3 4 5 6
+1
+> pfcount hl
+6
+----
+.Description
+Get approximate cardinality of hyperloglog table.
+
+.Return
+An integer count of the cardinality estimate.
+
+[[pfmerge]]
+pfmerge | merge multiple hlogs
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+pfmerge dkey skey [skey ...]
+----
+.Example
+----
+> pfadd hl 1 2 3 4 5 6 10
+1
+> pfcount hl
+7
+> pfadd hl2 1 2 3 4 5 6 7
+1
+> pfcount hl2
+7
+> pfmerge hl2 hl hl2
+'OK'
+> pfcount hl2
+8
+----
+.Description
+Merge multiple hyperloglog tables and write them to the destination.
+The dest key is not merged, it written to.  A dest key can be used as
+a source key, but the original data in the source will be overwritten
+with the merged data.
+
+.Return
+*OK*.
+
+Key
+---
+
+[options="header",cols="3,1,1,1,1,1"]
+|===========================================
+| command | arity | first key | last key | step | flags
+| <<del>> | -2 | 1 | -1 | 1 | write
+| <<dump>> | 2 | 1 | 1 | 1 | read
+| <<exists>> | -2 | 1 | -1 | 1 | read
+| <<expire>> | 3 | 1 | 1 | 1 | write
+| <<expireat>> | 3 | 1 | 1 | 1 | write
+| <<keys>> | 2 | 0 | 0 | 0 | read
+//| <<migrate>> | -6 | 0 | 0 | 0 | write movable
+//| <<move>> | 3 | 1 | 1 | 1 | write
+| <<object>> | -2 | 2 | 2 | 2 | read
+| <<persist>> | 2 | 1 | 1 | 1 | write
+| <<pexpire>> | 3 | 1 | 1 | 1 | write
+| <<pexpireat>> | 3 | 1 | 1 | 1 | write
+| <<pttl>> | 2 | 1 | 1 | 1 | read
+| <<randomkey>> | 1 | 0 | 0 | 0 | read
+| <<rename>> | 3 | 1 | 2 | 1 | write
+| <<renamenx>> | 3 | 1 | 2 | 1 | write
+//| <<restore>> | -4 | 1 | 1 | 1 | write
+//| <<sort>> | -2 | 1 | 1 | 1 | write movable
+| <<touch>> | -2 | 1 | 1 | 1 | write
+| <<ttl>> | 2 | 1 | 1 | 1 | read
+| <<type>> | 2 | 1 | 1 | 1 | read
+| <<unlink>> | -2 | 1 | -1 | 1 | write
+//| <<wait>> | 3 | 0 | 0 | 0 |
+| <<scan>> | -2 | 0 | 0 | 0 | read
+|===========================================
+
+[[del]]
+del | delete keys
+~~~~~~~~~~~~~~~~~
+.Usage
+----
+del key [key ...]
+----
+.Example
+----
+> del h hl hl2 hl3
+4
+----
+.Description
+Delete one or more keys.
+
+.Return
+An integer count of the number of keys deleted is returned.
+
+[[dump]]
+dump | dump key
+~~~~~~~~~~~~~~~
+.Usage
+----
+dump key
+----
+.Example
+----
+> set k sophisticateduniverse
+'OK'
+> dump k
+"n\u0210/<\u0214\u0186\u0234JH\u0252H\u0231\u0134U\u0138\u0197"
+"\u0000\u0000\u0000\u0002\u0128\u0003\u0002\u0000k\u0000\u0000"
+"\u0000\u0000\u0000\u0000\u0000sophisticateduniverseo\u0238"
+"\u0021\u0021\u0128\u0214\u0186n\u0210/<"
+----
+.Description
+Serialize value at key.
+
+.Return
+The binary value of the key slot as a bulk string or *nil* when key
+does not exist.
+
+[[exists]]
+exists | test if key exists
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+exists key [key ...]
+----
+.Example
+----
+> exists k l m
+3
+----
+.Description
+Test if one or more keys exists.
+
+.Return
+An integer count of the number of keys that exist.
+
+[[expire]]
+expire | set key expire secs
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+expire key secs
+----
+.Example
+----
+> expire k 10
+1
+----
+.Description
+Set expire seconds.
+
+.Return
+The integer *1* if key expire time was set, *0* if not.
+
+[[expireat]]
+expireat | set key expire utc
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+expireat key stamp
+----
+.Example
+----
+> expireat k 1580076128
+1
+> ttl k
+67
+----
+.Description
+Set expire at time.
+
+.Return
+The integer *1* if key expire time was set, *0* if not.
+
+[[keys]]
+keys | get keys matching pattern
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+keys pattern
+----
+.Example
+----
+> keys k*
+["k","kkk","kk"]
+----
+.Description
+Find all keys matching pattern.
+
+.Return
+An array of key strings that match the pattern.
+////
+[[migrate]]
+migrate | move key to server
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+migrate host port key
+----
+.Description
+Atomically transfer key to another server.
+
+[[move]]
+move | move key to db
+~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+move key db
+----
+.Description
+Move key to another db.
+////
+[[object]]
+object | inspect key
+~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+object [refcount key | encoding key | idletime key | freq key | help]
+----
+.Example
+----
+> object freq k
+1
+> set k value2
+'OK'
+> object freq k
+2
+----
+.Description
+Inspect key value attributes.
+
+.Return
+- refcount, always *1*.
+- encoding, the type of data.
+- idletime, always *0*.
+- freq, the number of time key was updated.
+
+[[persist]]
+persist | clear expire stamp
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+persist key
+----
+.Example
+----
+> persist k
+1
+----
+.Description
+Remove expiration time.
+
+.Return
+The integer *1* if key exists was cleared, *0* if not.
+
+[[pexpire]]
+pexpire | set expire millisecs
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+pexpire key ms
+----
+.Example
+----
+> pexpire k 10000
+1
+> ttl k
+7
+> pttl k
+3986
+----
+.Description
+Set expire ttl in milliseconds.
+
+.Return
+The integer *1* if key expire time was set, *0* if not.
+
+[[pexpireat]]
+pexpireat | set expire ms utc
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+pexpireat key ms
+----
+.Example
+----
+> pexpireat k 1580077977700
+1
+> ttl k
+59
+> pttl k
+51395
+----
+.Description
+Set expire at ms stamp.
+
+.Return
+The integer *1* if key expire time was set, *0* if not.
+
+[[pttl]]
+pttl | get the ms time left
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+pttl key
+----
+.Example
+----
+> pttl k
+51395
+----
+.Description
+Get expire time in milliseconds.
+
+.Return
+The amount of milliseconds left or *-1* when key doesn't expire, and
+*-2* when key doesn't exist.
+
+[[randomkey]]
+randomkey | get a random key
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+randomkey 
+----
+.Example
+----
+> randomkey
+"bf"
+> randomkey
+"jjj"
+----
+.Description
+Get a random key.
+
+.Return
+A string key, if any exists, *nil* if not.
+
+[[rename]]
+rename | rename key to new name
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+rename key newkey
+----
+.Example
+----
+> rename jjj j
+'OK'
+----
+.Description
+Rename key to a new name.
+
+.Return
+*OK* when successful, error otherwise.
+
+[[renamenx]]
+renamenx | rename key if not exist
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+renamenx key newkey
+----
+.Example
+----
+> renamenx k j
+0
+> del j
+1
+> renamenx k j
+1
+----
+.Description
+Rename key if new key doesn't exists.
+
+.Return
+An integer *1* if success, *0* if not, error if key doesn't exist.
+////
+[[restore]]
+restore | restore key from dump
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+restore key ttl val
+----
+.Description
+Restore key using dump format.
+
+[[sort]]
+sort | sort keys
+~~~~~~~~~~~~~~~~
+.Usage
+----
+sort key [by pat] [limit off cnt] [get pat] [asc | desc] [alpha]
+ [store dest]
+----
+.Description
+Get sorted list, set or sorted set at key.
+////
+[[touch]]
+touch | set last access time
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+touch key [key ...]
+----
+.Example
+----
+> touch j
+1
+> object idletime j
+4
+----
+.Description
+Set update time of key.
+
+.Return
+An integer *1* if success, *0* if not.
+
+[[ttl]]
+ttl | get ttl secs
+~~~~~~~~~~~~~~~~~~
+.Usage
+----
+ttl key
+----
+.Example
+----
+> ttl j
+-1
+> expire j 100
+1
+> ttl j
+98
+----
+.Description
+Get expire time in seconds.
+
+.Return
+The amount of seconds left or *-1* when key doesn't expire, and *-2*
+when key doesn't exist.
+
+[[type]]
+type | get type of key
+~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+type key
+----
+.Example
+----
+> pfadd hl 1 2 3 4 5 6 10
+1
+> type hl
+'hyperloglog'
+----
+.Description
+Get the type of a key.
+
+.Return
+The type of key in a string or the string none.
+
+[[unlink]]
+unlink | delete key
+~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+unlink key [key ...]
+----
+.Example
+----
+> unlink j k l m
+2
+----
+.Description
+Non-blocking delete, mark deleted.
+
+.Return
+An integer count of the number of keys deleted is returned.
+////
+[[wait]]
+wait | wait for slaves
+~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+wait numslave timeout
+----
+.Description
+Wait for replication of write.
+////
+[[scan]]
+scan | scan matching keys
+~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+scan curs [match pat] [count int]
+----
+.Example
+----
+> scan 0 match j* count 1
+["18521679",["jjj"]]
+> scan 18521679 match j* count 1
+["25519714",["j"]]
+> scan 25519714 match j* count 1
+["0",[]]
+----
+.Description
+Get the keys which match a pattern.  The cursor is the offset into the
+scan where the results will start.  If the cursor is equal to 18521679
+from the example, then the match will start at the 18521679th element
+in the key hash.
+
+.Return
+An array within an array.  The outer array is the cursor counter, the
+inner array is the keys matched.
+
+
+List
+----
+
+[options="header",cols="3,1,1,1,1,1"]
+|===========================================
+| command | arity | first key | last key | step | flags
+| <<blpop>> | -3 | 1 | -2 | 1 | write
+| <<brpop>> | -3 | 1 | -2 | 1 | write
+| <<brpoplpush>> | 4 | 1 | 2 | 1 | write
+| <<lindex>> | 3 | 1 | 1 | 1 | read
+| <<linsert>> | 5 | 1 | 1 | 1 | write
+| <<llen>> | 2 | 1 | 1 | 1 | read
+| <<lpop>> | 2 | 1 | 1 | 1 | write
+| <<lpush>> | -3 | 1 | 1 | 1 | write
+| <<lpushx>> | -3 | 1 | 1 | 1 | write
+| <<lrange>> | 4 | 1 | 1 | 1 | read
+| <<lrem>> | 4 | 1 | 1 | 1 | write
+| <<lset>> | 4 | 1 | 1 | 1 | write
+| <<ltrim>> | 4 | 1 | 1 | 1 | write
+| <<rpop>> | 2 | 1 | 1 | 1 | write
+| <<rpoplpush>> | 3 | 1 | 2 | 1 | write
+| <<rpush>> | -3 | 1 | 1 | 1 | write
+| <<rpushx>> | -3 | 1 | 1 | 1 | write
+|===========================================
+
+[[blpop]]
+blpop | block and lpop list
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+blpop key [key ...] timeout
+----
+.Example
+----
+> brpop l m 0
+["l","one"]
+----
+.Description
+Left pop the list and return the pair of list name and value.  If the
+list is empty, block and wait for timeout seconds.  When the timeout
+is zero, the command blocks indefinitely.
+
+.Return
+An array with the name of the list follwed by the left most item
+popped from the list.  If timeout expires, *null* is returned.
+
+[[brpop]]
+brpop | block and rpop list
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+brpop key [key ...] timeout
+----
+.Example
+----
+> brpop l m 0
+["l","three"]
+----
+.Description
+Right pop the list and return the pair of list name and value.  If the
+list is empty, block and wait for timeout seconds.  When the timeout
+is zero, the command blocks indefinitely.
+
+.Return
+An array with the name of the list follwed by the right most item
+popped from the list.  If timeout expires, *null* is returned.
+
+[[brpoplpush]]
+brpoplpush | block rpop then lpush
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+brpoplpush src dest timeout
+----
+.Example
+----
+> lpush l one
+1
+> brpoplpush l m 0
+"one"
+> lrange l 0 -1
+[]
+> lrange m 0 -1
+["one"]
+----
+.Description
+Right pop the source list and left push the destination list.  If
+source is empty, block and wait for an element.  The timeout is in
+seconds and when it is zero, the command blocks indefinitely.
+
+.Return
+A string of the element transferred or *null* when timeout expires.
+
+[[lindex]]
+lindex | get list elem at index
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+lindex key idx
+----
+.Example
+----
+> lindex m 0
+"one"
+> lindex m 10
+nil
+----
+.Description
+Get list element at index.  Index starts at zero and ends at list
+length - 1.
+
+.Return
+A string of the element at index or *nil* when index is out of range.
+
+[[linsert]]
+linsert | insert list elem
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+linsert key before | after piv val
+----
+.Example
+----
+> linsert m after two three
+3
+> linsert m after four five
+-1
+> lrange m 0 -1
+["one","two","three"]
+----
+.Description
+Insert into list an value before or after the element named by piv.
+
+.Return
+The count of elements in the list after inserting the new element, or
+*-1* when the piv is not found.
+
+[[llen]]
+llen | get list length
+~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+llen key
+----
+.Example
+----
+> llen m
+3
+----
+.Description
+Get list length.
+
+.Return
+The count of elements in list, *0* if list doesn't exist.
+
+[[lpop]]
+lpop | left pop list elem
+~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+lpop key
+----
+.Example
+----
+> lpush x one
+1
+> lpop x
+"one"
+> lpop x
+nil
+> type x
+'none'
+----
+.Description
+Left pop the element from the list.  The list key is removed when
+there are zero elements left.
+
+.Return
+The string value of the element or *nil* if list doesn't exist.
+
+[[lpush]]
+lpush | left push list elem
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+lpush key val [val ..]
+----
+.Example
+----
+> lpush x one two three
+3
+----
+.Description
+Left push elements to the list.
+
+.Return
+The length of the list after elements are added.
+
+[[lpushx]]
+lpushx | left push if exists
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+lpushx key val [val ..]
+----
+.Example
+----
+> lpushx y one two three
+0
+> type y
+'none'
+> lpushx x one two three
+6
+----
+.Description
+Left push elements to the list only if it exists.
+
+.Return
+The length of the list after elements are added.
+
+[[lrange]]
+lrange | get range of elems
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+lrange key start stop
+----
+.Example
+----
+> lrange x 0 -1
+["three","two","one","three","two","one"]
+> lrange x 6 10
+[]
+----
+.Description
+Get a range of elements from the list.  If list doesn't exist or range
+has zero elements, an empty array is returned.  A negative index
+starts from the end of the list:  *-1* is the last element, *-2* is
+the second last element.
+
+.Return
+An array of elements between the start and stop indexes, inclusive.
+
+[[lrem]]
+lrem | remove count elems
+~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+lrem key count value
+----
+.Example
+----
+> lrange x 0 -1
+["three","two","one","three","two","one"]
+> lrem x 1 one
+1
+> lrem x 1 one
+1
+> lrem x 1 one
+0
+> lrange x 0 -1
+["three","two","three","two"]
+----
+.Description
+Remove count list elements which match the value.
+
+.Return
+An integer count of elements removed.
+
+[[lset]]
+lset | set list elem at index
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+lset key idx value
+----
+.Example
+----
+> lpush l one two three
+3
+> lset l 1 TWO
+'OK'
+> lrange l 0 -1
+["three","TWO","one"]
+----
+.Description
+Set the list element at index.  Index is zero based.
+
+.Return
+*OK* if success, error if out of range or not found.
+
+[[ltrim]]
+ltrim | trim list elems
+~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+ltrim key start stop
+----
+.Example
+----
+> lpush x one two three one two three
+6
+> ltrim x 4 10
+'OK'
+> lrange x 0 -1
+["two","one"]
+----
+.Description
+Trim list to range.  If start is beyond the end of the list, then all
+elements are removed.
+
+.Return
+*OK*.
+
+[[rpop]]
+rpop | right pop list elem
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+rpop key
+----
+.Example
+----
+> rpush x two three
+2
+> rpop x
+"three"
+> rpop x
+"two"
+> rpop x
+nil
+> type x
+'none'
+----
+.Description
+Right pop the element from the list.  The list key is removed when
+there are zero elements left.
+
+.Return
+The string value of the element or *nil* if list doesn't exist.
+
+
+[[rpoplpush]]
+rpoplpush | right pop left push
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+rpoplpush src dest
+----
+.Example
+----
+> rpush x two three
+2
+> rpoplpush x y
+"three"
+> rpoplpush x y
+"two"
+> rpoplpush x y
+nil
+----
+.Description
+Right pop the source list and left push the destination list.  If
+source is empty, return *nil*.
+
+.Return
+A string of the element transferred or *nil*.
+
+[[rpush]]
+rpush | right push elem
+~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+rpush key [val ...]
+----
+.Example
+----
+> rpush x one two three
+3
+----
+.Description
+Right push elements to the list.
+
+.Return
+The length of the list after elements are added.
+
+[[rpushx]]
+rpushx | right push if exist
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+rpushx key [val ...]
+----
+.Example
+----
+> rpushx y one two three
+0
+> type y
+'none'
+> rpush x one two three
+3
+> rpushx x one two three
+6
+----
+.Description
+Right push elements to the list only if it exists.
+
+.Return
+The length of the list after elements are added.
+
+Pubsub
+------
+
+[options="header",cols="3,1,1,1,1,1"]
+|===========================================
+| command | arity | first key | last key | step | flags
+| <<psubscribe>> | -2 | 0 | 0 | 0 |
+| <<pubsub>> | -2 | 0 | 0 | 0 |
+| <<publish>> | 3 | 0 | 0 | 0 |
+| <<punsubscribe>> | -1 | 0 | 0 | 0 |
+| <<subscribe>> | -2 | 0 | 0 | 0 |
+| <<unsubscribe>> | -1 | 0 | 0 | 0 |
+|===========================================
+
+[[psubscribe]]
+psubscribe | pattern subscribe
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+psubscribe pat [pat ...]
+----
+.Example
+----
+> psubscribe p* q*
+executing: ["psubscribe","p*","q*"]
+["psubscribe","p*",1]
+["psubscribe","q*",2]
+["pmessage","p*","publius","friend"]
+["pmessage","q*","qQq","OoO"]
+----
+.Description
+Subscribe to patterns.  The messages published to channels which match
+the pattern will be forwarded to the client.  A message may be
+forwarded to the same client more than once if its channel matches
+multiple patterns.  It is also possible to be forwarded the message
+again if the channel matches a subscription.
+
+.Return
+An array with the subscription and an integer which is a count of the
+subscriptions open.
+
+[[pubsub]]
+pubsub | query pubsub info
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+pubsub [channels [pattern] | numsub channel | numpat]
+----
+.Example
+----
+> pubsub channels
+["two","five","seven","six","one","three","four"]
+> pubsub channels t*
+["two","three"]
+> pubsub channels x*
+[]
+----
+.Description
+Get the channels that are in use which match a pattern.
+
+.Example
+----
+> pubsub numsub one two three
+["one",1,"two",1,"three",1]
+----
+.Description
+Get the number of subscription on each channel.
+
+.Example
+----
+> pubsub numpat
+3
+----
+.Description
+Display the number of pattern subscriptions open.
+
+[[publish]]
+publish | publish msg to channel
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+publish channel msg
+----
+.Example
+----
+> publish one two
+1
+----
+.Description
+Publish msg to channel.
+
+.Return
+A count of the times the message is forwarded to a client.
+
+[[punsubscribe]]
+punsubscribe | pattern unsubscribe
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+punsubscribe [pat ...]
+----
+.Example
+----
+> psubscribe x*
+["psubscribe","x*",1]
+> punsubscribe x*
+["punsubscribe","x*",0]
+----
+.Description
+Unsubscribe patterns.  This cancels interest in the patterns
+previously subscribed.  If no patterns are named, all patterns are
+unsubscribed.
+
+.Return
+An array with the punsubscribe and an integer count of the number of
+subscriptions that the client has open.
+
+[[subscribe]]
+subscribe | subscribe channel
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+subscribe chan [chan ...]
+----
+.Example
+----
+> subscribe x
+["subscribe","x",1]
+----
+.Description
+Subscribe to channels.  The messages published to the channels that
+are subscribed will be forwarded to the client.
+
+.Return
+An array with the subscription and an integer which is a count of the
+subscriptions open.
+
+[[unsubscribe]]
+unsubscribe | unsubscribe channel
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+unsubscribe [chan ...]
+----
+.Example
+----
+> subscribe x
+["subscribe","x",1]
+> unsubscribe x
+["unsubscribe","x",0]
+----
+.Description
+Unsubscribe channels.  This cancels interest in the channels
+previously subscribed.  If no channels are named, all channels are
+unsubscribed.
+
+.Return
+An array with the unsubscribe and an integer count of the number of
+subscriptions that the client has open.
+////
+Script
+------
+
+[options="header",cols="3,1,1,1,1,1"]
+|===========================================
+| command | arity | first key | last key | step | flags
+| <<eval>> | -3 | 0 | 0 | 0 | movable
+| <<evalsha>> | -3 | 0 | 0 | 0 | movable
+| <<script>> | -2 | 0 | 0 | 0 |
+|===========================================
+
+[[eval]]
+eval | run script
+~~~~~~~~~~~~~~~~~
+.Usage
+----
+eval script num key [key ...]
+----
+.Description
+Execute a Lua script.
+
+[[evalsha]]
+evalsha | run script by hash
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+evalsha sha1 num key [key ...]
+----
+.Description
+Execute a serverside Lua script.
+
+[[script]]
+script | modify script
+~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+script [debug | exists | flush | kill | load]
+----
+.Description
+Script ops.
+////
+Server
+------
+
+[options="header",cols="3,1,1,1,1,1"]
+|===========================================
+| command | arity | first key | last key | step | flags
+//| <<bgrewriteaof>> | 1 | 0 | 0 | 0 | admin
+//| <<bgsave>> | -1 | 0 | 0 | 0 | admin
+| <<client>> | -2 | 0 | 0 | 0 | admin
+| <<command>> | -1 | 0 | 0 | 0 |
+| <<config>> | -2 | 0 | 0 | 0 | admin
+| <<dbsize>> | 1 | 0 | 0 | 0 |
+//| <<debug>> | -1 | 0 | 0 | 0 | admin
+//| <<flushall>> | -1 | 0 | 0 | 0 | admin
+//| <<flushdb>> | -1 | 0 | 0 | 0 | admin
+| <<info>> | -1 | 0 | 0 | 0 |
+//| <<lastsave>> | 1 | 0 | 0 | 0 |
+//| <<memory>> | -2 | 0 | 0 | 0 |
+| <<monitor>> | 1 | 0 | 0 | 0 | admin
+//| <<role>> | 1 | 0 | 0 | 0 |
+//| <<save>> | 1 | 0 | 0 | 0 | admin
+| <<shutdown>> | -1 | 0 | 0 | 0 | admin
+//| <<slaveof>> | 3 | 0 | 0 | 0 | admin
+//| <<slowlog>> | -2 | 0 | 0 | 0 | admin
+//| <<sync>> | 1 | 0 | 0 | 0 | admin
+| <<time>> | 1 | 0 | 0 | 0 |
+|===========================================
+////
+[[bgrewriteaof]]
+bgrewriteaof | bg write aof
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+bgrewriteaof 
+----
+.Description
+Asynchronously write append only file (AOF).
+
+[[bgsave]]
+bgsave | bg save
+~~~~~~~~~~~~~~~~
+.Usage
+----
+bgsave 
+----
+.Description
+Async save dataset.
+////
+[[client]]
+client | query connected clients
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+client [setname name | getname | id | kill match | list match |
+        reply state ]
+----
+.Example
+----
+> client setname AAA
+'OK'
+----
+.Description
+Set the current connection name.
+
+.Example
+----
+> client getname
+"AAA"
+----
+.Description
+Get the current connection name.
+
+.Example
+----
+> client id
+12
+----
+.Description
+Get the current connection id.
+
+.Example
+----
+> client list type tcp
+id=12 addr=[::1]:58806 fd=14 name=AAA kind=redis age=150 idle=0 rbuf=0 
+  rsz=16384 imsg=7 br=257 wbuf=0 wsz=5120 omsg=6 bs=1082 flags=N db=0 
+  sub=0 psub=0 multi=-1 cmd=client
+id=13 addr=[::1]:58808 fd=15 name= kind=redis age=74 idle=74 rbuf=0 
+  rsz=16384 imsg=0 br=0 wbuf=0 wsz=5120 omsg=0 bs=0 flags=N db=0 
+  sub=0 psub=0 multi=-1 cmd=none
+----
+.Description
+List the clients.  The filters that match the clients which are listed
+are:
+
+- type [ tcp | udp | unix | listen | redis | pubsub | normal | http |
+  nats | capr | rv ] -- filter by connection class.
+- id N -- filter by id number
+- addr IP -- filter by IP address
+- skipme -- skip the current connection
+
+.Example
+----
+> client kill id 13
+1
+> client kill type redis skipme
+0
+----
+.Description
+Kill clients.  The filters that match the clients which are listed the
+same as the filters that list.
+
+.Example
+----
+> client reply skip
+> ping
+> ping
+'PONG'
+> client reply off
+> ping
+> client reply on
+'OK'
+> ping
+'PONG'
+----
+.Description
+Alter the reply behavior of the connection.  If skipped or off, output
+will be muted.
+
+[[command]]
+command | query command info
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+command [count | getkeys <cmd-full> | info [cmd] | help]
+----
+.Example
+----
+> command info get
+[["get",2,['readonly','fast'],1,1,1]]
+> command count
+193
+> command help get
+['GET','key ; Get value']
+----
+.Description
+Get command details and help.
+
+[[config]]
+config | query config
+~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+config [get <param> | rewrite | set <param> <value> | resetstat]
+----
+.Description
+Get, set config parameters.  There is no configuration, so these
+are not functional.
+
+[[dbsize]]
+dbsize | get number of keys
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+dbsize 
+----
+.Example
+----
+> dbsize
+299999
+----
+.Description
+Get number of keys in db.
+////
+[[debug]]
+debug | run debug
+~~~~~~~~~~~~~~~~~
+.Usage
+----
+debug object key
+----
+.Description
+Get debug info about key.
+
+[[flushall]]
+flushall | remove keys
+~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+flushall [async]
+----
+.Description
+Remove keys from all dbs.
+
+[[flushdb]]
+flushdb | remove keys from db
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+flushdb [async]
+----
+.Description
+Remove keys from selected db
+////
+[[info]]
+info | query server stats
+~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+info [server | clients | memory | persistence | stats |
+      replication | cpu | commandstats | cluster | keyspace]
+----
+.Example
+----
+> info server
+raids_version:        1.0.0-11
+raids_git:            fee49cdd
+gcc_version:          9.1.1
+process_id:           32167
+> info clients
+redis_clients:        1
+pubsub_clients:       0
+> info memory
+vm_peak:              8204MB
+vm_size:              8204MB
+> info stats
+ht_operations:        505M
+ht_chains:            1.0
+ht_read:              505M
+ht_write:             287
+> info cpu
+used_cpu_sys:         0.069951
+used_cpu_user:        1.445196
+used_cpu_total:       1.515147
+----
+.Description
+Get version info and counters.
+////
+[[lastsave]]
+lastsave | last save time
+~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+lastsave 
+----
+.Description
+Get the unix timestamp of the last save
+
+[[memory]]
+memory | memory usage
+~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+memory [doctor | help | malloc-stats | purge | stats | usage]
+----
+.Description
+Memory statistics.
+////
+[[monitor]]
+monitor | monitor commands
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+monitor 
+----
+.Example
+----
+> monitor
+["pmessage","__monitor_@*","__monitor_@0__:127.0.0.1:60646",
+[["get","k"],"value","1580125101.975300"]]
+----
+.Description
+Monitor commands executed by server from all clients.  This is an
+alias for `psubscribe _monitor_@*`.  Running once enables, running
+twice disables the monitor.  In order to monitor just one client, or
+just one ip address, use a pattern that includes the address:
+`psubscribe _monitor_@0__:127.0.0.1*`
+
+.Return
+An array which indicates the db number and client connected address
+(`"__monitor_@0__:127.0.0.1:60646"`), the command executed
+(`["get","k"]`), and the result of executing the command (`"value"`).
+////
+[[role]]
+role | replication role
+~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+role 
+----
+.Description
+What is role of the instance for replication.
+
+[[save]]
+save | sync save
+~~~~~~~~~~~~~~~~
+.Usage
+----
+save 
+----
+.Description
+Synchronously save.
+////
+[[shutdown]]
+shutdown | shutdown server
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+shutdown
+----
+.Description
+Shutdown server.  This will cause the connected instance to quit.
+////
+[[slaveof]]
+slaveof | set slave
+~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+slaveof host port
+----
+.Description
+Make server a slave.
+
+[[slowlog]]
+slowlog | wtf sucking
+~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+slowlog subcmd [arg]
+----
+.Description
+Manage slow queries log.
+
+[[sync]]
+sync | replication sync
+~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+sync 
+----
+.Description
+Internal cmd for replication.
+////
+[[time]]
+time | get server time
+~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+time 
+----
+.Example
+----
+> time
+["1580125969","562228"]
+----
+.Description
+Get server time.
+
+.Return
+An array, UTC seconds and microseconds (1 usec = 1/1000000 second).
+
+Set
+---
+
+[options="header",cols="3,1,1,1,1,1"]
+|===========================================
+| command | arity | first key | last key | step | flags
+| <<sadd>> | -3 | 1 | 1 | 1 | write
+| <<scard>> | 2 | 1 | 1 | 1 | read
+| <<sdiff>> | -2 | 1 | -1 | 1 | read
+| <<sdiffstore>> | -3 | 1 | -1 | 1 | write
+| <<sinter>> | -2 | 1 | -1 | 1 | read
+| <<sinterstore>> | -3 | 1 | -1 | 1 | write
+| <<sismember>> | 3 | 1 | 1 | 1 | read
+| <<smembers>> | 2 | 1 | 1 | 1 | read
+| <<smove>> | 4 | 1 | 2 | 1 | write
+| <<spop>> | -2 | 1 | 1 | 1 | write
+| <<srandmember>> | -2 | 1 | 1 | 1 | read
+| <<srem>> | -3 | 1 | 1 | 1 | write
+| <<sunion>> | -2 | 1 | -1 | 1 | read
+| <<sunionstore>> | -3 | 1 | -1 | 1 | write
+| <<sscan>> | -3 | 1 | 1 | 1 | read
+|===========================================
+
+[[sadd]]
+sadd | add to set
+~~~~~~~~~~~~~~~~~
+.Usage
+----
+sadd key mem [mem ...]
+----
+.Example
+----
+> sadd s x y z
+3
+> sadd s z a b
+2
+----
+.Description
+Add one or more members to a set.
+
+.Return
+An integer count of unique members added.
+
+[[scard]]
+scard | get member count
+~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+scard key
+----
+.Example
+----
+> sadd s x y z
+3
+> scard s
+3
+----
+.Description
+Get the count of set members.
+
+.Return
+An integer count of members.
+
+[[sdiff]]
+sdiff | subtract sets
+~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+sdiff key [key ...]
+----
+.Example
+----
+> sadd s x y z
+3
+> sadd t x Y z
+3
+> sdiff s t
+["y"]
+> sdiff t s
+["Y"]
+----
+.Description
+Subtract sets.  Remove members of the first set using the members of
+the the other sets.
+
+.Return
+An array of members.
+
+[[sdiffstore]]
+sdiffstore | subtract and store
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+sdiffstore dest key [key ...]
+----
+.Example
+----
+> sadd s x y z
+3
+> sadd t x Y z
+3
+> sdiffstore sd s t
+1
+> smembers sd
+["y"]
+> sdiffstore td t s
+1
+> smembers td
+["Y"]
+----
+.Description
+Remove members of the first set using the members of the the other
+sets.  Store the result in the dest key.
+
+.Return
+A count of members stored in the set at the dest key.
+
+[[sinter]]
+sinter | intersect sets
+~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+sinter key [key ...]
+----
+.Example
+----
+> sadd s x y z
+3
+> sadd t x Y z
+3
+> sinter s t
+["x", "z"]
+----
+.Description
+Intersect all the sets, only keep a member if it is in all sets.
+
+.Return
+An array of members.
+
+[[sinterstore]]
+sinterstore | intersect and store
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+sinterstore key [key ...]
+----
+.Example
+----
+> sadd s x y z
+3
+> sadd t x Y z
+3
+> sinterstore si s t
+2
+> smembers si
+["x", "z"]
+----
+.Description
+Intersect all the sets and store the result in the dest key.
+
+.Return
+A count of members stored in the set at the dest key.
+
+[[sismember]]
+sismember | test membership
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+sismember key mem
+----
+.Example
+----
+> sadd s x y z
+3
+> sismember s x
+1
+> sismember s Y
+0
+----
+.Description
+Test whether member is present in a set.
+
+.Return
+A *1* is returned if it is a member, a *0* if not.
+
+[[smembers]]
+smembers | get all members
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+smembers key
+----
+.Example
+----
+> sadd s x y z
+3
+> smembers s
+["x","y","z"]
+----
+.Description
+Get all the members in a set.
+
+.Return
+An array of set members, which could be empty if the key doesn't
+exist.
+
+[[smove]]
+smove | move member to set
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+smove src dest mem
+----
+.Example
+----
+> sadd s x y z
+3
+> sadd t x Y z
+3
+> smove s t x
+1
+> smove s t Y
+0
+> smove s t a
+0
+> smove s t y
+1
+> smembers s
+["z"]
+> smembers t
+["x","Y","z","y"]
+----
+.Description
+Move a member to another set, which removes the member from the source
+and only adds it the destination if it exists in the source.
+
+.Return
+A *1* is returned if the member exists in the source and is moved and
+a *0* is returned if the member does not exist in the source.
+
+[[spop]]
+spop | remove rand members
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+spop key [count]
+----
+.Example
+----
+> sadd s x y z
+3
+> sadd t x Y z
+3
+> spop s
+["y"]
+> spop t 300
+["x","Y","z"]
+> smembers s
+["x","z"]
+> smembers t
+[]
+> spop t
+[]
+----
+.Description
+Remove count random members from the set and return them.
+
+.Return
+An array of members removed, which may be less than count if there are
+not enough in the set to fulfill the total.
+
+[[srandmember]]
+srandmember | get rand members
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+srandmember key [count]
+----
+.Example
+----
+> sadd s x y z
+3
+> sadd t x Y z
+3
+> srandmember s
+["y"]
+> srandmember t 300
+["x","Y","z"]
+----
+.Description
+Get count random members from the set and return them.
+
+.Return
+An array of members removed, which may be less than count if there are
+not enough in the set to fulfill the total.
+
+[[srem]]
+srem | remove members
+~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+srem key mem [mem ...]
+----
+.Example
+----
+> sadd s x y z
+3
+> srem s y Y z
+2
+----
+.Description
+Remove one or more members from the set.
+
+.Return
+An integer count of members removed.
+
+[[sunion]]
+sunion | union sets
+~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+sunion key [key ...]
+----
+.Example
+----
+> sadd s x y z
+3
+> sadd t x Y z
+3
+> sunion s t
+["x","y","Y","z"]
+----
+.Description
+Union sets and return members.
+
+.Return
+An array of members.
+
+[[sunionstore]]
+sunionstore | union and store
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+sunionstore dest key [key ...]
+----
+.Example
+----
+> sadd s x y z
+3
+> sadd t x Y z
+3
+> sunionstore su s t
+4
+> smembers su
+["x","y","Y","z"]
+----
+.Description
+Union all the sets and store the result in the dest key.
+
+.Return
+A count of members stored in the set at the dest key.
+
+[[sscan]]
+sscan | iterate and match
+~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+sscan key curs [match pattern] [count cnt]
+----
+.Example
+----
+> sadd s abc abb abd xyz zzz
+5
+> sscan s 0 match a* count 1
+["2",["abc"]]
+> sscan s 2 match a* count 1
+["3",["abb"]]
+> sscan s 3 match a* count 1
+["4",["abd"]]
+> sscan s 4 match a* count 1
+["0",[]]
+> sscan s 0
+["0",["abc","abb","abd","xyz","zzz"]]
+> sscan s 5 match a* count 1
+["0",[]]
+----
+.Description
+Get the fields and values which match a pattern.  The cursor is the
+offset into the scan where the results will start.  If the cursor is
+equal to 3, then the match will start at the 3rd member of the set.
+
+.Return
+An array within an array.  The outer array is the cursor counter, the
+inner array are the members matched.
+
+Sorted Set
+----------
+
+[options="header",cols="3,1,1,1,1,1"]
+|===========================================
+| command | arity | first key | last key | step | flags
+| <<zadd>> | -4 | 1 | 1 | 1 | write
+| <<zcard>> | 2 | 1 | 1 | 1 | read
+| <<zcount>> | 4 | 1 | 1 | 1 | read
+| <<zincrby>> | 4 | 1 | 1 | 1 | write
+| <<zinterstore>> | -4 | 1 | 1 | 1 | write movable
+| <<zlexcount>> | 4 | 1 | 1 | 1 | read
+| <<zrange>> | -4 | 1 | 1 | 1 | read
+| <<zrangebylex>> | -4 | 1 | 1 | 1 | read
+| <<zrevrangebylex>> | -4 | 1 | 1 | 1 | read
+| <<zrangebyscore>> | -4 | 1 | 1 | 1 | read
+| <<zrank>> | 3 | 1 | 1 | 1 | read
+| <<zrem>> | -3 | 1 | 1 | 1 | write
+| <<zremrangebylex>> | 4 | 1 | 1 | 1 | write
+| <<zremrangebyrank>> | 4 | 1 | 1 | 1 | write
+| <<zremrangebyscore>> | 4 | 1 | 1 | 1 | write
+| <<zrevrange>> | -4 | 1 | 1 | 1 | read
+| <<zrevrangebyscore>> | -4 | 1 | 1 | 1 | read
+| <<zrevrank>> | 3 | 1 | 1 | 1 | read
+| <<zscore>> | 3 | 1 | 1 | 1 | read
+| <<zunionstore>> | -4 | 1 | 1 | 1 | write movable
+| <<zscan>> | -3 | 1 | 1 | 1 | read
+| <<zpopmin>> | -2 | 1 | 1 | 1 | write
+| <<zpopmax>> | -2 | 1 | 1 | 1 | write
+| <<bzpopmin>> | -3 | 1 | -2 | 1 | write
+| <<bzpopmax>> | -3 | 1 | -2 | 1 | write
+|===========================================
+
+[[zadd]]
+zadd | add to zset
+~~~~~~~~~~~~~~~~~~
+.Usage
+----
+zadd key [nx | xx] [ch] [incr] score mem [score mem ...]
+----
+.Example
+----
+> zadd z 10 a 20 b 30 c
+3
+> zrange z 0 -1 withscores
+["a","10","b","20","c","30"]
+> zadd z incr 1.1 a 2.2 b 3.3 c
+"33.3"
+> zrange z 0 -1 withscores
+["a","11.1","b","22.2","c","33.3"]
+> zadd z incr 1 a
+"12.1"
+> zadd z nx 10 a 40 d
+1
+> zrange z 0 -1 withscores
+["a","12.1","b","22.2","c","33.3","d","40"]
+----
+.Description
+Add members to zset with score, optionally with a no exist (*nx*) flag
+or must exist (*xx*) flag.  The *ch* flag alters the count to the
+number members changed, otherwise it is the count of the number of
+members created.  The *incr* flag causes the score to be added to the
+existing instead of replacing it.  The score is stored as 64 bit
+decimal number, which has a 16 digit precision and -383 to +384
+exponent range.
+https://en.wikipedia.org/wiki/Decimal64_floating-point_format
+
+.Return
+A count of members created, or changed when the *ch* flag is set.  If
+incr used, then the result is the new score.  A string type is used
+for scores since it is a decimal real.
+
+[[zcard]]
+zcard | get member count
+~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+zcard key
+----
+.Example
+----
+> zadd z 10 a 20 b 30 c
+3
+> zrange z 0 -1
+["a","b","c"]
+> zcard z
+3
+----
+.Description
+Get a count of the number members.
+
+.Return
+An integer count, *0* if the key doesn't exist.
+
+[[zcount]]
+zcount | count within bounds
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+zcount key min max
+----
+.Example
+----
+> zadd z 10 a 20 b 30 c
+3
+> zcount z 10 30
+3
+> zcount z 15 30
+2
+----
+.Description
+Get number of members within a bounds.
+
+.Return
+An integer count, *0* if the key doesn't exist.
+
+[[zincrby]]
+zincrby | incr score
+~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+zincrby key incr mem
+----
+.Example
+----
+> zadd z 10 a 20 b 30 c
+3
+> zincrby z 1.5 a
+"21.5"
+> zrange z 0 -1 withscores
+["b","20","a","21.5","c","30"]
+> zincrby z 1.5 A
+"1.5"
+> zrange z 0 -1 withscores
+["A","1.5","b","20","a","21.5","c","30"]
+----
+.Description
+Add a score to member, if member doesn't exists, create it.
+
+.Return
+The score after incrementing it.
+
+[[zinterstore]]
+zinterstore | intersect and store
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+zinterstore dest num key [key ...] [weights w [w ...]]
+ [aggregate sum|min|max]
+----
+.Example
+----
+> zadd z1 10 a 20 b 30 c
+3
+> zadd z2 40 d 30 c 10 b
+3
+> zinterstore z3 2 z1 z2
+2
+> zrange z3 0 -1 withscores
+["b","30","c","60"]
+----
+.Description
+Intersect zsets and store in destination key.  The members which are
+in both sets are combined into the destination set.  The score is a
+combination of both members, depending on the weight given to each set
+and how it is aggregated.  The default is weight 1 for each set (or no
+weight), and aggregating by sum.
+
+.Return
+An integer count of the members in the new set.
+
+[[zlexcount]]
+zlexcount | count lexical bounds
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+zlexcount key min max
+----
+.Example
+----
+> zadd z 10 a 10 b 10 c 10 d
+4
+> zlexcount z a d
+4
+> zcount z 10 10
+4
+----
+.Description
+Count members in a zset within a lexical bounds, when all elements
+have the same score (and this only works when all members have the
+same score).
+
+.Return
+An integer count of the number of members between an inclusive lexical
+bounds.
+
+[[zrange]]
+zrange | get members with range
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+zrange key start stop [withscores]
+----
+.Example
+----
+> zadd z 10 a 20 b 30 c 40 d
+4
+> zrange z 2 3 withscores
+["c","30","d","40"]
+> zrange z 0 -1
+["a","b","c","d"]
+----
+.Description
+Get range of members between scores.
+
+.Return
+An array of members with scores if requested.
+
+[[zrangebylex]]
+zrangebylex | get with lex range
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+zrangebylex key min max [limit off cnt]
+----
+.Example
+----
+> zadd z 10 a 10 b 10 c 10 d
+4
+> zrangebylex z [a [b
+["a","b"]
+> zrangebylex z - +
+["a","b","c","d"]
+> zrangebylex z - + limit 0 1
+["a"]
+> zrangebylex z - + limit 1 1
+["b"]
+----
+.Description
+Get members in a zset within a lexical bounds, when all elements have
+the same score (and this only works when all members have the same
+score).
+
+.Return
+An array of members.
+
+[[zrevrangebylex]]
+zrevrangebylex | get rev lex range
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+zrevrangebylex key min max [limit off cnt]
+----
+.Example
+----
+> zadd z 10 a 10 b 10 c 10 d
+4
+> zrevrangebylex z [c [a
+["c","b","a"]
+> zrevrangebylex z + -
+["d","c","b","a"]
+> zrevrangebylex z + - limit 0 1
+["d"]
+> zrevrangebylex z + - limit 1 1
+["c"]
+----
+.Description
+Get members in a zset within a lexical bounds high to low, in reverse,
+when all elements have the same score (and this only works when all
+members have the same score).
+
+.Return
+An array of members.
+
+[[zrangebyscore]]
+zrangebyscore | get range by score
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+zrangebyscore key min max [withscores]
+----
+.Example
+----
+> zadd z 10 a 20 b 30 c 40 d
+4
+> zrangebyscore z 10 30
+["a","b","c"]
+> zrangebyscore z (1 [2 withscores
+["b","20"]
+----
+.Description
+Get range of members between scores.  The start is the lowest score
+and the stop is the highest score.  The members are returned from the
+lowest to the highest, in score order.
+
+.Return
+An array of members, with scores if requested.
+
+[[zrank]]
+zrank | get rank of member
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+zrank key mem
+----
+.Example
+----
+> zadd z 10 a 20 b 30 c 40 d
+4
+> zrank z b
+1
+> zrank z c
+2
+> zrank z f
+nil
+----
+.Description
+Get index of member, it's rank, where it is ordered by score.
+
+.Return
+An integer indicating rank of member, *nil* if member not found.
+
+[[zrem]]
+zrem | remove members
+~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+zrem key mem [mem ...]
+----
+.Example
+----
+> zadd z 10 a 20 b 30 c 40 d
+4
+> zrem z b c f
+2
+> zrange z 0 -1 withscores
+["a","10","d","40"]
+----
+.Description
+Remove members by name.
+
+.Return
+The integer *1* if removed, *0* if not removed.
+
+[[zremrangebylex]]
+zremrangebylex | remove by lex
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+zremrangebylex key min max
+----
+.Example
+----
+> zadd z 10 a 10 b 10 c 10 d
+4
+> zremrangebylex z [a [c
+3
+> zrange z 0 -1 withscores
+["d","10"]
+----
+.Description
+Remove members from a zset within a lexical bounds high to low, in
+reverse, when all elements have the same score (and this only works
+when all members have the same score).
+
+.Return
+An integer count of the number of members removed.
+
+[[zremrangebyrank]]
+zremrangebyrank | remove by rank
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+zremrangebyrank key start stop
+----
+.Example
+----
+> zadd z 10 a 20 b 30 c 40 d
+4
+> zremrangebyrank z 1 2
+2
+> zrange z 0 -1 withscores
+["a","10","d","40"]
+----
+.Description
+Remove members from a zset by rank, which is the index of order that
+they are sorted.
+
+.Return
+An integer count of the number of members removed.
+
+[[zremrangebyscore]]
+zremrangebyscore | remove by score
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+zremrangebyscore key start stop
+----
+.Example
+----
+> zadd z 10 a 20 b 30 c 40 d
+4
+> zremrangebyscore z 10 20
+2
+> zrange z 0 -1 withscores
+["c","30","d","40"]
+----
+.Description
+Remove members from a zset by score.
+
+.Return
+An integer count of the number of members removed.
+
+[[zrevrange]]
+zrevrange | get reverse range
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+zrevrange key start stop [withscores]
+----
+.Example
+----
+> zadd z 10 a 20 b 30 c 40 d
+4
+> zrevrange z 2 3 withscores
+["b","20","a","10"]
+> zrevrange z 0 -1
+["d","c","b","a"]
+----
+.Description
+Get range of members between ranks.  The start is the lowest index of
+the reverse ordered zset, the stop is the highest.  The members are
+returned from low to high using a reverse ordered zset.
+
+.Return
+An array of members with scores if requested.
+
+[[zrevrangebyscore]]
+zrevrangebyscore | get reverse score
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+zrevrangebyscore key start stop [withscores] [limit off cnt]
+----
+.Example
+----
+> zadd z 10 a 20 b 30 c 40 d
+4
+> zrevrangebyscore z +inf -inf withscores
+["d","40","c","30","b","20","a","10"]
+> zrevrangebyscore z 20 10 withscores
+["b","20","a","10"]
+> zrevrangebyscore z (20 [10 withscores
+["a","10"]
+----
+.Description
+Get reverse range of members between scores.  The start is the highest
+score and the stop is the lowest score.  The members are returned from
+the highest to the lowest, in reverse score order.
+
+.Return
+An array of members with scores if requested.
+
+[[zrevrank]]
+zrevrank | get reverse rank
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+zrevrank key mem
+----
+.Example
+----
+> zadd z 10 a 20 b 30 c 40 d
+40
+> zrevrank z b
+20
+> zrevrank z c
+10
+> zrevrank z f
+nil
+----
+.Description
+Get inverse rank index of member by name.  If the order of the zset is
+reversed, then this is the index of the member.
+
+.Return
+An integer indicating rank of member, *nil* if member is not found.
+
+[[zscore]]
+zscore | get score of member
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+zscore key mem
+----
+.Example
+----
+> zadd z 10 a 20 b 30 c 40 d
+4
+> zscore z a
+"10"
+> zscore z d
+"40"
+----
+.Description
+Get score of a member.
+
+.Return
+A string which contains a decimal value for the score.
+
+[[zunionstore]]
+zunionstore | store a union
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+zunionstore dest num key [key ...] [weights w [w ...]]
+ [aggregate sum|min|max]
+----
+.Example
+----
+> zadd z1 10 a 20 b 30 c
+3
+> zadd z2 40 d 30 c 10 b
+3
+> zunionstore z3 2 z1 z2
+4
+> zrange z3 0 -1 withscores
+["a","10","b","30","d","40","c","60"]
+----
+.Description
+Union zsets and store in destination key.  The members which are in
+both sets are combined into the destination set.  The score is a
+combination of both members, depending on the weight given to each set
+and how it is aggregated.  The default is weight 1 for each set (or no
+weight), and aggregating by sum.
+
+.Return
+An integer count of the members in the new set.
+
+[[zscan]]
+zscan | iterate a zset
+~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+zscan key curs [match pattern] [count cnt]
+----
+.Example
+----
+> zadd z 50 abc 40 abb 30 abd 20 xyz 10 zzz
+5
+> zscan z 0 match a* count 1
+["3",["abd","30"]]
+> zscan z 3 match a* count 1
+["4",["abb","40"]]
+> zscan z 4 match a* count 1
+["0",["abc","50"]]
+> zscan z 5 match a* count 1
+["0",[]]
+> zscan z 0
+["0",["zzz","10","xyz","20","abd","30","abb","40","abc","50"]]
+> zscan z 5 match a* count 1
+["0",[]]
+----
+.Description
+Get the fields and values which match a pattern.  The cursor is the
+offset into the scan where the results will start.  If the cursor is
+equal to 3, then the match will start at the 3rd member of the zset.
+
+.Return
+An array within an array.  The outer array is the cursor counter, the
+inner array are the members matched with their scores.
+
+[[zpopmin]]
+zpopmin | remove minimum score
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+zpopmin key [count]
+----
+.Example
+----
+> zadd z 10 a 20 b 30 c 40 d
+4
+> zpopmin z 2
+["a","10","b","20"]
+> zpopmin z 20
+["c","30","d","40"]
+> zpopmin z 20
+[]
+----
+.Description
+Remove up to count members the lowest scores of the zset.  If not
+enough members are currently in the set, truncate count to the number
+of members in the set.
+
+.Return
+An array with the set of members and the scores, in the order they
+were popped, an empty array is returned when the key doesn't exist.
+
+[[zpopmax]]
+zpopmax | remove maximum score
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+zpopmax key [count]
+----
+.Example
+----
+> zadd z 10 a 20 b 30 c 40 d
+4
+> zpopmax z 2
+["d","40","c","30"]
+> zpopmax z 20
+["b","20","a","10"]
+> zpopmax z 20
+[]
+----
+.Description
+Remove up to count members the highest scores of the zset.  If not
+enough members are currently in the set, truncate count to the number
+of members in the set.
+
+.Return
+An array with the set of members and the scores, in the order they
+were popped, an empty array is returned when the key doesn't exist.
+
+[[bzpopmin]]
+bzpopmin | block pop min score
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+bzpopmin key [key ...] timeout
+----
+.Example
+----
+> bzpopmin z x 2
+null
+> bzpopmin z x 0
+["z","a","10"]
+> bzpopmin z x 0
+----
+.Description
+Remove lowest score member of the zset.  If no members are currently
+in the zset, block and wait timeout seconds for a publisher to add
+them.  Wait indefinitely when timeout is zero.
+
+.Return
+An array with the zset name and the member with scores.  If timeout
+occurs, then null is returned.
+
+[[bzpopmax]]
+bzpopmax | block pop max score
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+bzpopmax key [key ...] timeout
+----
+.Example
+----
+> bzpopmax z x 2
+null
+> bzpopmax z x 0
+["z","d","40"]
+> bzpopmax z x 0
+----
+.Description
+Remove hightest score member of the zset.  If no members are currently
+in the zset, block and wait timeout seconds for a publisher to add
+them.  Wait indefinitely when timeout is zero.
+
+.Return
+An array with the zset name and the member with scores.  If timeout
+occurs, then null is returned.
+
+String
+------
+
+[options="header",cols="3,1,1,1,1,1"]
+|===========================================
+| command | arity | first key | last key | step | flags
+| <<append>> | 3 | 1 | 1 | 1 | write
+| <<bitcount>> | -2 | 1 | 1 | 1 | read
+| <<bitfield>> | -2 | 1 | 1 | 1 | write
+| <<bitop>> | -4 | 2 | -1 | 1 | write
+| <<bitpos>> | -3 | 1 | 1 | 1 | read
+| <<decr>> | 2 | 1 | 1 | 1 | write
+| <<decrby>> | 3 | 1 | 1 | 1 | write
+| <<get>> | 2 | 1 | 1 | 1 | read
+| <<getbit>> | 3 | 1 | 1 | 1 | read
+| <<getrange>> | 4 | 1 | 1 | 1 | read
+| <<getset>> | 3 | 1 | 1 | 1 | write
+| <<incr>> | 2 | 1 | 1 | 1 | write
+| <<incrby>> | 3 | 1 | 1 | 1 | write
+| <<incrbyfloat>> | 3 | 1 | 1 | 1 | write
+| <<mget>> | -2 | 1 | -1 | 1 | read
+| <<mset>> | -3 | 1 | -1 | 2 | write
+| <<msetnx>> | -3 | 1 | -1 | 2 | write
+| <<psetex>> | 4 | 1 | 1 | 1 | write
+| <<set>> | -3 | 1 | 1 | 1 | write
+| <<setbit>> | 4 | 1 | 1 | 1 | write
+| <<setex>> | 4 | 1 | 1 | 1 | write
+| <<setnx>> | 3 | 1 | 1 | 1 | write
+| <<setrange>> | 4 | 1 | 1 | 1 | write
+| <<strlen>> | 2 | 1 | 1 | 1 | read
+|===========================================
+
+[[append]]
+append | append to value
+~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+append key value
+----
+.Example
+----
+> append s string
+5
+> append s value
+9
+> get s
+"stringvalue"
+----
+.Description
+Append value to key.
+
+.Return
+The integer strlen of the key after value appended.
+
+[[bitcount]]
+bitcount | count bits
+~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+bitcount key [start end]
+----
+.Example
+----
+> set s string
+'OK'
+> bitcount s 0 0
+5
+> bitfield s get u8 0
+115
+> getrange s 0 0
+"s"
+----
+.Description
+Count the bits in string from byte offset start to offset end,
+inclusive.
+
+.Return
+An integer count of bits set in the byte range.
+
+[[bitfield]]
+bitfield | manipulate bits
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+bitfield key [get type off] [set type off value]
+ [incrby type off incr] [overflow wrap | sat | fail]
+----
+.Example
+----
+> bitfield bf set u8 0 1 set u8 8 2 set u8 16 3 set u8 24 4
+[0,0,0,0]
+----
+.Description
+Set integer value at bit offset off as type, where type is signed (iN)
+or unsigned (uN) with bit size *1* through *63*, *64* for signed.
+
+.Return
+An array of the integers that existed before setting the new values.
+
+.Example
+----
+> bitfield bf get u8 0 get u8 8 get u8 16 get u8 24
+[1,2,3,4]
+----
+.Description
+Get integer value at bit offset, using signed or unsigned type.
+
+.Return
+An array of integers that are requested.
+
+.Example
+----
+> bitfield bf incrby u8 0 1 incrby u8 8 1 incrby u8 16 1 incrby u8 24 1
+[2,3,4,5]
+> bitfield bf incrby u8 0 255 overflow wrap
+[1]
+> bitfield bf incrby u8 8 255 overflow sat
+[255]
+> bitfield bf incrby u8 16 255 overflow fail
+[nil]
+----
+.Description
+Increment integer values at bit offsets.  The overflow arument
+modifies the behavior of increment in the case that the result wraps
+around zero.  Wrap is the default, saturate (sat) caps the value at
+the highest and lowest point, fail discards the new value and uses the
+old value, returning *nil*.
+
+.Return
+An array of the integers after incrementing.
+
+[[bitop]]
+bitop | bitwise operator
+~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+bitop (and | or | xor | not) dest src [src src ...]
+----
+.Example
+----
+> bitfield i set u8 0 3
+[0]
+> bitfield j set u8 0 1
+[0]
+> bitop xor k j i
+1
+> bitfield k get u8 0
+[2]
+----
+.Description
+Bitwise store to dest from srcs by performing logical operations on
+each bit.
+
+.Return
+The number of bytes stored in dest, which is the minimum size of i and
+j, since the trailing zeros are not stored.
+
+[[bitpos]]
+bitpos | find a bit
+~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+bitpos key bit [start end]
+----
+.Example
+----
+> bitfield k set u8 0 16
+[0]
+> bitpos k 1 0 1
+4
+> bitpos k 0 0 1
+0
+----
+.Description
+Find first bit set or clear between start offset and end offset.
+
+.Return
+The position of the bit set or clear, or *-1* when not found.
+
+[[decr]]
+decr | decr by one
+~~~~~~~~~~~~~~~~~~
+.Usage
+----
+decr key
+----
+.Example
+----
+> set k 10
+'OK'
+> decr k
+9
+> decr k
+8
+----
+.Description
+Decrement integer at key by one.
+
+.Return
+The value after decrementing it.  If key is created, then it is
+initialized to *-1*.
+
+[[decrby]]
+decrby | decr by integer
+~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+decrby key int
+----
+.Example
+----
+> set k 10
+'OK'
+> decrby k -1
+11
+> decrby k 10
+1
+----
+.Description
+Decrement integer at key by the integer argument.
+
+.Return
+The value after decrementing it.  If key is created, then it is
+initialized to the negative of the integer argument.
+
+[[get]]
+get | get key value
+~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+get key
+----
+.Example
+----
+> set k val
+'OK'
+> get k
+"val"
+> del k
+1
+> get k
+nil
+----
+.Description
+Get the key value.
+
+.Return
+The string value or *nil* when not found.
+
+[[getbit]]
+getbit | git bit at offset
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+getbit key off
+----
+.Example
+----
+> bitfield k set u8 0 16
+[0]
+> getbit k 0
+0
+> getbit k 3
+0
+> getbit k 4
+1
+----
+.Description
+Get value at bit offset in the string stored at the key.
+
+.Return
+A *1* if the bit is set, a *0* if not set or not found.
+
+[[getrange]]
+getrange | get range in string
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+getrange key start end
+----
+.Example
+----
+> set k 0123456789
+'OK'
+> getrange k 3 7
+"34567"
+> getrange k 12 13
+""
+> getrange k 7 -3
+"7"
+> getrange k 0 -1
+"0123456789"
+----
+.Description
+Get a substring of the string value at key.  Start and/or end may be
+negative to index from the end of the string.
+
+.Return
+A string with the characters in the range start to end, inclusive.
+
+[[getset]]
+getset | swap values
+~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+getset key value
+----
+.Example
+----
+> getset k 2
+nil
+> getset k 3
+"2"
+----
+.Description
+Swap new value with current value and return it.
+
+.Return
+The value currently stored with the key, or *nil* if the key is
+created.
+
+[[incr]]
+incr | incr by one
+~~~~~~~~~~~~~~~~~~
+.Usage
+----
+incr key
+----
+.Example
+----
+> incr k
+4
+> incr k
+5
+> del k
+1
+> incr k
+1
+----
+.Description
+Increment integer at key by one.
+
+.Return
+The value after it is incremented.  If key is created, then it is
+initialized to *1*.
+
+[[incrby]]
+incrby | incr by integer
+~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+incrby key int
+----
+.Example
+----
+> del k
+1
+> incrby k 100
+100
+> incrby k 100
+200
+----
+.Description
+Increment integer at key by the integer argument.
+
+.Return
+The value after it is incremented.  If key is created, then it is
+initialized to the integer argument.
+
+[[incrbyfloat]]
+incrbyfloat | incr by decimal
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+incrbyfloat key decimal
+----
+.Example
+----
+> incrbyfloat n 1.1
+"1.1"
+> incrbyfloat n 1.1
+"2.2"
+> incrbyfloat n 1.1
+"3.3"
+----
+.Description
+Increment number at key by decimal value.  This uses 128 bit decimal
+arithmetic which has a 34 digit range and an exponent from -6143 to
++6144.  https://en.wikipedia.org/wiki/Decimal128_floating-point_format
+
+.Return
+The number after it is incremented.  If key is created, then it is
+initialized to the decimal argument.
+
+[[mget]]
+mget | get multiple values
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+mget key [key ...]
+----
+.Example
+----
+> mset j 1 k 2 l 3 m 4
+'OK'
+> mget j k l m mm
+["1","2","3","4",nil]
+----
+.Description
+Get the values of multiple keys.
+
+.Return
+An array of values or nil when key doesn't exist or is not a string
+type.
+
+[[mset]]
+mset | set multiple values
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+mset key val [key val ...]
+----
+.Example
+----
+> mset j 1 k 2 l 3 m 4
+'OK'
+----
+.Description
+Set the values of multiple keys.
+
+.Return
+*OK*.
+
+[[msetnx]]
+msetnx | set if not exist
+~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+msetnx key val [key val ...]
+----
+.Example
+----
+> del j k l m
+4
+> msetnx j 1 k 2 l 3 m 4
+1
+> msetnx j 1 k 2 l 3 m 4
+0
+----
+.Description
+Set the values of keys if all keys do not exist.
+
+.Return
+If all keys are created a *1* is returned, otherwise no kesy are
+created and a *0* is returnd;
+
+[[psetex]]
+psetex | set with expiration
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+psetex key ms val
+----
+.Example
+----
+> psetex k 1580166892000 hello
+'OK'
+> ttl k
+80
+> psetex k 15000 hello
+'OK'
+> ttl k
+13
+> pttl k
+11991
+----
+.Description
+Set the value with expiration of key in milliseconds.  The expiration
+argument is either stamp or relative time.
+
+.Return
+*OK*.
+
+[[set]]
+set | set value
+~~~~~~~~~~~~~~~
+.Usage
+----
+set key val [ex secs] [px ms] [nx | xx]
+----
+.Example
+----
+> set k one
+'OK'
+> set k one xx
+'OK'
+> set k one nx
+nil
+> set k one px 15000 xx
+'OK'
+> ttl k
+11
+> pttl k
+4260
+----
+.Description
+Set the key value optionally with expiration and *nx* or *xx* test.
+The *nx* option tests that the key does not exist before setting.  The
+*xx* tests that the key does exist before setting.
+
+.Return
+*OK* on success, *nil* when failed.
+
+[[setbit]]
+setbit | set bits
+~~~~~~~~~~~~~~~~~
+.Usage
+----
+setbit key off 1 | 0
+----
+.Example
+----
+> setbit k 0 1
+0
+> setbit k 1 1
+0
+> setbit k 1 0
+1
+> getbit k 0
+1
+> getbit k 1
+0
+----
+.Description
+Swap the value at bit offset in string with the new bit value.
+
+.Return
+A *1* or *0* is returned, the previous value held by bit.
+
+[[setex]]
+setex | set with expiration
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+setex key secs val
+----
+.Example
+----
+> setex k 1580166892 hello
+'OK'
+> ttl k
+80
+> setex k 15 hello
+'OK'
+> ttl k
+13
+> pttl k
+11991
+----
+.Description
+Set the value with expiration of key in seconds.  The expiration
+argument is either stamp or relative time.
+
+.Return
+*OK*.
+
+[[setnx]]
+setnx | set if not exist
+~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+setnx key val
+----
+.Example
+----
+> del k
+1
+> setnx k value
+'OK'
+> setnx k value
+nil
+----
+.Description
+Set the value if key does not exist.
+
+.Return
+*OK* if success, *nil* if key already exists.
+
+[[setrange]]
+setrange | set value range
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+setrange key off val
+----
+.Example
+----
+> del k
+1
+> setrange k 5 waterbuffalo
+17
+> get k
+"\u0000\u0000\u0000\u0000\u0000waterbuffalo"
+----
+.Description
+Overwrite or create a range in a string stored with the key at the
+offset specified.  The data implicitly created by the setrange is zero
+padded.
+
+.Return
+The length of key after modification.
+
+[[strlen]]
+strlen | get strlen
+~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+strlen key
+----
+.Example
+----
+> del k
+1
+> setrange k 5 waterbuffalo
+17
+> strlen k
+17
+> get k
+"\u0000\u0000\u0000\u0000\u0000waterbuffalo"
+----
+.Description
+Get length of value, which is the maximum extent, not the strlen
+function.
+
+.Return
+The length of value, which could be *0* if the key does not exist.
+
+Transaction
+-----------
+
+[options="header",cols="3,1,1,1,1,1"]
+|===========================================
+| command | arity | first key | last key | step | flags
+| <<discard>> | 1 | 0 | 0 | 0 |
+| <<exec>> | 1 | 0 | 0 | 0 |
+| <<multi>> | 1 | 0 | 0 | 0 |
+| <<unwatch>> | 1 | 0 | 0 | 0 |
+| <<watch>> | -2 | 1 | -1 | 1 | read
+|===========================================
+
+[[discard]]
+discard | discard trans
+~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+discard 
+----
+.Description
+Discard cmds issued after multi
+
+[[exec]]
+exec | run trans
+~~~~~~~~~~~~~~~~
+.Usage
+----
+exec 
+----
+.Description
+Execute all commands after multi
+
+[[multi]]
+multi | start trans
+~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+multi 
+----
+.Description
+Multi start transaction
+
+[[unwatch]]
+unwatch | stop watching
+~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+unwatch 
+----
+.Description
+Forget watched keys
+
+[[watch]]
+watch | start watching
+~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+watch key [key ...]
+----
+.Description
+Watch keys to determine multi/exec blk
+
+Stream
+------
+
+[options="header",cols="3,1,1,1,1,1"]
+|===========================================
+| command | arity | first key | last key | step | flags
+| <<xinfo>> | -2 | 2 | 2 | 1 | read
+| <<xadd>> | -5 | 1 | 1 | 1 | write
+| <<xtrim>> | -2 | 1 | 1 | 1 | write
+| <<xdel>> | -2 | 1 | 1 | 1 | write
+| <<xrange>> | -4 | 1 | 1 | 1 | read
+| <<xrevrange>> | -4 | 1 | 1 | 1 | read
+| <<xlen>> | 2 | 1 | 1 | 1 | read
+| <<xread>> | -3 | 1 | 1 | 1 | read movable
+| <<xgroup>> | -2 | 2 | 2 | 1 | write
+| <<xreadgroup>> | -3 | 1 | 1 | 1 | write movable
+| <<xack>> | -4 | 1 | 1 | 1 | write
+| <<xclaim>> | -5 | 1 | 1 | 1 | write
+| <<xpending>> | -3 | 1 | 1 | 1 | read
+| <<xsetid>> | 4 | 1 | 1 | 1 | write
+|===========================================
+
+[[xinfo]]
+xinfo | get stream info
+~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+xinfo [consumers key groupname] [groups key] [stream key]
+----
+.Example
+----
+> xinfo groups S
+[["name","G","consumers",2,"pending",2,"last-delivered-id",
+  "1580474523226-0"],
+["name","H","consumers",0,"pending",0,"last-delivered-id","0"]]
+----
+.Description
+Get group info for a stream, which shows what the next *id* will be,
+the number of consumers and the number of pending records.
+
+.Return
+An array of groups where each group is an array of field values:
+
+- name -- the name of the group.
+- consumers -- the count of consumers.
+- pending -- the count of records in the pending queue.
+- last-delivered-id -- an *id* pointer, used to incrementally send
+  newer records to clients.
+
+The empty array *[]* is returned when the stream doesn't exist or it
+does not have groups.
+
+.Example
+----
+> xinfo stream S
+["length",3,"groups",2,"last-generated-id","1580474524828-0","first-entry",
+["1580474520477-0",["c","1"]],"last-entry",["1580474524828-0",["b","1"]]]
+----
+.Description
+Get the info for the a stream.
+
+.Return
+An array of field values describing the stream:
+
+- length -- the number of items in the stream
+- groups -- the number of groups associated with the stream
+- last-generated-id -- the *id* generated by the stream, it is used to
+  ensure that the next generated *id* is greater than the last.
+- first-entry -- the item which is at the head of the stream.
+- last-entry -- the item which is at the tail of the stream.
+
+The empty array *[]* is returned when the stream doesn't exist.
+
+.Example
+----
+> xinfo consumers S G
+[["name","C","pending",1,"idle",2225891],["name","D","pending",1,
+  "idle",2221204]]
+----
+.Return
+An array of consumers, which is an array of field values:
+
+- name -- the name of the consumer.
+- pending -- the count of records in the pending queue for this
+  consumer.
+- idle -- the number of milliseconds since the consumer was active
+
+The empty array *[]* is returned when stream or group or consumers
+don't exist.
+
+[[xadd]]
+xadd | add entry to stream
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+xadd key id field string [field string ...]
+----
+.Example
+----
+> xadd S * cosmic crisp
+"1580392806377-0"
+> xadd S * red delicous
+"1580392886784-0"
+> xrange S - +
+[["1580392806377-0",["cosmic","crisp"]],
+ ["1580392886784-0",["red","delicious"]]]
+----
+.Description
+Add field value pairs to stream.  If *id* is the star, then it is
+generated using the current milliseconds, and an incrementing serial
+number which is only incremented within the millisecond period.  If
+the *id* is not generated, it should be one or two 64 bit integers
+(separated by the dash) increasing in value, since an *id* must formed
+to increase over time.
+
+.Return
+The string *id* associated with the new entry.
+
+[[xtrim]]
+xtrim | trim stream to size
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+xtrim key maxlen [~] count
+----
+.Example
+----
+> xadd S * cosmic crisp
+"1580392806377-0"
+> xadd S * red delicous
+"1580392886784-0"
+> xadd S * shiba inu
+"1580393902456-0"
+> xadd S * akita inu
+"1580393946076-0"
+> xlen S
+4
+> xtrim S maxlen 2
+2
+> xrange S - +
+[["1580393902456-0",["shiba","inu"]],
+ ["1580393946076-0",["akita","inu"]]
+----
+.Description
+Trims the stream to a maxlen items from the tail -- these are the
+oldest entries.
+
+.Return
+An integer count of items removed from the stream.
+
+[[xdel]]
+xdel | delete from stream
+~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+xdel key id [id ...]
+----
+.Example
+----
+> xadd S * hello world
+"1580394876047-0"
+> xadd S * hello world
+"1580394877281-0"
+> xdel S 1580394876047-0 1580394877281-0
+2
+----
+.Description
+Delete entries from the stream which match the *id* strings.
+
+.Return
+An integer count of items removed from the stream.
+
+[[xrange]]
+xrange | get range of items
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+xrange key start end [count cnt]
+----
+.Example
+----
+> xadd S * a 1
+"1580458726320-0"
+> xadd S * b 2
+"1580458729687-0"
+> xadd S * c 3
+"1580458733903-0"
+> xrange S - +
+[["1580458726320-0",["a","1"]],["1580458729687-0",["b","2"]],
+ ["1580458733903-0",["c","3"]]]
+> xrange S 1580458729687 1580458733903
+[["1580458729687-0",["b","2"]],["1580458733903-0",["c","3"]]]
+> xrange S 1580458733903-1 +
+[]
+----
+.Description
+Get items between start and end range.  The *id* assigned to each item
+in the stream is a numerically increasing value.  The start is the low
+*id*, the end is the high *id*.  All of the items within the range are
+returned, up to count, if specified.
+
+.Return
+An array of items.  Each item is an *id* followed by an array of all
+of the fields defined in the entry.  The empty array is the result
+when no items are found or the key does not exist.
+
+[[xrevrange]]
+xrevrange | get reverse range
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+xrevrange key start end [count cnt]
+----
+.Example
+----
+> xadd S * a 1
+"1580458726320-0"
+> xadd S * b 2
+"1580458729687-0"
+> xadd S * c 3
+"1580458733903-0"
+> xrevrange S + -
+[["1580458733903-0",["c","3"]],["1580458729687-0",["b","2"]],
+ ["1580458726320-0",["a","1"]]]
+> xrevrange S 1580458733903 1580458729687
+[["1580458733903-0",["c","3"]],["1580458729687-0",["b","2"]]]
+> xrevrange S + 1580458733903-1
+[]
+----
+.Description
+Get items between start and end range.  The *id* assigned to each item
+in the stream is a numerically increasing value.  The start is the
+high *id*, the end is the low *id*.  All of the items within the range
+are returned, up to count, if specified.
+
+.Return
+An array of items.  Each item is an *id* followed by an array of all
+of the fields defined in the entry.  The empty array is the result
+when no items are found or the key does not exist.
+
+[[xlen]]
+xlen | get stream length
+~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+xlen key
+----
+.Example
+----
+> xadd S * a 1
+"1580458726320-0"
+> xlen S
+1
+> xadd S * b 2
+"1580458729687-0"
+> xlen S
+2
+----
+.Description
+Get the number of items in a stream.
+
+.Return
+An integer count of the number of items, or *0* when the stream is
+empty or the key doesn't exist.
+
+[[xread]]
+xread | get next entry
+~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+xread [count cnt] [block ms] streams key [key ...] id [id ...]
+----
+.Example
+----
+> xadd S * a 1
+"1580466119503-0"
+> xadd T * x 1
+"1580466126059-0"
+> xread streams S T 0 0
+[["S",[["1580466119503-0",["a","1"]]]],
+ ["T",[["1580466126059-0",["x","1"]]]]]
+----
+.Description
+Read new items on one or more streams which occur after the *id*.  If
+all streams are exhausted of new items, then the command can block, if
+requested, until items are available on any stream.
+
+.Return
+An array of streams names that have items, with the array of item
+identfiers, then the array of field values.  The result is
+structurally similar to the xrange command, where the results are
+combined over multiple streams.  If no items are available, or the
+block timeout expires, a *null* is returned.
+
+[[xgroup]]
+xgroup | modify group
+~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+xgroup [create key grp id [mkstream]] [setid key grp id]
+ [destroy key grp] [delconsumer key grp cname]
+----
+.Example
+----
+> xgroup create S G 0 mkstream
+'OK'
+> xgroup create T G 0 mkstream
+'OK'
+> xadd S * a 1
+"1580466848853-0"
+> xadd T * x 1
+"1580466970348-0"
+> xreadgroup group G C streams S T > >
+[["S",[["1580466848853-0",["a","1"]]]],
+ ["T",[["1580466970348-0",["x","1"]]]]]
+----
+.Description
+Create a consumer group and initialize the next id that consumers will
+read.  The option mkstream will create an empty stream if it doesn't
+exit.
+
+.Example
+----
+> xgroup setid S G 0
+'OK'
+> xreadgroup group G D streams S T > >
+[["S",[["1580466848853-0",["a","1"]]]]]
+----
+.Description
+Set the next id that consumers will read.  Each group contains a
+pointer to the next id.  The setid argument moves the pointer to a
+different location.
+
+.Example
+----
+> xinfo groups T
+[["name","G","consumers",1,"pending",1,
+  "last-delivered-id","1580466970348-0"]]
+> xgroup destroy T G
+1
+> xinfo groups T
+[]
+----
+.Description
+Destroy the group and associated consumers from the stream.
+
+.Example
+----
+> xinfo consumers S G
+[["name","C","pending",1,"idle",466329],
+ ["name","D","pending",1,"idle",378057]]
+> xgroup delconsumer S G D
+1
+> xinfo consumers S G
+[["name","C","pending",1,"idle",514499]]
+----
+.Description
+Delete the consumer from the group.  The removes any pending items
+that the consumer has outstanding.
+
+.Return
+- xgroup create -- *OK* or error if key not found and mkstream not
+  specified.
+- xgroup setid -- *OK* or error if group or key not found.
+- xgroup destroy -- An integer *1* if group destroyed, *0* if not
+  found.
+- xgroup delconsumer -- An integer *1* if consumer destroyed, *0* if
+  not found.
+
+[[xreadgroup]]
+xreadgroup | read next group
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+xreadgroup group grp consumer [count cnt] [block ms] [noack]
+ streams key [key ...] id [id ...]
+----
+.Example
+----
+> xadd S * a 1
+"1580466848853-0"
+> xadd T * x 1
+"1580466970348-0"
+> xreadgroup group G C streams S T > >
+[["S",[["1580466848853-0",["a","1"]]]],
+ ["T",[["1580466970348-0",["x","1"]]]]]
+> xpending S G
+[1,"1580466848853-0","1580466848853-0",[["C","1"]]]
+> xpending T G
+[1,"1580466970348-0","1580466970348-0",[["C","1"]]]
+> xack S G 1580466848853-0
+1
+> xack T G 1580466970348-0
+1
+> xpending S G
+[0,nil,nil,nil]
+> xpending T G
+[0,nil,nil,nil]
+----
+.Description
+Read streams through consumer group.  This assigns items from the
+stream to the consumer attached to the group.  A record of this read
+is saved with the stream until it is acked with xack, or reassigned
+with xclaim, or the group is destroyed with xgroup.  If the *id* used
+to read the streams is *>*, then the next id pointer for the group is
+used to read the next available items.  If the *id* is a number, then
+the records returned are already assigned to the consumer.  This form
+is used to find the records after they have been delivered.  If no
+records are available and *>* is used, then *null* is returned or if
+block ms is used, the command is blocked until the records become
+available.
+
+.Return
+An array of streams names that have items, with the array of item
+identfiers, then the array of field values.  The result is
+structurally similar to the xrange command, where the results are
+combined over multiple streams.  If no items are available, or the
+block timeout expires, a *null* is returned.
+
+[[xack]]
+xack | consume group entry
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+xack key grp id [id ...]
+----
+.Example
+----
+> xreadgroup group G C streams S >
+[["S",[["1580466848853-0",["a","1"]]]]]
+> xpending S G
+[1,"1580466848853-0","1580466848853-0",[["C","1"]]]
+> xack S G 1580466848853-0
+1
+> xpending S G
+[0,nil,nil,nil]
+> xack S G 1580466848853-0
+0
+----
+.Description
+Acknowledge consumption of the *id* strings.  The record in the stream
+associated with the group is removed from the pending list.
+
+.Return
+An integer count of the number of *id* strings acked.
+
+[[xclaim]]
+xclaim | read old group entries
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+xclaim key grp consumer min-idle-time id [id ...] [idle ms]
+[time ms-utc] [retrycount cnt] [force] [justid]
+----
+.Example
+----
+> xreadgroup group G C streams S >
+[["S",[["1580466848853-0",["a","1"]]]]]
+> xclaim S G D 1 1580466848853-0
+[["1580466848853-0",["a","1"]]]
+> xpending S G
+[1,"1580466848853-0","1580466848853-0",[["D","1"]]]
+> xack S G 1580466848853-0
+1
+> xpending S G
+[0,nil,nil,nil]
+> xgroup setid S G 0
+'OK'
+> xclaim S G D 1 1580466848853-0
+[]
+> xreadgroup group G C streams S >
+[["S",[["1580466848853-0",["a","1"]]]]]
+> xclaim S G D 10000 1580466848853-0
+[]
+> xclaim S G D 100 1580466848853-0
+[["1580466848853-0",["a","1"]]]
+> xclaim S G E 0 1580466848853-0 force
+[["1580466848853-0",["a","1"]]]
+> xclaim S G X 0 1580466848853-0 force justid
+["1580466848853-0"]
+> xpending S G
+[1,"1580466848853-0","1580466848853-0",[["X","1"]]]
+----
+.Description
+Recover items from a stream, group and assign them to a consumer.  An
+item must be older than min-idle-time millisecs in order for xclaim to
+succeed.  This is to prevent the race condtion of claiming items that
+were already claimed.  The force argument causes the record to be
+claimed regardless of the pending state.
+
+.Return
+The records are returned when xclaim succeeds, unless justid is
+specified.  An empty array is returned when no *id* succeeds.
+
+[[xpending]]
+xpending | find pending by group
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+xpending key grp [start end count] [consumer]
+----
+.Example
+----
+> xpending S G
+[1,"1580466848853-0","1580466848853-0",[["X","1"]]]
+> xreadgroup group G C count 1 streams S >
+[["S",[["1580472282479-0",["b","1"]]]]]
+> xreadgroup group G D count 1 streams S >
+[["S",[["1580472289614-0",["c","1"]]]]]
+> xpending S G
+[3,"1580466848853-0","1580472289614-0",
+ [["X","1"],["C","1"],["D","1"]]]
+> xpending S G - + 10 C
+[["1580472282479-0","C",73749,1]]
+> xpending S G - + 10 D
+[["1580472289614-0","D",77612,1]]
+> xadd S * d 1
+"1580472723272-0"
+> xreadgroup group G D count 1 streams S >
+[["S",[["1580472723272-0",["d","1"]]]]]
+> xpending S G - + 10 D
+[["1580472289614-0","D",397783,1],["1580472723272-0","D",4319,1]]
+> xpending S G
+[4,"1580466848853-0","1580472723272-0",
+ [["X","1"],["C","1"],["D","2"]]]
+----
+.Description
+Get the pending *id* records from group.  Without a consumer, this
+requests the number of pending records, pending head and tail for the
+group, and the consumers pending count pairs.  With the consumer, this
+requests all of the pending records for the consumer, up to the count
+specified.  The id, the consumer, the pending time in milliseconds,
+and the delivered count are in each of the pending records.
+
+.Return
+- xpending key grp -- An array of pending count, head pending *id*,
+  tail pending *id*, and an array off consumers, each with a count of
+  pending records.
+- xpending key grp start end count consumer -- An array of pending
+  records belonging to the consumer requested, each with an *id*, an
+  idle time, and a delivery count.
+
+[[xsetid]]
+xsetid | set last entry of group
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+xsetid key grp id
+----
+.Example
+----
+> xinfo groups S
+[["name","G","consumers",0,"pending",0,
+  "last-delivered-id","1580474520477-0"]]
+> xsetid S G 0
+'OK'
+> xinfo groups S
+[["name","G","consumers",0,"pending",0,"last-delivered-id","0"]]
+----
+.Description
+Set the next *id* of a group associated with a stream.
+
+.Return
+*OK* if success, error when key or group doesn't exist.

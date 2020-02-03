@@ -132,7 +132,7 @@ RedisExec::exec_bitfield( EvKeyCtx &ctx )
   char           type_char;
   uint8_t        type_width;
   BitfieldOp     op;
-  BitfieldOver   overflow;
+  BitfieldOver   overflow; /* OV_WRAP = 0, OV_SAT = 1, OV_FAIL = 2 */
 
   if ( this->argc < 3 )
     return ERR_BAD_ARGS;
@@ -371,7 +371,8 @@ RedisExec::exec_bitfield( EvKeyCtx &ctx )
                   int_to_str( old_val.ival, &str[ sz + 1 ] ) :
                   uint_to_str( old_val.ival, &str[ sz + 1 ] ) );
     }
-    /* incrby overflow fail failed */
+    /* incrby "overflow fail" failed, XXX this returns nil which is what redis
+     * does but documentation says it should return null */
     else { /* $-1 */
       str[ sz ] = '$'; str[ sz + 1 ] = '-'; str[ sz + 2 ] = '1';
       sz += 3;
@@ -675,10 +676,15 @@ RedisExec::exec_getbit( EvKeyCtx &ctx )
 ExecStatus
 RedisExec::exec_getrange( EvKeyCtx &ctx )
 {
-  int64_t start = 0,
-          end = -1;
-  void  * data;
-  size_t  size;
+  int64_t    start  = 0,
+             end    = -1;
+  size_t     sz     = 0,
+             len    = 0;
+  int64_t    start_off,
+             end_off;
+  ExecStatus status = EXEC_OK;
+  void     * data;
+  size_t     size;
 
   /* GETRANGE KEY [start end] */
   if ( this->argc > 2 && ! this->msg.get_arg( 2, start ) )
@@ -689,25 +695,32 @@ RedisExec::exec_getrange( EvKeyCtx &ctx )
   switch ( this->get_key_read( ctx, MD_STRING ) ) {
     case KEY_OK:
       ctx.kstatus = this->kctx.value( &data, size );
-      if ( size == 0 )
-        return EXEC_SEND_ZERO_STRING;
-
       if ( ctx.kstatus == KEY_OK ) {
-        size_t sz, len = 0;
-        int64_t start_off, end_off;
-        /* clip segment [start, end] to [0, size-1] */
-        start_off = ( start < 0 ) ? (int64_t) size + start : start;
-        end_off   = ( end   < 0 ) ? (int64_t) size + end   : end;
-        start_off = min<int64_t>( max<int64_t>( start_off, 0 ), size - 1 );
-        end_off   = max<int64_t>( min<int64_t>( end_off, size - 1 ), 0 );
-        if ( end_off >= start_off )
-          len = ( end_off + 1 ) - start_off;
+        if ( size == 0 )
+          status = EXEC_SEND_ZERO_STRING;
+        else {
+          start_off = ( start < 0 ) ? (int64_t) size + start : start;
+          end_off   = ( end   < 0 ) ? (int64_t) size + end   : end;
+          /* if endpoints outside string range */
+          if ( start_off > end_off ||
+               ( start_off < 0 && end_off < 0 ) ||
+               ( start_off >= (int64_t) size && end_off >= (int64_t) size ) )
+            status = EXEC_SEND_ZERO_STRING;
+          else {
+            /* clip segment [start, end] to [0, size-1] */
+            start_off = min<int64_t>( max<int64_t>( start_off, 0 ), size - 1 );
+            end_off   = max<int64_t>( min<int64_t>( end_off, size - 1 ), 0 );
+            if ( end_off >= start_off )
+              len = ( end_off + 1 ) - start_off;
 
-        sz = this->send_string( &((uint8_t *) data)[ start_off ], len );
+            sz = this->send_string( &((uint8_t *) data)[ start_off ], len );
+          }
+        }
         ctx.kstatus = this->kctx.validate_value();
         if ( ctx.kstatus == KEY_OK ) {
-          this->strm.sz += sz;
-          return EXEC_OK;
+          if ( status == EXEC_OK )
+            this->strm.sz += sz;
+          return status;
         }
       }
       /* FALLTHRU */
@@ -875,8 +888,11 @@ RedisExec::exec_mget( EvKeyCtx &ctx )
       }
       /* FALLTHRU */
     default:            return ERR_KV_STATUS;
-    case KEY_NOT_FOUND: return EXEC_SEND_NIL;
-    case KEY_NO_VALUE:  return ERR_BAD_TYPE;
+    case KEY_NOT_FOUND:
+    case KEY_NO_VALUE: {
+      ctx.part = NULL;
+      return EXEC_OK; /*return EXEC_SEND_NIL; */
+    }
   }
 }
 
@@ -910,8 +926,6 @@ RedisExec::exec_psetex( EvKeyCtx &ctx )
   if ( ! this->msg.get_arg( 2, ival ) )
     return ERR_BAD_ARGS;
   ns = (uint64_t) ival * 1000 * 1000;
-  if ( ns < this->kctx.ht.hdr.current_stamp )
-    ns += this->kctx.ht.hdr.current_stamp;
   /* PSET key ms value */
   return this->do_set_value_expire( ctx, 3, ns, HAS_EXPIRE_NS );
 }
@@ -935,8 +949,6 @@ RedisExec::exec_set( EvKeyCtx &ctx )
           if ( ! this->msg.get_arg( i + 1, ival ) )
             return ERR_BAD_ARGS;
           ns = (uint64_t) ival * 1000 * 1000 * 1000;
-          if ( ns < this->kctx.ht.hdr.current_stamp )
-            ns += this->kctx.ht.hdr.current_stamp;
           flags |= HAS_EXPIRE_NS;
           i += 2;
           break;
@@ -944,8 +956,6 @@ RedisExec::exec_set( EvKeyCtx &ctx )
           if ( ! this->msg.get_arg( i + 1, ival ) )
             return ERR_BAD_ARGS;
           ns = (uint64_t) ival * 1000 * 1000;
-          if ( ns < this->kctx.ht.hdr.current_stamp )
-            ns += this->kctx.ht.hdr.current_stamp;
           flags |= HAS_EXPIRE_NS;
           i += 2;
           break;
@@ -971,6 +981,10 @@ ExecStatus
 RedisExec::do_set_value_expire( EvKeyCtx &ctx,  int n,  uint64_t ns,
                                 int flags )
 {
+  /* time used to determine whether a timestamp or not */
+  static const uint64_t TEN_YEARS_NS = (uint64_t) ( 10 * 12 ) *
+                                       (uint64_t) ( 30 * 24 * 60 * 60 ) *
+                                       (uint64_t) ( 1000 * 1000 * 1000 );
   const char * value;
   size_t       valuelen;
   void       * data;
@@ -991,10 +1005,12 @@ RedisExec::do_set_value_expire( EvKeyCtx &ctx,  int n,  uint64_t ns,
         if ( ! ctx.is_new() && ( flags & K_MUST_NOT_EXIST ) != 0 )
           return EXEC_SEND_NIL;
       }
-      this->kctx.update_stamps( ns, 0 );
       ctx.kstatus = this->kctx.resize( &data, valuelen );
       if ( ctx.kstatus == KEY_OK ) {
         ::memcpy( data, value, valuelen );
+        if ( ns != 0 && ns < TEN_YEARS_NS )
+          ns += this->kctx.ht.hdr.current_stamp;
+        this->kctx.update_stamps( ns, 0 );
         ctx.flags |= EKF_KEYSPACE_EVENT | EKF_KEYSPACE_STRING;
         return EXEC_SEND_OK;
       }
@@ -1031,6 +1047,8 @@ RedisExec::do_set_value( EvKeyCtx &ctx,  int n,  int flags )
       if ( ctx.kstatus == KEY_OK ) {
         ::memcpy( data, value, valuelen );
         ctx.flags |= EKF_KEYSPACE_EVENT | EKF_KEYSPACE_STRING;
+        if ( this->cmd == MSETNX_CMD )
+          return EXEC_SEND_ONE;
         return EXEC_SEND_OK;
       }
       /* FALLTHRU */
@@ -1090,8 +1108,6 @@ RedisExec::exec_setex( EvKeyCtx &ctx )
   if ( ! this->msg.get_arg( 2, ival ) ) /* SETEX key secs value */
     return ERR_BAD_ARGS;
   ns = (uint64_t) ival * 1000 * 1000 * 1000;
-  if ( ns < this->kctx.ht.hdr.current_stamp )
-    ns += this->kctx.ht.hdr.current_stamp;
   return this->do_set_value_expire( ctx, 3, ns, HAS_EXPIRE_NS );
 }
 
@@ -1147,7 +1163,7 @@ RedisExec::exec_strlen( EvKeyCtx &ctx )
     case KEY_OK:
       ctx.kstatus = this->kctx.get_size( data_sz );
       if ( ctx.kstatus == KEY_OK ) {
-    case KEY_IS_NEW:
+    case KEY_NOT_FOUND:
         ctx.ival = data_sz;
         return EXEC_SEND_INT;
       }

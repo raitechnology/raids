@@ -188,7 +188,7 @@ RedisExec::exec_hmset( EvKeyCtx &ctx )
 ExecStatus
 RedisExec::exec_hset( EvKeyCtx &ctx )
 {
-  /* HSET key field val */
+  /* HSET key field val [field val ...]*/
   return this->do_hwrite( ctx, DO_HSET );
 }
 
@@ -434,6 +434,7 @@ RedisExec::do_hwrite( EvKeyCtx &ctx,  int flags )
         argi = 5;
       }
     }
+    ctx.ival = 0;
   }
   else if ( ( flags & DO_HINCRBY ) != 0 ) {
     /* HINCRBY key field ival */
@@ -547,10 +548,18 @@ RedisExec::do_hwrite( EvKeyCtx &ctx,  int flags )
     switch ( flags & ( DO_HSET | DO_HSETNX | DO_HMSET |
                        DO_HINCRBYFLOAT | DO_HINCRBY | DO_HAPPEND ) ) {
       case DO_HSET:
-        ctx.flags |= EKF_KEYSPACE_EVENT | EKF_KEYSPACE_HASH;
         if ( hstatus == HASH_OK )
-          return EXEC_SEND_ONE; /* new item indicated with 1 */
-        return EXEC_SEND_ZERO; /* HASH_UPDATED, replaced old item */
+          ctx.ival++; /* new item indicated with +1 */
+        if ( this->argc > argi ) {
+          if ( ! this->msg.get_arg( argi, arg, arglen ) ||
+               ! this->msg.get_arg( argi+1, val, vallen ) )
+            return ERR_BAD_ARGS;
+          argi += 2;
+          pos.init( arg, arglen );
+          break;
+        }
+        ctx.flags |= EKF_KEYSPACE_EVENT | EKF_KEYSPACE_HASH;
+        return EXEC_SEND_INT;
       case DO_HSETNX:
         if ( hstatus == HASH_EXISTS )
           return EXEC_SEND_ZERO; /* did not update, already exists */

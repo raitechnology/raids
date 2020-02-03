@@ -281,7 +281,7 @@ RedisExec::client_list( char *buf,  size_t buflen )
    * psub=pattern subs, multi=cmds qbuf=query buf size, qbuf-free=free
    * qbuf, obl=output buf len, oll=outut list len, omem=output mem usage,
    * events=sock rd/wr, cmd=last cmd issued */
-  char cbuf[ 64 ], flags[ 8 ];
+  char flags[ 8 ];
   int i = 0;
   /* A: connection to be closed ASAP
      b: the client is waiting in a blocking operation            x <- does it
@@ -315,7 +315,63 @@ RedisExec::client_list( char *buf,  size_t buflen )
     this->sub_tab.sub_count(),
     this->pat_tab.sub_count(),
     ( this->multi == NULL ? -1 : (int) this->multi->msg_count ),
-    cmd_tolower( this->cmd, cbuf ) );
+    cmd_db[ this->cmd ].name );
+}
+
+static void
+get_cmd_info( RedisCmd cmd,  char *tmp,  size_t tmplen )
+{
+  const RedisCmdData &db = cmd_db[ cmd ];
+  char flbuf[ 64 ];
+  size_t j;
+  flbuf[ 0 ] = '[';
+  j = 1;
+  if ( ( db.flags & CMD_READ_FLAG ) != 0 ) {
+    ::strcpy( &flbuf[ j ], "\'readonly\'" );
+    j += 10;
+  }
+  else if ( ( db.flags & CMD_WRITE_FLAG ) != 0 ) {
+    ::strcpy( &flbuf[ j ], "\'write\'" );
+    j += 7;
+  }
+  if ( ( db.flags & CMD_ADMIN_FLAG ) != 0 ) {
+    if ( j > 1 ) flbuf[ j++ ] = ',';
+    ::strcpy( &flbuf[ j ], "\'admin\'" );
+    j += 7;
+  }
+  if ( ( db.flags & CMD_MOVABLE_FLAG ) != 0 ) {
+    if ( j > 1 ) flbuf[ j++ ] = ',';
+    ::strcpy( &flbuf[ j ], "\'movablekeys\'" );
+    j += 13;
+  }
+  flbuf[ j++ ] = ']';
+  flbuf[ j ] = '\0';
+
+  ::snprintf( tmp, tmplen, "[\"%s\",%d,%s,%d,%d,%d]",
+              db.name, db.arity, flbuf, db.first, db.last, db.step );
+}
+
+static void
+get_cmd_usage( RedisCmd cmd,  char *tmp,  size_t tmplen )
+{
+  const RedisCmdExtra *ex = cmd_db[ cmd ].get_extra( XTRA_USAGE );
+  if ( ex == NULL ) {
+    ::strcpy( tmp, "none" );
+    return;
+  }
+
+  size_t off = 0;
+  const char * s = ex->text;
+  for (;;) {
+    if ( off == tmplen - 1 )
+      break;
+    if ( (tmp[ off ] = *s) == '\0' )
+      break;
+    if ( *s != '\n' )
+      off++;
+    s++;
+  }
+  tmp[ off ] = '\0';
 }
 
 ExecStatus
@@ -324,7 +380,7 @@ RedisExec::exec_command( void )
   RedisMsg     m;
   const char * name;
   size_t       j = 0, len;
-  RedisCmd     cmd;
+  char         tmp[ 8 * 80 ];
 
   this->mstatus = REDIS_MSG_OK;
   switch ( this->msg.match_arg( 1, MARG( "info" ),
@@ -332,11 +388,13 @@ RedisExec::exec_command( void )
                                    MARG( "count" ),
                                    MARG( "help" ), NULL ) ) {
     case 0: { /* no args */
-      if ( ! m.alloc_array( this->strm.tmp, REDIS_CMD_COUNT - 1 ) )
+      if ( this->argc > 1 )
+        return ERR_BAD_ARGS;
+      if ( ! m.alloc_array( this->strm.tmp, REDIS_CMD_DB_SIZE - 1 ) )
         return ERR_ALLOC_FAIL;
-      for ( size_t i = 1; i < REDIS_CMD_COUNT; i++ ) {
-        this->mstatus = m.array[ j++ ].unpack_json( cmd_db[ i ].attr,
-                                                    this->strm.tmp );
+      for ( size_t i = 1; i < REDIS_CMD_DB_SIZE; i++ ) {
+        get_cmd_info( (RedisCmd) i, tmp, sizeof( tmp ) );
+        this->mstatus = m.array[ j++ ].unpack_json( tmp, this->strm.tmp );
         if ( this->mstatus != REDIS_MSG_OK )
           break;
       }
@@ -348,8 +406,9 @@ RedisExec::exec_command( void )
         return ERR_ALLOC_FAIL;
       if ( m.len > 0 ) {
         for ( int i = 2; this->msg.get_arg( i, name, len ); i++ ) {
-          cmd = get_upper_cmd( name, len );
-          m.array[ j++ ].unpack_json( cmd_db[ cmd ].attr, this->strm.tmp );
+          get_cmd_info( get_redis_cmd( get_redis_cmd_hash( name, len ) ),
+                        tmp, sizeof( tmp ) );
+          m.array[ j++ ].unpack_json( tmp, this->strm.tmp );
         }
         m.len = j;
       }
@@ -358,19 +417,21 @@ RedisExec::exec_command( void )
     case 2: /* getkeys cmd ... show the keys of cmd */
       return ERR_BAD_ARGS;
     case 3: /* count */
-      m.set_int( REDIS_CMD_COUNT - 1 );
+      m.set_int( REDIS_CMD_DB_SIZE - 1 );
       break;
     case 4: { /* help */
       if ( ! m.alloc_array( this->strm.tmp, this->msg.len * 2 ) )
         return ERR_ALLOC_FAIL;
       for ( int i = 2; this->msg.get_arg( i, name, len ); i++ ) {
-        cmd = get_upper_cmd( name, len );
+        RedisCmd cmd = get_redis_cmd( get_redis_cmd_hash( name, len ) );
+        get_cmd_usage( cmd, tmp, sizeof( tmp ) );
         m.array[ j++ ].set_simple_string( (char *) cmd_db[ cmd ].name );
-        m.array[ j++ ].set_simple_string( (char *) cmd_db[ cmd ].descr );
+        m.array[ j++ ].set_simple_string( tmp );
       }
       if ( j == 0 ) {
+        get_cmd_usage( COMMAND_CMD, tmp, sizeof( tmp ) );
         m.array[ j++ ].set_simple_string( (char *) cmd_db[ COMMAND_CMD ].name );
-        m.array[ j++ ].set_simple_string( (char *) cmd_db[ COMMAND_CMD ].descr);
+        m.array[ j++ ].set_simple_string( tmp );
       }
       m.len = j;
       break;
@@ -835,11 +896,13 @@ RedisExec::exec_time( void )
 {
   RedisMsg m;
   char     sb[ 32 ], ub[ 32 ];
-  struct timeval tv;
-  ::gettimeofday( &tv, 0 );
+  uint64_t x    = this->kctx.ht.hdr.current_stamp,
+           sec  = x / 1000000000,
+           usec = ( x % 1000000000 ) / 1000;
+
   if ( m.string_array( this->strm.tmp, 2,
-                  uint_to_str( tv.tv_sec, sb ), sb,
-                  uint_to_str( tv.tv_usec, ub ), ub ) ) {
+                  uint_to_str( sec, sb ), sb,
+                  uint_to_str( usec, ub ), ub ) ) {
     this->send_msg( m );
     return EXEC_OK;
   }

@@ -945,7 +945,8 @@ RedisExec::exec_xsetid( EvKeyCtx &ctx )
         return ERR_KV_STATUS;
       break;
   }
-  if ( ! this->msg.get_arg( 4, sa.idval, sa.idlen ) )
+  if ( ! this->msg.get_arg( 2, sa.gname, sa.glen ) ||
+       ! this->msg.get_arg( 3, sa.idval, sa.idlen ) )
     return ERR_BAD_ARGS;
   if ( sa.idlen == 1 && sa.idval[ 0 ] == '$' ) {
     xstat = stream.x->
@@ -953,6 +954,8 @@ RedisExec::exec_xsetid( EvKeyCtx &ctx )
     if ( xstat != STRM_OK )
       return ERR_NO_GROUP;
   }
+  if ( ! stream.x->group_exists( sa, tmp ) )
+    return ERR_NO_GROUP;
   while ( (xstat = stream.x->update_group( sa, tmp )) == STRM_FULL )
     if ( ! stream.realloc( 0, sa.glen + sa.idlen + 8, 0 ) )
       return ERR_BAD_ARGS;

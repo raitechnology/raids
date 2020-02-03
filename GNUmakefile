@@ -263,7 +263,7 @@ test_cmd_lnk   := $(raids_dlnk)
 
 $(bind)/test_cmd: $(test_cmd_objs) $(test_cmd_libs)
 
-redis_cmd_files := redis_cmd redis_msg
+redis_cmd_files := redis_cmd
 redis_cmd_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(redis_cmd_files)))
 redis_cmd_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(redis_cmd_files)))
 redis_cmd_libs  := $(kv_lib)
@@ -453,8 +453,11 @@ all_depends += $(client_deps) $(test_msg_deps) $(test_mcmsg_deps) \
 
 all_dirs := $(bind) $(libd) $(objd) $(dependd)
 
-include/raids/redis_cmd.h: $(bind)/redis_cmd
-	$(bind)/redis_cmd > include/raids/redis_cmd.h
+doc/redis_cmd.html: doc/redis_cmd.adoc
+	asciidoctor -b html5 doc/redis_cmd.adoc
+
+include/raids/redis_cmd.h: $(bind)/redis_cmd doc/redis_cmd.adoc
+	$(bind)/redis_cmd doc/redis_cmd.adoc > include/raids/redis_cmd.h
 gen_files += include/raids/redis_cmd.h
 
 # the default targets

@@ -2,234 +2,237 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
 #include <raids/redis_cmd_db.h>
-#include "redis_cmd_db.cpp"
-
-/* offset +1 from enum (NO_CATG=0), so category can be accessed by:
- * RedisCatg redis_catg = STREAM_CATG;
- * const char *name = cmd_category[ (int) redis_catg - 1 ].sub_type;
- */
-static const struct {
-  int cnt;
-  const char *sub_type;
-}
-cmd_category[] =
-{
-  { CLUSTER_CNT,     "CLUSTER" },
-  { CONNECTION_CNT,  "CONNECTION" },
-  { GEO_CNT,         "GEO" },
-  { HASH_CNT,        "HASH" },
-  { HYPERLOGLOG_CNT, "HYPERLOGLOG" },
-  { KEY_CNT,         "KEY" },
-  { LIST_CNT,        "LIST" },
-  { PUBSUB_CNT,      "PUBSUB" },
-  { SCRIPT_CNT,      "SCRIPT" },
-  { SERVER_CNT,      "SERVER" },
-  { SET_CNT,         "SET" },
-  { SORTED_SET_CNT,  "SORTED_SET" },
-  { STRING_CNT,      "STRING" },
-  { TRANSACTION_CNT, "TRANSACTION" },
-  { STREAM_CNT,      "STREAM" },
-  { 0,               NULL },
-};
-
-static const size_t cmd_category_cnt = sizeof( cmd_category ) /
-                                       sizeof( cmd_category[ 0 ] ) - 1;
-
-/* generate redis_cmd.h unless included in another c++ file with this
- * defined: */
-#ifndef NO_REDIS_CMD_GENERATE
-
 #include <raikv/key_hash.h>
 #include <raikv/util.h>
-#include <raids/redis_msg.h>
 #include <ctype.h>
 
 using namespace rai;
 using namespace ds;
 
-static int
-get_cmd_flag( const char *s )
+static size_t
+copy_str( const char *s,  const char *e,  char *buf,  size_t buflen )
 {
-  for ( int i = 0; i < (int) cmd_flag_cnt; i++ ) {
-    if ( *(int *) (void *) s == *(int *) (void *) cmd_flag[ i ] )
-      return 1 << i;
-  }
-  return 0;
+  size_t len = e - s;
+  if ( len > buflen - 1 )
+    len = buflen - 1;
+  ::memcpy( buf, s, len );
+  buf[ len ] = '\0';
+  return len;
 }
 
-static char *
-get_cmd_upper( int i )
-{
-  static char buf[ 32 ];
-  int j = 0;
-  for ( const char *s = cmd_flag[ i ]; ; s++ ) {
-    if ( (buf[ j++ ] = toupper( *s )) == '\0' )
-      return buf;
+struct GenCmdMan {
+  void * operator new( size_t, void *ptr ) { return ptr; }
+  void operator delete( void *ptr ) { ::free( ptr ); }
+
+  GenCmdMan    * next;
+  char         * text;
+  size_t         textlen;
+  RedisExtraType mantype;
+
+  GenCmdMan( const char *txt,  size_t len,  RedisExtraType type ) {
+    this->next = NULL;
+    this->text = (char *) &this[ 1 ];
+    ::memcpy( this->text, txt, len );
+    this->text[ len ] = '\0';
+    this->textlen = len;
+    this->mantype = type;
   }
+  const char *xtra_type( void ) {
+    switch ( this->mantype ) {
+      case XTRA_SHORT:   return "XTRA_SHORT";
+      case XTRA_USAGE:   return "XTRA_USAGE";
+      case XTRA_EXAMPLE: return "XTRA_EXAMPLE";
+      case XTRA_DESCR:   return "XTRA_DESCR";
+      case XTRA_RETURN:  return "XTRA_RETURN";
+    }
+    return "XTRA_BAD";
+  }
+  void puts( void ) {
+    fputs( "\"", stdout );
+    for ( size_t i = 0; i < this->textlen; i++ ) {
+      switch ( this->text[ i ] ) {
+        case '\\':
+          fputs( "\\\\", stdout );
+          break;
+        case '\"':
+          fputs( "\\\"", stdout );
+          break;
+        case '\n':
+          if ( i == this->textlen - 1 )
+            fputs( "\\n", stdout );
+          else
+            fputs( "\\n\"\n\"", stdout );
+          break;
+        default:
+          fputc( this->text[ i ], stdout );
+          break;
+      }
+    }
+    fputs( "\"", stdout );
+  }
+};
+
+struct GenCmdDB {
+  char        catg[ MAX_CATG_LEN ];
+  char        cmd[ MAX_CMD_LEN ];
+  uint8_t     catglen, cmdlen;
+  int16_t     tab[ 4 ];
+  uint32_t    flags;
+  GenCmdMan * mhd,
+            * mtl;
+  size_t      mcount;
+
+  /* initialize this with cmd name and category, arity tab, flags */
+  void cpy_cmd( const char *cg,  size_t cglen,
+                const char *c,  size_t clen,  int16_t *t,  uint32_t fl ) {
+    this->catglen = copy_str( cg, &cg[ cglen ],
+                              this->catg, sizeof( this->catg ) );
+    this->cmdlen  = copy_str( c, &c[ clen ], this->cmd, sizeof( this->cmd ) );
+    ::memcpy( this->tab, t, sizeof( this->tab ) );
+    this->flags = fl;
+  }
+  /* add an extra section */
+  void add_man( const char *text,  size_t len,  RedisExtraType type ) {
+    GenCmdMan * m = new ( ::malloc( sizeof( GenCmdMan ) + len + 1 ) )
+      GenCmdMan( text, len, type );
+    if ( this->mtl == NULL )
+      this->mhd = m;
+    else
+      this->mtl->next = m;
+    this->mtl = m;
+    this->mcount++;
+  }
+  const char *flags_enum( void ) {
+    switch ( this->flags ) {
+      default:                return "CMD_NOFLAGS";
+      case CMD_ADMIN_FLAG:    return "CMD_ADMIN_FLAG";
+      case CMD_READ_FLAG:     return "CMD_READ_FLAG";
+      case CMD_WRITE_FLAG:    return "CMD_WRITE_FLAG";
+      case CMD_MOVABLE_FLAG:  return "CMD_MOVABLE_FLAG";
+      case CMD_READ_MV_FLAG:  return "CMD_READ_MV_FLAG";
+      case CMD_WRITE_MV_FLAG: return "CMD_WRITE_MV_FLAG";
+    }
+  }
+  /* append _CMD to command string for enum */
+  const char *cmd_enum( void ) {
+    static char command[ MAX_CMD_LEN + 8 ];
+    for ( size_t i = 0; i < this->cmdlen; i++ ) {
+      command[ i ] = toupper( this->cmd[ i ] );
+      if ( command[ i ] == ' ' )
+        command[ i ] = '_';
+    }
+    command[ this->cmdlen ] = '_';
+    ::strcpy( &command[ this->cmdlen + 1 ], "CMD" );
+    return command;
+  }
+  /* append _CATG to category string for enum */
+  const char *catg_enum( void ) {
+    static char category[ MAX_CATG_LEN + 8 ];
+    for ( size_t i = 0; i < this->catglen; i++ ) {
+      category[ i ] = toupper( this->catg[ i ] );
+      if ( category[ i ] == ' ' )
+        category[ i ] = '_';
+    }
+    category[ this->catglen ] = '_';
+    ::strcpy( &category[ this->catglen + 1 ], "CATG" );
+    return category;
+  }
+};
+
+static GenCmdDB gen_db[ 256 ];
+static size_t   gen_db_len;
+
+static GenCmdDB *
+new_command( void )
+{
+  if ( gen_db_len == 256 ) {
+    fprintf( stderr, "Too many commands (256)\n" );
+    exit( 1 );
+  }
+  return &gen_db[ gen_db_len++ ];
+}
+
+static GenCmdDB *
+find_command( const char *cmd,  size_t cmdlen )
+{
+  for ( size_t i = 0; i < gen_db_len; i++ ) {
+    if ( gen_db[ i ].cmdlen == cmdlen &&
+         ::memcmp( gen_db[ i ].cmd, cmd, cmdlen ) == 0 )
+      return &gen_db[ i ];
+  }
+  return NULL;
 }
 
 static void
-gen_enums( void )
+gen_db_enums( void )
 {
-  size_t i = 0, j = 0, k, maxlen = 18, len, catsum;
-  uint32_t cnt = 0;
-  const char *cat, *cmd, *comma;
+  const size_t maxlen = 18;
+  char prev_cat[ MAX_CATG_LEN ];
+  const char *cat;
+  size_t i, len;
+  uint32_t cnt;
 
-  printf( "enum RedisCatg {\n  NO_CATG%*s =  0,\n", (int) ( maxlen - 3 ), "" );
-  comma = ",";
-  for ( i = 0, cnt = 1; i < cmd_category_cnt; cnt++ ) {
-    cat = cmd_category[ i ].sub_type;
-    if ( ++i == cmd_category_cnt )
-      comma = "";
-    len = ::strlen( cat );
-    printf( "  %s_CATG%*s = %2u%s\n", cat, (int) ( maxlen - len - 1 ), "",
-            cnt, comma );
-  }
-  printf( "};\n\n" );
-  printf( "enum RedisCmd {\n  NO_CMD%*s =   0,\n", (int) ( maxlen - 2 ), "" );
-  comma = ",";
-  printf( "  /* %s */\n", cmd_category[ 0 ].sub_type );
-  j = cmd_category[ k=0 ].cnt;
-  for ( i = 1, cnt = 1; i < cmd_db_cnt; cnt++ ) {
-    cmd = cmd_db[ i ].name;
-    len = ::strlen( cmd );
-    if ( ++i == cmd_db_cnt )
-      comma = "";
-    printf( "  %.*s_CMD%*s = %3u%s\n",
-            (int) len, cmd, (int) ( maxlen - len ), "", cnt, comma );
-    if ( cnt >= j ) {
-      if ( ++k < cmd_category_cnt ) {
-        printf( "  /* %s */\n", cmd_category[ k ].sub_type );
-        j += cmd_category[ k ].cnt;
-      }
+  /* STRING_CATG enums */
+  prev_cat[ 0 ] = '\0';
+  printf( "enum RedisCatg {\n  NO_CATG%*s =  0", (int) ( maxlen - 3 ), "" );
+  for ( i = 0, cnt = 1; i < gen_db_len; i++ ) {
+    cat = gen_db[ i ].catg;
+    if ( ::strcmp( cat, prev_cat ) != 0 ) {
+      ::strcpy( prev_cat, cat );
+      len = ::strlen( cat );
+      printf( ",\n  %s%*s = %2u", gen_db[ i ].catg_enum(),
+              (int) ( maxlen - len - 1 ), "", cnt++ );
     }
   }
-  printf( "};\n\n"
-          "static const size_t REDIS_CATG_COUNT = %d,\n"
-          "                    REDIS_CMD_COUNT  = %d;\n\n",
-          (int) cmd_category_cnt + 1, (int) cmd_db_cnt );
+  printf( "\n};\n\n" );
 
-  printf( "static inline void\n"
-          "get_cmd_arity( RedisCmd cmd,  int16_t &arity,  int16_t &first,  "
-                         "int16_t &last,  int16_t &step ) {\n"
-          "  /* Arity of commands indexed by cmd */\n"
-          "  static const uint16_t redis_cmd_arity[] = {\n    0" );
-  for ( i = 1; i < cmd_db_cnt; i++ ) {
-    kv::WorkAllocT<256> wrk;
-    RedisMsg m;
-    union {
-      struct {
-        int arity : 4,
-            first : 4,
-            last  : 4,
-            step  : 4;
-      } b;
-      uint16_t val;
-    } u;
-    u.val = 0;
-    if ( m.unpack_json( cmd_db[ i ].attr, wrk ) == REDIS_MSG_OK ) {
-      if ( m.type == RedisMsg::BULK_ARRAY && m.len > 1 ) {
-        if ( m.array[ 1 ].type == RedisMsg::INTEGER_VALUE )
-          u.b.arity = (int) m.array[ 1 ].ival;
-        if ( m.len > 3 && m.array[ 3 ].type == RedisMsg::INTEGER_VALUE )
-          u.b.first = (int) m.array[ 3 ].ival;
-        if ( m.len > 4 && m.array[ 4 ].type == RedisMsg::INTEGER_VALUE )
-          u.b.last = (int) m.array[ 4 ].ival;
-        if ( m.len > 5 && m.array[ 5 ].type == RedisMsg::INTEGER_VALUE )
-          u.b.step = (int) m.array[ 5 ].ival;
-      }
+  /* GET_CMD enums */
+  prev_cat[ 0 ] = '\0';
+  printf( "enum RedisCmd {\n  NO_CMD%*s  =   0", (int) ( maxlen - 3 ), "" );
+  for ( i = 0, cnt = 1; i < gen_db_len; i++ ) {
+    cat = gen_db[ i ].catg;
+    if ( ::strcmp( cat, prev_cat ) != 0 ) {
+      ::strcpy( prev_cat, cat );
+      printf( ",\n  /* %s */\n", prev_cat );
     }
-    printf( ",0x%x", u.val );
-    wrk.reset();
-  }
-  printf( "};\n"
-          "  union {\n"
-          "    struct {\n"
-          "      int arity : 4, first : 4, last : 4, step : 4;\n"
-          "    } b;\n"
-          "    uint16_t val;\n"
-          "  } u;\n"
-          "  u.val = redis_cmd_arity[ cmd ];\n"
-          "  arity = u.b.arity; first = u.b.first;\n"
-          "  last  = u.b.last;  step  = u.b.step;\n"
-          "}\n\n" );
-
-  printf( "/* Flags enum:  used to test flags below ( 1 << CMD_FAST_FLAG )*/\n"
-          "enum RedisCmdFlag {\n" );
-  for ( i = 0; i < cmd_flag_cnt; i++ ) {
-    printf( "  CMD_%s_FLAG%*s= %2d,\n", get_cmd_upper( i ),
-            (int) ( 16 - ::strlen( cmd_flag[ i ] ) ), "", (int) i );
-  }
-  printf( "  CMD_MAX_FLAG%*s= %2d\n", 16 - 3, "", (int) cmd_flag_cnt );
-  printf( "};\n\n" );
-
-  printf( "static inline uint16_t\n"
-          "get_cmd_flag_mask( RedisCmd cmd ) {\n"
-          "  /* Bit mask of flags indexed by cmd */\n"
-          "  static const uint16_t redis_cmd_flags[] = {\n    0" );
-  for ( i = 1; i < cmd_db_cnt; i++ ) {
-    kv::WorkAllocT<256> wrk;
-    RedisMsg m;
-    int flags = 0;
-    if ( m.unpack_json( cmd_db[ i ].attr, wrk ) == REDIS_MSG_OK ) {
-      if ( m.type == RedisMsg::BULK_ARRAY && m.len > 2 )
-        if ( m.array[ 2 ].type == RedisMsg::BULK_ARRAY )
-          for ( j = 0; j < (size_t) m.array[ 2 ].len; j++ )
-            if ( m.array[ 2 ].array[ j ].type == RedisMsg::SIMPLE_STRING )
-              flags |= get_cmd_flag( m.array[ 2 ].array[ j ].strval );
+    else {
+      printf( ",\n" );
     }
-    printf( ",0x%x", flags );
-    wrk.reset();
+    len = gen_db[ i ].cmdlen;
+    printf( "  %s%*s = %3u",
+            gen_db[ i ].cmd_enum(), (int) ( maxlen - len ), "", cnt++ );
   }
-  printf( "};\n"
-          "  return redis_cmd_flags[ cmd ];\n"
-          "}\n\n" );
-  printf( "static inline bool\n"
-          "test_cmd_flag( RedisCmd cmd,  RedisCmdFlag fl ) {\n"
-          "  return ( get_cmd_flag_mask( cmd ) & ( 1U << (int) fl ) ) != 0;\n"
-          "}\n\n" );
-  printf( "static inline uint16_t\n"
-          "test_cmd_mask( uint16_t mask,  RedisCmdFlag fl ) {\n"
-          "  return mask & ( 1U << (int) fl );\n"
-          "}\n\n" );
-
-  /* this presumes categories fits in 4 bits (0->15) */
-  uint32_t mask[ ( cmd_db_cnt * 4 + 31 ) / 32 ];
-  ::memset( mask, 0, sizeof( mask ) );
-  catsum = 1;
-  for ( i = 0; i < cmd_category_cnt; i++ ) {
-    j = catsum;
-    catsum += cmd_category[ i ].cnt;
-    for ( ; j < catsum; j++ )
-      mask[ j >> 3 ] |= ( i + 1 ) << ( 4 * ( j & 7 ) );
-  }
-
-  printf( "static inline RedisCatg\nget_cmd_category( RedisCmd cmd ) {\n"
-          "  static const uint32_t catg[] = {\n"
-          "    0x%08xU", mask[ 0 ] );
-  for ( i = 1; i < sizeof( mask ) / sizeof( mask[ 0 ] ); i++ ) {
-    printf( ",0x%08xU", mask[ i ] );
-  }
-  printf( " };\n"
-          "  uint32_t x = (uint32_t) cmd;\n"
-          "  x = ( catg[ x >> 3 ] >> ( 4 * ( x & 7 ) ) ) & 0xf;\n"
-          "  return (RedisCatg) x;\n"
-          "}\n\n" );
+  printf( "\n};\n\n" );
 }
 
-/* try random seeds and incr ht sizes until no collisions */
-static void
-gen_perfect_hash( void )
+static uint32_t
+command_hash( const void *cmd,  size_t len,  uint32_t seed )
 {
+  uint32_t out[ MAX_CMD_LEN / 4 ];
+ for ( size_t i = 0; i * 4 < len; i++ )
+   out[ i ] = ((const uint32_t *) cmd)[ i ] & 0xdfdfdfdfU;
+  return kv_crc_c( out, len, seed );
+}
+
+static uint32_t
+gen_db_hash( void )
+{
+  static const uint32_t HTSZ = 1024;
   kv::rand::xoroshiro128plus rand;
-  uint64_t x = 0;
-  uint32_t ht[ 1024 ];
-  size_t   i;
-  uint32_t r = 0x36fbdccd;
-  const char *cmd;
-  int k = 0;
+  uint64_t     x = 0;
+  uint32_t     ht[ HTSZ ];
+  size_t       i;
+  const char * cmd;
+  size_t       len;
+  uint32_t     r = /*0x8eafcc7e*/ 0x36fbdccd;
+  int          k = 0;
 
+  /* find a seed that has no collisions within HTSZ elems */
   rand.init();
   goto try_first;
   for (;;) {
@@ -242,65 +245,372 @@ gen_perfect_hash( void )
     }
   try_first:;
     ::memset( ht, 0, sizeof( ht ) );
-    for ( i = 1; i < cmd_db_cnt; i++ ) {
-      const char *cmd = cmd_db[ i ].name;
-      int len = ::strlen( cmd );
+    for ( i = 0; i < gen_db_len; i++ ) {
+      cmd = gen_db[ i ].cmd;
+      len = gen_db[ i ].cmdlen;
 
-      uint32_t h = kv_crc_c( cmd, len, r );
-      uint32_t *p = &ht[ h % 1024 ];
+      uint32_t h = command_hash( cmd, len, r );
+      uint32_t *p = &ht[ h % HTSZ ];
       if ( h == 0 || *p != 0 )
         goto try_next;
       *p = h;
     }
-    goto gen_hash_tab;
+    break;
   try_next:;
     k++;
   }
-gen_hash_tab:;
-  printf( "/* Generated ht[] is a perfect hash, but does not strcmp() cmd */\n"
-          "static inline RedisCmd\n"
-          "get_redis_cmd( const char *cmd,  size_t len ) {\n"
-          "  static const uint8_t ht[] = {\n    " );
-  ::memset( ht, 0, sizeof( ht ) );
-  for ( i = 1; i < cmd_db_cnt; i++ ) {
-    cmd = cmd_db[ i ].name;
-    int len = ::strlen( cmd );
 
-    uint32_t h = kv_crc_c( cmd, len, r );
-    ht[ h % 1024 ] = i;
+  /* the hash table: ht[ crc % HTSZ ] -> cmd enum */
+  printf( "static const uint8_t cmd_hash_ht[ %u ] = {\n", HTSZ );
+  ::memset( ht, 0, sizeof( ht ) );
+  for ( i = 0; i < gen_db_len; i++ ) {
+    cmd = gen_db[ i ].cmd;
+    len = gen_db[ i ].cmdlen;
+
+    uint32_t h = command_hash( cmd, len, r );
+    ht[ h % HTSZ ] = i + 1;
   }
   printf( "%u", ht[ 0 ] );
-  for ( i = 1; i < 1024; i++ ) {
-    printf( ",%u", ht[ i ] );
+  for ( i = 1; i < HTSZ; i++ ) {
+    if ( ( i % 32 ) == 0 )
+      printf( ",\n%u", ht[ i ] );
+    else
+      printf( ",%u", ht[ i ] );
   }
-  printf( "};\n"
-          "  static const uint32_t hashes[] = {\n    0" );
-  for ( i = 1; i < cmd_db_cnt; i++ ) {
-    cmd = cmd_db[ i ].name;
-    uint32_t h = kv_crc_c( cmd, ::strlen( cmd ), r );
-    printf( ",0x%x", h );
-  }
-  printf( "};\n"
-         "  uint32_t k = kv_crc_c( cmd, len, 0x%x );\n"
-         "  uint8_t  c = ht[ k %% %u ];\n"
-         "  return hashes[ c ] == k ? (RedisCmd) c : NO_CMD;\n"
-         "}\n\n", r, 1024 );
+  printf( "};\n\n" );
+
+  /* convenience functions for command name to enum */
+  printf( "static inline uint32_t\n"
+          "get_redis_cmd_hash( const void *cmd,  size_t len ) {\n"
+          "  uint32_t out[ MAX_CMD_LEN / 4 ];\n"
+          "  for ( size_t i = 0; i * 4 < len; i++ )\n"
+          "    out[ i ] = ((const uint32_t *) cmd)[ i ] & 0xdfdfdfdfU;\n"
+          "  return kv_crc_c( out, len, 0x%x );\n"
+          "}\n\n", r );
+  printf( "static inline RedisCmd\n"
+          "get_redis_cmd( uint32_t h ) {\n"
+         "  return (RedisCmd) cmd_hash_ht[ h %% %u ];\n"
+         "}\n\n", HTSZ );
+  return r;
 }
 
-int
-main( int, char ** )
+static int
+gen_cmd_db( void )
 {
+  size_t i, j, cnt;
+
+  /* the generates the redis_cmd.h file */
   printf( "#ifndef __rai_raids__redis_cmd_h__\n"
-          "#define __rai_raids__redis_cmd_h__\n\n"
-          "#include <raikv/key_hash.h>\n\n"
+          "#define __rai_raids__redis_cmd_h__\n"
+          "\n"
+          "#include <raids/redis_cmd_db.h>\n"
+          "#include <raikv/key_hash.h>\n"
+          "\n"
           "namespace rai {\n"
-          "namespace ds {\n\n" );
-  gen_enums();
-  gen_perfect_hash();
-  printf( "}\n"
-          "}\n"
+          "namespace ds {\n"
+          "\n" );
+
+  /* the STRING_CATG enum and the GET_CMD enum */
+  gen_db_enums();
+  /* gen hash table and functions, returns hash seed */
+  uint32_t r = gen_db_hash();
+
+  /* extra info */
+  cnt = 0;
+  for ( i = 0; i < gen_db_len; i++ )
+    cnt += gen_db[ i ].mcount;
+  printf( "extern const RedisCmdExtra xtra[ %lu ];\n\n", cnt );
+
+  /* generate table of commands */
+  cnt = 0;
+  printf( "static const size_t REDIS_CMD_DB_SIZE = %lu;\n"
+          "static const RedisCmdData\n"
+          "cmd_db[ REDIS_CMD_DB_SIZE ] = {\n"
+          "{ \"none\",NULL,0,NO_CMD,CMD_NOFLAGS,4,NO_CATG,0,0,0,0 }",
+          gen_db_len + 1 );
+  for ( i = 0; i < gen_db_len; i++ ) {
+    GenCmdDB & db = gen_db[ i ];
+    uint32_t h = command_hash( db.cmd, db.cmdlen, r );
+    if ( db.mcount == 0 ) {
+      printf( "empty extra! %s\n", db.cmd );
+      return 1;
+    }
+               /*  name    extra,   hash,cmd,flags,cmdlen, catg, tab[] */
+    printf( ",\n{ \"%s\",&xtra[%lu],0x%x,%s,%s,%u,%s,%d,%d,%d,%d }",
+          db.cmd, cnt, h, db.cmd_enum(), db.flags_enum(), db.cmdlen,
+          db.catg_enum(), db.tab[ 0 ], db.tab[ 1 ], db.tab[ 2 ], db.tab[ 3 ] );
+    cnt += db.mcount;
+  }
+  printf( "\n};\n"
+          "\n"
+          "#ifdef REDIS_XTRA\n" );
+
+  /* generate extra list */
+  printf( "const RedisCmdExtra xtra[ %lu ] = {\n", cnt );
+
+  cnt = 0;
+  for ( i = 0; i < gen_db_len; i++ ) {
+    GenCmdDB  & db = gen_db[ i ];
+    GenCmdMan * p  = db.mhd;
+    for ( j = 0; j < db.mcount; j++ ) {
+      if ( j + 1 < db.mcount )
+        printf( "{ &xtra[%lu], ", cnt + 1 );
+      else
+        printf( "{ NULL, " );
+      printf( "%s,%s", p->xtra_type(), ( p->textlen > 45 ) ? "\n" : " " );
+      p->puts();
+      printf( "},\n" );
+      cnt++;
+      p = p->next;
+    }
+  }
+  printf( "};\n"
+          "#endif\n"
+          "\n}\n}\n"
           "#endif\n" );
   return 0;
 }
-#endif
 
+static int
+parse_cmd_db( const char *fn )
+{
+  struct stat  sb;
+  const void * addr;
+  int          fd = ::open( fn, O_RDONLY );
+  
+  /* mmap the file */
+  if ( fd < 0 || ::fstat( fd, &sb ) < 0 ) {
+    ::perror( fn );
+    if ( fd >= 0 )
+      ::close( fd );
+    return 1;
+  }
+  else {
+    addr = ::mmap( NULL, sb.st_size, PROT_READ, MAP_PRIVATE, fd, 0 );
+    if ( addr == MAP_FAILED ) {
+      ::perror( fn );
+      ::close( fd );
+      return 1;
+    }
+  }
+  const char d[] = "----------------------------";
+  char         catg[ MAX_CATG_LEN ],
+               cmd[ MAX_CMD_LEN ];
+  const void * p;
+  const char * eol           = (const char *) addr,
+             * bol           = eol,                /* advances by line */
+             * end           = &bol[ sb.st_size ], /* end of file */
+             * eos           = NULL;
+  size_t       llen          = 0, /* line len */
+               cmdlen        = 0, /* cmd[] size */
+               catglen       = 0, /* catg[] size */
+               tabcnt        = 0; /* the arity tab counter */
+  bool         in_preformat  = false, /* whether inside ^----\n fmt */
+               in_comment    = false, /* whether inside ^////\n */
+               new_section   = false; /* section of command info */
+  int          matched_catg  = 0, /* matched: Hash\n----\n */
+               matched_cmd   = 0; /* matched: [[cmd]]\n */
+  const char * curr_p        = NULL, /* current section pointer */
+             * next_p        = NULL; /* next section pointer */
+  RedisExtraType curr_t      = XTRA_SHORT, /* what section type it is */
+                 next_t      = XTRA_SHORT; /* the next section type */
+  uint32_t     flags         = 0; /* bits of CMD_READ_FLAG, CMD_WRITE_FLAG */
+  int16_t      tab[ 4 ];
+  GenCmdDB   * dbp = NULL;
+
+  catg[ 0 ] = '0';
+  for (;; bol = &eol[ 1 ] ) {
+    /* find the next line */
+    if ( (p = ::memchr( bol, '\n', end - bol )) == NULL )
+      break;
+    new_section = false;
+    eol  = (const char *) p;
+    llen = eol - bol;
+    /* take out comments, which are 4 slashes at bol */
+    if ( llen == 4 && ::memcmp( bol, "////", 4 ) == 0 ) {
+      in_comment = ! in_comment;
+      continue;
+    }
+    else if ( in_comment )
+      continue;
+
+    /* look for section headers of the form:
+     * Hash
+     * ---- */
+    if ( ! in_preformat ) {
+      if ( llen > 2 &&
+           llen < sizeof( d ) &&
+           &eol[ llen + 2 ] < end &&
+           eol[ 1 + llen ] == '\n' &&
+           ::memcmp( &eol[ 1 ], d, llen ) == 0 ) {
+        catglen = copy_str( bol, eol, catg, sizeof( catg ) );
+        matched_catg = 2;
+        next_p = NULL;
+        new_section = true;
+      }
+    }
+    /* match "----" in usage and example sections:
+     * .Usage
+     * ----
+     * scan curs [match pat] [count int]
+     * ---- */
+    if ( matched_catg == 0 ) {
+      if ( llen == 4 && ::memcmp( bol, d, 4 ) == 0 ) {
+        in_preformat = ! in_preformat; /* track whether inside or outside */
+      }
+    }
+    if ( in_preformat )
+      continue;
+    /* match the command table:
+     * |================
+     * | <<cmd>> | ... */
+    if ( ::memcmp( bol, "| <<", 4 ) == 0 ) {
+      cmd[ 0 ] = '\0';
+      for ( eos = &bol[ 4 ]; eos < eol; eos++ ) {
+        if ( eos[ 0 ] == '>' ) {
+          cmdlen = copy_str( &bol[ 4 ], eos, cmd, sizeof( cmd ) );
+          break;
+        }
+      }
+      /* if found a command, parse the command arity table */
+      if ( cmd[ 0 ] != '\0' ) {
+        flags  = 0;
+        tabcnt = 0;
+        /* match | int */
+        for ( ; eos < eol; eos++ ) {
+          if ( eos[ 0 ] == '|' && eos[ 1 ] == ' ' &&
+               ( eos[ 2 ] == '-' || ( eos[ 2 ] >= '0' && eos[ 2 ] <= '9' ) ) ) {
+            if ( tabcnt < 4 )
+              tab[ tabcnt++ ] = atoi( &eos[ 2 ] );
+          }
+          /* maybe make this more dynamic in the future */
+          else if ( ::memcmp( eos, "read", 4 ) == 0 )
+            flags |= CMD_READ_FLAG;
+          else if ( ::memcmp( eos, "write", 5 ) == 0 )
+            flags |= CMD_WRITE_FLAG;
+          else if ( ::memcmp( eos, "admin", 5 ) == 0 )
+            flags |= CMD_ADMIN_FLAG;
+          else if ( ::memcmp( eos, "movable", 5 ) == 0 )
+            flags |= CMD_MOVABLE_FLAG;
+        }
+        /* 4 == arity, first key, last key, step */
+        if ( tabcnt == 4 ) {
+          new_command()->cpy_cmd( catg, catglen, cmd, cmdlen, tab, flags );
+          /*printf( "%s.%s [%d,%d,%d,%d,%x]\n", catg, cmd,
+                  tab[ 0 ], tab[ 1 ], tab[ 2 ], tab[ 3 ], flags );*/
+        }
+      }
+    }
+    /* if [[cmd]] */
+    else if ( ::memcmp( bol, "[[", 2 ) == 0 &&
+              ::memcmp( &eol[ -2 ], "]]\n", 3 ) == 0 ) {
+      cmdlen = copy_str( &bol[ 2 ], &eol[ -2 ], cmd, sizeof( cmd ) );
+      matched_cmd = 2;
+      next_p = NULL;
+      new_section = true;
+    }
+    /* after [[cmd]], parse the short description in the title */
+    else if ( matched_cmd == 1 ) {
+      for ( eos = bol; eos < eol; eos++ ) {
+        if ( eos[ 0 ] == ' ' && eos[ 1 ] == '|' && eos[ 2 ] == ' ' ) {
+          char   dshort[ 80 ];
+          size_t len = copy_str( &eos[ 3 ], eol, dshort, sizeof( dshort ) );
+          dbp = find_command( cmd, cmdlen );
+          if ( dbp == NULL ) {
+            fprintf( stderr, "cmd %s not found\n", cmd );
+            exit( 1 );
+          }
+          dbp->add_man( dshort, len, XTRA_SHORT );
+          /*printf( "%s.%s: %s\n", catg, cmd, dshort );*/
+          break;
+        }
+      }
+    }
+    /* parse sections: usage, example, description, return */
+    if ( ! new_section ) {
+      const char * e = &eol[ 1 ];
+      next_p = NULL;
+      if ( e == end )
+        new_section = true;
+      else {
+        switch ( e[ 0 ] ) {
+          case '.':
+            if ( &e[ 7 ] < end && ::memcmp( ".Usage", e, 6 ) == 0 ) {
+              next_p = &e[ 7 ];
+              next_t = XTRA_USAGE;
+              new_section = true;
+            }
+            else if ( &e[ 9 ] < end && ::memcmp( ".Example", e, 8 ) == 0 ) {
+              next_p = &e[ 9 ];
+              next_t = XTRA_EXAMPLE;
+              new_section = true;
+            }
+            else if ( &e[ 13 ] < end &&
+                      ::memcmp( ".Description", e, 12 ) == 0 ) {
+              next_p = &e[ 13 ];
+              next_t = XTRA_DESCR;
+              new_section = true;
+            }
+            else if ( &e[ 8 ] < end && ::memcmp( ".Return", e, 7 ) == 0 ) {
+              next_p = &e[ 8 ];
+              next_t = XTRA_RETURN;
+              new_section = true;
+            }
+            break;
+          case '/':
+            if ( &e[ 5 ] < end && ::memcmp( e, "////", 4 ) == 0 )
+              new_section = true;
+            break;
+          case '[':
+            if ( &e[ 3 ] < end && ::memcmp( e, "[[", 2 ) == 0 )
+              new_section = true;
+            break;
+        }
+      }
+    }
+    if ( new_section ) {
+      if ( curr_p != NULL ) {
+        size_t len = &eol[ 1 ] - curr_p;
+        if ( dbp != NULL ) {
+          if ( matched_catg != 0 )
+            len -= catglen + 1;
+          if ( len > 10 ) {
+            if ( ::memcmp( curr_p, d, 4 ) == 0 &&
+                 ::memcmp( &curr_p[ len - 5 ], d, 4 ) == 0 ) {
+              len -= 10;
+              curr_p = &curr_p[ 5 ];
+            }
+            while ( len > 1 && curr_p[ len - 1 ] == '\n' &&
+                    curr_p[ len - 2 ] == '\n' )
+              len -= 1;
+          }
+          dbp->add_man( curr_p, len, curr_t );
+        }
+      }
+      curr_p = next_p;
+      curr_t = next_t;
+      new_section = false;
+      next_p = NULL;
+    }
+    /* these are forward matched */
+    if ( matched_catg > 0 )
+      matched_catg -= 1;
+    if ( matched_cmd > 0 )
+      matched_cmd -= 1;
+  }
+  ::munmap( (void *) addr, sb.st_size );
+  ::close( fd );
+  return 0;
+}
+
+int
+main( int argc, char *argv[] )
+{
+  if ( argc == 1 ) {
+    fprintf( stderr, "usage: %s <cmd.adoc>\n", argv[ 0 ] );
+    return 1;
+  }
+  if ( parse_cmd_db( argv[ 1 ] ) != 0 )
+    return 1;
+  return gen_cmd_db();
+}

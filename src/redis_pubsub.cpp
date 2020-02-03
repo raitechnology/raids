@@ -598,7 +598,9 @@ RedisExec::do_sub( int flags )
   const char * hdr;
   size_t       hdr_sz;
   size_t       cnt = this->sub_tab.sub_count() + this->pat_tab.sub_count(),
+               i   = 1,
                j   = 0,
+               k   = 0,
                sz  = 0;
   const char * sub[ 8 ];
   size_t       len[ 8 ],
@@ -630,33 +632,74 @@ RedisExec::do_sub( int flags )
     hdr    = punsub_hdr;
     hdr_sz = punsub_hdr_sz;
   }
-  for ( size_t i = 1; i < this->argc; i++ ) {
-    if ( ! this->msg.get_arg( i, sub[ j ], len[ j ] ) )
-      return ERR_BAD_ARGS;
-
-    if ( ( flags & DO_SUBSCRIBE ) != 0 ) {
-      if ( this->do_subscribe( sub[ j ], len[ j ] ) == EXEC_OK )
-        cnt++;
+  for ( bool last = false; ; ) {
+    if ( i < this->argc ) {
+      if ( ! this->msg.get_arg( i, sub[ k ], len[ k ] ) )
+        return ERR_BAD_ARGS;
+      if ( ++i == this->argc )
+        last = true;
+      k++;
     }
-    else if ( ( flags & DO_UNSUBSCRIBE ) != 0 ) {
-      if ( this->do_unsubscribe( sub[ j ], len[ j ] ) == EXEC_OK )
-        cnt--;
+    else {
+      /* unsubscribe all */
+      if ( ( flags & DO_UNSUBSCRIBE ) != 0 ) {
+        RedisSubRoutePos pos;
+        if ( this->sub_tab.first( pos ) ) {
+          len[ k ] = pos.rt->len;
+          char *s = this->strm.alloc_temp( len[ k ] + 1 );
+          if ( s == NULL )
+            return ERR_ALLOC_FAIL;
+          ::memcpy( s, pos.rt->value, pos.rt->len );
+          s[ pos.rt->len ] = '\0';
+          sub[ k ] = s;
+          k++;
+        }
+      }
+      /* punsubscribe all */
+      else if ( ( flags & DO_PUNSUBSCRIBE ) != 0 ) {
+        RedisPatternRoutePos ppos;
+        if ( this->pat_tab.first( ppos ) ) {
+          len[ k ] = ppos.rt->len;
+          char *s = this->strm.alloc_temp( len[ k ] + 1 );
+          if ( s == NULL )
+            return ERR_ALLOC_FAIL;
+          ::memcpy( s, ppos.rt->value, ppos.rt->len );
+          s[ ppos.rt->len ] = '\0';
+          sub[ k ] = s;
+          k++;
+        }
+      }
     }
-    else if ( ( flags & DO_PSUBSCRIBE ) != 0 ) {
-      if ( this->do_psubscribe( sub[ j ], len[ j ] ) == EXEC_OK )
-        cnt++;
+    /* if no more left, is last */
+    if ( j == k )
+      last = true;
+    else {
+      if ( ( flags & DO_SUBSCRIBE ) != 0 ) {
+        if ( this->do_subscribe( sub[ j ], len[ j ] ) == EXEC_OK )
+          cnt++;
+      }
+      else if ( ( flags & DO_UNSUBSCRIBE ) != 0 ) {
+        if ( this->do_unsubscribe( sub[ j ], len[ j ] ) == EXEC_OK )
+          cnt--;
+      }
+      else if ( ( flags & DO_PSUBSCRIBE ) != 0 ) {
+        if ( this->do_psubscribe( sub[ j ], len[ j ] ) == EXEC_OK )
+          cnt++;
+      }
+      else /*if ( ( flags & DO_PUNSUBSCRIBE ) != 0 )*/ {
+        if ( this->do_punsubscribe( sub[ j ], len[ j ] ) == EXEC_OK )
+          cnt--;
+      }
+      ldig[ j ] = uint_digits( len[ j ] );
+      cval[ j ] = cnt;
+      cdig[ j ] = uint_digits( cnt );
+           /* *3 .. $len ..              subject ..     :cnt */
+      sz += hdr_sz + 1 + ldig[ j ] + 2 + len[ j ] + 2 + 1 + cdig[ j ] + 2;
+      j++;
     }
-    else /*if ( ( flags & DO_PUNSUBSCRIBE ) != 0 )*/ {
-      if ( this->do_punsubscribe( sub[ j ], len[ j ] ) == EXEC_OK )
-        cnt--;
-    }
-    ldig[ j ] = uint_digits( len[ j ] );
-    cval[ j ] = cnt;
-    cdig[ j ] = uint_digits( cnt );
-         /* *3 .. $len ..              subject ..     :cnt */
-    sz += hdr_sz + 1 + ldig[ j ] + 2 + len[ j ] + 2 + 1 + cdig[ j ] + 2;
-
-    if ( ++j == 8 || i + 1 == this->argc ) {
+    if ( j == 8 || last ) {
+      if ( j == 0 ) /* no more in this segment */
+        return EXEC_OK;
       char * msg = this->strm.alloc( sz );
       size_t off = 0;
       if ( msg == NULL )
@@ -674,11 +717,13 @@ RedisExec::do_sub( int flags )
         off  = crlf( msg, off );
       }
       this->strm.sz += sz;
+      if ( last )
+        return EXEC_OK;
       j  = 0;
+      k  = 0;
       sz = 0;
     }
   }
-  return EXEC_OK;
 }
 
 RedisContinueMsg::RedisContinueMsg( size_t mlen,  uint16_t kcnt )
@@ -702,16 +747,15 @@ RedisExec::save_blocked_cmd( int64_t timeout_val )
   size_t             len,
                      save_len = 0;
   uint32_t           h, rcnt, i, sz;
-  const RedisCatg    catg = get_cmd_category( this->cmd );
 
   /* calculate length of buf[] */
   len = 0;
   for ( i = 0; i < this->key_cnt; i++ ) {
     kspc.key    = (char *) this->keys[ i ]->kbuf.u.buf;
     kspc.keylen = this->keys[ i ]->kbuf.keylen - 1;
-    if ( catg == LIST_CATG )
+    if ( this->catg == LIST_CATG )
       sz = kspc.make_listblkd_subj();
-    else if ( catg == STREAM_CATG ) {
+    else if ( this->catg == STREAM_CATG ) {
       sz = kspc.make_strmblkd_subj();
       if ( ( this->keys[ i ]->flags & EKF_IS_SAVED_CONT ) != 0 &&
            this->keys[ i ]->part != NULL )
@@ -719,7 +763,7 @@ RedisExec::save_blocked_cmd( int64_t timeout_val )
       else
         save_len = 0;
     }
-    else if ( catg == SORTED_SET_CATG )
+    else if ( this->catg == SORTED_SET_CATG )
       sz = kspc.make_zsetblkd_subj();
     else
       return ERR_BAD_CMD;
@@ -744,9 +788,9 @@ RedisExec::save_blocked_cmd( int64_t timeout_val )
   for ( i = 0; i < this->key_cnt; i++ ) {
     kspc.key    = (char *) this->keys[ i ]->kbuf.u.buf;
     kspc.keylen = this->keys[ i ]->kbuf.keylen - 1;
-    if ( catg == LIST_CATG )
+    if ( this->catg == LIST_CATG )
       len = kspc.make_listblkd_subj();
-    else if ( catg == STREAM_CATG ) {
+    else if ( this->catg == STREAM_CATG ) {
       len = kspc.make_strmblkd_subj();
       /* the xread command mutates the arguments based on the current
        * end of stream;  the saved continuation data caches this value
@@ -785,7 +829,7 @@ RedisExec::save_blocked_cmd( int64_t timeout_val )
   if ( timeout_val != 0 ) {
     bool b;
     cm->msgid = ++this->next_event_id;
-    if ( catg == STREAM_CATG ) /* blocked in millisecs */
+    if ( this->catg == STREAM_CATG ) /* blocked in millisecs */
       b = this->sub_route.rte.add_timer_millis( this->sub_id, timeout_val,
                                                 this->timer_id, cm->msgid );
     else /* others are in seconds */

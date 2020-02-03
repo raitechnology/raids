@@ -275,12 +275,12 @@ RedisExec::locate_movablekeys( void )
         this->step = this->last - this->first;
       }
       return true;
-
+#if 0
     case MIGRATE_CMD: break;
     case SORT_CMD: break;
     case EVAL_CMD: break;
     case EVALSHA_CMD: break;
-
+#endif
     case ZINTERSTORE_CMD:
     case ZUNIONSTORE_CMD:
       /* ZINTERSTORE dest nkeys key key [WEIGHTS w1 w2] [AGGREGATE ...] */
@@ -401,31 +401,37 @@ RedisExec::exec( EvSocket *svc,  EvPrefetchQueue *q )
 {
   const char * arg0;
   size_t       arg0len;
-  char         upper_cmd[ 32 ];
   ExecStatus   status;
 
   arg0 = this->msg.command( arg0len, this->argc );
   /* max command len is 17 (GEORADIUSBYMEMBER) */
-  if ( arg0len >= 32 )
+  if ( arg0len >= MAX_CMD_LEN )
     return ERR_BAD_CMD;
 
-  str_to_upper( arg0, upper_cmd, arg0len );
-  if ( (this->cmd = get_redis_cmd( upper_cmd, arg0len )) == NO_CMD )
-    return ERR_BAD_CMD;
+  uint32_t h = get_redis_cmd_hash( arg0, arg0len );
+  this->cmd  = get_redis_cmd( h );
+  const RedisCmdData &c = cmd_db[ this->cmd ];
 
-  get_cmd_arity( this->cmd, this->arity, this->first, this->last,
-		 this->step );
+  this->catg      = (RedisCatg) c.catg;
+  this->arity     = c.arity;
+  this->first     = c.first;
+  this->last      = c.last;
+  this->step      = c.step;
+  this->cmd_flags = c.flags;
+  this->key_flags = EKF_MONITOR; /* monitor always published if subscribed */
+  this->step_mask = 0;
+
+  if ( c.hash != h )
+    return ERR_BAD_CMD;
   if ( this->arity > 0 ) {
     if ( (size_t) this->arity != this->argc )
       return ERR_BAD_ARGS;
   }
   else if ( (size_t) -this->arity > this->argc )
     return ERR_BAD_ARGS;
-  this->cmd_flags  = get_cmd_flag_mask( this->cmd );
-  this->key_flags  = EKF_MONITOR; /* monitor always published if subscribed */
-  this->step_mask  = 0;
+
   this->strm_start = this->strm.pending();
-  if ( test_cmd_mask( this->cmd_flags, CMD_MOVABLEKEYS_FLAG ) )
+  if ( ( this->cmd_flags & CMD_MOVABLE_FLAG ) != 0 )
     if ( ! this->locate_movablekeys() )
       return ERR_BAD_ARGS;
   if ( this->multi != NULL ) {
@@ -449,6 +455,7 @@ RedisExec::exec( EvSocket *svc,  EvPrefetchQueue *q )
 
     this->key  = NULL;
     this->keys = &this->key;
+    this->kctx.msg = NULL;
     /* setup first key */
     status = this->exec_key_setup( svc, q, this->key, i );
     if ( status == EXEC_SETUP_OK ) {
@@ -488,42 +495,60 @@ ExecStatus
 RedisExec::exec_nokeys( void )
 {
   switch ( this->cmd ) {
+#if 0
     /* CLUSTER */
     case CLUSTER_CMD:      return this->exec_cluster();
     case READONLY_CMD:     return this->exec_readonly();
     case READWRITE_CMD:    return this->exec_readwrite();
+#endif
     /* CONNECTION */
+#if 0
     case AUTH_CMD:         return this->exec_auth();
+#endif
     case ECHO_CMD:         return this->exec_echo();
     case PING_CMD:         return this->exec_ping();
     case QUIT_CMD:         return this->exec_quit(); //EXEC_QUIT;
+#if 0
     case SELECT_CMD:       return this->exec_select();
     case SWAPDB_CMD:       return this->exec_swapdb();
+#endif
     /* SERVER */
+#if 0
     case BGREWRITEAOF_CMD: return this->exec_bgrewriteaof();
     case BGSAVE_CMD:       return this->exec_bgsave();
+#endif
     case CLIENT_CMD:       return this->exec_client();
     case COMMAND_CMD:      return this->exec_command();
     case CONFIG_CMD:       return this->exec_config();
     case DBSIZE_CMD:       return this->exec_dbsize();
+#if 0
     case DEBUG_CMD:        return this->exec_debug();
     case FLUSHALL_CMD:     return this->exec_flushall();
     case FLUSHDB_CMD:      return this->exec_flushdb();
+#endif
     case INFO_CMD:         return this->exec_info();
+#if 0
     case LASTSAVE_CMD:     return this->exec_lastsave();
     case MEMORY_CMD:       return this->exec_memory();
+#endif
     case MONITOR_CMD:      return this->exec_monitor();
+#if 0
     case ROLE_CMD:         return this->exec_role();
     case SAVE_CMD:         return this->exec_save();
+#endif
     case SHUTDOWN_CMD:     return this->exec_shutdown();
+#if 0
     case SLAVEOF_CMD:      return this->exec_slaveof();
     case SLOWLOG_CMD:      return this->exec_slowlog();
     case SYNC_CMD:         return this->exec_sync();
+#endif
     case TIME_CMD:         return this->exec_time();
     /* KEYS */
     case KEYS_CMD:         return this->exec_keys();
     case RANDOMKEY_CMD:    return this->exec_randomkey();
+#if 0
     case WAIT_CMD:         return this->exec_wait();
+#endif
     case SCAN_CMD:         return this->exec_scan();
     /* PUBSUB */
     case PSUBSCRIBE_CMD:   return this->exec_psubscribe();
@@ -544,7 +569,7 @@ RedisExec::exec_nokeys( void )
 kv::KeyStatus
 RedisExec::exec_key_fetch( EvKeyCtx &ctx,  bool force_read )
 {
-  if ( test_cmd_mask( this->cmd_flags, CMD_READONLY_FLAG ) || force_read ) {
+  if ( ( this->cmd_flags & CMD_READ_FLAG ) != 0 || force_read ) {
     for (;;) {
       ctx.kstatus = this->kctx.find( &this->wrk );
       ctx.flags  |= EKF_IS_READ_ONLY;
@@ -560,7 +585,7 @@ RedisExec::exec_key_fetch( EvKeyCtx &ctx,  bool force_read )
       this->kctx.release();
     }
   }
-  else if ( test_cmd_mask( this->cmd_flags, CMD_WRITE_FLAG ) ) {
+  else if ( ( this->cmd_flags & CMD_WRITE_FLAG ) != 0 ) {
     ctx.kstatus = this->kctx.acquire( &this->wrk );
     if ( ctx.kstatus == KEY_OK && this->kctx.is_expired() ) {
       this->kctx.expire();
@@ -596,13 +621,20 @@ RedisExec::exec_key_continue( EvKeyCtx &ctx )
     this->exec_key_prefetch( ctx );*/
   for (;;) {
     switch ( this->cmd ) {
+#if 0
       /* CLUSTER */
       case CLUSTER_CMD:  /* these exist so that the compiler errors when a */
       case READONLY_CMD: /* command is not handled by the switch() */
       case READWRITE_CMD: ctx.status = ERR_BAD_CMD; break;
+#endif
       /* CONNECTION */
-      case AUTH_CMD: case ECHO_CMD: case PING_CMD: case QUIT_CMD:
+#if 0
+      case AUTH_CMD:
+#endif
+      case ECHO_CMD: case PING_CMD: case QUIT_CMD:
+#if 0
       case SELECT_CMD: case SWAPDB_CMD:
+#endif
                           ctx.status = ERR_BAD_CMD; break; /* in exec() */
       /* GEO */
       case GEOADD_CMD:    ctx.status = this->exec_geoadd( ctx ); break;
@@ -615,15 +647,11 @@ RedisExec::exec_key_continue( EvKeyCtx &ctx )
       /* HASH */
       case HAPPEND_CMD:   ctx.status = this->exec_happend( ctx ); break;
       case HDEL_CMD:      ctx.status = this->exec_hdel( ctx ); break;
-      case HDIFF_CMD:     ctx.status = this->exec_hdiff( ctx ); break;
-      case HDIFFSTORE_CMD: ctx.status = this->exec_hdiffstore( ctx ); break;
       case HEXISTS_CMD:   ctx.status = this->exec_hexists( ctx ); break;
       case HGET_CMD:      ctx.status = this->exec_hget( ctx ); break;
       case HGETALL_CMD:   ctx.status = this->exec_hgetall( ctx ); break;
       case HINCRBY_CMD:   ctx.status = this->exec_hincrby( ctx ); break;
       case HINCRBYFLOAT_CMD: ctx.status = this->exec_hincrbyfloat( ctx ); break;
-      case HINTER_CMD:    ctx.status = this->exec_hinter( ctx ); break;
-      case HINTERSTORE_CMD: ctx.status = this->exec_hinterstore( ctx ); break;
       case HKEYS_CMD:     ctx.status = this->exec_hkeys( ctx ); break;
       case HLEN_CMD:      ctx.status = this->exec_hlen( ctx ); break;
       case HMGET_CMD:     ctx.status = this->exec_hmget( ctx ); break;
@@ -633,8 +661,6 @@ RedisExec::exec_key_continue( EvKeyCtx &ctx )
       case HSTRLEN_CMD:   ctx.status = this->exec_hstrlen( ctx ); break;
       case HVALS_CMD:     ctx.status = this->exec_hvals( ctx ); break;
       case HSCAN_CMD:     ctx.status = this->exec_hscan( ctx ); break;
-      case HUNION_CMD:    ctx.status = this->exec_hunion( ctx ); break;
-      case HUNIONSTORE_CMD: ctx.status = this->exec_hunionstore( ctx ); break;
       /* HYPERLOGLOG */
       case PFADD_CMD:     ctx.status = this->exec_pfadd( ctx ); break;
       case PFCOUNT_CMD:   ctx.status = this->exec_pfcount( ctx ); break;
@@ -646,8 +672,10 @@ RedisExec::exec_key_continue( EvKeyCtx &ctx )
       case EXPIRE_CMD:    ctx.status = this->exec_expire( ctx ); break;
       case EXPIREAT_CMD:  ctx.status = this->exec_expireat( ctx ); break;
       case KEYS_CMD:      ctx.status = ERR_BAD_CMD; break; /* in exec() */
+#if 0
       case MIGRATE_CMD:   ctx.status = this->exec_migrate( ctx ); break;
       case MOVE_CMD:      ctx.status = this->exec_move( ctx ); break;
+#endif
       case OBJECT_CMD:    ctx.status = this->exec_object( ctx ); break;
       case PERSIST_CMD:   ctx.status = this->exec_persist( ctx ); break;
       case PEXPIRE_CMD:   ctx.status = this->exec_pexpire( ctx ); break;
@@ -656,13 +684,17 @@ RedisExec::exec_key_continue( EvKeyCtx &ctx )
       case RANDOMKEY_CMD: ctx.status = ERR_BAD_CMD; break; /* in exec() */
       case RENAME_CMD:    ctx.status = this->exec_rename( ctx ); break;
       case RENAMENX_CMD:  ctx.status = this->exec_renamenx( ctx ); break;
+#if 0
       case RESTORE_CMD:   ctx.status = this->exec_restore( ctx ); break;
       case SORT_CMD:      ctx.status = this->exec_sort( ctx ); break;
+#endif
       case TOUCH_CMD:     ctx.status = this->exec_touch( ctx ); break;
       case TTL_CMD:       ctx.status = this->exec_ttl( ctx ); break;
       case TYPE_CMD:      ctx.status = this->exec_type( ctx ); break;
       case UNLINK_CMD:    ctx.status = this->exec_unlink( ctx ); break;
+#if 0
       case WAIT_CMD: 
+#endif
       case SCAN_CMD:      ctx.status = ERR_BAD_CMD; break; /* in exec() */
       /* LIST */
       case BLPOP_CMD:     ctx.status = this->exec_blpop( ctx ); break;
@@ -686,18 +718,42 @@ RedisExec::exec_key_continue( EvKeyCtx &ctx )
       case PSUBSCRIBE_CMD:   case PUBSUB_CMD:    case PUBLISH_CMD:
       case PUNSUBSCRIBE_CMD: case SUBSCRIBE_CMD:
       case UNSUBSCRIBE_CMD:  ctx.status = ERR_BAD_CMD; break; /* in exec() */
+#if 0
       /* SCRIPT */
       case EVAL_CMD:      ctx.status = this->exec_eval( ctx ); break;
       case EVALSHA_CMD:   ctx.status = this->exec_evalsha( ctx ); break;
       case SCRIPT_CMD:    ctx.status = this->exec_script( ctx ); break;
+#endif
       /* SERVER */
-      case BGREWRITEAOF_CMD: case BGSAVE_CMD: case CLIENT_CMD:
-      case COMMAND_CMD:   case CONFIG_CMD:    case DBSIZE_CMD:
-      case DEBUG_CMD:     case FLUSHALL_CMD:  case FLUSHDB_CMD:
-      case INFO_CMD:      case LASTSAVE_CMD:  case MEMORY_CMD:
-      case MONITOR_CMD:   case ROLE_CMD:      case SAVE_CMD:
-      case SHUTDOWN_CMD:  case SLAVEOF_CMD:   case SLOWLOG_CMD:
-      case SYNC_CMD:      case TIME_CMD:      ctx.status = ERR_BAD_CMD; break;
+#if 0
+      case BGREWRITEAOF_CMD: case BGSAVE_CMD:
+#endif
+      case CLIENT_CMD:
+      case COMMAND_CMD:
+      case CONFIG_CMD:
+      case DBSIZE_CMD:
+#if 0
+      case DEBUG_CMD:
+      case FLUSHALL_CMD:
+      case FLUSHDB_CMD:
+#endif
+      case INFO_CMD:
+#if 0
+      case LASTSAVE_CMD:
+      case MEMORY_CMD:
+#endif
+      case MONITOR_CMD:
+#if 0
+      case ROLE_CMD:
+      case SAVE_CMD:
+#endif
+      case SHUTDOWN_CMD:
+#if 0
+      case SLAVEOF_CMD:
+      case SLOWLOG_CMD:
+      case SYNC_CMD:
+#endif
+      case TIME_CMD:      ctx.status = ERR_BAD_CMD; break;
       /* SET */
       case SADD_CMD:      ctx.status = this->exec_sadd( ctx ); break;
       case SCARD_CMD:     ctx.status = this->exec_scard( ctx ); break;
@@ -800,14 +856,16 @@ RedisExec::exec_key_continue( EvKeyCtx &ctx )
       if ( ctx.is_new() && exec_status_success( ctx.status ) ) {
         uint8_t type;
         if ( (type = ctx.type) == MD_NODATA ) {
-          switch ( get_cmd_category( this->cmd ) ) {
+          switch ( this->catg ) {
             default:               type = MD_NODATA;      break;
             case GEO_CATG:         type = MD_GEO;         break;
             case HASH_CATG:        type = MD_HASH;        break;
             case HYPERLOGLOG_CATG: type = MD_HYPERLOGLOG; break;
             case LIST_CATG:        type = MD_LIST;        break;
             case PUBSUB_CATG:      type = MD_NODATA; /*MD_PUBSUB;*/  break;
+#if 0
             case SCRIPT_CATG:      type = MD_NODATA; /*MD_SCRIPT;*/  break;
+#endif
             case SET_CATG:         type = MD_SET;         break;
             case SORTED_SET_CATG:  type = MD_ZSET;        break;
             case STRING_CATG:      type = MD_STRING;      break;
@@ -882,9 +940,12 @@ RedisExec::exec_key_continue( EvKeyCtx &ctx )
   }
   /* if ctx.status outputs data */
   switch ( ctx.status ) {
+    case EXEC_SEND_DATA:
+      if ( this->blk_state != 0 ) /* did not block, so blocked complete */
+        this->blk_state |= RBLK_CMD_COMPLETE;
+      goto success;
     case EXEC_OK:           break;
     case EXEC_BLOCKED:      break;
-    case EXEC_SEND_DATA:    break;
     case EXEC_SEND_OK:      this->strm.append( ok, ok_sz );            break;
     case EXEC_ABORT_SEND_NIL:
     case EXEC_SEND_NIL:     this->strm.append( nil, nil_sz );          break;

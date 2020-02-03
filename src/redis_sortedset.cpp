@@ -338,16 +338,26 @@ RedisExec::do_zread( EvKeyCtx &ctx,  int flags )
         else if ( lo[ 0 ] == '[' ) { lo++; lolen--; }
         if ( hi[ 0 ] == '(' ) { hi++; hilen--; hi_incl = false; }
         else if ( hi[ 0 ] == '[' ) { hi++; hilen--; }
-        /* calculate the member count between scores or lex vals */
-        if ( ( flags & DO_ZCOUNT ) != 0 ) {
+        if ( lolen == 1 && lo[ 0 ] == '-' ) {
+          i = 1;
+        }
+        else if ( ( flags & DO_ZCOUNT ) != 0 ) {
           ZScore loval = str_to_score( lo, lolen ),
-                 hival = str_to_score( hi, hilen ),
                  r3;
           zset.x->zbsearch( loval, i, lo_incl ? false : true, r3 );
-          zset.x->zbsearch( hival, j, hi_incl ? true : false, r3 );
         }
         else {
           zset.x->zbsearch_all( lo, lolen, lo_incl ? false : true, i );
+        }
+        if ( hilen == 1 && hi[ 0 ] == '+' ) {
+          j = zset.x->hcount() + 1;
+        }
+        else if ( ( flags & DO_ZCOUNT ) != 0 ) {
+          ZScore hival = str_to_score( hi, hilen ),
+                 r3;
+          zset.x->zbsearch( hival, j, hi_incl ? true : false, r3 );
+        }
+        else {
           zset.x->zbsearch_all( hi, hilen, hi_incl ? true : false, j );
         }
         ctx.ival = j - i; /* if inclusive */
@@ -402,11 +412,22 @@ RedisExec::do_zread( EvKeyCtx &ctx,  int flags )
         else if ( hi[ 0 ] == '[' ) { hi++; hilen--; }
         /* calculate the member count between scores or lex vals */
         if ( ( flags & DO_ZCOUNT ) != 0 ) {
-          H3Index loval, hival, r3;
-          RedisMsg::str_to_uint( lo, lolen, loval );
-          RedisMsg::str_to_uint( hi, hilen, hival );
-          geo.x->geobsearch( loval, i, lo_incl ? false : true, r3 );
-          geo.x->geobsearch( hival, j, hi_incl ? true : false, r3 );
+          if ( lolen == 1 && lo[ 0 ] == '-' ) {
+            i = 1;
+          }
+          else {
+            H3Index loval, r3;
+            RedisMsg::str_to_uint( lo, lolen, loval );
+            geo.x->geobsearch( loval, i, lo_incl ? false : true, r3 );
+          }
+          if ( hilen == 1 && hi[ 0 ] == '+' ) {
+            j = geo.x->hcount() + 1;
+          }
+          else {
+            H3Index hival, r3;
+            RedisMsg::str_to_uint( hi, hilen, hival );
+            geo.x->geobsearch( hival, j, hi_incl ? true : false, r3 );
+          }
         }
         else {
           /* geo data always has scores */
@@ -715,7 +736,7 @@ RedisExec::do_zmultiscan( EvKeyCtx &ctx,  int flags,  ScanArgs *sa )
           i  = i - 1 + zoff;
           j -= 1;
         }
-        else {
+        else { /* else REVRANGE */
           i = count + 1 - i + zoff;
           j = count + 1 - j;
         }
@@ -723,13 +744,23 @@ RedisExec::do_zmultiscan( EvKeyCtx &ctx,  int flags,  ScanArgs *sa )
       /* if range by lex */
       else if ( ( flags & ( DO_ZRANGEBYLEX |
                             DO_ZREVRANGEBYLEX ) ) != 0 ) {
-        zset.x->zbsearch_all( lo, lolen, lo_incl ? false : true, i );
-        zset.x->zbsearch_all( hi, hilen, hi_incl ? true : false, j );
+        if ( lolen == 1 && lo[ 0 ] == '-' ) /* 1st element */
+          i = 1;
+        else if ( lolen == 1 && lo[ 0 ] == '+' ) /* last element */
+          i = zset.x->hcount() + 1;
+        else
+          zset.x->zbsearch_all( lo, lolen, lo_incl ? false : true, i );
+        if ( hilen == 1 && hi[ 0 ] == '+' ) /* last element */
+          j = zset.x->hcount() + 1;
+        else if ( hilen == 1 && hi[ 0 ] == '-' ) /* 1st element */
+          j = 1;
+        else
+          zset.x->zbsearch_all( hi, hilen, hi_incl ? true : false, j );
         if ( ( flags & DO_ZRANGEBYLEX ) != 0 ) {
-          i  = i - 1 + zoff;
+          i  = i - 1 + zoff; /* zoff = offset into range */
           j -= 1;
         }
-        else {
+        else { /* else REVRANGE */
           i = count + 1 - i + zoff;
           j = count + 1 - j;
         }

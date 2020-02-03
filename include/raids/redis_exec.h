@@ -144,10 +144,11 @@ struct RedisExec {
                    key_done;  /* number of keys processed */
   RedisMultiExec * multi;     /* MULTI .. EXEC block */
   RedisCmd         cmd;       /* current command (GET_CMD) */
+  RedisCatg        catg;      /* current command (GET_CMD) */
   RedisMsgStatus   mstatus;   /* command message parse status */
   uint8_t          blk_state, /* if blocking cmd timed out (RBLK_CMD_TIMEOUT) */
                    cmd_state; /* if monitor is active or skipping */
-  uint16_t         cmd_flags, /* command flags (CMD_READONLY_FLAG) */
+  uint16_t         cmd_flags, /* command flags (CMD_READ_FLAG) */
                    key_flags; /* EvKeyFlags, if a key has a keyspace event */
   int16_t          arity,     /* number of command args */
                    first,     /* first key in args */
@@ -168,7 +169,8 @@ struct RedisExec {
              RouteDB &rdb,  PeerData &pd ) :
       kctx( map, ctx_id, NULL ), strm( s ), strm_start( s.pending() ),
       key( 0 ), keys( 0 ), key_cnt( 0 ), key_done( 0 ), multi( 0 ),
-      cmd( NO_CMD ), blk_state( 0 ), cmd_state( 0 ), key_flags( 0 ),
+      cmd( NO_CMD ), catg( NO_CATG ), blk_state( 0 ), cmd_state( 0 ),
+      key_flags( 0 ),
       sub_route( rdb ), peer( pd ), sub_id( ~0U ), next_event_id( 0 ),
       timer_id( 0 ) {
     this->kctx.ht.hdr.get_hash_seed( this->kctx.db_num, this->seed,
@@ -213,8 +215,7 @@ struct RedisExec {
   }
   /* compute the hash and prefetch the ht[] location */
   void exec_key_prefetch( EvKeyCtx &ctx ) {
-    ctx.prefetch( this->kctx.ht,
-      test_cmd_mask( this->cmd_flags, CMD_READONLY_FLAG ) ? true : false );
+    ctx.prefetch( this->kctx.ht, ( this->cmd_flags & CMD_READ_FLAG ) != 0 );
   }
   /* fetch key for write and check type matches or is not set */
   kv::KeyStatus get_key_write( EvKeyCtx &ctx,  uint8_t type ) {
@@ -539,25 +540,6 @@ enum RedisBlockState {
   RBLK_CMD_KEY_CHANGE = 2, /* key change caused retry */
   RBLK_CMD_COMPLETE   = 4  /* command continuation success */
 };
-
-static inline void
-str_to_upper( const char *in,  char *out,  size_t len )
-{
-  /* take away the 0x20 bits */
-  for ( size_t i = 0; i < len; i += 4 )
-    *(uint32_t *) &out[ i ] = *((uint32_t *) &in[ i ]) & 0xdfdfdfdfU;
-}
-
-static inline RedisCmd
-get_upper_cmd( const char *name,  size_t len )
-{
-  if ( len < 32 ) {
-    char tmp[ 32 ];
-    str_to_upper( name, tmp, len ); 
-    return get_redis_cmd( tmp, len );
-  }   
-  return NO_CMD;
-}
 
 }
 }

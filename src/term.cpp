@@ -6,7 +6,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <raids/term.h>
-#include <raids/redis_cmd_db.h>
+#include <raids/redis_cmd.h>
 #include <linecook/linecook.h>
 #include <linecook/ttycook.h>
 
@@ -30,14 +30,8 @@ do_complete( LineCook *state,  const char * /*buf*/,  size_t off,
              size_t /*len*/ )
 {
   if ( off == 0 ) {
-    char cmd[ 64 ];
-    for ( size_t i = 1; i < cmd_db_cnt; i++ ) {
-      size_t len = ::strlen( cmd_db[ i ].name );
-      if ( len > 64 ) len = 64;
-      for ( size_t j = 0; j < len; j++ )
-        cmd[ j ] = tolower( cmd_db[ i ].name[ j ] );
-      lc_add_completion( state, cmd, len );
-    }
+    for ( size_t i = 1; i < REDIS_CMD_DB_SIZE; i++ )
+      lc_add_completion( state, cmd_db[ i ].name, cmd_db[ i ].cmdlen );
   }
   return 0;
 }
@@ -50,7 +44,7 @@ Term::tty_init( void )
                                ANSI_MAGENTA "\\h"   ANSI_NORMAL
                                ANSI_BLUE    "["     ANSI_NORMAL
                                ANSI_RED     "\\#"   ANSI_NORMAL
-                               ANSI_BLUE    "]"     ANSI_NORMAL "\\$ ",
+                               ANSI_BLUE    "]"     ANSI_NORMAL "> ",
                     * promp2 = ANSI_BLUE    "> "    ANSI_NORMAL,
                     * ins    = ANSI_GREEN   "<-"    ANSI_NORMAL,
                     * cmd    = ANSI_MAGENTA "|="    ANSI_NORMAL,
@@ -119,61 +113,42 @@ Term::show_help( void )
        arg_count, /* how many args */
        arg_off[ 32 ],  /* offset of args */
        arg_len[ 32 ];  /* length of args */
-  char buf[ 1024 ], line[ 80 ];
+  char buf[ 1024 ];
   int n = lc_tty_get_completion_cmd( this->tty, buf, sizeof( buf ),
                                      &arg_num, &arg_count, arg_off,
                                      arg_len, 32 );
   if ( n <= 0 )
     return;
 
-  for ( size_t i = 1; i < cmd_db_cnt; i++ ) {
+  for ( size_t i = 1; i < REDIS_CMD_DB_SIZE; i++ ) {
     const char * name     = cmd_db[ i ].name;
-    size_t       name_len = ::strlen( name );
+    size_t       name_len = cmd_db[ i ].cmdlen;
     if ( (size_t) arg_len[ 0 ] == name_len &&
          ::strncasecmp( name, &buf[ arg_off[ 0 ] ], name_len ) == 0 ) {
-      const char * descr = cmd_db[ i ].descr,
-                 * ptr   = ::strstr( descr, " ; " );
-      size_t len;
-      bool first = true;
-      for (;;) {
-        if ( ptr >= descr )
-          len = ptr - descr;
-        else
-          len = ::strlen( descr );
-        if ( len > 0 ) {
-          size_t       j,
-                       k    = len,
-                       off  = 0;
-          if ( ptr == NULL )
-            j = 3;
-          else
-            j = name_len;
-          if ( ! first || ptr == NULL )
-            name = "";
-          for (;;) {
-            k = len - off;
-            if ( k == 0 )
-              break;
-            if ( j + k > 76 ) {
-              for ( k = 76 - j; ; k -= 1 ) {
-                if ( descr[ off + k ] == ' ' || descr[ off + k ] == '|' )
-                  break;
-                if ( k < 20 )
-                  break;
-              }
-            }
-            int n = ::snprintf( line, 79, "%*s %.*s", (int) j, name, 
-                                (int) k, &descr[ off ] );
-            lc_add_completion( this->lc, line, n );
-            off += k;
-            name = "";
-          }
-          first = false;
+      const RedisCmdExtra * ex = cmd_db[ i ].get_extra( XTRA_USAGE );
+      const char   usage[]   = "\033[35m" "Usage:" ANSI_NORMAL,
+                   example[] = "\033[35m" "Example:" ANSI_NORMAL,
+                   descr[]   = "\033[35m" "Description:" ANSI_NORMAL,
+                   returns[] = "\033[35m" "Return:" ANSI_NORMAL;
+      for ( ; ex != NULL; ex = ex->next ) {
+        const char * ptr = ex->text,
+                   * eol;
+        const char * s;
+        size_t       len;
+        switch ( ex->type ) {
+          case XTRA_USAGE:   s = usage;   len = sizeof( usage ) - 1;   break;
+          case XTRA_EXAMPLE: s = example; len = sizeof( example ) - 1; break;
+          case XTRA_DESCR:   s = descr;   len = sizeof( descr ) - 1;   break;
+          case XTRA_RETURN:  s = returns; len = sizeof( returns ) - 1; break;
+          default:           s = NULL; len = 0; break;
         }
-        if ( ptr == NULL )
+        if ( s == NULL )
           break;
-        descr = &ptr[ 3 ];
-        ptr   = NULL;
+        lc_add_completion( this->lc, s, len );
+        while ( (eol = ::strchr( ptr, '\n' )) != NULL ) {
+          lc_add_completion( this->lc, ptr, eol - ptr );
+          ptr = &eol[ 1 ];
+        }
       }
       break;
     }
