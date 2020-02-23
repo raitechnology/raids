@@ -20,7 +20,7 @@ struct StreamBuf {
   };
   /* allocate a BufList */
   BufList *alloc_buf_list( BufList *&hd,  BufList *&tl,  size_t len,
-                           size_t pad = 0 );
+                           size_t pad = 0 ) noexcept;
   /* queue of items, usually an array */
   struct BufQueue {
     StreamBuf & strm;
@@ -44,22 +44,22 @@ struct StreamBuf {
       return this->tl;
     }
     /* allocate a new BufList that fits at least len and append to list */
-    BufList * append_buf( size_t len );
+    BufList * append_buf( size_t len ) noexcept;
     /* a nil string: $-1\r\n or *-1\r\n if is_null true */
-    size_t append_nil( bool is_null = false );
+    size_t append_nil( bool is_null = false ) noexcept;
     /* a zero length array: *0\r\n */
-    size_t append_zero_array( void );
+    size_t append_zero_array( void ) noexcept;
     /* one string item, appended with decorations: $<strlen>\r\n<string>\r\n */
     size_t append_string( const void *str,  size_t len,  const void *str2=0,
-                          size_t len2=0 );
+                          size_t len2=0 ) noexcept;
     /* an int, appended with decorations: :<val>\r\n */
-    size_t append_uint( uint64_t val );
+    size_t append_uint( uint64_t val ) noexcept;
     /* arbitrary bytes, no formatting */
-    size_t append_bytes( const void *buf,  size_t len );
+    size_t append_bytes( const void *buf,  size_t len ) noexcept;
     /* make array: [item1, item2, ...], prepends decorations *<arraylen>\r\n */
-    size_t prepend_array( size_t nitems );
+    size_t prepend_array( size_t nitems ) noexcept;
     /* cursor is two arrays: [cursor,[items]] */
-    size_t prepend_cursor_array( size_t curs,  size_t nitems );
+    size_t prepend_cursor_array( size_t curs,  size_t nitems ) noexcept;
   };
 
   static const size_t BUFSIZE = 1600;
@@ -126,7 +126,7 @@ struct StreamBuf {
     this->alloc_fail = false;
     this->tmp.reset();
   }
-  void expand_iov( void );
+  void expand_iov( void ) noexcept;
 
   void prepend_flush( size_t i ) { /* move work buffer to front of iov */
     this->flush();
@@ -172,7 +172,7 @@ struct StreamBuf {
       }
     }
   }
-  char *alloc_temp( size_t amt );
+  char *alloc_temp( size_t amt ) noexcept;
 
   char *alloc( size_t amt ) {
     if ( this->out_buf != NULL && this->sz + amt > BUFSIZE )

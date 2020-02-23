@@ -58,7 +58,7 @@ init_port( int pt )
 }
 
 void
-rai::ds::shmdp_atexit( void )
+rai::ds::shmdp_atexit( void ) noexcept
 {
   if ( qp != NULL ) {
     qp->poll.quit++;
@@ -96,7 +96,7 @@ rai::ds::shmdp_atexit( void )
 }
 
 void
-rai::ds::shmdp_initialize( const char *mn,  int pt )
+rai::ds::shmdp_initialize( const char *mn,  int pt ) noexcept
 {
   void * m = aligned_malloc( sizeof( QueuePoll ) );
   if ( m == NULL ) {
@@ -620,7 +620,7 @@ sendmsg( int sockfd, const struct msghdr *msg, int flags )
 
 
 ssize_t
-QueuePoll::read( int fd, char *buf, size_t count )
+QueuePoll::read( int fd, char *buf, size_t count ) noexcept
 {
   QueueFd      * p   = this->find( fd, false );
   size_t         off = 0,
@@ -668,7 +668,7 @@ QueuePoll::read( int fd, char *buf, size_t count )
         status = ERR_ALLOC_FAIL;
         /* FALLTHRU */
       default:
-        this->shm.exec->send_err( status );
+        this->shm.exec->send_status( status, KEY_OK );
         break;
       case EXEC_QUIT:
       case EXEC_DEBUG:
@@ -716,7 +716,7 @@ QueuePoll::read( int fd, char *buf, size_t count )
 }
 
 ssize_t
-QueuePoll::write( int fd, const char *buf, size_t count )
+QueuePoll::write( int fd, const char *buf, size_t count ) noexcept
 {
   QueueFd * p = this->find( fd, true );
 
@@ -746,7 +746,7 @@ QueuePoll::write( int fd, const char *buf, size_t count )
 }
 
 void
-QueuePoll::unlink( QueueFd *p )
+QueuePoll::unlink( QueueFd *p ) noexcept
 {
   this->fds[ p->fd ] = NULL;
   this->pending.fd_clr( p->fd );
@@ -754,7 +754,7 @@ QueuePoll::unlink( QueueFd *p )
 }
 
 bool
-QueuePoll::push( QueueFd *p )
+QueuePoll::push( QueueFd *p ) noexcept
 {
   if ( ! this->pending.fd_add( p->fd ) )
     return false;
@@ -776,7 +776,7 @@ QueuePoll::push( QueueFd *p )
 }
 
 QueueFd *
-QueuePoll::find( int fd,  bool is_write )
+QueuePoll::find( int fd,  bool is_write ) noexcept
 {
   QueueFd *p = NULL;
   if ( fd >= this->fds_size || this->fds[ fd ] == NULL ) {
@@ -798,4 +798,3 @@ QueuePoll::find( int fd,  bool is_write )
   }
   return p;
 }
-

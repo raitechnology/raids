@@ -144,8 +144,8 @@ struct PeerMatchIter {
   PeerMatchIter( PeerData &m,  PeerMatchArgs &a )
     : me( m ), p( 0 ), ka( a ) {}
 
-  PeerData *first( void );
-  PeerData *next( void );
+  PeerData *first( void ) noexcept;
+  PeerData *next( void ) noexcept;
   size_t length( void ) {
     size_t cnt = 0;
     if ( this->first() != NULL ) {
@@ -183,7 +183,7 @@ struct PeerData {
       this->set_addr( sa );
   }
 
-  void set_addr( const sockaddr *sa );
+  void set_addr( const sockaddr *sa ) noexcept;
 
   void set_peer_address( const char *s,  size_t len ) {
     this->set_strlen64( this->peer_address, s, len );
@@ -227,25 +227,26 @@ struct RoutePublish {
           monitor__cnt; /* count of __monitor_@N__ subscribes active */
   uint16_t key_flags;    /* bits set for key subs above (EKF_KEYSPACE_FWD|..) */
   bool forward_msg( EvPublish &pub,  uint32_t *rcount_total,  uint8_t pref_cnt,
-                    KvPrefHash *ph );
-  bool hash_to_sub( uint32_t r,  uint32_t h,  char *key,  size_t &keylen );
-  void update_keyspace_count( const char *sub,  size_t len,  int add );
+                    KvPrefHash *ph ) noexcept;
+  bool hash_to_sub( uint32_t r,  uint32_t h,  char *key,
+                    size_t &keylen ) noexcept;
+  void update_keyspace_count( const char *sub,  size_t len,  int add ) noexcept;
   void notify_sub( uint32_t h,  const char *sub,  size_t len,
                    uint32_t sub_id,  uint32_t rcnt,  char src_type,
-                   const char *rep = NULL,  size_t rlen = 0 );
+                   const char *rep = NULL,  size_t rlen = 0 ) noexcept;
   void notify_unsub( uint32_t h,  const char *sub,  size_t len,
-                     uint32_t sub_id,  uint32_t rcnt,  char src_type );
+                     uint32_t sub_id,  uint32_t rcnt,  char src_type ) noexcept;
   void notify_psub( uint32_t h,  const char *pattern,  size_t len,
                     const char *prefix,  uint8_t prefix_len,
-                    uint32_t sub_id,  uint32_t rcnt,  char src_type );
+                    uint32_t sub_id,  uint32_t rcnt,  char src_type ) noexcept;
   void notify_punsub( uint32_t h,  const char *pattern,  size_t len,
-                      const char *prefix,  uint8_t prefix_len,
-                      uint32_t sub_id,  uint32_t rcnt,  char src_type );
+                     const char *prefix,  uint8_t prefix_len,
+                     uint32_t sub_id,  uint32_t rcnt,  char src_type ) noexcept;
   bool add_timer_seconds( int id,  uint32_t ival,  uint64_t timer_id,
-                          uint64_t event_id );
+                          uint64_t event_id ) noexcept;
   bool add_timer_millis( int id,  uint32_t ival,  uint64_t timer_id,
-                         uint64_t event_id );
-  bool remove_timer( int id,  uint64_t timer_id,  uint64_t event_id );
+                         uint64_t event_id ) noexcept;
+  bool remove_timer( int id,  uint64_t timer_id,  uint64_t event_id ) noexcept;
 
   RoutePublish() : keyspace_cnt( 0 ), keyevent_cnt( 0 ), listblkd_cnt( 0 ),
                    zsetblkd_cnt( 0 ), strmblkd_cnt( 0 ), monitor__cnt( 0 ),
@@ -292,7 +293,7 @@ struct RouteDB {
     this->init_prefix_seed();
   }
 
-  void init_prefix_seed( void );
+  void init_prefix_seed( void ) noexcept;
 
   bool first_hash( uint32_t &pos,  uint32_t &h,  uint32_t &v ) {
     if ( this->xht != NULL && this->xht->first( pos ) ) {
@@ -308,38 +309,38 @@ struct RouteDB {
     }
     return false;
   }
-  uint32_t *make_route_space( uint32_t i );
+  uint32_t *make_route_space( uint32_t i ) noexcept;
 
-  uint32_t *make_push_route_space( uint8_t n,  uint32_t i );
+  uint32_t *make_push_route_space( uint8_t n,  uint32_t i ) noexcept;
 
-  uint32_t *make_code_space( uint32_t i );
+  uint32_t *make_code_space( uint32_t i ) noexcept;
 
-  uint32_t *make_code_ref_space( uint32_t i,  uint32_t &off );
+  uint32_t *make_code_ref_space( uint32_t i,  uint32_t &off ) noexcept;
 
-  void gc_code_ref_space( void );
+  void gc_code_ref_space( void ) noexcept;
 
-  uint32_t compress_routes( uint32_t *routes,  uint32_t rcnt );
+  uint32_t compress_routes( uint32_t *routes,  uint32_t rcnt ) noexcept;
 
-  uint32_t decompress_routes( uint32_t r,  uint32_t *&routes,  bool deref );
+  uint32_t decompress_routes( uint32_t r,  uint32_t *&routes,
+                              bool deref ) noexcept;
+  uint32_t push_decompress_routes( uint8_t n,  uint32_t r,
+                                   uint32_t *&routes ) noexcept;
+  uint32_t decompress_one( uint32_t r ) noexcept;
 
-  uint32_t push_decompress_routes( uint8_t n,  uint32_t r,  uint32_t *&routes );
+  uint32_t add_route( uint32_t hash,  uint32_t r ) noexcept;
 
-  uint32_t decompress_one( uint32_t r );
+  uint32_t del_route( uint32_t hash,  uint32_t r ) noexcept;
 
-  uint32_t add_route( uint32_t hash,  uint32_t r );
-
-  uint32_t del_route( uint32_t hash,  uint32_t r );
-
-  uint32_t add_pattern_route( uint32_t hash,  uint32_t r,  uint16_t pre_len );
-
-  uint32_t del_pattern_route( uint32_t hash,  uint32_t r,  uint16_t pre_len );
-
+  uint32_t add_pattern_route( uint32_t hash,  uint32_t r,
+                              uint16_t pre_len ) noexcept;
+  uint32_t del_pattern_route( uint32_t hash,  uint32_t r,
+                              uint16_t pre_len ) noexcept;
   uint32_t prefix_seed( size_t prefix_len ) {
     if ( prefix_len > 63 )
       return this->pre_seed[ 63 ];
     return this->pre_seed[ prefix_len ];
   }
-  bool is_member( uint32_t hash,  uint32_t x );
+  bool is_member( uint32_t hash,  uint32_t x ) noexcept;
 
   uint32_t get_route( uint32_t hash,  uint32_t *&routes ) {
     uint32_t pos, val;
@@ -353,8 +354,7 @@ struct RouteDB {
       return this->push_decompress_routes( n, val, routes );
     return 0;
   }
-
-  uint32_t get_route_count( uint32_t hash );
+  uint32_t get_route_count( uint32_t hash ) noexcept;
 };
 
 }

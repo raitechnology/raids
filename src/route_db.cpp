@@ -8,7 +8,7 @@ using namespace rai;
 using namespace ds;
 
 void
-RouteDB::init_prefix_seed( void )
+RouteDB::init_prefix_seed( void ) noexcept
 {
   for ( uint8_t i = 0; i < 64; i++ ) {
     SysWildSub w( NULL, i );
@@ -36,14 +36,14 @@ make_space( uint32_t i,  uint32_t &size,  uint32_t *&ptr,  uint32_t *stat_spc )
 }
 
 uint32_t *
-RouteDB::make_route_space( uint32_t i )
+RouteDB::make_route_space( uint32_t i ) noexcept
 {
   return make_space( i, this->route_spc_size, this->route_spc_ptr,
                      this->route_spc );
 }
 
 uint32_t *
-RouteDB::make_push_route_space( uint8_t n,  uint32_t i )
+RouteDB::make_push_route_space( uint8_t n,  uint32_t i ) noexcept
 {
   return make_space( i, this->push_route_spc[ n ].size,
                      this->push_route_spc[ n ].ptr,
@@ -51,14 +51,14 @@ RouteDB::make_push_route_space( uint8_t n,  uint32_t i )
 }
 
 uint32_t *
-RouteDB::make_code_space( uint32_t i )
+RouteDB::make_code_space( uint32_t i ) noexcept
 {
   return make_space( i, this->code_spc_size, this->code_spc_ptr,
                      this->code_spc );
 }
 
 uint32_t *
-RouteDB::make_code_ref_space( uint32_t i,  uint32_t &off )
+RouteDB::make_code_ref_space( uint32_t i,  uint32_t &off ) noexcept
 {
   make_space( this->code_end + i, this->code_size, this->code_buf,
               this->code_buf_spc );
@@ -68,7 +68,7 @@ RouteDB::make_code_ref_space( uint32_t i,  uint32_t &off )
 }
 
 void
-RouteDB::gc_code_ref_space( void )
+RouteDB::gc_code_ref_space( void ) noexcept
 {
   uint32_t i, j = 0, k, e, pos;
   CodeRef * p;
@@ -122,7 +122,7 @@ delete_route( uint32_t r,  uint32_t *routes,  uint32_t rcnt )
 }
 
 uint32_t
-RouteDB::compress_routes( uint32_t *routes,  uint32_t rcnt )
+RouteDB::compress_routes( uint32_t *routes,  uint32_t rcnt ) noexcept
 {
   CodeRef  * p;
   uint32_t * code, ecnt;
@@ -164,7 +164,8 @@ find_next_hash:;
 }
 
 uint32_t
-RouteDB::decompress_routes( uint32_t r,  uint32_t *&routes,  bool deref )
+RouteDB::decompress_routes( uint32_t r,  uint32_t *&routes,
+                            bool deref ) noexcept
 {
   uint32_t rcnt;
   if ( this->dc.is_not_encoded( r ) ) { /* if is a multi value code */
@@ -193,7 +194,8 @@ RouteDB::decompress_routes( uint32_t r,  uint32_t *&routes,  bool deref )
 }
 
 uint32_t
-RouteDB::push_decompress_routes( uint8_t n,  uint32_t r,  uint32_t *&routes )
+RouteDB::push_decompress_routes( uint8_t n,  uint32_t r,
+                                 uint32_t *&routes ) noexcept
 {
   uint32_t rcnt;
   if ( this->dc.is_not_encoded( r ) ) { /* if is a multi value code */
@@ -218,7 +220,7 @@ RouteDB::push_decompress_routes( uint8_t n,  uint32_t r,  uint32_t *&routes )
 }
 
 uint32_t
-RouteDB::decompress_one( uint32_t r )
+RouteDB::decompress_one( uint32_t r ) noexcept
 {
   if ( this->dc.is_not_encoded( r ) ) { /* if is a multi value code */
     CodeRef * p;
@@ -235,7 +237,7 @@ RouteDB::decompress_one( uint32_t r )
 }
 
 uint32_t
-RouteDB::get_route_count( uint32_t hash )
+RouteDB::get_route_count( uint32_t hash ) noexcept
 {
   if ( this->xht != NULL ) {
     uint32_t pos, val, off;
@@ -253,7 +255,7 @@ RouteDB::get_route_count( uint32_t hash )
 }
 
 uint32_t
-RouteDB::add_route( uint32_t hash,  uint32_t r )
+RouteDB::add_route( uint32_t hash,  uint32_t r ) noexcept
 {
   uint32_t pos, val, rcnt = 0, xcnt = 0;
   uint32_t *routes, tmp_route;
@@ -283,7 +285,7 @@ RouteDB::add_route( uint32_t hash,  uint32_t r )
 }
 
 uint32_t
-RouteDB::del_route( uint32_t hash,  uint32_t r )
+RouteDB::del_route( uint32_t hash,  uint32_t r ) noexcept
 {
   uint32_t pos, val, rcnt = 0, xcnt = 0;
   uint32_t *routes;
@@ -307,7 +309,8 @@ RouteDB::del_route( uint32_t hash,  uint32_t r )
 }
 
 uint32_t
-RouteDB::add_pattern_route( uint32_t hash,  uint32_t r,  uint16_t pre_len )
+RouteDB::add_pattern_route( uint32_t hash,  uint32_t r,
+                            uint16_t pre_len ) noexcept
 {
   uint32_t xcnt = this->add_route( hash, r );
   if ( pre_len > 63 )
@@ -318,7 +321,8 @@ RouteDB::add_pattern_route( uint32_t hash,  uint32_t r,  uint16_t pre_len )
 }
 
 uint32_t
-RouteDB::del_pattern_route( uint32_t hash,  uint32_t r,  uint16_t pre_len )
+RouteDB::del_pattern_route( uint32_t hash,  uint32_t r,
+                            uint16_t pre_len ) noexcept
 {
   uint32_t xcnt = this->del_route( hash, r );
   if ( pre_len > 63 )
@@ -329,7 +333,7 @@ RouteDB::del_pattern_route( uint32_t hash,  uint32_t r,  uint16_t pre_len )
 }
 
 bool
-RouteDB::is_member( uint32_t hash,  uint32_t x )
+RouteDB::is_member( uint32_t hash,  uint32_t x ) noexcept
 {
   uint32_t pos, r;
 

@@ -27,9 +27,10 @@ CC          ?= gcc
 CXX         ?= $(CC) -x c++
 cc          := $(CC)
 cpp         := $(CXX)
-cppflags    := -fno-rtti -fno-exceptions
-arch_cflags := -std=c++11 -mavx -maes -fno-omit-frame-pointer
-cpplink     := $(CC)
+#cppflags    := -fno-rtti -fno-exceptions
+cppflags    := -std=c++11
+arch_cflags := -mavx -maes -fno-omit-frame-pointer
+cpplink     := $(CXX)
 gcc_wflags  := -Wall -Wextra -Werror
 fpicflags   := -fPIC
 soflag      := -shared

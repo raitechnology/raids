@@ -43,7 +43,7 @@ struct PubTest : public EvShmSvc, public KvSubNotifyList {
       count( 0 ), last_time( 0 ), dict( 0 ) {
   }
   /* shutdown before close */
-  virtual void process_shutdown( void ) {
+  virtual void process_shutdown( void ) noexcept {
     if ( this->KvSubNotifyList::in_list ) {
       this->KvSubNotifyList::in_list = false;
       this->poll.pubsub->sub_notifyq.pop( this );
@@ -64,7 +64,7 @@ struct PubTest : public EvShmSvc, public KvSubNotifyList {
                                                IVAL_MICROS, 1, 0 );
     }
   }
-  virtual void on_sub( KvSubMsg &submsg ) {
+  virtual void on_sub( KvSubMsg &submsg ) noexcept {
     printf( "on_sub %s %.*s", submsg.msg_type_string(),
             (int) submsg.sublen, submsg.subject() );
     if ( submsg.replylen != 0 )
@@ -87,7 +87,7 @@ struct PubTest : public EvShmSvc, public KvSubNotifyList {
     }
   }
   /* a timer expires every ns_ival, send messages */
-  virtual bool timer_expire( uint64_t, uint64_t ) {
+  virtual bool timer_expire( uint64_t, uint64_t ) noexcept {
     uint64_t now = this->poll.timer_queue->now;
     if ( this->last_time == 0 ) {
       this->last_time = now;

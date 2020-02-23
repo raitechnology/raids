@@ -16,7 +16,7 @@ using namespace kv;
 
 static MemcachedStats stat;
 
-EvMemcachedListen::EvMemcachedListen( EvPoll &p )
+EvMemcachedListen::EvMemcachedListen( EvPoll &p ) noexcept
                  : EvTcpListen( p, this->ops )
 {
   if ( stat.boot_time == 0 )
@@ -24,7 +24,7 @@ EvMemcachedListen::EvMemcachedListen( EvPoll &p )
 }
 
 int
-EvMemcachedListen::listen( const char *ip,  int port )
+EvMemcachedListen::listen( const char *ip,  int port ) noexcept
 {
   if ( ip != NULL )
     ::strncpy( stat.interface, ip, sizeof( stat.interface ) - 1 );
@@ -34,7 +34,7 @@ EvMemcachedListen::listen( const char *ip,  int port )
 }
 
 int
-EvMemcachedUdp::listen( const char *ip,  int port )
+EvMemcachedUdp::listen( const char *ip,  int port ) noexcept
 {
   if ( ip != NULL )
     ::strncpy( stat.interface, ip, sizeof( stat.interface ) - 1 );
@@ -44,7 +44,7 @@ EvMemcachedUdp::listen( const char *ip,  int port )
 }
 
 bool
-EvMemcachedListen::accept( void )
+EvMemcachedListen::accept( void ) noexcept
 {
   static int on = 1;
   struct sockaddr_storage addr;
@@ -94,7 +94,7 @@ EvMemcachedListen::accept( void )
 }
 
 void
-EvMemcachedUdp::init( void )
+EvMemcachedUdp::init( void ) noexcept
 {
   if ( stat.boot_time == 0 )
     stat.boot_time = kv_current_realtime_ns();
@@ -103,7 +103,7 @@ EvMemcachedUdp::init( void )
 }
 
 const char *
-rai::ds::memcached_status_string( MemcachedStatus status )
+rai::ds::memcached_status_string( MemcachedStatus status ) noexcept
 {
   switch ( status ) {
     case MEMCACHED_OK: return "OK";
@@ -133,7 +133,7 @@ rai::ds::memcached_status_string( MemcachedStatus status )
 }
 
 const char *
-rai::ds::memcached_status_description( MemcachedStatus status )
+rai::ds::memcached_status_description( MemcachedStatus status ) noexcept
 {
   switch ( status ) {
     case MEMCACHED_OK: return "OK";
@@ -164,7 +164,7 @@ rai::ds::memcached_status_description( MemcachedStatus status )
 
 inline int
 EvMemcached::process_loop( MemcachedExec &mex,  EvPrefetchQueue *q,
-                           StreamBuf &strm,  EvSocket *svc )
+                           StreamBuf &strm,  EvSocket *svc ) noexcept
 {
   static const char   error[]   = "ERROR";
   static const size_t error_len = sizeof( error ) - 1;
@@ -211,7 +211,7 @@ EvMemcached::process_loop( MemcachedExec &mex,  EvPrefetchQueue *q,
 }
 
 void
-EvMemcachedService::process( void )
+EvMemcachedService::process( void ) noexcept
 {
   StreamBuf       & strm = *this;
   EvPrefetchQueue * q    = this->poll.prefetch_queue;
@@ -235,7 +235,7 @@ EvMemcachedService::process( void )
 bool
 EvMemcachedMerge::merge_frames( StreamBuf &strm,  struct mmsghdr *mhdr,
                                 uint32_t nmsgs,  uint32_t req_id,  uint32_t idx,
-                                uint32_t total,  uint32_t size )
+                                uint32_t total,  uint32_t size ) noexcept
 {
   MemcachedHdr * h;
   uint32_t       j, cnt = 1, len;
@@ -377,7 +377,7 @@ EvMemcachedMerge::merge_frames( StreamBuf &strm,  struct mmsghdr *mhdr,
 }
 
 void
-EvMemcachedUdp::process( void )
+EvMemcachedUdp::process( void ) noexcept
 {
   EvPrefetchQueue * q    = this->poll.prefetch_queue;
   StreamBuf       & strm = *this;
@@ -435,7 +435,7 @@ EvMemcachedUdp::process( void )
 }
 
 bool
-MemcachedUdpFraming::construct_frames( void )
+MemcachedUdpFraming::construct_frames( void ) noexcept
 {
   uint32_t i, o, j, k, off, len, next;
   bool     need_split = false;
@@ -607,7 +607,7 @@ MemcachedUdpFraming::construct_frames( void )
 }
 
 void
-EvMemcachedService::read( void )
+EvMemcachedService::read( void ) noexcept
 {
   size_t nb = this->bytes_recv;
   this->EvConnection::read();
@@ -615,7 +615,7 @@ EvMemcachedService::read( void )
 }
 
 void
-EvMemcachedService::write( void )
+EvMemcachedService::write( void ) noexcept
 {
   size_t nb = this->bytes_sent;
   this->EvConnection::write();
@@ -623,7 +623,7 @@ EvMemcachedService::write( void )
 }
 
 void
-EvMemcachedUdp::read( void )
+EvMemcachedUdp::read( void ) noexcept
 {
   size_t nb = this->bytes_recv;
   this->EvUdp::read();
@@ -631,7 +631,7 @@ EvMemcachedUdp::read( void )
 }
 
 void
-EvMemcachedUdp::write( void )
+EvMemcachedUdp::write( void ) noexcept
 {
   StreamBuf & strm = *this;
   MemcachedUdpFraming g( this->out_idx, this->in_mhdr, strm, this->in_nmsgs );
@@ -648,7 +648,7 @@ EvMemcachedUdp::write( void )
 }
 
 void
-EvMemcachedService::release( void )
+EvMemcachedService::release( void ) noexcept
 {
   this->MemcachedExec::release();
   this->EvConnection::release_buffers();
@@ -657,7 +657,7 @@ EvMemcachedService::release( void )
 }
 
 void
-EvMemcachedMerge::release( void )
+EvMemcachedMerge::release( void ) noexcept
 {
   if ( this->sav_mhdr != NULL ) {
     for ( uint32_t i = 0; i < this->sav_len; i++ ) {
@@ -671,7 +671,7 @@ EvMemcachedMerge::release( void )
 }
 
 void
-EvMemcachedUdp::release( void )
+EvMemcachedUdp::release( void ) noexcept
 {
   this->out_idx = NULL;
   this->sav.release();
@@ -681,7 +681,7 @@ EvMemcachedUdp::release( void )
 }
 
 void
-EvMemcachedService::push_free_list( void )
+EvMemcachedService::push_free_list( void ) noexcept
 {
   if ( this->listfl == IN_ACTIVE_LIST )
     fprintf( stderr, "memcached sock should not be in active list\n" );
@@ -692,7 +692,7 @@ EvMemcachedService::push_free_list( void )
 }
 
 void
-EvMemcachedService::pop_free_list( void )
+EvMemcachedService::pop_free_list( void ) noexcept
 {
   if ( this->listfl == IN_FREE_LIST ) {
     this->listfl = IN_NO_LIST;

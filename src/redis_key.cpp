@@ -15,7 +15,7 @@ using namespace kv;
 using namespace md;
 
 ExecStatus
-RedisExec::exec_del( EvKeyCtx &ctx )
+RedisExec::exec_del( EvKeyCtx &ctx ) noexcept
 {
   /* DEL key1 [key2 ...] */
   if ( this->exec_key_fetch( ctx, true ) == KEY_OK && /* test exists */
@@ -31,7 +31,7 @@ RedisExec::exec_del( EvKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::exec_dump( EvKeyCtx &ctx )
+RedisExec::exec_dump( EvKeyCtx &ctx ) noexcept
 {
   /* DUMP key (serialize key) */
   switch ( this->exec_key_fetch( ctx ) ) {
@@ -79,7 +79,7 @@ RedisExec::exec_dump( EvKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::exec_exists( EvKeyCtx &ctx )
+RedisExec::exec_exists( EvKeyCtx &ctx ) noexcept
 {
   /* EXISTS key1 [key2 ...] */
   switch ( this->exec_key_fetch( ctx ) ) {
@@ -91,14 +91,14 @@ RedisExec::exec_exists( EvKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::exec_expire( EvKeyCtx &ctx )
+RedisExec::exec_expire( EvKeyCtx &ctx ) noexcept
 {
   /* EXPIRE key secs */
   return this->do_pexpire( ctx, 1000 * 1000 * 1000 );
 }
 
 ExecStatus
-RedisExec::exec_expireat( EvKeyCtx &ctx )
+RedisExec::exec_expireat( EvKeyCtx &ctx ) noexcept
 {
   /* EXPIREAT key stamp */
   return this->do_pexpireat( ctx, 1000 * 1000 * 1000 );
@@ -106,7 +106,7 @@ RedisExec::exec_expireat( EvKeyCtx &ctx )
 
 /* XXX add option to synchronize scanning to prevent multiple copies of same k*/
 ExecStatus
-RedisExec::exec_keys( void )
+RedisExec::exec_keys( void ) noexcept
 {
   ScanArgs     sa;
   const char * pattern;
@@ -143,21 +143,21 @@ RedisExec::exec_keys( void )
 }
 
 ExecStatus
-RedisExec::exec_migrate( EvKeyCtx &/*ctx*/ )
+RedisExec::exec_migrate( EvKeyCtx &/*ctx*/ ) noexcept
 {
   /* MIGRATE host port key */
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_move( EvKeyCtx &/*ctx*/ )
+RedisExec::exec_move( EvKeyCtx &/*ctx*/ ) noexcept
 {
   /* MOVE key db# */
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_object( EvKeyCtx &ctx )
+RedisExec::exec_object( EvKeyCtx &ctx ) noexcept
 {
   /* OBJECT key [refcount|encoding|idletime|freq|help] */
   int subcmd = this->msg.match_arg( 1, MARG( "refcount" ),
@@ -211,7 +211,7 @@ RedisExec::exec_object( EvKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::exec_persist( EvKeyCtx &ctx )
+RedisExec::exec_persist( EvKeyCtx &ctx ) noexcept
 {
   /* PERSIST key */
   if ( this->exec_key_fetch( ctx ) == KEY_OK ) {
@@ -225,14 +225,14 @@ RedisExec::exec_persist( EvKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::exec_pexpire( EvKeyCtx &ctx )
+RedisExec::exec_pexpire( EvKeyCtx &ctx ) noexcept
 {
   /* PEXPIRE key ms */
   return this->do_pexpire( ctx, 1000 * 1000 );
 }
 
 ExecStatus
-RedisExec::do_pexpire( EvKeyCtx &ctx,  uint64_t units )
+RedisExec::do_pexpire( EvKeyCtx &ctx,  uint64_t units ) noexcept
 {
   int64_t  ival;
   uint64_t exp;
@@ -253,14 +253,14 @@ RedisExec::do_pexpire( EvKeyCtx &ctx,  uint64_t units )
 }
 
 ExecStatus
-RedisExec::exec_pexpireat( EvKeyCtx &ctx )
+RedisExec::exec_pexpireat( EvKeyCtx &ctx ) noexcept
 {
   /* PEXPIREAT key stamp */
   return this->do_pexpireat( ctx, 1000 * 1000 );
 }
 
 ExecStatus
-RedisExec::do_pexpireat( EvKeyCtx &ctx,  uint64_t units )
+RedisExec::do_pexpireat( EvKeyCtx &ctx,  uint64_t units ) noexcept
 {
   int64_t  ival;
   uint64_t exp;
@@ -279,14 +279,14 @@ RedisExec::do_pexpireat( EvKeyCtx &ctx,  uint64_t units )
 }
 
 ExecStatus
-RedisExec::exec_pttl( EvKeyCtx &ctx )
+RedisExec::exec_pttl( EvKeyCtx &ctx ) noexcept
 {
   /* PTTL key */
   return this->do_pttl( ctx, 1000 * 1000 );
 }
 
 ExecStatus
-RedisExec::do_pttl( EvKeyCtx &ctx,  int64_t units )
+RedisExec::do_pttl( EvKeyCtx &ctx,  int64_t units ) noexcept
 {
   uint64_t exp = 0, upd;
   /* (P)TTL key */
@@ -311,7 +311,7 @@ RedisExec::do_pttl( EvKeyCtx &ctx,  int64_t units )
 }
 
 ExecStatus
-RedisExec::exec_randomkey( void )
+RedisExec::exec_randomkey( void ) noexcept
 {
   uint64_t pos     = this->kctx.thr_ctx.rng.next();
   uint64_t ht_size = this->kctx.ht_size;
@@ -338,7 +338,7 @@ RedisExec::exec_randomkey( void )
 
 /* XXX do atomic rename */
 ExecStatus
-RedisExec::exec_rename( EvKeyCtx &ctx )
+RedisExec::exec_rename( EvKeyCtx &ctx ) noexcept
 {
   void * data;
   size_t sz;
@@ -404,7 +404,7 @@ RedisExec::exec_rename( EvKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::exec_renamenx( EvKeyCtx &ctx )
+RedisExec::exec_renamenx( EvKeyCtx &ctx ) noexcept
 {
   /* RENAMENX key newkey */
   if ( ctx.argn == 2 ) { /* newkey dest */
@@ -422,14 +422,14 @@ RedisExec::exec_renamenx( EvKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::exec_restore( EvKeyCtx &/*ctx*/ )
+RedisExec::exec_restore( EvKeyCtx &/*ctx*/ ) noexcept
 {
   /* RESTORE key ttl value */
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_sort( EvKeyCtx &/*ctx*/ )
+RedisExec::exec_sort( EvKeyCtx &/*ctx*/ ) noexcept
 {
   /* SORT key [BY pat] [LIMIT off cnt] [GET pat] [ASC|DESC] 
    *          [ALPHA] [STORE dest] */
@@ -437,12 +437,12 @@ RedisExec::exec_sort( EvKeyCtx &/*ctx*/ )
 }
 
 ExecStatus
-RedisExec::exec_touch( EvKeyCtx &ctx )
+RedisExec::exec_touch( EvKeyCtx &ctx ) noexcept
 {
-  uint64_t upd = this->kctx.ht.hdr.current_stamp;
+  /*uint64_t upd = this->kctx.ht.hdr.current_stamp;*/
   /* TOUCH key [key2 ...] */
   switch ( this->exec_key_fetch( ctx ) ) {
-    case KEY_OK: this->kctx.update_stamps( 0, upd ); ctx.ival = 1; break;
+    case KEY_OK: /*this->kctx.update_stamps( 0, upd );*/ ctx.ival = 1; break;
     case KEY_IS_NEW: ctx.ival = 0; break;
     default: return ERR_KV_STATUS;
   }
@@ -450,14 +450,14 @@ RedisExec::exec_touch( EvKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::exec_ttl( EvKeyCtx &ctx )
+RedisExec::exec_ttl( EvKeyCtx &ctx ) noexcept
 {
   /* TTL key */
   return this->do_pttl( ctx, 1000 * 1000 * 1000 );
 }
 
 ExecStatus
-RedisExec::exec_type( EvKeyCtx &ctx )
+RedisExec::exec_type( EvKeyCtx &ctx ) noexcept
 {
   const char *str;
   size_t len;
@@ -472,21 +472,21 @@ RedisExec::exec_type( EvKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::exec_unlink( EvKeyCtx &ctx )
+RedisExec::exec_unlink( EvKeyCtx &ctx ) noexcept
 {
   /* UNLINK key [key2 ...] */
   return this->exec_del( ctx );
 }
 
 ExecStatus
-RedisExec::exec_wait( void )
+RedisExec::exec_wait( void ) noexcept
 {
   /* WAIT numslave timeout */
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_scan( void )
+RedisExec::exec_scan( void ) noexcept
 {
   ScanArgs   sa;
   ExecStatus status;
@@ -499,7 +499,7 @@ RedisExec::exec_scan( void )
 }
 
 ExecStatus
-RedisExec::match_scan_args( ScanArgs &sa,  size_t i )
+RedisExec::match_scan_args( ScanArgs &sa,  size_t i ) noexcept
 {
   const char * pattern = NULL;
   size_t       patlen  = 0;
@@ -546,7 +546,7 @@ RedisExec::match_scan_args( ScanArgs &sa,  size_t i )
 }
 
 void
-RedisExec::release_scan_args( ScanArgs &sa )
+RedisExec::release_scan_args( ScanArgs &sa ) noexcept
 {
   if ( sa.re != NULL ) {
     pcre2_match_data_free( sa.md );
@@ -555,7 +555,7 @@ RedisExec::release_scan_args( ScanArgs &sa )
 }
 
 ExecStatus
-RedisExec::scan_keys( ScanArgs &sa )
+RedisExec::scan_keys( ScanArgs &sa ) noexcept
 {
   StreamBuf::BufQueue q( this->strm );
   size_t cnt = 0;

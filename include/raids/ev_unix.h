@@ -9,14 +9,14 @@ namespace ds {
 
 struct EvUnixListen : public EvListen {
   EvUnixListen( EvPoll &p,  PeerOps &o ) : EvListen( p, o ) {}
-  int listen( const char *sock,  const char *k );
-  virtual bool accept( void ) { return false; }
+  int listen( const char *sock,  const char *k ) noexcept;
+  virtual bool accept( void ) noexcept { return false; }
 };
 
 struct EvRedisUnixListen : public EvUnixListen {
   EvListenOps ops;
   EvRedisUnixListen( EvPoll &p ) : EvUnixListen( p, this->ops ) {}
-  virtual bool accept( void );
+  virtual bool accept( void ) noexcept;
   int listen( const char *sock ) {
     return this->EvUnixListen::listen( sock, "unix_listen" );
   }
@@ -26,7 +26,7 @@ struct EvUnixClient : public EvNetClient {
   EvUnixClient( EvPoll &p, EvCallback &callback,
                 EvSockType t = EV_CLIENT_SOCK )
     : EvNetClient( p, callback, t ) {}
-  int connect( const char *sock );
+  int connect( const char *sock ) noexcept;
 };
 
 }

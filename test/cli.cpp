@@ -18,8 +18,8 @@ struct TermCallback : public EvCallback { /* from terminal */
   TermCallback( MyClient &m ) : me( m ) {}
   void on_msg( RedisMsg &msg );
   void on_err( char *buf,  size_t buflen,  int status );
-  virtual bool on_data( char *buf,  size_t &buflen );
-  virtual void on_close( void );
+  virtual bool on_data( char *buf,  size_t &buflen ) noexcept;
+  virtual void on_close( void ) noexcept;
 };
 
 struct ClientCallback : public EvCallback { /* from socket */
@@ -27,8 +27,8 @@ struct ClientCallback : public EvCallback { /* from socket */
   ClientCallback( MyClient &m ) : me( m ) {}
   void on_msg( RedisMsg &msg );
   void on_err( char *buf,  size_t buflen,  int status );
-  virtual bool on_data( char *buf,  size_t &buflen );
-  virtual void on_close( void );
+  virtual bool on_data( char *buf,  size_t &buflen ) noexcept;
+  virtual void on_close( void ) noexcept;
 };
 
 struct MyClient {
@@ -184,7 +184,7 @@ TermCallback::on_msg( RedisMsg &msg )
 }
 
 bool
-TermCallback::on_data( char *buf,  size_t &buflen )
+TermCallback::on_data( char *buf,  size_t &buflen ) noexcept
 {
   int status;
   if ( this->me.is_mc ) {
@@ -232,7 +232,7 @@ TermCallback::on_err( char *,  size_t,  int status )
 }
 
 void
-TermCallback::on_close( void )
+TermCallback::on_close( void ) noexcept
 {
   this->me.term.printf( "bye\n" );
 }
@@ -265,7 +265,7 @@ ClientCallback::on_msg( RedisMsg &msg )
 }
 
 bool
-ClientCallback::on_data( char *buf,  size_t &buflen )
+ClientCallback::on_data( char *buf,  size_t &buflen ) noexcept
 {
   int status;
   if ( this->me.is_mc ) {
@@ -303,7 +303,7 @@ ClientCallback::on_err( char *,  size_t,  int status )
 }
 
 void
-ClientCallback::on_close( void )
+ClientCallback::on_close( void ) noexcept
 {
   this->me.term.printf( "client connection closed\n" );
   this->me.poll.quit = 1;

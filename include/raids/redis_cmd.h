@@ -1691,7 +1691,12 @@ const RedisCmdExtra xtra[ 811 ] = {
 "[\"c\",\"30\",\"d\",\"40\"]\n"
 "> zrange z 0 -1\n"
 "[\"a\",\"b\",\"c\",\"d\"]\n"},
-{ &xtra[498], XTRA_DESCR, "Get range of members between scores.\n"},
+{ &xtra[498], XTRA_DESCR,
+"Get range of members between ranked indices.  The elements are sorted\n"
+"by score, low to high, so the 0th indexed element is the lowest score\n"
+"and ranked lowest.  The start and stop can be negative, which would\n"
+"index from the highest score, so the -1 indexed element is the highest\n"
+"score and ranked highest.\n"},
 { NULL, XTRA_RETURN,
 "An array of members with scores if requested.\n"},
 { &xtra[500], XTRA_SHORT, "get with lex range"},

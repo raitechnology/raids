@@ -13,7 +13,7 @@ using namespace rai;
 using namespace ds;
 
 int
-EvUdp::listen( const char *ip,  int port,  const char *k )
+EvUdp::listen( const char *ip,  int port,  const char *k ) noexcept
 {
   static int on = 1, off = 0;
   int  status = 0,
@@ -87,7 +87,7 @@ fail:;
 }
 
 int
-EvUdp::connect( const char *ip,  int port )
+EvUdp::connect( const char *ip,  int port ) noexcept
 {
   static int off = 0;
   int  status = 0,

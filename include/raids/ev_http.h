@@ -11,7 +11,7 @@ namespace ds {
 struct EvHttpListen : public EvTcpListen {
   EvListenOps ops;
   EvHttpListen( EvPoll &p ) : EvTcpListen( p, this->ops ) {}
-  virtual bool accept( void );
+  virtual bool accept( void ) noexcept;
   int listen( const char *ip,  int port ) {
     return this->EvTcpListen::listen( ip, port, "http_listen" );
   }
@@ -20,8 +20,8 @@ struct EvHttpListen : public EvTcpListen {
 struct EvPrefetchQueue;
 
 struct EvHttpServiceOps : public EvConnectionOps {
-  virtual int client_list( PeerData &pd,  char *buf,  size_t buflen );
-  virtual bool match( PeerData &pd,  PeerMatchArgs &ka );
+  virtual int client_list( PeerData &pd,  char *buf,  size_t buflen ) noexcept;
+  virtual bool match( PeerData &pd,  PeerMatchArgs &ka ) noexcept;
 };
 
 struct EvHttpService : public EvConnection, public RedisExec {
@@ -54,22 +54,22 @@ struct EvHttpService : public EvConnection, public RedisExec {
     this->is_using_term = false;
     this->term.zero();
   }
-  void process( void );
-  bool on_msg( EvPublish &pub );
-  bool timer_expire( uint64_t tid,  uint64_t event_id );
-  bool hash_to_sub( uint32_t h,  char *key,  size_t &keylen );
-  bool flush_term( void );
-  void write( void ); /* override write() in EvConnection */
-  bool frame_websock( void );
-  bool frame_websock2( void );
-  bool send_file( const char *get,  size_t hdrlen );
+  void process( void ) noexcept;
+  bool on_msg( EvPublish &pub ) noexcept;
+  bool timer_expire( uint64_t tid,  uint64_t event_id ) noexcept;
+  bool hash_to_sub( uint32_t h,  char *key,  size_t &keylen ) noexcept;
+  bool flush_term( void ) noexcept;
+  void write( void ) noexcept; /* override write() in EvConnection */
+  bool frame_websock( void ) noexcept;
+  bool frame_websock2( void ) noexcept;
+  bool send_file( const char *get,  size_t hdrlen ) noexcept;
   bool send_ws_upgrade( const char *wsver, const char *wskey,
-                        size_t wskeylen,  const char *wspro );
-  bool send_ws_pong( const char *payload,  size_t len );
-  size_t recv_wsframe( char *start,  char *end );
-  void release( void );
-  void push_free_list( void );
-  void pop_free_list( void );
+                        size_t wskeylen,  const char *wspro ) noexcept;
+  bool send_ws_pong( const char *payload,  size_t len ) noexcept;
+  size_t recv_wsframe( char *start,  char *end ) noexcept;
+  void release( void ) noexcept;
+  void push_free_list( void ) noexcept;
+  void pop_free_list( void ) noexcept;
   void process_close( void ) {}
 };
 

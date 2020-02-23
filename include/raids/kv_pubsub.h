@@ -41,9 +41,9 @@ struct KvMsg {
            dest_end,   /* if > start, forward msg to others */
            msg_type;   /* what class of message (sub, unsub, pub) */
 
-  static const char * msg_type_string( uint8_t msg_type );
-  const char * msg_type_string( void ) const;
-  void print( void );
+  static const char * msg_type_string( uint8_t msg_type ) noexcept;
+  const char * msg_type_string( void ) const noexcept;
+  void print( void ) noexcept;
 };
 
 typedef union {
@@ -186,7 +186,7 @@ struct KvLast {
 struct KvSubNotifyList {
   KvSubNotifyList * next, * back;
   bool in_list;
-  virtual void on_sub( KvSubMsg &submsg );
+  virtual void on_sub( KvSubMsg &submsg ) noexcept;
   KvSubNotifyList() : next( 0 ), back( 0 ), in_list( false ) {}
 };
 
@@ -234,55 +234,57 @@ struct KvPubSub : public EvSocket {
                                      this->seed2 );
   }
 
-  static KvPubSub *create( EvPoll &p );
-  bool register_mcast( void );
-  bool clear_mcast_dead_routes( void );
-  bool unregister_mcast( void );
+  static KvPubSub *create( EvPoll &p ) noexcept;
+  bool register_mcast( void ) noexcept;
+  bool clear_mcast_dead_routes( void ) noexcept;
+  bool unregister_mcast( void ) noexcept;
   bool subscribe_mcast( const char *sub,  size_t len,  bool activate,
-                        bool use_find );
-  bool get_mcast_route( CubeRoute128 &cr );
-  bool send_msg( KvMsg &msg );
-  bool send_vec( size_t cnt,  void *vec,  uint64_t *siz,  size_t dest );
-  KvMsg *create_kvmsg( KvMsgType mtype,  size_t sz );
+                        bool use_find ) noexcept;
+  bool get_mcast_route( CubeRoute128 &cr ) noexcept;
+  bool send_msg( KvMsg &msg ) noexcept;
+  bool send_vec( size_t cnt,  void *vec,  uint64_t *siz,
+                 size_t dest ) noexcept;
+  KvMsg *create_kvmsg( KvMsgType mtype,  size_t sz ) noexcept;
   KvSubMsg *create_kvpublish( uint32_t h,  const char *sub,  size_t len,
                               const uint8_t *pref,  const uint32_t *hash,
                               uint8_t pref_cnt,  const char *reply, size_t rlen,
                               const void *msgdata,  size_t msgsz,
                               char src_type,  KvMsgType mtype,
-                              uint8_t code,  uint8_t msg_enc );
+                              uint8_t code,  uint8_t msg_enc ) noexcept;
   KvSubMsg *create_kvsubmsg( uint32_t h,  const char *sub,  size_t len,
                              char src_type,  KvMsgType mtype,  const char *rep,
-                             size_t rlen );
+                             size_t rlen ) noexcept;
   KvSubMsg *create_kvpsubmsg( uint32_t h,  const char *pattern,  size_t len,
                               const char *prefix,  uint8_t prefix_len,
-                              char src_type,  KvMsgType mtype );
+                              char src_type,  KvMsgType mtype ) noexcept;
   void do_sub( uint32_t h,  const char *sub,  size_t len,
                uint32_t sub_id,  uint32_t rcnt,  char src_type,
-               const char *rep = NULL,  size_t rlen = 0 );
+               const char *rep = NULL,  size_t rlen = 0 ) noexcept;
   void do_unsub( uint32_t h,  const char *sub,  size_t len,
-                 uint32_t sub_id,  uint32_t rcnt,  char src_type );
+                 uint32_t sub_id,  uint32_t rcnt,  char src_type ) noexcept;
   void do_psub( uint32_t h,  const char *pattern,  size_t len,
                 const char *prefix,  uint8_t prefix_len,
-                uint32_t sub_id,  uint32_t rcnt,  char src_type );
+                uint32_t sub_id,  uint32_t rcnt,  char src_type ) noexcept;
   void do_punsub( uint32_t h,  const char *pattern,  size_t len,
                   const char *prefix,  uint8_t prefix_len,
-                  uint32_t sub_id,  uint32_t rcnt,  char src_type );
-  void forward_sub( KvSubMsg &submsg );
-  void process( void );
+                  uint32_t sub_id,  uint32_t rcnt,  char src_type ) noexcept;
+  void forward_sub( KvSubMsg &submsg ) noexcept;
+  void process( void ) noexcept;
   void exec_key_prefetch( EvKeyCtx & ) {}
   int exec_key_continue( EvKeyCtx & ) { return 0; }
   bool timer_expire( uint64_t, uint64_t ) { return false; }
   void release( void ) {}
-  void process_shutdown( void );
-  void process_close( void );
-  void write( void );
-  bool get_sub_mcast( const char *sub,  size_t len,  CubeRoute128 &cr );
-  void route_msg_from_shm( KvMsg &msg );
-  void read( void );
-  bool busy_poll( uint64_t time_ns );
-  bool on_msg( EvPublish &pub );
-  void publish_status( KvMsgType mtype );
-  bool hash_to_sub( uint32_t h,  char *key,  size_t &keylen );
+  void process_shutdown( void ) noexcept;
+  void process_close( void ) noexcept;
+  void write( void ) noexcept;
+  bool get_sub_mcast( const char *sub,  size_t len,
+                      CubeRoute128 &cr ) noexcept;
+  void route_msg_from_shm( KvMsg &msg ) noexcept;
+  void read( void ) noexcept;
+  bool busy_poll( uint64_t time_ns ) noexcept;
+  bool on_msg( EvPublish &pub ) noexcept;
+  void publish_status( KvMsgType mtype ) noexcept;
+  bool hash_to_sub( uint32_t h,  char *key,  size_t &keylen ) noexcept;
 };
 
 }

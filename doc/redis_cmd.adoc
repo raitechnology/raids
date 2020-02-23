@@ -2915,7 +2915,11 @@ zrange key start stop [withscores]
 ["a","b","c","d"]
 ----
 .Description
-Get range of members between scores.
+Get range of members between ranked indices.  The elements are sorted
+by score, low to high, so the 0th indexed element is the lowest score
+and ranked lowest.  The start and stop can be negative, which would
+index from the highest score, so the -1 indexed element is the highest
+score and ranked highest.
 
 .Return
 An array of members with scores if requested.

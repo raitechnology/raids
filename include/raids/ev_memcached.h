@@ -15,7 +15,7 @@ struct EvMemcached {
   EvMemcached( char *b,  uint32_t &o,  uint32_t &l ) : recv( b ), off( o ),
     len( l ) {}
   int process_loop( MemcachedExec &mex,  EvPrefetchQueue *q,  StreamBuf &strm,
-                    EvSocket *svc );
+                    EvSocket *svc ) noexcept;
 };
 
 struct MemcachedHdr {
@@ -40,8 +40,8 @@ struct EvMemcachedMerge {
    * when they are an incomplete unit: req_id is missing a seqno out of total */
   bool merge_frames( StreamBuf &strm,  struct mmsghdr *mhdr,  uint32_t nmsgs,
                      uint32_t req_id,  uint32_t idx,  uint32_t total,
-                     uint32_t size );
-  void release( void );
+                     uint32_t size ) noexcept;
+  void release( void ) noexcept;
 };
 
 struct EvMemcachedUdp : public EvUdp {
@@ -52,9 +52,9 @@ struct EvMemcachedUdp : public EvUdp {
   EvUdpOps         ops;
   EvMemcachedUdp( EvPoll &p ) : EvUdp( p, EV_MEMUDP_SOCK, this->ops ),
     exec( 0 ), out_idx( 0 ) {}
-  int listen( const char *ip,  int port );
-  void init( void );
-  void process( void );
+  int listen( const char *ip,  int port ) noexcept;
+  void init( void ) noexcept;
+  void process( void ) noexcept;
   void exec_key_prefetch( EvKeyCtx &ctx ) {
     this->exec->exec_key_prefetch( ctx );
   }
@@ -64,11 +64,11 @@ struct EvMemcachedUdp : public EvUdp {
   bool timer_expire( uint64_t, uint64_t ) { return false; }
   bool hash_to_sub( uint32_t, char *, size_t & ) { return false; }
   bool on_msg( EvPublish & ) { return true; }
-  void read( void );
-  void write( void );
-  void release( void );
+  void read( void ) noexcept;
+  void write( void ) noexcept;
+  void release( void ) noexcept;
   bool merge_inmsgs( uint32_t req_id,  uint32_t i,  uint32_t total,
-                     uint32_t size );
+                     uint32_t size ) noexcept;
   void process_close( void ) {}
 };
 
@@ -86,15 +86,15 @@ struct MemcachedUdpFraming {
                        uint32_t nm,  uint32_t fs = 1400 )
     : out_idx( oi ), out_mhdr( 0 ), in_mhdr( im ), strm( st ),
       nmsgs( nm ), iov_cnt( 0 ), out_nmsgs( 0 ), frame_size( fs ) {}
-  bool construct_frames( void );
+  bool construct_frames( void ) noexcept;
 };
 
 
 struct EvMemcachedListen : public EvTcpListen {
   EvListenOps ops;
-  EvMemcachedListen( EvPoll &p );
-  int listen( const char *ip,  int port );
-  virtual bool accept( void );
+  EvMemcachedListen( EvPoll &p ) noexcept;
+  int listen( const char *ip,  int port ) noexcept;
+  virtual bool accept( void ) noexcept;
 };
 
 struct EvPrefetchQueue;
@@ -106,15 +106,15 @@ struct EvMemcachedService : public EvConnection, public MemcachedExec {
   EvMemcachedService( EvPoll &p,  MemcachedStats &st )
     : EvConnection( p, EV_MEMCACHED_SOCK, this->ops ),
       MemcachedExec( *p.map, p.ctx_id, *this, st ) {}
-  void process( void );
+  void process( void ) noexcept;
   bool timer_expire( uint64_t, uint64_t ) { return false; }
   bool hash_to_sub( uint32_t, char *, size_t & ) { return false; }
   bool on_msg( EvPublish & ) { return true; }
-  void read( void );
-  void write( void );
-  void release( void );
-  void push_free_list( void );
-  void pop_free_list( void );
+  void read( void ) noexcept;
+  void write( void ) noexcept;
+  void release( void ) noexcept;
+  void push_free_list( void ) noexcept;
+  void pop_free_list( void ) noexcept;
   void process_close( void ) {}
 };
 

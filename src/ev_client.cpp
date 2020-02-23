@@ -16,19 +16,19 @@ using namespace rai;
 using namespace ds;
 
 void
-EvClient::send_data( char *,  size_t )
+EvClient::send_data( char *,  size_t ) noexcept
 {
 }
 
 void
-EvNetClient::send_data( char *data,  size_t size )
+EvNetClient::send_data( char *data,  size_t size ) noexcept
 {
   this->append_iov( data, size );
   this->idle_push( EV_WRITE );
 }
 
 void
-EvNetClient::process( void )
+EvNetClient::process( void ) noexcept
 {
   for (;;) {
     char * buf    = &this->recv[ this->off ];
@@ -46,13 +46,13 @@ EvNetClient::process( void )
 }
 
 void
-EvNetClient::process_close( void )
+EvNetClient::process_close( void ) noexcept
 {
   this->cb.on_close();
 }
 
 void
-EvUdpClient::send_data( char *data,  size_t size )
+EvUdpClient::send_data( char *data,  size_t size ) noexcept
 {
   if ( ! this->pending() ) {
     MemcachedHdr hdr;
@@ -67,7 +67,7 @@ EvUdpClient::send_data( char *data,  size_t size )
 }
 
 void
-EvUdpClient::write( void )
+EvUdpClient::write( void ) noexcept
 {
   StreamBuf & strm = *this;
   uint32_t    out_idx[ 2 ];
@@ -83,7 +83,7 @@ EvUdpClient::write( void )
 }
 
 void
-EvUdpClient::process( void )
+EvUdpClient::process( void ) noexcept
 {
   StreamBuf & strm = *this;
   /* for each UDP message recvd */
@@ -127,13 +127,13 @@ EvUdpClient::process( void )
 }
 
 void
-EvUdpClient::process_close( void )
+EvUdpClient::process_close( void ) noexcept
 {
   this->cb.on_close();
 }
 
 void
-EvUdpClient::release( void )
+EvUdpClient::release( void ) noexcept
 {
   if ( this->sav != NULL ) {
     this->sav->release();
@@ -144,19 +144,19 @@ EvUdpClient::release( void )
 }
 
 bool
-EvCallback::on_data( char *,  size_t & )
+EvCallback::on_data( char *,  size_t & ) noexcept
 {
   return true;
 }
 
 void
-EvCallback::on_close( void )
+EvCallback::on_close( void ) noexcept
 {
   fprintf( stderr, "closed\n" );
 }
 
 void
-EvTerminal::process( void )
+EvTerminal::process( void ) noexcept
 {
   size_t buflen = this->len - this->off;
   size_t msgcnt = 0;
@@ -191,7 +191,7 @@ EvTerminal::process( void )
 }
 
 void
-EvTerminal::process_line( const char *s )
+EvTerminal::process_line( const char *s ) noexcept
 {
   size_t slen = ::strlen( s );
   this->line = (char *) ::realloc( this->line, this->line_len + slen + 1 );
@@ -203,7 +203,7 @@ EvTerminal::process_line( const char *s )
 }
 
 void
-EvTerminal::flush_out( void )
+EvTerminal::flush_out( void ) noexcept
 {
   for ( size_t i = 0;;) {
     if ( i == this->term.out_len ) {
@@ -225,7 +225,7 @@ EvTerminal::flush_out( void )
 }
 
 int
-EvTerminal::start( void )
+EvTerminal::start( void ) noexcept
 {
   this->PeerData::init_peer( STDIN_FILENO, NULL, "term" );
   lc_tty_set_locale();
@@ -239,7 +239,7 @@ EvTerminal::start( void )
 }
 
 void
-EvTerminal::finish( void )
+EvTerminal::finish( void ) noexcept
 {
   if ( this->term.tty != NULL ) {
     lc_tty_clear_line( this->term.tty );
@@ -250,7 +250,7 @@ EvTerminal::finish( void )
 }
 
 void
-EvTerminal::printf( const char *fmt, ... )
+EvTerminal::printf( const char *fmt, ... ) noexcept
 {
   va_list args;
   lc_tty_clear_line( this->term.tty );

@@ -14,7 +14,7 @@ using namespace ds;
 using namespace kv;
 
 EvTimerQueue *
-EvTimerQueue::create_timer_queue( EvPoll &p )
+EvTimerQueue::create_timer_queue( EvPoll &p ) noexcept
 {
   int tfd;
 
@@ -48,7 +48,7 @@ static const uint32_t to_ns[] = { 1000 * 1000 * 1000, 1000 * 1000, 1000, 1 };
 
 bool
 EvTimerQueue::add_timer_units( int id,  uint32_t ival,  TimerUnits u,
-                               uint64_t timer_id,  uint64_t event_id )
+                               uint64_t timer_id,  uint64_t event_id ) noexcept
 {
   EvTimerEvent el;
   el.id          = id;
@@ -64,7 +64,8 @@ EvTimerQueue::add_timer_units( int id,  uint32_t ival,  TimerUnits u,
 }
 
 bool
-EvTimerQueue::remove_timer( int id,  uint64_t timer_id,  uint64_t event_id )
+EvTimerQueue::remove_timer( int id,  uint64_t timer_id,
+                            uint64_t event_id ) noexcept
 {
   EvTimerEvent el;
   el.id          = id;
@@ -76,7 +77,7 @@ EvTimerQueue::remove_timer( int id,  uint64_t timer_id,  uint64_t event_id )
 }
 
 void
-EvTimerQueue::repost( void )
+EvTimerQueue::repost( void ) noexcept
 {
   EvTimerEvent el = this->queue.pop();
   do {
@@ -87,7 +88,7 @@ EvTimerQueue::repost( void )
 }
 
 bool
-EvTimerQueue::read( void )
+EvTimerQueue::read( void ) noexcept
 {
   uint8_t buf[ 1024 ];
   size_t  total = 0;
@@ -114,7 +115,7 @@ EvTimerQueue::read( void )
 }
 
 bool
-EvTimerQueue::set_timer( void )
+EvTimerQueue::set_timer( void ) noexcept
 {
   struct itimerspec ts;
   ts.it_interval.tv_sec = 0;
@@ -130,7 +131,7 @@ EvTimerQueue::set_timer( void )
 }
 
 void
-EvTimerQueue::process( void )
+EvTimerQueue::process( void ) noexcept
 {
   this->last = this->now;
   this->now  = current_monotonic_time_ns();

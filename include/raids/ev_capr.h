@@ -18,8 +18,8 @@ struct EvCaprListen : public EvTcpListen {
   CaprSession * sess;
   uint64_t      timer_id;
   EvListenOps   ops;
-  EvCaprListen( EvPoll &p );
-  virtual bool accept( void );
+  EvCaprListen( EvPoll &p ) noexcept;
+  virtual bool accept( void ) noexcept;
   int listen( const char *ip,  int port ) {
     return this->EvTcpListen::listen( ip, port, "capr_listen" );
   }
@@ -139,7 +139,7 @@ struct CaprPatternMap {
   size_t sub_count( void ) const {
     return this->tab.pop_count();
   }
-  void release( void );
+  void release( void ) noexcept;
   /* put in new sub
    * tab[ sub ] => {cnt} */
   CaprSubStatus put( uint32_t h,  const char *sub,  size_t len,
@@ -192,27 +192,29 @@ struct EvCaprService : public EvConnection {
     this->inboxlen = 0;
     this->sid = 0;
   }
-  void send( CaprMsgOut &rec,  size_t off,  const void *data, size_t data_len );
-  void process( void );
+  void send( CaprMsgOut &rec,  size_t off,  const void *data,
+             size_t data_len ) noexcept;
+  void process( void ) noexcept;
   void exec_key_prefetch( EvKeyCtx & ) {}
   int exec_key_continue( EvKeyCtx & ) { return 0; }
-  bool timer_expire( uint64_t tid,  uint64_t eid );
-  void reassert_subs( CaprMsgIn &rec );
-  void add_sub( CaprMsgIn &rec );
-  void add_subscription( const char *sub,  uint32_t len,
-                         const char *reply,  uint32_t replylen,  bool is_wild );
-  void rem_sub( CaprMsgIn &rec );
-  void rem_all_sub( void );
-  bool fwd_pub( CaprMsgIn &rec );
-  bool on_msg( EvPublish &pub );
-  bool hash_to_sub( uint32_t h,  char *key,  size_t &keylen );
-  bool fwd_msg( EvPublish &pub,  const void *sid,  size_t sid_len );
-  bool fwd_inbox( EvPublish &pub );
-  void get_inbox_addr( EvPublish &pub,  const char *&subj,  uint8_t *addr );
-  void release( void );
-  void push_free_list( void );
-  void pop_free_list( void );
-  void pub_session( uint8_t code );
+  bool timer_expire( uint64_t tid,  uint64_t eid ) noexcept;
+  void reassert_subs( CaprMsgIn &rec ) noexcept;
+  void add_sub( CaprMsgIn &rec ) noexcept;
+  void add_subscription( const char *sub,  uint32_t len,  const char *reply,
+                         uint32_t replylen,  bool is_wild ) noexcept;
+  void rem_sub( CaprMsgIn &rec ) noexcept;
+  void rem_all_sub( void ) noexcept;
+  bool fwd_pub( CaprMsgIn &rec ) noexcept;
+  bool on_msg( EvPublish &pub ) noexcept;
+  bool hash_to_sub( uint32_t h,  char *key,  size_t &keylen ) noexcept;
+  bool fwd_msg( EvPublish &pub,  const void *sid,  size_t sid_len ) noexcept;
+  bool fwd_inbox( EvPublish &pub ) noexcept;
+  void get_inbox_addr( EvPublish &pub,  const char *&subj,
+                       uint8_t *addr ) noexcept;
+  void release( void ) noexcept;
+  void push_free_list( void ) noexcept;
+  void pop_free_list( void ) noexcept;
+  void pub_session( uint8_t code ) noexcept;
   void process_close( void ) {}
 };
 
@@ -291,8 +293,8 @@ struct CaprSession {
                               const char *user,
                               const char *host,
                               const char *app,
-                              uint64_t sid );
-  CaprSession *copy( void ) const;
+                              uint64_t sid ) noexcept;
+  CaprSession *copy( void ) const noexcept;
 };
 
 static const uint8_t CAPR_MAGIC         = 0xca, /* hdr magic, first byte */
@@ -323,22 +325,23 @@ struct CaprMsgOut {
   /* publish without publish time / create time */
   uint32_t encode_publish( CaprSession &sess,  const uint8_t *addr,
                            const char *subj,  uint8_t code,
-                           uint32_t msg_len,  uint8_t msg_enc );
+                           uint32_t msg_len,  uint8_t msg_enc ) noexcept;
   /* publish with pub time from link and create time from source */
   uint32_t encode_publish_time( CaprSession &sess,  const uint8_t *addr,
                                 const char *subj,  uint8_t code,
                                 uint32_t msg_len,  uint8_t msg_enc,
                                 uint64_t ptim,  uint64_t ctim,
-                                uint32_t *counter );
+                                uint32_t *counter ) noexcept;
   /* request with inbox reply */
   uint32_t encode_request( CaprSession &sess,  uint32_t inbox_id,
-                           const char *subj,  uint8_t code );
+                           const char *subj,  uint8_t code ) noexcept;
   /* cancel sub or other non-inbox requests */
-  uint32_t encode_cancel( CaprSession &sess,  const char *subj,  uint8_t code );
+  uint32_t encode_cancel( CaprSession &sess,  const char *subj,
+                          uint8_t code ) noexcept;
   /* request with inbox reply and message */
   uint32_t encode_request_msg( CaprSession &sess,  uint32_t inbox_id,
                                const char *subj,  uint8_t code,
-                               uint32_t msg_len,  uint8_t msg_enc );
+                               uint32_t msg_len,  uint8_t msg_enc ) noexcept;
 };
 
 enum CaprDecodeStatus {
@@ -369,10 +372,10 @@ struct CaprMsgIn {
           * addr;
 
   /* decode a message, return = 0 success, < 0 error, > 0 bytes needed */
-  int32_t decode( uint8_t *capr_pkt,  size_t pkt_size );
-  uint32_t get_subscription( char *s,  bool &is_wild );
-  uint32_t get_inbox( char *buf );
-  uint32_t get_subject( char *s );
+  int32_t decode( uint8_t *capr_pkt,  size_t pkt_size ) noexcept;
+  uint32_t get_subscription( char *s,  bool &is_wild ) noexcept;
+  uint32_t get_inbox( char *buf ) noexcept;
+  uint32_t get_subject( char *s ) noexcept;
 };
 
 }

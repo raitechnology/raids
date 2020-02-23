@@ -16,7 +16,7 @@ using namespace rai;
 using namespace ds;
 
 int
-EvUnixListen::listen( const char *path,  const char *k )
+EvUnixListen::listen( const char *path,  const char *k ) noexcept
 {
   static int on = 1;
   int sock;
@@ -58,7 +58,7 @@ fail:;
 }
 
 bool
-EvRedisUnixListen::accept( void )
+EvRedisUnixListen::accept( void ) noexcept
 {
   struct sockaddr_un sunaddr;
   socklen_t addrlen = sizeof( sunaddr );
@@ -90,7 +90,7 @@ EvRedisUnixListen::accept( void )
 }
 
 int
-EvUnixClient::connect( const char *path )
+EvUnixClient::connect( const char *path ) noexcept
 {
   int sock;
   struct sockaddr_un sunaddr;

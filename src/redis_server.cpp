@@ -20,39 +20,39 @@ using namespace kv;
 
 /* CLUSTER */
 ExecStatus
-RedisExec::exec_cluster( void )
+RedisExec::exec_cluster( void ) noexcept
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_readonly( void )
+RedisExec::exec_readonly( void ) noexcept
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_readwrite( void )
+RedisExec::exec_readwrite( void ) noexcept
 {
   return ERR_BAD_CMD;
 }
 
 /* CONNECTION */
 ExecStatus
-RedisExec::exec_auth( void )
+RedisExec::exec_auth( void ) noexcept
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_echo( void )
+RedisExec::exec_echo( void ) noexcept
 {
   this->send_msg( this->msg.array[ 1 ] );
   return EXEC_OK;
 }
 
 ExecStatus
-RedisExec::exec_ping( void )
+RedisExec::exec_ping( void ) noexcept
 {
   if ( this->argc > 1 ) {
     this->send_msg( this->msg.array[ 1 ] );
@@ -65,26 +65,26 @@ RedisExec::exec_ping( void )
 }
 
 ExecStatus
-RedisExec::exec_quit( void )
+RedisExec::exec_quit( void ) noexcept
 {
   return EXEC_QUIT;
 }
 
 ExecStatus
-RedisExec::exec_select( void )
+RedisExec::exec_select( void ) noexcept
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_swapdb( void )
+RedisExec::exec_swapdb( void ) noexcept
 {
   return ERR_BAD_CMD;
 }
 
 /* SERVER */
 ExecStatus
-RedisExec::exec_bgrewriteaof( void )
+RedisExec::exec_bgrewriteaof( void ) noexcept
 {
   /* start a AOF */
   this->send_ok();
@@ -92,7 +92,7 @@ RedisExec::exec_bgrewriteaof( void )
 }
 
 ExecStatus
-RedisExec::exec_bgsave( void )
+RedisExec::exec_bgsave( void ) noexcept
 {
   /* save in the bg */
   this->send_ok();
@@ -100,7 +100,7 @@ RedisExec::exec_bgsave( void )
 }
 
 bool
-RedisExec::get_peer_match_args( PeerMatchArgs &ka )
+RedisExec::get_peer_match_args( PeerMatchArgs &ka ) noexcept
 {
   /* (ip) (ID id) (TYPE norm|mast|slav|pubsub) (ADDR ip) (SKIPME y/n) */
   for ( size_t i = 2; i < this->argc; ) {
@@ -151,7 +151,7 @@ RedisExec::get_peer_match_args( PeerMatchArgs &ka )
 }
 
 PeerData *
-PeerMatchIter::first( void )
+PeerMatchIter::first( void ) noexcept
 {
   /* go to the front */
   for ( this->p = &this->me; this->p->back != NULL; this->p = this->p->back )
@@ -160,7 +160,7 @@ PeerMatchIter::first( void )
 }
 
 PeerData *
-PeerMatchIter::next( void )
+PeerMatchIter::next( void ) noexcept
 {
   while ( this->p != NULL ) { /* while peers to match */
     PeerData & x = *this->p;
@@ -174,7 +174,7 @@ PeerMatchIter::next( void )
 }
 
 ExecStatus
-RedisExec::exec_client( void )
+RedisExec::exec_client( void ) noexcept
 {
   char        * s;
   const char  * nm;
@@ -274,7 +274,7 @@ RedisExec::exec_client( void )
 }
 
 int
-RedisExec::client_list( char *buf,  size_t buflen )
+RedisExec::client_list( char *buf,  size_t buflen ) noexcept
 {
   /* id=unique id, addr=peer addr, fd=sock, age=time connected
    * idle=time idle, flags=what, db=cur db, sub=channel subs,
@@ -375,7 +375,7 @@ get_cmd_usage( RedisCmd cmd,  char *tmp,  size_t tmplen )
 }
 
 ExecStatus
-RedisExec::exec_command( void )
+RedisExec::exec_command( void ) noexcept
 {
   RedisMsg     m;
   const char * name;
@@ -452,7 +452,7 @@ RedisExec::exec_command( void )
 }
 
 ExecStatus
-RedisExec::exec_config( void )
+RedisExec::exec_config( void ) noexcept
 {
   RedisMsg m;
   size_t   sz;
@@ -494,20 +494,20 @@ RedisExec::exec_config( void )
 }
 
 ExecStatus
-RedisExec::exec_dbsize( void )
+RedisExec::exec_dbsize( void ) noexcept
 {
   this->send_int( this->kctx.ht.hdr.last_entry_count );
   return EXEC_OK;
 }
 
 ExecStatus
-RedisExec::exec_debug( void )
+RedisExec::exec_debug( void ) noexcept
 {
   return EXEC_DEBUG;
 }
 
 ExecStatus
-RedisExec::exec_flushall( void )
+RedisExec::exec_flushall( void ) noexcept
 {
   /* delete all keys */
   this->send_ok();
@@ -515,7 +515,7 @@ RedisExec::exec_flushall( void )
 }
 
 ExecStatus
-RedisExec::exec_flushdb( void )
+RedisExec::exec_flushdb( void ) noexcept
 {
   /* delete current db */
   this->send_ok();
@@ -594,14 +594,14 @@ get_proc_status_size( const char *s,  size_t *ival,  ... )
   return cnt;
 }
 
-char *
+static char *
 mstring( double f,  char *buf,  int64_t k )
 {
   return mem_to_string( (int64_t) ceil( f ), buf, k );
 }
 
 ExecStatus
-RedisExec::exec_info( void )
+RedisExec::exec_info( void ) noexcept
 {
   enum { INFO_SERVER = 1, INFO_CLIENTS = 2, INFO_MEMORY = 4, INFO_PERSIST = 8,
          INFO_STATS  = 16, INFO_REPLIC = 32, INFO_CPU = 64, INFO_CMDSTATS = 128,
@@ -802,14 +802,14 @@ RedisExec::exec_info( void )
 }
 
 ExecStatus
-RedisExec::exec_lastsave( void )
+RedisExec::exec_lastsave( void ) noexcept
 {
   this->send_int( this->kctx.ht.hdr.create_stamp / 1000000000 );
   return EXEC_OK;
 }
 
 ExecStatus
-RedisExec::exec_memory( void )
+RedisExec::exec_memory( void ) noexcept
 {
   switch ( this->msg.match_arg( 1, MARG( "doctor" ),
                                    MARG( "help" ),
@@ -829,7 +829,7 @@ RedisExec::exec_memory( void )
 }
 
 ExecStatus
-RedisExec::exec_monitor( void )
+RedisExec::exec_monitor( void ) noexcept
 {
   /* monitor commands:
    * 1339518083.107412 [0 127.0.0.1:60866] "keys" "*"
@@ -843,7 +843,7 @@ RedisExec::exec_monitor( void )
 }
 
 ExecStatus
-RedisExec::exec_role( void )
+RedisExec::exec_role( void ) noexcept
 {
   /* master/slave
    * replication offset
@@ -861,38 +861,38 @@ RedisExec::exec_role( void )
 }
 
 ExecStatus
-RedisExec::exec_save( void )
+RedisExec::exec_save( void ) noexcept
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_shutdown( void )
+RedisExec::exec_shutdown( void ) noexcept
 {
   return EXEC_QUIT;
 }
 
 ExecStatus
-RedisExec::exec_slaveof( void )
+RedisExec::exec_slaveof( void ) noexcept
 {
   this->send_ok();
   return EXEC_OK;
 }
 
 ExecStatus
-RedisExec::exec_slowlog( void )
+RedisExec::exec_slowlog( void ) noexcept
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_sync( void )
+RedisExec::exec_sync( void ) noexcept
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_time( void )
+RedisExec::exec_time( void ) noexcept
 {
   RedisMsg m;
   char     sb[ 32 ], ub[ 32 ];

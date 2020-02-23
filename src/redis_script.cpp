@@ -9,19 +9,19 @@ using namespace rai;
 using namespace ds;
 
 ExecStatus
-RedisExec::exec_eval( EvKeyCtx &/*ctx*/ )
+RedisExec::exec_eval( EvKeyCtx &/*ctx*/ ) noexcept
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_evalsha( EvKeyCtx &/*ctx*/ )
+RedisExec::exec_evalsha( EvKeyCtx &/*ctx*/ ) noexcept
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_script( EvKeyCtx &/*ctx*/ )
+RedisExec::exec_script( EvKeyCtx &/*ctx*/ ) noexcept
 {
   return ERR_BAD_CMD;
 }

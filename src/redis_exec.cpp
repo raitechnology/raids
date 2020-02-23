@@ -34,18 +34,27 @@ static const size_t ok_sz      = sizeof( ok ) - 1,
                     neg_one_sz = sizeof( neg_one ) - 1,
                     mt_sz      = sizeof( mt ) - 1,
                     queued_sz  = sizeof( queued ) - 1;
-void RedisExec::send_ok( void ) { this->strm.append( ok, ok_sz ); }
-void RedisExec::send_nil( void ) { this->strm.append( nil, nil_sz ); }
-void RedisExec::send_null( void ) { this->strm.append( null, null_sz ); }
-void RedisExec::send_zeroarr( void ) { this->strm.append( zeroarr,zeroarr_sz );}
-void RedisExec::send_zero( void ) { this->strm.append( zero, zero_sz ); }
-void RedisExec::send_one( void ) { this->strm.append( one, one_sz ); }
-void RedisExec::send_neg_one( void ) { this->strm.append( neg_one, neg_one_sz);}
-void RedisExec::send_zero_string( void ) { this->strm.append( mt, mt_sz ); }
-void RedisExec::send_queued( void ) { this->strm.append( queued, queued_sz ); }
+void RedisExec::send_ok( void ) noexcept
+{ this->strm.append( ok, ok_sz ); }
+void RedisExec::send_nil( void ) noexcept
+{ this->strm.append( nil, nil_sz ); }
+void RedisExec::send_null( void ) noexcept
+{ this->strm.append( null, null_sz ); }
+void RedisExec::send_zeroarr( void ) noexcept
+{ this->strm.append( zeroarr,zeroarr_sz );}
+void RedisExec::send_zero( void ) noexcept
+{ this->strm.append( zero, zero_sz ); }
+void RedisExec::send_one( void ) noexcept
+{ this->strm.append( one, one_sz ); }
+void RedisExec::send_neg_one( void ) noexcept
+{ this->strm.append( neg_one, neg_one_sz);}
+void RedisExec::send_zero_string( void ) noexcept
+{ this->strm.append( mt, mt_sz ); }
+void RedisExec::send_queued( void ) noexcept
+{ this->strm.append( queued, queued_sz ); }
 
 void
-RedisExec::release( void )
+RedisExec::release( void ) noexcept
 {
   if ( this->multi != NULL )
     this->discard_multi();
@@ -64,7 +73,7 @@ RedisExec::release( void )
 }
 
 size_t
-RedisExec::send_string( const void *data,  size_t size )
+RedisExec::send_string( const void *data,  size_t size ) noexcept
 {
   size_t sz  = 32 + size;
   char * str = this->strm.alloc( sz );
@@ -78,7 +87,7 @@ RedisExec::send_string( const void *data,  size_t size )
 }
 
 size_t
-RedisExec::send_simple_string( const void *data,  size_t size )
+RedisExec::send_simple_string( const void *data,  size_t size ) noexcept
 {
   char * str = this->strm.alloc( 3 + size );
   if ( str == NULL )
@@ -90,7 +99,7 @@ RedisExec::send_simple_string( const void *data,  size_t size )
 
 size_t
 RedisExec::send_concat_string( const void *data,  size_t size,
-                               const void *data2,  size_t size2 )
+                               const void *data2,  size_t size2 ) noexcept
 {
   size_t sz  = 32 + size + size2;
   char * str = this->strm.alloc( sz );
@@ -106,7 +115,8 @@ RedisExec::send_concat_string( const void *data,  size_t size,
 }
 
 bool
-RedisExec::save_string_result( EvKeyCtx &ctx,  const void *data,  size_t size )
+RedisExec::save_string_result( EvKeyCtx &ctx,  const void *data,
+                               size_t size ) noexcept
 {
   size_t msz = sizeof( EvKeyTempResult ) + size + 24;
   /* this result may be set multiple times if key read is unsuccessful */
@@ -132,7 +142,7 @@ RedisExec::save_string_result( EvKeyCtx &ctx,  const void *data,  size_t size )
 }
 
 bool
-RedisExec::save_data( EvKeyCtx &ctx,  const void *data,  size_t size )
+RedisExec::save_data( EvKeyCtx &ctx,  const void *data,  size_t size ) noexcept
 {
   size_t msz = sizeof( EvKeyTempResult ) + size;
   if ( ctx.part == NULL || msz > ctx.part->mem_size ) {
@@ -153,7 +163,7 @@ RedisExec::save_data( EvKeyCtx &ctx,  const void *data,  size_t size )
 
 void *
 RedisExec::save_data2( EvKeyCtx &ctx,  const void *data,  size_t size,
-                       const void *data2,  size_t size2 )
+                       const void *data2,  size_t size2 ) noexcept
 {
   size_t msz = sizeof( EvKeyTempResult ) + size + size2;
   if ( ctx.part == NULL || msz > ctx.part->mem_size ) {
@@ -175,7 +185,7 @@ RedisExec::save_data2( EvKeyCtx &ctx,  const void *data,  size_t size,
 }
 
 void
-RedisExec::array_string_result( void )
+RedisExec::array_string_result( void ) noexcept
 {
   char            * str = this->strm.alloc( 32 );
   EvKeyTempResult * part;
@@ -206,7 +216,7 @@ RedisExec::array_string_result( void )
 
 ExecStatus
 RedisExec::exec_key_setup( EvSocket *own,  EvPrefetchQueue *q,
-                           EvKeyCtx *&ctx,  int n )
+                           EvKeyCtx *&ctx,  int n ) noexcept
 {
   const char * key;
   size_t       keylen;
@@ -224,7 +234,7 @@ RedisExec::exec_key_setup( EvSocket *own,  EvPrefetchQueue *q,
 }
 
 void
-RedisExec::exec_run_to_completion( void )
+RedisExec::exec_run_to_completion( void ) noexcept
 {
   if ( this->key_cnt == 1 ) { /* only one key */
     while ( this->key->status == EXEC_CONTINUE ||
@@ -251,7 +261,7 @@ RedisExec::exec_run_to_completion( void )
 }
 
 bool
-RedisExec::locate_movablekeys( void )
+RedisExec::locate_movablekeys( void ) noexcept
 {
   int64_t i;
   this->first = 0;
@@ -366,7 +376,7 @@ RedisExec::locate_movablekeys( void )
 }
 
 bool
-RedisExec::next_key( int &i )
+RedisExec::next_key( int &i ) noexcept
 {
   /* step through argc until last key */
   i += this->step;
@@ -384,7 +394,7 @@ RedisExec::next_key( int &i )
 }
 
 size_t
-RedisExec::calc_key_count( void )
+RedisExec::calc_key_count( void ) noexcept
 {
   /* how many keys are in the command */
   if ( this->step_mask != 0 )
@@ -397,7 +407,7 @@ RedisExec::calc_key_count( void )
 }
 
 ExecStatus
-RedisExec::exec( EvSocket *svc,  EvPrefetchQueue *q )
+RedisExec::exec( EvSocket *svc,  EvPrefetchQueue *q ) noexcept
 {
   const char * arg0;
   size_t       arg0len;
@@ -492,7 +502,7 @@ RedisExec::exec( EvSocket *svc,  EvPrefetchQueue *q )
 }
 
 ExecStatus
-RedisExec::exec_nokeys( void )
+RedisExec::exec_nokeys( void ) noexcept
 {
   switch ( this->cmd ) {
 #if 0
@@ -567,7 +577,7 @@ RedisExec::exec_nokeys( void )
 }
 
 kv::KeyStatus
-RedisExec::exec_key_fetch( EvKeyCtx &ctx,  bool force_read )
+RedisExec::exec_key_fetch( EvKeyCtx &ctx,  bool force_read ) noexcept
 {
   if ( ( this->cmd_flags & CMD_READ_FLAG ) != 0 || force_read ) {
     for (;;) {
@@ -608,7 +618,7 @@ RedisExec::exec_key_fetch( EvKeyCtx &ctx,  bool force_read )
 }
 
 ExecStatus
-RedisExec::exec_key_continue( EvKeyCtx &ctx )
+RedisExec::exec_key_continue( EvKeyCtx &ctx ) noexcept
 {
   if ( ctx.status != EXEC_CONTINUE && ctx.status != EXEC_DEPENDS ) {
     if ( ++this->key_done < this->key_cnt )
@@ -853,29 +863,35 @@ RedisExec::exec_key_continue( EvKeyCtx &ctx )
     }
     /* set the type when key is new */
     if ( ! ctx.is_read_only() ) {
-      if ( ctx.is_new() && exec_status_success( ctx.status ) ) {
-        uint8_t type;
-        if ( (type = ctx.type) == MD_NODATA ) {
-          switch ( this->catg ) {
-            default:               type = MD_NODATA;      break;
-            case GEO_CATG:         type = MD_GEO;         break;
-            case HASH_CATG:        type = MD_HASH;        break;
-            case HYPERLOGLOG_CATG: type = MD_HYPERLOGLOG; break;
-            case LIST_CATG:        type = MD_LIST;        break;
-            case PUBSUB_CATG:      type = MD_NODATA; /*MD_PUBSUB;*/  break;
-#if 0
-            case SCRIPT_CATG:      type = MD_NODATA; /*MD_SCRIPT;*/  break;
-#endif
-            case SET_CATG:         type = MD_SET;         break;
-            case SORTED_SET_CATG:  type = MD_ZSET;        break;
-            case STRING_CATG:      type = MD_STRING;      break;
-            case TRANSACTION_CATG: type = MD_NODATA; /*MD_TRANSACTION;*/ break;
-            case STREAM_CATG:      type = MD_STREAM;      break;
+      if ( ( ctx.flags & EKF_KEYSPACE_DEL ) == 0 ) {
+        if ( ctx.is_new() && exec_status_success( ctx.status ) ) {
+          uint8_t type;
+          if ( (type = ctx.type) == MD_NODATA ) {
+            switch ( this->catg ) {
+              default:               type = MD_NODATA;      break;
+              case GEO_CATG:         type = MD_GEO;         break;
+              case HASH_CATG:        type = MD_HASH;        break;
+              case HYPERLOGLOG_CATG: type = MD_HYPERLOGLOG; break;
+              case LIST_CATG:        type = MD_LIST;        break;
+              case PUBSUB_CATG:      type = MD_NODATA;      break;
+  #if 0
+              case SCRIPT_CATG:      type = MD_NODATA; /*MD_SCRIPT;*/  break;
+  #endif
+              case SET_CATG:         type = MD_SET;         break;
+              case SORTED_SET_CATG:  type = MD_ZSET;        break;
+              case STRING_CATG:      type = MD_STRING;      break;
+              case TRANSACTION_CATG: type = MD_NODATA;      break;
+              case STREAM_CATG:      type = MD_STREAM;      break;
+            }
           }
+          if ( type != MD_NODATA ) {
+            this->kctx.set_type( type );
+            ctx.type = type;
+          }
+          this->kctx.set_val( 0 );
         }
-        if ( type != MD_NODATA )
-          this->kctx.set_type( type );
-        this->kctx.set_val( 0 );
+        if ( ctx.type != MD_STREAM && ctx.type != MD_NODATA )
+          this->kctx.update_stamps( 0, this->kctx.ht.hdr.current_stamp );
       }
       this->key_flags |= ctx.flags;
       this->kctx.release();
@@ -940,23 +956,13 @@ RedisExec::exec_key_continue( EvKeyCtx &ctx )
   }
   /* if ctx.status outputs data */
   switch ( ctx.status ) {
-    case EXEC_SEND_DATA:
-      if ( this->blk_state != 0 ) /* did not block, so blocked complete */
+    case EXEC_SEND_DATA: /* have multiple keys and only one key triggers */
+      if ( this->blk_state != 0 )
         this->blk_state |= RBLK_CMD_COMPLETE;
       goto success;
-    case EXEC_OK:           break;
-    case EXEC_BLOCKED:      break;
-    case EXEC_SEND_OK:      this->strm.append( ok, ok_sz );            break;
-    case EXEC_ABORT_SEND_NIL:
-    case EXEC_SEND_NIL:     this->strm.append( nil, nil_sz );          break;
-    case EXEC_SEND_NULL:    this->strm.append( null, null_sz );        break;
-    case EXEC_ABORT_SEND_ZERO:
-    case EXEC_SEND_ZERO:    this->strm.append( zero, zero_sz );        break;
-    case EXEC_SEND_ONE:     this->strm.append( one, one_sz );          break;
-    case EXEC_SEND_NEG_ONE: this->strm.append( neg_one, neg_one_sz );  break;
-    case EXEC_SEND_ZERO_STRING: this->strm.append( mt, mt_sz );        break;
-    case EXEC_SEND_INT:     this->send_int();                          break;
-    default:                this->send_err( ctx.status, ctx.kstatus ); break;
+    case EXEC_OK:      break;
+    case EXEC_BLOCKED: break;
+    default: this->send_status( (ExecStatus) ctx.status, ctx.kstatus ); break;
   }
   /* wait for the last key to be run */
   if ( this->key_done < this->key_cnt )
@@ -976,7 +982,7 @@ success:;
 }
 
 void
-RedisExec::send_msg( const RedisMsg &m )
+RedisExec::send_msg( const RedisMsg &m ) noexcept
 {
   char * buf = this->strm.alloc( m.pack_size() );
   if ( buf != NULL )
@@ -984,7 +990,7 @@ RedisExec::send_msg( const RedisMsg &m )
 }
 
 void
-RedisExec::send_int( void )
+RedisExec::send_int( void ) noexcept
 {
   if ( this->key_cnt == 1 ) {
     this->send_int( this->key->ival );
@@ -1001,7 +1007,7 @@ RedisExec::send_int( void )
 }
 
 void
-RedisExec::send_int( int64_t ival )
+RedisExec::send_int( int64_t ival ) noexcept
 {
   if ( ival >= 0 && ival < 10 ) {
     char  * buf = this->strm.alloc( 4 );
@@ -1023,12 +1029,15 @@ RedisExec::send_int( int64_t ival )
 }
 
 void
-RedisExec::send_err( int status,  KeyStatus kstatus )
+RedisExec::send_status( ExecStatus stat,  KeyStatus kstat ) noexcept
 {
-  switch ( (ExecStatus) status ) {
-    case EXEC_OK:               break;
-    case EXEC_SETUP_OK:         break;
-    case EXEC_SEND_DATA:        break;
+  switch ( stat ) {
+    /* these already sent data or don't need to */
+    case EXEC_OK:
+    case EXEC_SETUP_OK:
+    case EXEC_SEND_DATA: break;
+
+    /* status constants */
     case EXEC_SEND_OK:          this->send_ok(); break;
     case EXEC_ABORT_SEND_NIL:
     case EXEC_SEND_NIL:         this->send_nil(); break;
@@ -1041,13 +1050,17 @@ RedisExec::send_err( int status,  KeyStatus kstatus )
     case EXEC_SEND_NEG_ONE:     this->send_neg_one(); break;
     case EXEC_SEND_ZERO_STRING: this->send_zero_string(); break;
     case EXEC_QUEUED:           this->send_queued(); break;
-    case EXEC_BLOCKED:          break;
-    case EXEC_SUCCESS:          break;
-    case EXEC_DEPENDS:          break;
-    case EXEC_CONTINUE:         break;
-    case ERR_KV_STATUS:         this->send_err_kv( kstatus ); break;
-    case ERR_MSG_STATUS:        this->send_err_msg( this->mstatus ); break;
-    case ERR_BAD_CMD:           this->send_err_bad_cmd(); break;
+
+    /* states of execution, shouldn't be here */
+    case EXEC_BLOCKED:
+    case EXEC_SUCCESS:
+    case EXEC_DEPENDS:
+    case EXEC_CONTINUE: break;
+
+    /* errors */
+    case ERR_KV_STATUS:
+    case ERR_MSG_STATUS:
+    case ERR_BAD_CMD:
     case ERR_BAD_ARGS:
     case ERR_BAD_TYPE:
     case ERR_BAD_RANGE:
@@ -1056,94 +1069,85 @@ RedisExec::send_err( int status,  KeyStatus kstatus )
     case ERR_STREAM_ID:
     case ERR_ALLOC_FAIL:
     case ERR_KEY_EXISTS:
-    case ERR_KEY_DOESNT_EXIST:  this->send_err_fmt( status ); break;
+    case ERR_KEY_DOESNT_EXIST:
+    case ERR_BAD_MULTI:
+    case ERR_BAD_EXEC:
+    case ERR_BAD_DISCARD: this->send_err_string( stat, kstat ); break;
+
+    /* ok status */
     case EXEC_QUIT:
-    case EXEC_DEBUG:            this->send_ok(); break;
-    case EXEC_SKIP:             break;
-    case ERR_BAD_MULTI: {
-      static const char bad_multi[] = "MULTI calls can not be nested";
-      this->send_err_string( bad_multi, sizeof( bad_multi ) - 1 );
-      break;
-    }
-    case ERR_BAD_EXEC: {
-      static const char bad_exec[] = "EXEC without MULTI";
-      this->send_err_string( bad_exec, sizeof( bad_exec ) - 1 );
-      break;
-    }
-    case ERR_BAD_DISCARD: {
-      static const char bad_discard[] = "DISCARD without MULTI";
-      this->send_err_string( bad_discard, sizeof( bad_discard ) - 1 );
-      break;
-    }
+    case EXEC_DEBUG: this->send_ok(); break;
+    case EXEC_SKIP:  break;
   }
 }
 
 void
-RedisExec::send_err_string( const char *s,  size_t slen )
+RedisExec::send_err_string( ExecStatus stat,  KeyStatus kstat ) noexcept
 {
-  char * buf  = this->strm.alloc( slen + 2 + 5 );
-
-  if ( buf != NULL ) {
-    ::memcpy( buf, "-ERR ", 5 );
-    ::memcpy( &buf[ 5 ], s, slen );
-    slen += 5;
-    buf[ slen ] = '\r';
-    buf[ slen + 1 ] = '\n';
-    strm.sz += slen + 2;
+  const char *str = NULL;
+  switch ( stat ) {
+    case ERR_KV_STATUS:        break;
+    case ERR_MSG_STATUS:       break;
+    case ERR_BAD_CMD:          str = "-ERR unknown"; break;
+    case ERR_BAD_ARGS:         str = "-ERR arguments format"; break;
+    case ERR_BAD_TYPE:         str = "-ERR type invalid"; break;
+    case ERR_BAD_RANGE:        str = "-ERR index invalid"; break;
+    case ERR_NO_GROUP:         str = "-ERR group missing"; break;
+    case ERR_GROUP_EXISTS:     str = "-ERR group exists"; break;
+    case ERR_STREAM_ID:        str = "-ERR stream id invalid"; break;
+    case ERR_ALLOC_FAIL:       str = "-ERR alloc failed"; break;
+    case ERR_KEY_EXISTS:       str = "-ERR key exists"; break;
+    case ERR_KEY_DOESNT_EXIST: str = "-ERR key missing"; break;
+    case ERR_BAD_MULTI:        str = "-ERR bad multi, no nesting"; break;
+    case ERR_BAD_EXEC:         str = "-ERR bad exec, no multi"; break;
+    case ERR_BAD_DISCARD:      str = "-ERR bad discard, no multi"; break;
+    default:                   str = "-ERR"; break;
   }
-}
 
-void
-RedisExec::send_err_kv( KeyStatus kstatus )
-{
   size_t       arg0len;
   const char * arg0 = this->msg.command( arg0len );
-  size_t       bsz  = 256;
+  size_t       bsz  = 256 + MAX_CMD_LEN;
   char       * buf  = this->strm.alloc( bsz );
 
   if ( buf != NULL ) {
-    arg0len = ( arg0len < 24 ? arg0len : 24 );
-    bsz = ::snprintf( buf, bsz, "-ERR '%.*s': KeyCtx %d/%s %s\r\n",
-                     (int) arg0len, arg0,
-                     kstatus, kv_key_status_string( (KeyStatus) kstatus ),
-                     kv_key_status_description( (KeyStatus) kstatus ) );
-    strm.sz += bsz;
+    if ( arg0len > MAX_CMD_LEN ) {
+      arg0len = MAX_CMD_LEN;
+    }
+    else if ( arg0len == 0 ) {
+      arg0len = 3;
+      arg0    = "???";
+    }
+    switch ( (ExecStatus) stat ) {
+      default:
+        ::strcpy( buf, str );
+        bsz = ::strlen( buf );
+        break;
+      /* problem in the key store */
+      case ERR_KV_STATUS:
+        bsz = ::snprintf( buf, bsz, "-ERR kv %d/%s %s",
+                         kstat, kv_key_status_string( (KeyStatus) kstat ),
+                         kv_key_status_description( (KeyStatus) kstat ) );
+        break;
+      /* problem parsing the message */
+      case ERR_MSG_STATUS: {
+        RedisMsgStatus mstat = this->mstatus;
+        bsz  = ::snprintf( buf, bsz, "-ERR message %d/%s %s",
+                           mstat, redis_msg_status_string( mstat ),
+                           redis_msg_status_description( mstat ) );
+        break;
+      }
+    }
+    /* append " cmd: '%s'\r\n" */
+    ::memcpy( &buf[ bsz ], " cmd: ", 6 );
+    bsz += 6;
+    buf[ bsz++ ] = '\'';
+    ::memcpy( &buf[ bsz ], arg0, arg0len );
+    bsz += arg0len;
+    buf[ bsz++ ] = '\'';
+
+    strm.sz += crlf( buf, bsz );
   }
-}
-
-void
-RedisExec::send_err_msg( RedisMsgStatus mstatus )
-{
-  size_t       arg0len;
-  const char * arg0 = this->msg.command( arg0len );
-  size_t       bsz  = 256;
-  char       * buf  = this->strm.alloc( bsz );
-
-  if ( buf != NULL ) {
-    arg0len = ( arg0len < 24 ? arg0len : 24 );
-    bsz = ::snprintf( buf, bsz, "-ERR '%.*s': RedisMsg %d/%s %s\r\n",
-                   (int) arg0len, arg0,
-                   mstatus, redis_msg_status_string( (RedisMsgStatus) mstatus ),
-                   redis_msg_status_description( (RedisMsgStatus) mstatus ) );
-    strm.sz += bsz;
-  }
-}
-
-void
-RedisExec::send_err_bad_cmd( void )
-{
-  size_t       arg0len;
-  const char * arg0 = this->msg.command( arg0len );
-  size_t       bsz  = 64 + 24;
-  char       * buf  = this->strm.alloc( bsz );
-
-  if ( buf != NULL ) {
-    arg0len = ( arg0len < 24 ? arg0len : 24 );
-    bsz = ::snprintf( buf, bsz, "-ERR unknown command: '%.*s'\r\n",
-                     (int) arg0len, arg0 );
-    strm.sz += bsz;
-  }
-  {
+  if ( stat == ERR_BAD_CMD ) {
     char tmpbuf[ 1024 ];
     if ( this->msg.to_almost_json_size() < sizeof( tmpbuf ) ) {
       size_t sz = this->msg.to_almost_json( tmpbuf );
@@ -1152,47 +1156,8 @@ RedisExec::send_err_bad_cmd( void )
   }
 }
 
-void
-RedisExec::send_err_fmt( int err )
-{
-  const char *fmt;
-  switch ( (ExecStatus) err ) {
-    case ERR_BAD_ARGS:
-      fmt = "-ERR wrong number of arguments for command: '%.*s'\r\n"; break;
-    case ERR_BAD_TYPE:
-      fmt = "-ERR value type bad for command: '%.*s'\r\n"; break;
-    case ERR_BAD_RANGE:
-      fmt = "-ERR index out of range for command: '%.*s'\r\n"; break;
-    case ERR_NO_GROUP:
-      fmt = "-ERR group not found for command: '%.*s'\r\n"; break;
-    case ERR_GROUP_EXISTS:
-      fmt = "-ERR group exists for command: '%.*s'\r\n"; break;
-    case ERR_STREAM_ID:
-      fmt = "-ERR stream id invalid for command: '%.*s'\r\n"; break;
-    case ERR_ALLOC_FAIL:
-      fmt = "-ERR allocation failed for command: '%.*s'\r\n"; break;
-    case ERR_KEY_EXISTS:
-      fmt = "-ERR key exists for command: '%.*s'\r\n"; break;
-    case ERR_KEY_DOESNT_EXIST:
-      fmt = "-ERR key does not exist for command: '%.*s'\r\n"; break;
-    default:
-      fmt = "-ERR for command: '%.*s\r\n"; break;
-  }
-
-  size_t       arg0len;
-  const char * arg0 = this->msg.command( arg0len );
-  size_t       bsz  = 64 + 24;
-  char       * buf  = this->strm.alloc( bsz );
-
-  if ( buf != NULL ) {
-    arg0len = ( arg0len < 24 ? arg0len : 24 );
-    bsz = ::snprintf( buf, bsz, fmt, (int) arg0len, arg0 );
-    strm.sz += bsz;
-  }
-}
-
 const char *
-EvKeyCtx::get_type_str( void ) const
+EvKeyCtx::get_type_str( void ) const noexcept
 {
   return md_type_str( (MDType) this->type, 0 );
 }

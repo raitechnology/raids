@@ -6,8 +6,8 @@
 namespace rai {
 namespace ds {
 
-void shmdp_initialize( const char *mn,  int pt );
-void shmdp_atexit( void );
+void shmdp_initialize( const char *mn,  int pt ) noexcept;
+void shmdp_atexit( void ) noexcept;
 
 static const size_t FD_MAP_SZ = 8 * 1024;
 typedef uint64_t fd_map_t[ FD_MAP_SZ / sizeof( uint64_t ) ];
@@ -95,11 +95,11 @@ struct QueuePoll : public EvCallback {
                 fds_size( 0 ), idle( true ), inprogress( false ) {
     ::memset( &this->pending, 0, sizeof( this->pending ) );
   }
-  void unlink( QueueFd *p );
-  bool push( QueueFd *p );
-  ssize_t read( int fd, char *buf, size_t count );
-  ssize_t write( int fd, const char *buf, size_t count );
-  QueueFd *find( int fd, bool create );
+  void unlink( QueueFd *p ) noexcept;
+  bool push( QueueFd *p ) noexcept;
+  ssize_t read( int fd, char *buf, size_t count ) noexcept;
+  ssize_t write( int fd, const char *buf, size_t count ) noexcept;
+  QueueFd *find( int fd, bool create ) noexcept;
 };
 
 struct QueueFd {

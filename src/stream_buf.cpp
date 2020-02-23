@@ -9,7 +9,7 @@ using namespace rai;
 using namespace ds;
 
 char *
-StreamBuf::alloc_temp( size_t amt )
+StreamBuf::alloc_temp( size_t amt ) noexcept
 {
   char *spc = (char *) this->tmp.alloc( amt );
   if ( spc == NULL ) {
@@ -20,7 +20,7 @@ StreamBuf::alloc_temp( size_t amt )
 }
 
 void
-StreamBuf::expand_iov( void )
+StreamBuf::expand_iov( void ) noexcept
 {
   void *p;
   p = this->alloc_temp( sizeof( struct iovec ) * this->vlen * 2 );
@@ -36,7 +36,7 @@ crlf( char *b,  size_t i ) {
 
 StreamBuf::BufList *
 StreamBuf::alloc_buf_list( BufList *&hd,  BufList *&tl,  size_t len,
-                           size_t pad )
+                           size_t pad ) noexcept
 {
   BufList *p = (BufList *) this->alloc_temp( sizeof( BufList ) + len + pad );
   if ( p == NULL )
@@ -54,7 +54,7 @@ StreamBuf::alloc_buf_list( BufList *&hd,  BufList *&tl,  size_t len,
 }
 
 StreamBuf::BufList *
-StreamBuf::BufQueue::append_buf( size_t len )
+StreamBuf::BufQueue::append_buf( size_t len ) noexcept
 {
   size_t pad = ( this->hd == NULL ) ? 48 : 0,
          alsz = 928 - pad;
@@ -65,7 +65,7 @@ StreamBuf::BufQueue::append_buf( size_t len )
 
 size_t
 StreamBuf::BufQueue::append_string( const void *str,  size_t len,
-                                    const void *str2,  size_t len2 )
+                                    const void *str2,  size_t len2 ) noexcept
 {
   size_t itemlen = len + len2,
          d       = uint_digits( itemlen );
@@ -86,7 +86,7 @@ StreamBuf::BufQueue::append_string( const void *str,  size_t len,
 }
 
 size_t
-StreamBuf::BufQueue::append_nil( bool is_null )
+StreamBuf::BufQueue::append_nil( bool is_null ) noexcept
 {
   BufList * p = this->get_buf( 5 );
   if ( p == NULL )
@@ -101,7 +101,7 @@ StreamBuf::BufQueue::append_nil( bool is_null )
 }
 
 size_t
-StreamBuf::BufQueue::append_zero_array( void )
+StreamBuf::BufQueue::append_zero_array( void ) noexcept
 {
   BufList * p = this->get_buf( 5 );
   if ( p == NULL )
@@ -115,7 +115,7 @@ StreamBuf::BufQueue::append_zero_array( void )
 }
 
 size_t
-StreamBuf::BufQueue::append_bytes( const void *buf,  size_t len )
+StreamBuf::BufQueue::append_bytes( const void *buf,  size_t len ) noexcept
 {
   BufList * p = this->get_buf( len );
   if ( p == NULL )
@@ -127,7 +127,7 @@ StreamBuf::BufQueue::append_bytes( const void *buf,  size_t len )
 }
 
 size_t
-StreamBuf::BufQueue::append_uint( uint64_t val )
+StreamBuf::BufQueue::append_uint( uint64_t val ) noexcept
 {
   size_t d = uint_digits( val );
   BufList * p = this->get_buf( d + 3 );
@@ -141,7 +141,7 @@ StreamBuf::BufQueue::append_uint( uint64_t val )
 }
 
 size_t
-StreamBuf::BufQueue::prepend_array( size_t nitems )
+StreamBuf::BufQueue::prepend_array( size_t nitems ) noexcept
 {
   size_t    itemlen = uint_digits( nitems ),
                  /*  '*'   4      '\r\n' (nitems = 1234) */
@@ -176,7 +176,8 @@ StreamBuf::BufQueue::prepend_array( size_t nitems )
 }
 
 size_t
-StreamBuf::BufQueue::prepend_cursor_array( size_t curs,  size_t nitems )
+StreamBuf::BufQueue::prepend_cursor_array( size_t curs,
+                                           size_t nitems ) noexcept
 {
   size_t    curslen = uint_digits( curs ),
             clenlen = uint_digits( curslen ),

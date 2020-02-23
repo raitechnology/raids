@@ -35,50 +35,50 @@ enum {
 };
 
 ExecStatus
-RedisExec::exec_happend( EvKeyCtx &ctx )
+RedisExec::exec_happend( EvKeyCtx &ctx ) noexcept
 {
   /* HAPPEND key field val [val ...] */
   return this->do_hwrite( ctx, DO_HAPPEND );
 }
 
 ExecStatus
-RedisExec::exec_hdiff( EvKeyCtx & )
+RedisExec::exec_hdiff( EvKeyCtx & ) noexcept
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_hdiffstore( EvKeyCtx & )
+RedisExec::exec_hdiffstore( EvKeyCtx & ) noexcept
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_hinter( EvKeyCtx & )
+RedisExec::exec_hinter( EvKeyCtx & ) noexcept
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_hinterstore( EvKeyCtx & )
+RedisExec::exec_hinterstore( EvKeyCtx & ) noexcept
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_hunion( EvKeyCtx & )
+RedisExec::exec_hunion( EvKeyCtx & ) noexcept
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_hunionstore( EvKeyCtx & )
+RedisExec::exec_hunionstore( EvKeyCtx & ) noexcept
 {
   return ERR_BAD_CMD;
 }
 
 ExecStatus
-RedisExec::exec_hdel( EvKeyCtx &ctx )
+RedisExec::exec_hdel( EvKeyCtx &ctx ) noexcept
 {
   ExecListCtx<HashData, MD_HASH> hash( *this, ctx );
   const char * arg;
@@ -123,98 +123,98 @@ RedisExec::exec_hdel( EvKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::exec_hexists( EvKeyCtx &ctx )
+RedisExec::exec_hexists( EvKeyCtx &ctx ) noexcept
 {
   /* HEXISTS key field */
   return this->do_hread( ctx, DO_HEXISTS );
 }
 
 ExecStatus
-RedisExec::exec_hget( EvKeyCtx &ctx )
+RedisExec::exec_hget( EvKeyCtx &ctx ) noexcept
 {
   /* HGET key field */
   return this->do_hread( ctx, DO_HGET );
 }
 
 ExecStatus
-RedisExec::exec_hgetall( EvKeyCtx &ctx )
+RedisExec::exec_hgetall( EvKeyCtx &ctx ) noexcept
 {
   /* HGETALL key */
   return this->do_hmultiscan( ctx, DO_HGETALL, NULL );
 }
 
 ExecStatus
-RedisExec::exec_hincrby( EvKeyCtx &ctx )
+RedisExec::exec_hincrby( EvKeyCtx &ctx ) noexcept
 {
   /* HINCRBY key field int */
   return this->do_hwrite( ctx, DO_HINCRBY );
 }
 
 ExecStatus
-RedisExec::exec_hincrbyfloat( EvKeyCtx &ctx )
+RedisExec::exec_hincrbyfloat( EvKeyCtx &ctx ) noexcept
 {
   /* HINCRBYFLOAT key field float */
   return this->do_hwrite( ctx, DO_HINCRBYFLOAT );
 }
 
 ExecStatus
-RedisExec::exec_hkeys( EvKeyCtx &ctx )
+RedisExec::exec_hkeys( EvKeyCtx &ctx ) noexcept
 {
   /* HKEYS key */
   return this->do_hmultiscan( ctx, DO_HKEYS, NULL );
 }
 
 ExecStatus
-RedisExec::exec_hlen( EvKeyCtx &ctx )
+RedisExec::exec_hlen( EvKeyCtx &ctx ) noexcept
 {
   /* HLEN key */
   return this->do_hread( ctx, DO_HLEN );
 }
 
 ExecStatus
-RedisExec::exec_hmget( EvKeyCtx &ctx )
+RedisExec::exec_hmget( EvKeyCtx &ctx ) noexcept
 {
   /* HMGET key field [field ...] */
   return this->do_hmultiscan( ctx, DO_HMGET, NULL );
 }
 
 ExecStatus
-RedisExec::exec_hmset( EvKeyCtx &ctx )
+RedisExec::exec_hmset( EvKeyCtx &ctx ) noexcept
 {
   /* HMSET key field val [field val ...] */
   return this->do_hwrite( ctx, DO_HMSET );
 }
 
 ExecStatus
-RedisExec::exec_hset( EvKeyCtx &ctx )
+RedisExec::exec_hset( EvKeyCtx &ctx ) noexcept
 {
   /* HSET key field val [field val ...]*/
   return this->do_hwrite( ctx, DO_HSET );
 }
 
 ExecStatus
-RedisExec::exec_hsetnx( EvKeyCtx &ctx )
+RedisExec::exec_hsetnx( EvKeyCtx &ctx ) noexcept
 {
   /* HSETNX key field val */
   return this->do_hwrite( ctx, DO_HSETNX );
 }
 
 ExecStatus
-RedisExec::exec_hstrlen( EvKeyCtx &ctx )
+RedisExec::exec_hstrlen( EvKeyCtx &ctx ) noexcept
 {
   /* HSTRLEN key field */
   return this->do_hread( ctx, DO_HSTRLEN );
 }
 
 ExecStatus
-RedisExec::exec_hvals( EvKeyCtx &ctx )
+RedisExec::exec_hvals( EvKeyCtx &ctx ) noexcept
 {
   /* HVALS key */
   return this->do_hmultiscan( ctx, DO_HVALS, NULL );
 }
 
 ExecStatus
-RedisExec::exec_hscan( EvKeyCtx &ctx )
+RedisExec::exec_hscan( EvKeyCtx &ctx ) noexcept
 {
   /* HSCAN key cursor [MATCH pat] */
   ScanArgs   sa;
@@ -227,7 +227,7 @@ RedisExec::exec_hscan( EvKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::do_hmultiscan( EvKeyCtx &ctx,  int flags,  ScanArgs *sa )
+RedisExec::do_hmultiscan( EvKeyCtx &ctx,  int flags,  ScanArgs *sa ) noexcept
 {
   ExecListCtx<HashData, MD_HASH> hash( *this, ctx );
   StreamBuf::BufQueue q( this->strm );
@@ -320,7 +320,7 @@ finished:;
 }
 
 ExecStatus
-RedisExec::do_hread( EvKeyCtx &ctx,  int flags )
+RedisExec::do_hread( EvKeyCtx &ctx,  int flags ) noexcept
 {
   ExecListCtx<HashData, MD_HASH> hash( *this, ctx );
   const char * arg    = NULL;
@@ -398,7 +398,7 @@ RedisExec::do_hread( EvKeyCtx &ctx,  int flags )
 }
 
 ExecStatus
-RedisExec::do_hwrite( EvKeyCtx &ctx,  int flags )
+RedisExec::do_hwrite( EvKeyCtx &ctx,  int flags ) noexcept
 {
   ExecListCtx<HashData, MD_HASH> hash( *this, ctx );
   const char * arg     = NULL;

@@ -21,6 +21,7 @@ static char ex_null_array[]  = "*-1\r\n";
 static char ex_int_array[]   = "*3\r\n:1\r\n:2\r\n:3\r\n";
 static char ex_str_array[]   = "*1\r\n$7\r\nCOMMAND\r\n";
 static char ex_mix_array[]   = "*2\r\n$3\r\nfoo\r\n:1\r\n";
+static char ex_white[]       = "\n*2\r\n $3\r\nfoo\r\n\r\n:1\r\n";
 
 static struct {
   char * ex;
@@ -36,6 +37,8 @@ static struct {
   { ex_int_array,   sizeof( ex_int_array )   - 1 },
   { ex_str_array,   sizeof( ex_str_array )   - 1 },
   { ex_mix_array,   sizeof( ex_mix_array )   - 1 }
+}, examples2[] = {
+  { ex_white,  sizeof( ex_white )  - 1 }
 };
 
 static struct {
@@ -65,6 +68,17 @@ main( int, char ** )
   RedisMsgStatus x;
   int64_t ival;
   size_t j;
+
+  for ( size_t i = 0; i < sizeof( examples2 ) /
+                          sizeof( examples2[ 0 ] ); i++ ) {
+    sz = examples2[ i ].len;
+    x = m.unpack( examples2[ i ].ex, sz, wrk );
+    if ( x != REDIS_MSG_OK || sz != examples2[ i ].len ) {
+      printf( "unpack sz %lu != len %lu\n", sz, examples2[ i ].len );
+      return 1;
+    }
+    wrk.reset();
+  }
 
   start = kv_current_monotonic_time_s();
   for ( j = 0; j < 1000 ; j++ ) {

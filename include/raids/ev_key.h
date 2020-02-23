@@ -57,7 +57,7 @@ enum EvKeyFlags { /* bits for EvKeyCtx::flags */
 struct EvKeyCtx {
   void * operator new( size_t, void *ptr ) { return ptr; }
 
-  static bool is_greater( EvKeyCtx *ctx,  EvKeyCtx *ctx2 );
+  static bool is_greater( EvKeyCtx *ctx,  EvKeyCtx *ctx2 ) noexcept;
   kv::HashTab     & ht;
   EvSocket        * owner;  /* parent connection */
   uint64_t          hash1,  /* 128 bit hash of key */
@@ -90,7 +90,7 @@ struct EvKeyCtx {
   static size_t size( size_t keylen ) {
     return sizeof( EvKeyCtx ) + keylen; /* alloc size of *this */
   }
-  const char *get_type_str( void ) const;
+  const char *get_type_str( void ) const noexcept;
   EvKeyCtx *set( kv::KeyCtx &kctx ) {
     kctx.set_key( this->kbuf );
     kctx.set_hash( this->hash1, this->hash2 );
@@ -108,7 +108,7 @@ struct EvKeyCtx {
 };
 
 inline bool
-EvKeyCtx::is_greater( EvKeyCtx *ctx,  EvKeyCtx *ctx2 )
+EvKeyCtx::is_greater( EvKeyCtx *ctx,  EvKeyCtx *ctx2 ) noexcept
 {
   if ( ctx->dep > ctx2->dep ) /* fetch other keys first if depends on another */
     return true;

@@ -114,9 +114,10 @@ struct RedisMultiExec {
 
   RedisMultiExec() : msg_count( 0 ), watch_count( 0 ), multi_start( false ) {}
 
-  bool append_msg( RedisMsg &msg );
+  bool append_msg( RedisMsg &msg ) noexcept;
 
-  bool append_watch( uint64_t h1,  uint64_t h2,  uint64_t sn,  uint64_t pos );
+  bool append_watch( uint64_t h1,  uint64_t h2,  uint64_t sn,
+                     uint64_t pos ) noexcept;
 };
 
 enum ExecCmdState { /* cmd_state flags */
@@ -178,37 +179,37 @@ struct RedisExec {
     this->kctx.set( kv::KEYCTX_NO_COPY_ON_READ );
   }
   /* stop a continuation and send null */
-  bool continue_expire( uint64_t event_id,  RedisContinueMsg *&cm );
+  bool continue_expire( uint64_t event_id,  RedisContinueMsg *&cm ) noexcept;
   /* remove and unsubscribe contiuation subjects from continue_tab */
-  void pop_continue_tab( RedisContinueMsg *cm );
+  void pop_continue_tab( RedisContinueMsg *cm ) noexcept;
   /* restart continuation */
-  void push_continue_list( RedisContinueMsg *cm );
+  void push_continue_list( RedisContinueMsg *cm ) noexcept;
   /* release anything allocated */
-  void release( void );
+  void release( void ) noexcept;
   /* unsubscribe anything subscribed */
-  void rem_all_sub( void );
+  void rem_all_sub( void ) noexcept;
   /* handle the keys are cmd specific */
-  bool locate_movablekeys( void );
+  bool locate_movablekeys( void ) noexcept;
   /* fetch next key arg[ i ] after current i, return false if none */
-  bool next_key( int &i );
+  bool next_key( int &i ) noexcept;
   /* return number of keys in cmd */
-  size_t calc_key_count( void );
+  size_t calc_key_count( void ) noexcept;
   /* set up a single key, there may be multiple in a command */
   ExecStatus exec_key_setup( EvSocket *svc,  EvPrefetchQueue *q,
-                             EvKeyCtx *&ctx,  int n );
-  void exec_run_to_completion( void );
+                             EvKeyCtx *&ctx,  int n ) noexcept;
+  void exec_run_to_completion( void ) noexcept;
   /* parse set up a command */
-  ExecStatus exec( EvSocket *svc,  EvPrefetchQueue *q );
+  ExecStatus exec( EvSocket *svc,  EvPrefetchQueue *q ) noexcept;
   /* run cmd that doesn't have keys */
-  ExecStatus exec_nokeys( void );
+  ExecStatus exec_nokeys( void ) noexcept;
   /* execute a key operation */
-  ExecStatus exec_key_continue( EvKeyCtx &ctx );
+  ExecStatus exec_key_continue( EvKeyCtx &ctx ) noexcept;
   /* subscribe to keyspace subjects and wait for publish to continue */
-  ExecStatus save_blocked_cmd( int64_t timeout_val );
+  ExecStatus save_blocked_cmd( int64_t timeout_val ) noexcept;
   /* execute the saved commands after signaled */
-  void drain_continuations( EvSocket *svc );
+  void drain_continuations( EvSocket *svc ) noexcept;
   /* publish keyspace events */
-  void pub_keyspace_events( void );
+  void pub_keyspace_events( void ) noexcept;
   /* set the hash */
   void exec_key_set( EvKeyCtx &ctx ) {
     this->key = ctx.set( this->kctx );
@@ -237,297 +238,293 @@ struct RedisExec {
     return status;
   }
   /* fetch a read key value or acquire it for write */
-  kv::KeyStatus exec_key_fetch( EvKeyCtx &ctx,  bool force_read = false );
-
+  kv::KeyStatus exec_key_fetch( EvKeyCtx &ctx,
+                                bool force_read = false ) noexcept;
   /* CLUSTER */
-  ExecStatus exec_cluster( void );
-  ExecStatus exec_readonly( void );
-  ExecStatus exec_readwrite( void );
+  ExecStatus exec_cluster( void ) noexcept;
+  ExecStatus exec_readonly( void ) noexcept;
+  ExecStatus exec_readwrite( void ) noexcept;
   /* CONNECTION */
-  ExecStatus exec_auth( void );
-  ExecStatus exec_echo( void );
-  ExecStatus exec_ping( void );
-  ExecStatus exec_quit( void );
-  ExecStatus exec_select( void );
-  ExecStatus exec_swapdb( void );
+  ExecStatus exec_auth( void ) noexcept;
+  ExecStatus exec_echo( void ) noexcept;
+  ExecStatus exec_ping( void ) noexcept;
+  ExecStatus exec_quit( void ) noexcept;
+  ExecStatus exec_select( void ) noexcept;
+  ExecStatus exec_swapdb( void ) noexcept;
   /* GEO */
-  ExecStatus exec_geoadd( EvKeyCtx &ctx );
-  ExecStatus exec_geohash( EvKeyCtx &ctx );
-  ExecStatus exec_geopos( EvKeyCtx &ctx );
-  ExecStatus exec_geodist( EvKeyCtx &ctx );
-  ExecStatus exec_georadius( EvKeyCtx &ctx );
-  ExecStatus exec_georadiusbymember( EvKeyCtx &ctx );
-  ExecStatus do_gread( EvKeyCtx &ctx,  int flags );
-  ExecStatus do_gradius( EvKeyCtx &ctx,  int flags );
-  ExecStatus do_gradius_store( EvKeyCtx &ctx );
+  ExecStatus exec_geoadd( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_geohash( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_geopos( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_geodist( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_georadius( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_georadiusbymember( EvKeyCtx &ctx ) noexcept;
+  ExecStatus do_gread( EvKeyCtx &ctx,  int flags ) noexcept;
+  ExecStatus do_gradius( EvKeyCtx &ctx,  int flags ) noexcept;
+  ExecStatus do_gradius_store( EvKeyCtx &ctx ) noexcept;
   /* HASH */
-  ExecStatus exec_happend( EvKeyCtx &ctx );
-  ExecStatus exec_hdel( EvKeyCtx &ctx );
-  ExecStatus exec_hdiff( EvKeyCtx &ctx );
-  ExecStatus exec_hdiffstore( EvKeyCtx &ctx );
-  ExecStatus exec_hexists( EvKeyCtx &ctx );
-  ExecStatus exec_hget( EvKeyCtx &ctx );
-  ExecStatus exec_hgetall( EvKeyCtx &ctx );
-  ExecStatus exec_hincrby( EvKeyCtx &ctx );
-  ExecStatus exec_hincrbyfloat( EvKeyCtx &ctx );
-  ExecStatus exec_hinter( EvKeyCtx &ctx );
-  ExecStatus exec_hinterstore( EvKeyCtx &ctx );
-  ExecStatus exec_hkeys( EvKeyCtx &ctx );
-  ExecStatus exec_hlen( EvKeyCtx &ctx );
-  ExecStatus exec_hmget( EvKeyCtx &ctx );
-  ExecStatus exec_hmset( EvKeyCtx &ctx );
-  ExecStatus exec_hset( EvKeyCtx &ctx );
-  ExecStatus exec_hsetnx( EvKeyCtx &ctx );
-  ExecStatus exec_hstrlen( EvKeyCtx &ctx );
-  ExecStatus exec_hvals( EvKeyCtx &ctx );
-  ExecStatus exec_hscan( EvKeyCtx &ctx );
-  ExecStatus exec_hunion( EvKeyCtx &ctx );
-  ExecStatus exec_hunionstore( EvKeyCtx &ctx );
-  ExecStatus do_hmultiscan( EvKeyCtx &ctx,  int flags,  ScanArgs *hs );
-  ExecStatus do_hread( EvKeyCtx &ctx,  int flags );
-  ExecStatus do_hwrite( EvKeyCtx &ctx,  int flags );
+  ExecStatus exec_happend( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_hdel( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_hdiff( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_hdiffstore( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_hexists( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_hget( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_hgetall( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_hincrby( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_hincrbyfloat( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_hinter( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_hinterstore( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_hkeys( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_hlen( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_hmget( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_hmset( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_hset( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_hsetnx( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_hstrlen( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_hvals( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_hscan( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_hunion( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_hunionstore( EvKeyCtx &ctx ) noexcept;
+  ExecStatus do_hmultiscan( EvKeyCtx &ctx,  int flags,  ScanArgs *hs ) noexcept;
+  ExecStatus do_hread( EvKeyCtx &ctx,  int flags ) noexcept;
+  ExecStatus do_hwrite( EvKeyCtx &ctx,  int flags ) noexcept;
   /* HYPERLOGLOG */
-  ExecStatus exec_pfadd( EvKeyCtx &ctx );
-  ExecStatus exec_pfcount( EvKeyCtx &ctx );
-  ExecStatus exec_pfmerge( EvKeyCtx &ctx );
+  ExecStatus exec_pfadd( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_pfcount( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_pfmerge( EvKeyCtx &ctx ) noexcept;
   /* KEY */
-  ExecStatus exec_del( EvKeyCtx &ctx );
-  ExecStatus exec_dump( EvKeyCtx &ctx );
-  ExecStatus exec_exists( EvKeyCtx &ctx );
-  ExecStatus exec_expire( EvKeyCtx &ctx );
-  ExecStatus exec_expireat( EvKeyCtx &ctx );
-  ExecStatus exec_keys( void );
-  ExecStatus exec_migrate( EvKeyCtx &ctx );
-  ExecStatus exec_move( EvKeyCtx &ctx );
-  ExecStatus exec_object( EvKeyCtx &ctx );
-  ExecStatus exec_persist( EvKeyCtx &ctx );
-  ExecStatus exec_pexpire( EvKeyCtx &ctx );
-  ExecStatus exec_pexpireat( EvKeyCtx &ctx );
-  ExecStatus do_pexpire( EvKeyCtx &ctx,  uint64_t units );
-  ExecStatus do_pexpireat( EvKeyCtx &ctx,  uint64_t units );
-  ExecStatus exec_pttl( EvKeyCtx &ctx );
-  ExecStatus do_pttl( EvKeyCtx &ctx,  int64_t units );
-  ExecStatus exec_randomkey( void );
-  ExecStatus exec_rename( EvKeyCtx &ctx );
-  ExecStatus exec_renamenx( EvKeyCtx &ctx );
-  ExecStatus exec_restore( EvKeyCtx &ctx );
-  ExecStatus exec_sort( EvKeyCtx &ctx );
-  ExecStatus exec_touch( EvKeyCtx &ctx );
-  ExecStatus exec_ttl( EvKeyCtx &ctx );
-  ExecStatus exec_type( EvKeyCtx &ctx );
-  ExecStatus exec_unlink( EvKeyCtx &ctx );
-  ExecStatus exec_wait( void );
-  ExecStatus exec_scan( void );
-  ExecStatus match_scan_args( ScanArgs &sa,  size_t i );
-  void release_scan_args( ScanArgs &sa );
-  ExecStatus scan_keys( ScanArgs &sa );
+  ExecStatus exec_del( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_dump( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_exists( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_expire( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_expireat( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_keys( void ) noexcept;
+  ExecStatus exec_migrate( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_move( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_object( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_persist( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_pexpire( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_pexpireat( EvKeyCtx &ctx ) noexcept;
+  ExecStatus do_pexpire( EvKeyCtx &ctx,  uint64_t units ) noexcept;
+  ExecStatus do_pexpireat( EvKeyCtx &ctx,  uint64_t units ) noexcept;
+  ExecStatus exec_pttl( EvKeyCtx &ctx ) noexcept;
+  ExecStatus do_pttl( EvKeyCtx &ctx,  int64_t units ) noexcept;
+  ExecStatus exec_randomkey( void ) noexcept;
+  ExecStatus exec_rename( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_renamenx( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_restore( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_sort( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_touch( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_ttl( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_type( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_unlink( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_wait( void ) noexcept;
+  ExecStatus exec_scan( void ) noexcept;
+  ExecStatus match_scan_args( ScanArgs &sa,  size_t i ) noexcept;
+  void release_scan_args( ScanArgs &sa ) noexcept;
+  ExecStatus scan_keys( ScanArgs &sa ) noexcept;
   /* LIST */
-  ExecStatus exec_blpop( EvKeyCtx &ctx );
-  ExecStatus exec_brpop( EvKeyCtx &ctx );
-  ExecStatus exec_brpoplpush( EvKeyCtx &ctx );
-  ExecStatus exec_lindex( EvKeyCtx &ctx );
-  ExecStatus exec_linsert( EvKeyCtx &ctx );
-  ExecStatus exec_llen( EvKeyCtx &ctx );
-  ExecStatus exec_lpop( EvKeyCtx &ctx );
-  ExecStatus exec_lpush( EvKeyCtx &ctx );
-  ExecStatus exec_lpushx( EvKeyCtx &ctx );
-  ExecStatus exec_lrange( EvKeyCtx &ctx );
-  ExecStatus exec_lrem( EvKeyCtx &ctx );
-  ExecStatus exec_lset( EvKeyCtx &ctx );
-  ExecStatus exec_ltrim( EvKeyCtx &ctx );
-  ExecStatus exec_rpop( EvKeyCtx &ctx );
-  ExecStatus exec_rpoplpush( EvKeyCtx &ctx );
-  ExecStatus exec_rpush( EvKeyCtx &ctx );
-  ExecStatus exec_rpushx( EvKeyCtx &ctx );
+  ExecStatus exec_blpop( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_brpop( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_brpoplpush( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_lindex( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_linsert( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_llen( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_lpop( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_lpush( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_lpushx( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_lrange( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_lrem( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_lset( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_ltrim( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_rpop( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_rpoplpush( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_rpush( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_rpushx( EvKeyCtx &ctx ) noexcept;
   ExecStatus do_push( EvKeyCtx &ctx,  int flags,  const char *value = NULL,
-                      size_t valuelen = 0 );
-  ExecStatus do_pop( EvKeyCtx &ctx,  int flags );
+                      size_t valuelen = 0 ) noexcept;
+  ExecStatus do_pop( EvKeyCtx &ctx,  int flags ) noexcept;
   /* PUBSUB */
-  ExecStatus exec_psubscribe( void );
-  ExecStatus exec_pubsub( void );
-  ExecStatus exec_publish( void );
-  ExecStatus exec_punsubscribe( void );
-  ExecStatus exec_subscribe( void );
-  ExecStatus exec_unsubscribe( void );
-  ExecStatus do_subscribe( const char *sub,  size_t len );
-  ExecStatus do_unsubscribe( const char *sub,  size_t len );
-  ExecStatus do_psubscribe( const char *sub,  size_t len );
-  ExecStatus do_punsubscribe( const char *sub,  size_t len );
-  ExecStatus do_sub( int flags );
-  bool pub_message( EvPublish &pub,  RedisPatternRoute *rt );
-  int do_pub( EvPublish &pub,  RedisContinueMsg *&cm );
-  bool do_hash_to_sub( uint32_t h,  char *key,  size_t &keylen );
+  ExecStatus exec_psubscribe( void ) noexcept;
+  ExecStatus exec_pubsub( void ) noexcept;
+  ExecStatus exec_publish( void ) noexcept;
+  ExecStatus exec_punsubscribe( void ) noexcept;
+  ExecStatus exec_subscribe( void ) noexcept;
+  ExecStatus exec_unsubscribe( void ) noexcept;
+  ExecStatus do_subscribe( const char *sub,  size_t len ) noexcept;
+  ExecStatus do_unsubscribe( const char *sub,  size_t len ) noexcept;
+  ExecStatus do_psubscribe( const char *sub,  size_t len ) noexcept;
+  ExecStatus do_punsubscribe( const char *sub,  size_t len ) noexcept;
+  ExecStatus do_sub( int flags ) noexcept;
+  bool pub_message( EvPublish &pub,  RedisPatternRoute *rt ) noexcept;
+  int do_pub( EvPublish &pub,  RedisContinueMsg *&cm ) noexcept;
+  bool do_hash_to_sub( uint32_t h,  char *key,  size_t &keylen ) noexcept;
   /* SCRIPT */
-  ExecStatus exec_eval( EvKeyCtx &ctx );
-  ExecStatus exec_evalsha( EvKeyCtx &ctx );
-  ExecStatus exec_script( EvKeyCtx &ctx );
+  ExecStatus exec_eval( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_evalsha( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_script( EvKeyCtx &ctx ) noexcept;
   /* SERVER */
-  ExecStatus exec_bgrewriteaof( void );
-  ExecStatus exec_bgsave( void );
-  bool get_peer_match_args( PeerMatchArgs &ka );
-  ExecStatus exec_client( void );
-  int client_list( char *buf,  size_t buflen );
-  ExecStatus exec_command( void );
-  ExecStatus exec_config( void );
-  ExecStatus exec_dbsize( void );
-  ExecStatus exec_debug( void );
-  ExecStatus exec_flushall( void );
-  ExecStatus exec_flushdb( void );
-  ExecStatus exec_info( void );
-  ExecStatus exec_lastsave( void );
-  ExecStatus exec_memory( void );
-  ExecStatus exec_monitor( void );
-  ExecStatus exec_role( void );
-  ExecStatus exec_save( void );
-  ExecStatus exec_shutdown( void );
-  ExecStatus exec_slaveof( void );
-  ExecStatus exec_slowlog( void );
-  ExecStatus exec_sync( void );
-  ExecStatus exec_time( void );
+  ExecStatus exec_bgrewriteaof( void ) noexcept;
+  ExecStatus exec_bgsave( void ) noexcept;
+  bool get_peer_match_args( PeerMatchArgs &ka ) noexcept;
+  ExecStatus exec_client( void ) noexcept;
+  int client_list( char *buf,  size_t buflen ) noexcept;
+  ExecStatus exec_command( void ) noexcept;
+  ExecStatus exec_config( void ) noexcept;
+  ExecStatus exec_dbsize( void ) noexcept;
+  ExecStatus exec_debug( void ) noexcept;
+  ExecStatus exec_flushall( void ) noexcept;
+  ExecStatus exec_flushdb( void ) noexcept;
+  ExecStatus exec_info( void ) noexcept;
+  ExecStatus exec_lastsave( void ) noexcept;
+  ExecStatus exec_memory( void ) noexcept;
+  ExecStatus exec_monitor( void ) noexcept;
+  ExecStatus exec_role( void ) noexcept;
+  ExecStatus exec_save( void ) noexcept;
+  ExecStatus exec_shutdown( void ) noexcept;
+  ExecStatus exec_slaveof( void ) noexcept;
+  ExecStatus exec_slowlog( void ) noexcept;
+  ExecStatus exec_sync( void ) noexcept;
+  ExecStatus exec_time( void ) noexcept;
   /* SET */
-  ExecStatus exec_sadd( EvKeyCtx &ctx );
-  ExecStatus exec_scard( EvKeyCtx &ctx );
-  ExecStatus exec_sdiff( EvKeyCtx &ctx );
-  ExecStatus exec_sdiffstore( EvKeyCtx &ctx );
-  ExecStatus exec_sinter( EvKeyCtx &ctx );
-  ExecStatus exec_sinterstore( EvKeyCtx &ctx );
-  ExecStatus exec_sismember( EvKeyCtx &ctx );
-  ExecStatus exec_smembers( EvKeyCtx &ctx );
-  ExecStatus exec_smove( EvKeyCtx &ctx );
-  ExecStatus exec_spop( EvKeyCtx &ctx );
-  ExecStatus exec_srandmember( EvKeyCtx &ctx );
-  ExecStatus exec_srem( EvKeyCtx &ctx );
-  ExecStatus exec_sunion( EvKeyCtx &ctx );
-  ExecStatus exec_sunionstore( EvKeyCtx &ctx );
-  ExecStatus exec_sscan( EvKeyCtx &ctx );
-  ExecStatus do_sread( EvKeyCtx &ctx,  int flags );
-  ExecStatus do_swrite( EvKeyCtx &ctx,  int flags );
-  ExecStatus do_smultiscan( EvKeyCtx &ctx,  int flags,  ScanArgs *sa );
-  ExecStatus do_ssetop( EvKeyCtx &ctx,  int flags );
+  ExecStatus exec_sadd( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_scard( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_sdiff( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_sdiffstore( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_sinter( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_sinterstore( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_sismember( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_smembers( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_smove( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_spop( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_srandmember( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_srem( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_sunion( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_sunionstore( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_sscan( EvKeyCtx &ctx ) noexcept;
+  ExecStatus do_sread( EvKeyCtx &ctx,  int flags ) noexcept;
+  ExecStatus do_swrite( EvKeyCtx &ctx,  int flags ) noexcept;
+  ExecStatus do_smultiscan( EvKeyCtx &ctx,  int flags,  ScanArgs *sa ) noexcept;
+  ExecStatus do_ssetop( EvKeyCtx &ctx,  int flags ) noexcept;
   /* SORTED_SET */
-  ExecStatus exec_zadd( EvKeyCtx &ctx );
-  ExecStatus exec_zcard( EvKeyCtx &ctx );
-  ExecStatus exec_zcount( EvKeyCtx &ctx );
-  ExecStatus exec_zincrby( EvKeyCtx &ctx );
-  ExecStatus exec_zinterstore( EvKeyCtx &ctx );
-  ExecStatus exec_zlexcount( EvKeyCtx &ctx );
-  ExecStatus exec_zrange( EvKeyCtx &ctx );
-  ExecStatus exec_zrangebylex( EvKeyCtx &ctx );
-  ExecStatus exec_zrevrangebylex( EvKeyCtx &ctx );
-  ExecStatus exec_zrangebyscore( EvKeyCtx &ctx );
-  ExecStatus exec_zrank( EvKeyCtx &ctx );
-  ExecStatus exec_zrem( EvKeyCtx &ctx );
-  ExecStatus exec_zremrangebylex( EvKeyCtx &ctx );
-  ExecStatus exec_zremrangebyrank( EvKeyCtx &ctx );
-  ExecStatus exec_zremrangebyscore( EvKeyCtx &ctx );
-  ExecStatus exec_zrevrange( EvKeyCtx &ctx );
-  ExecStatus exec_zrevrangebyscore( EvKeyCtx &ctx );
-  ExecStatus exec_zrevrank( EvKeyCtx &ctx );
-  ExecStatus exec_zscore( EvKeyCtx &ctx );
-  ExecStatus exec_zunionstore( EvKeyCtx &ctx );
-  ExecStatus exec_zscan( EvKeyCtx &ctx );
-  ExecStatus exec_zpopmin( EvKeyCtx &ctx );
-  ExecStatus exec_zpopmax( EvKeyCtx &ctx );
-  ExecStatus exec_bzpopmin( EvKeyCtx &ctx );
-  ExecStatus exec_bzpopmax( EvKeyCtx &ctx );
-  ExecStatus do_zread( EvKeyCtx &ctx,  int flags );
-  ExecStatus do_zwrite( EvKeyCtx &ctx,  int flags );
-  ExecStatus do_zmultiscan( EvKeyCtx &ctx,  int flags,  ScanArgs *sa );
-  ExecStatus do_zremrange( EvKeyCtx &ctx,  int flags );
-  ExecStatus do_zsetop( EvKeyCtx &ctx,  int flags );
-  ExecStatus do_zsetop_store( EvKeyCtx &ctx,  int flags );
+  ExecStatus exec_zadd( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_zcard( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_zcount( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_zincrby( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_zinterstore( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_zlexcount( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_zrange( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_zrangebylex( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_zrevrangebylex( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_zrangebyscore( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_zrank( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_zrem( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_zremrangebylex( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_zremrangebyrank( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_zremrangebyscore( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_zrevrange( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_zrevrangebyscore( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_zrevrank( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_zscore( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_zunionstore( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_zscan( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_zpopmin( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_zpopmax( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_bzpopmin( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_bzpopmax( EvKeyCtx &ctx ) noexcept;
+  ExecStatus do_zread( EvKeyCtx &ctx,  int flags ) noexcept;
+  ExecStatus do_zwrite( EvKeyCtx &ctx,  int flags ) noexcept;
+  ExecStatus do_zmultiscan( EvKeyCtx &ctx,  int flags,  ScanArgs *sa ) noexcept;
+  ExecStatus do_zremrange( EvKeyCtx &ctx,  int flags ) noexcept;
+  ExecStatus do_zsetop( EvKeyCtx &ctx,  int flags ) noexcept;
+  ExecStatus do_zsetop_store( EvKeyCtx &ctx,  int flags ) noexcept;
   /* STRING */
-  ExecStatus exec_append( EvKeyCtx &ctx );
-  ExecStatus exec_bitcount( EvKeyCtx &ctx );
-  ExecStatus exec_bitfield( EvKeyCtx &ctx );
-  ExecStatus exec_bitop( EvKeyCtx &ctx );
-  ExecStatus exec_bitpos( EvKeyCtx &ctx );
-  ExecStatus exec_decr( EvKeyCtx &ctx );
-  ExecStatus exec_decrby( EvKeyCtx &ctx );
-  ExecStatus exec_get( EvKeyCtx &ctx );
-  ExecStatus exec_getbit( EvKeyCtx &ctx );
-  ExecStatus exec_getrange( EvKeyCtx &ctx );
-  ExecStatus exec_getset( EvKeyCtx &ctx );
-  ExecStatus exec_incr( EvKeyCtx &ctx );
-  ExecStatus exec_incrby( EvKeyCtx &ctx );
-  ExecStatus exec_incrbyfloat( EvKeyCtx &ctx );
-  ExecStatus exec_mget( EvKeyCtx &ctx );
-  ExecStatus exec_mset( EvKeyCtx &ctx );
-  ExecStatus exec_msetnx( EvKeyCtx &ctx );
-  ExecStatus exec_psetex( EvKeyCtx &ctx );
-  ExecStatus exec_set( EvKeyCtx &ctx );
-  ExecStatus exec_setbit( EvKeyCtx &ctx );
-  ExecStatus exec_setex( EvKeyCtx &ctx );
-  ExecStatus exec_setnx( EvKeyCtx &ctx );
-  ExecStatus exec_setrange( EvKeyCtx &ctx );
-  ExecStatus exec_strlen( EvKeyCtx &ctx );
+  ExecStatus exec_append( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_bitcount( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_bitfield( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_bitop( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_bitpos( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_decr( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_decrby( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_get( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_getbit( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_getrange( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_getset( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_incr( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_incrby( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_incrbyfloat( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_mget( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_mset( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_msetnx( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_psetex( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_set( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_setbit( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_setex( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_setnx( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_setrange( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_strlen( EvKeyCtx &ctx ) noexcept;
   /* string extras */
-  ExecStatus do_add( EvKeyCtx &ctx,  int64_t incr );
-  ExecStatus do_set_value( EvKeyCtx &ctx,  int n,  int flags );
+  ExecStatus do_add( EvKeyCtx &ctx,  int64_t incr ) noexcept;
+  ExecStatus do_set_value( EvKeyCtx &ctx,  int n,  int flags ) noexcept;
   ExecStatus do_set_value_expire( EvKeyCtx &ctx,  int n,  uint64_t ns,
-                                  int flags );
+                                  int flags ) noexcept;
   /* TRANSACTION */
-  bool make_multi( void );
-  void discard_multi( void );
-  ExecStatus exec_discard( void );
-  ExecStatus exec_exec( void );
-  ExecStatus exec_multi( void );
-  ExecStatus exec_unwatch( void );
-  ExecStatus exec_watch( EvKeyCtx &ctx );
+  bool make_multi( void ) noexcept;
+  void discard_multi( void ) noexcept;
+  ExecStatus exec_discard( void ) noexcept;
+  ExecStatus exec_exec( void ) noexcept;
+  ExecStatus exec_multi( void ) noexcept;
+  ExecStatus exec_unwatch( void ) noexcept;
+  ExecStatus exec_watch( EvKeyCtx &ctx ) noexcept;
   /* STREAM */
-  ExecStatus exec_xinfo( EvKeyCtx &ctx );
-  ExecStatus xinfo_consumers( ExecStreamCtx &stream );
-  ExecStatus xinfo_groups( ExecStreamCtx &stream );
-  ExecStatus xinfo_streams( ExecStreamCtx &stream );
+  ExecStatus exec_xinfo( EvKeyCtx &ctx ) noexcept;
+  ExecStatus xinfo_consumers( ExecStreamCtx &stream ) noexcept;
+  ExecStatus xinfo_groups( ExecStreamCtx &stream ) noexcept;
+  ExecStatus xinfo_streams( ExecStreamCtx &stream ) noexcept;
 
-  ExecStatus exec_xadd( EvKeyCtx &ctx );
-  ExecStatus exec_xtrim( EvKeyCtx &ctx );
-  ExecStatus exec_xdel( EvKeyCtx &ctx );
+  ExecStatus exec_xadd( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_xtrim( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_xdel( EvKeyCtx &ctx ) noexcept;
   bool construct_xfield_output( ExecStreamCtx &stream,  size_t idx,
-                                StreamBuf::BufQueue &q );
-  ExecStatus exec_xrange( EvKeyCtx &ctx );
-  ExecStatus exec_xrevrange( EvKeyCtx &ctx );
-  ExecStatus exec_xlen( EvKeyCtx &ctx );
-  ExecStatus exec_xread( EvKeyCtx &ctx );
-  ExecStatus finish_xread( EvKeyCtx &ctx,  StreamBuf::BufQueue &q );
-  ExecStatus exec_xreadgroup( EvKeyCtx &ctx );
-  ExecStatus exec_xgroup( EvKeyCtx &ctx );
-  ExecStatus exec_xack( EvKeyCtx &ctx );
-  ExecStatus exec_xclaim( EvKeyCtx &ctx );
-  ExecStatus exec_xpending( EvKeyCtx &ctx );
-  ExecStatus exec_xsetid( EvKeyCtx &ctx );
+                                StreamBuf::BufQueue &q ) noexcept;
+  ExecStatus exec_xrange( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_xrevrange( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_xlen( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_xread( EvKeyCtx &ctx ) noexcept;
+  ExecStatus finish_xread( EvKeyCtx &ctx,  StreamBuf::BufQueue &q ) noexcept;
+  ExecStatus exec_xreadgroup( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_xgroup( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_xack( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_xclaim( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_xpending( EvKeyCtx &ctx ) noexcept;
+  ExecStatus exec_xsetid( EvKeyCtx &ctx ) noexcept;
 
   /* result senders */
-  void send_err( int status,  kv::KeyStatus kstatus = KEY_OK );
-  void send_ok( void );
-  void send_nil( void );
-  void send_null( void );
-  void send_msg( const RedisMsg &m );
-  void send_int( void );
-  void send_int( int64_t ival );
-  void send_zero( void );
-  void send_zeroarr( void );
-  void send_one( void );
-  void send_neg_one( void );
-  void send_zero_string( void );
-  void send_queued( void );
+  void send_status( ExecStatus stat,  kv::KeyStatus kstat ) noexcept;
+  void send_err_string( ExecStatus err,  kv::KeyStatus kstat ) noexcept;
+  void send_ok( void ) noexcept;
+  void send_nil( void ) noexcept;
+  void send_null( void ) noexcept;
+  void send_msg( const RedisMsg &m ) noexcept;
+  void send_int( void ) noexcept;
+  void send_int( int64_t ival ) noexcept;
+  void send_zero( void ) noexcept;
+  void send_zeroarr( void ) noexcept;
+  void send_one( void ) noexcept;
+  void send_neg_one( void ) noexcept;
+  void send_zero_string( void ) noexcept;
+  void send_queued( void ) noexcept;
 
-  size_t send_string( const void *data,  size_t size );
-  size_t send_simple_string( const void *data,  size_t size );
+  size_t send_string( const void *data,  size_t size ) noexcept;
+  size_t send_simple_string( const void *data,  size_t size ) noexcept;
   size_t send_concat_string( const void *data,  size_t size,
-                             const void *data2,  size_t size2 );
+                             const void *data2,  size_t size2 ) noexcept;
 
-  bool save_string_result( EvKeyCtx &ctx,  const void *data,  size_t size );
-  bool save_data( EvKeyCtx &ctx,  const void *data,  size_t size );
+  bool save_string_result( EvKeyCtx &ctx,  const void *data,
+                           size_t size ) noexcept;
+  bool save_data( EvKeyCtx &ctx,  const void *data,  size_t size ) noexcept;
   void *save_data2( EvKeyCtx &ctx,  const void *data,  size_t size,
-                                    const void *data2,  size_t size2 );
-  void array_string_result( void );
-
-  void send_err_string( const char *s,  size_t slen );
-  void send_err_kv( kv::KeyStatus kstatus );
-  void send_err_msg( RedisMsgStatus mstatus );
-  void send_err_bad_cmd( void );
-  void send_err_fmt( int status );
+                                    const void *data2,  size_t size2 ) noexcept;
+  void array_string_result( void ) noexcept;
 };
 
 enum RedisDoPubState {

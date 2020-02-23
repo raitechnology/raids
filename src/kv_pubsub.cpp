@@ -18,6 +18,9 @@
 #include <raimd/md_types.h>
 #include <raimd/hex_dump.h>
 
+/* signal other processes that a message available */
+static const int kv_msg_signal = SIGUSR2;
+
 using namespace rai;
 using namespace kv;
 using namespace ds;
@@ -48,7 +51,7 @@ make_ibx( char *ibname,  uint16_t ctx_id )
   ibname[ 10 ] = hdigit( ctx_id & 0xf );
   ibname[ 11 ] = '\0';
 }
-
+#if 0
 static inline size_t
 make_dsunix_sockname( struct sockaddr_un &un,  uint32_t id )
 {
@@ -59,9 +62,9 @@ make_dsunix_sockname( struct sockaddr_un &un,  uint32_t id )
   un.sun_path[ 8 ] = hdigit( id & 0xf );
   return sizeof( path ) - 1 + offsetof( struct sockaddr_un, sun_path );
 }
-
+#endif
 const char *
-KvMsg::msg_type_string( uint8_t msg_type )
+KvMsg::msg_type_string( uint8_t msg_type ) noexcept
 {
   switch ( (KvMsgType) msg_type ) {
     case KV_MSG_HELLO:   return "hello";
@@ -77,7 +80,7 @@ KvMsg::msg_type_string( uint8_t msg_type )
 }
 
 const char *
-KvMsg::msg_type_string( void ) const
+KvMsg::msg_type_string( void ) const noexcept
 {
   return KvMsg::msg_type_string( this->msg_type );
 }
@@ -94,7 +97,7 @@ dump_hex( void *ptr,  uint64_t size )
 }
 
 void
-KvMsg::print( void )
+KvMsg::print( void ) noexcept
 {
   printf( "\r\nsession_id : %lx\r\n"
           "seqno      : %lu\r\n"
@@ -132,7 +135,7 @@ KvMsg::print( void )
 }
 
 KvPubSub *
-KvPubSub::create( EvPoll &poll )
+KvPubSub::create( EvPoll &poll ) noexcept
 {
   KvPubSub * ps;
   int        fd;
@@ -144,7 +147,7 @@ KvPubSub::create( EvPoll &poll )
   sigset_t   mask;
 
   sigemptyset( &mask );
-  sigaddset( &mask, SIGUSR1 );
+  sigaddset( &mask, kv_msg_signal );
 
   if ( sigprocmask( SIG_BLOCK, &mask, NULL ) == -1 ) {
     perror("sigprocmask");
@@ -179,7 +182,7 @@ KvPubSub::create( EvPoll &poll )
 }
 
 bool
-KvPubSub::register_mcast( void )
+KvPubSub::register_mcast( void ) noexcept
 {
   void    * val;
   KeyStatus status;
@@ -225,7 +228,7 @@ KvPubSub::register_mcast( void )
 }
 
 bool
-KvPubSub::clear_mcast_dead_routes( void )
+KvPubSub::clear_mcast_dead_routes( void ) noexcept
 {
   void    * val;
   uint64_t  sz;
@@ -270,7 +273,7 @@ KvPubSub::clear_mcast_dead_routes( void )
 }
 
 bool
-KvPubSub::unregister_mcast( void )
+KvPubSub::unregister_mcast( void ) noexcept
 {
   void    * val;
   uint64_t  sz;
@@ -303,7 +306,7 @@ KvPubSub::unregister_mcast( void )
 
 bool
 KvPubSub::subscribe_mcast( const char *sub,  size_t len,  bool activate,
-                           bool use_find )
+                           bool use_find ) noexcept
 {
   KeyBuf        kbuf;
   KeyFragment * kb = &kbuf;
@@ -388,7 +391,7 @@ KvPubSub::subscribe_mcast( const char *sub,  size_t len,  bool activate,
 }
 
 KvMsg *
-KvPubSub::create_kvmsg( KvMsgType mtype,  size_t sz )
+KvPubSub::create_kvmsg( KvMsgType mtype,  size_t sz ) noexcept
 {
   KvMsgList * l = (KvMsgList *) this->wrkq.alloc( sizeof( KvMsgList ) + sz + 8);
   KvMsg   & msg = l->msg;
@@ -411,7 +414,7 @@ KvPubSub::create_kvpublish( uint32_t h,  const char *sub,  size_t len,
                             uint8_t pref_cnt,  const char *reply,  size_t rlen,
                             const void *msgdata,  size_t msgsz,
                             char src_type,  KvMsgType mtype,
-                            uint8_t code,  uint8_t msg_enc )
+                            uint8_t code,  uint8_t msg_enc ) noexcept
 {
   KvSubMsg * msg;
   size_t     sz = KvSubMsg::calc_size( len, rlen, msgsz, pref_cnt );
@@ -435,7 +438,7 @@ KvPubSub::create_kvpublish( uint32_t h,  const char *sub,  size_t len,
 KvSubMsg *
 KvPubSub::create_kvsubmsg( uint32_t h,  const char *sub,  size_t len,
                            char src_type,  KvMsgType mtype,  const char *rep,
-                           size_t rlen )
+                           size_t rlen ) noexcept
 {
   KvSubMsg * msg;
   size_t     sz = KvSubMsg::calc_size( len, rlen, 0, 0 );
@@ -454,7 +457,7 @@ KvPubSub::create_kvsubmsg( uint32_t h,  const char *sub,  size_t len,
 KvSubMsg *
 KvPubSub::create_kvpsubmsg( uint32_t h,  const char *pattern,  size_t len,
                             const char *prefix,  uint8_t prefix_len,
-                            char src_type,  KvMsgType mtype )
+                            char src_type,  KvMsgType mtype ) noexcept
 {
   KvSubMsg * msg;
   size_t     sz = KvSubMsg::calc_size( len, prefix_len, 0, 1 );
@@ -476,7 +479,7 @@ KvPubSub::create_kvpsubmsg( uint32_t h,  const char *pattern,  size_t len,
 void
 KvPubSub::do_sub( uint32_t h,  const char *sub,  size_t len,
                   uint32_t /*sub_id*/,  uint32_t rcnt,  char src_type,
-                  const char *rep,  size_t rlen )
+                  const char *rep,  size_t rlen ) noexcept
 {
   bool use_find = true;
   if ( rcnt == 1 ) /* first route added */
@@ -500,7 +503,7 @@ KvPubSub::do_sub( uint32_t h,  const char *sub,  size_t len,
 
 void
 KvPubSub::do_unsub( uint32_t h,  const char *sub,  size_t len,
-                    uint32_t /*sub_id*/,  uint32_t rcnt,  char src_type )
+                    uint32_t,  uint32_t rcnt,  char src_type ) noexcept
 {
   bool do_unsubscribe = false;
   if ( rcnt == 0 ) /* no more routes left */
@@ -523,7 +526,7 @@ KvPubSub::do_unsub( uint32_t h,  const char *sub,  size_t len,
 void
 KvPubSub::do_psub( uint32_t h,  const char *pattern,  size_t len,
                    const char *prefix,  uint8_t prefix_len,
-                   uint32_t /*sub_id*/,  uint32_t rcnt,  char src_type )
+                   uint32_t,  uint32_t rcnt,  char src_type ) noexcept
 {
   bool use_find = true;
   if ( rcnt == 1 ) /* first route added */
@@ -551,7 +554,7 @@ KvPubSub::do_psub( uint32_t h,  const char *pattern,  size_t len,
 void
 KvPubSub::do_punsub( uint32_t h,  const char *pattern,  size_t len,
                      const char *prefix,  uint8_t prefix_len,
-                     uint32_t /*sub_id*/,  uint32_t rcnt,  char src_type )
+                     uint32_t /*sub_id*/,  uint32_t rcnt,  char src_type ) noexcept
 {
   bool do_unsubscribe = false;
   if ( rcnt == 0 ) /* no more routes left */
@@ -574,7 +577,7 @@ KvPubSub::do_punsub( uint32_t h,  const char *pattern,  size_t len,
 }
 
 void
-KvPubSub::process( void )
+KvPubSub::process( void ) noexcept
 {
   CubeRoute128  cr;
   HashTab     * map = this->poll.map;
@@ -671,7 +674,7 @@ KvPubSub::process( void )
 }
 
 void
-KvPubSub::process_shutdown( void )
+KvPubSub::process_shutdown( void ) noexcept
 {
   if ( this->unregister_mcast() )
     this->push( EV_WRITE );
@@ -680,12 +683,12 @@ KvPubSub::process_shutdown( void )
 }
 
 void
-KvPubSub::process_close( void )
+KvPubSub::process_close( void ) noexcept
 {
 }
 
 bool
-KvPubSub::get_mcast_route( CubeRoute128 &cr )
+KvPubSub::get_mcast_route( CubeRoute128 &cr ) noexcept
 {
   size_t    sz;
   void    * val;
@@ -705,7 +708,7 @@ KvPubSub::get_mcast_route( CubeRoute128 &cr )
 }
 
 bool
-KvPubSub::send_msg( KvMsg &msg )
+KvPubSub::send_msg( KvMsg &msg ) noexcept
 {
   void * ptr;
   KeyStatus status;
@@ -723,7 +726,8 @@ KvPubSub::send_msg( KvMsg &msg )
 }
 
 bool
-KvPubSub::send_vec( size_t cnt,  void *vec,  uint64_t *siz,  size_t dest )
+KvPubSub::send_vec( size_t cnt,  void *vec,  uint64_t *siz,
+                    size_t dest ) noexcept
 {
   KeyStatus status;
   KvMsgQueue & ibx = *this->inbox[ dest ];
@@ -738,7 +742,7 @@ KvPubSub::send_vec( size_t cnt,  void *vec,  uint64_t *siz,  size_t dest )
 }
 
 void
-KvPubSub::write( void )
+KvPubSub::write( void ) noexcept
 {
   CubeRoute128 mcast;
   /* if there are other contexts recving msgs */
@@ -877,7 +881,7 @@ KvPubSub::write( void )
         do {
           uint32_t pid = this->poll.map->ctx[ dest ].ctx_pid;
           if ( pid > 0 )
-            ::kill( pid, SIGUSR1 );
+            ::kill( pid, kv_msg_signal );
         } while ( used.next_set( dest ) );
       }
     }
@@ -889,7 +893,8 @@ KvPubSub::write( void )
 }
 
 bool
-KvPubSub::get_sub_mcast( const char *sub,  size_t len,  CubeRoute128 &cr )
+KvPubSub::get_sub_mcast( const char *sub,  size_t len,
+                         CubeRoute128 &cr ) noexcept
 {
   KeyBuf        kbuf;
   KeyFragment * kb = &kbuf;
@@ -937,19 +942,19 @@ KvPubSub::get_sub_mcast( const char *sub,  size_t len,  CubeRoute128 &cr )
 }
 
 void
-KvSubNotifyList::on_sub( KvSubMsg & )
+KvSubNotifyList::on_sub( KvSubMsg & ) noexcept
 {
 }
 
 void
-KvPubSub::forward_sub( KvSubMsg &submsg )
+KvPubSub::forward_sub( KvSubMsg &submsg ) noexcept
 {
   for ( KvSubNotifyList * l = this->sub_notifyq.hd; l != NULL; l = l->next )
     l->on_sub( submsg );
 }
 
 void
-KvPubSub::route_msg_from_shm( KvMsg &msg ) /* inbound from shm */
+KvPubSub::route_msg_from_shm( KvMsg &msg ) noexcept /* inbound from shm */
 {
   /*print_msg( msg );*/
   /* if msg destination has more hops */
@@ -1037,7 +1042,7 @@ KvPubSub::route_msg_from_shm( KvMsg &msg ) /* inbound from shm */
 }
 
 void
-KvPubSub::read( void )
+KvPubSub::read( void ) noexcept
 {
   static const size_t veclen = 1024;
   void       * data[ veclen ];
@@ -1083,7 +1088,7 @@ KvPubSub::read( void )
 }
 
 bool
-KvPubSub::busy_poll( uint64_t time_ns )
+KvPubSub::busy_poll( uint64_t time_ns ) noexcept
 {
   static const size_t veclen = 1024;
   void   * data[ veclen ];
@@ -1135,7 +1140,7 @@ eat_more_time:;
 }
 
 bool
-KvPubSub::on_msg( EvPublish &pub )
+KvPubSub::on_msg( EvPublish &pub ) noexcept
 {
   /* no publish to self */
   if ( (uint32_t) this->fd != pub.src_route ) {
@@ -1151,7 +1156,7 @@ KvPubSub::on_msg( EvPublish &pub )
 }
 
 bool
-KvPubSub::hash_to_sub( uint32_t h,  char *key,  size_t &keylen )
+KvPubSub::hash_to_sub( uint32_t h,  char *key,  size_t &keylen ) noexcept
 {
   KvSubRoute * rt;
   if ( (rt = this->sub_tab.find_by_hash( h )) != NULL /*||
@@ -1162,4 +1167,3 @@ KvPubSub::hash_to_sub( uint32_t h,  char *key,  size_t &keylen )
   }
   return false;
 }
-

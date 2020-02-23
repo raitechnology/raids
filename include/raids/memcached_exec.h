@@ -40,8 +40,8 @@ inline static bool memcached_status_fail( int status ) {
   return status > MEMCACHED_SUCCESS;  /* the bad status */
 }
 
-const char * memcached_status_string( MemcachedStatus status );
-const char * memcached_status_description( MemcachedStatus status );
+const char * memcached_status_string( MemcachedStatus status ) noexcept;
+const char * memcached_status_description( MemcachedStatus status ) noexcept;
 
 enum MemcachedCmd {
   MC_NONE = 0,
@@ -141,8 +141,8 @@ static inline bool test_mutator( uint8_t c ) {
 }
 #undef B
 
-const char *memcached_cmd_string( uint8_t cmd );
-const char *memcached_res_string( uint8_t res );
+const char *memcached_cmd_string( uint8_t cmd ) noexcept;
+const char *memcached_res_string( uint8_t res ) noexcept;
 
 /* presumes little endian, 0xdf masks out 0x20 for toupper() */
 #define C4_KW( c1, c2, c3, c4 ) ( ( (uint32_t) ( c4 & 0xdf ) << 24 ) | \
@@ -356,28 +356,29 @@ struct MemcachedMsg { /* both ASCII and binary */
       return false;
     return true;
   }
-  void print( void ); /* use only after unpack() successful */
+  void print( void ) noexcept; /* use only after unpack() successful */
   /* parse a memcached command and initialize this structure */
-  MemcachedStatus unpack( void *buf,  size_t &buflen,  kv::ScratchMem &wrk );
-  MemcachedStatus parse_store( void );
+  MemcachedStatus unpack( void *buf,  size_t &buflen,
+                          kv::ScratchMem &wrk ) noexcept;
+  MemcachedStatus parse_store( void ) noexcept;
   MemcachedStatus parse_bin_store( MemcachedBinHdr &b,  char *ptr,
-                                   size_t &buflen );
+                                   size_t &buflen ) noexcept;
   MemcachedStatus parse_bin_pend( MemcachedBinHdr &b,  char *ptr,
-                                  size_t &buflen );
-  MemcachedStatus parse_cas( void );
-  MemcachedStatus parse_retr( void );
+                                  size_t &buflen ) noexcept;
+  MemcachedStatus parse_cas( void ) noexcept;
+  MemcachedStatus parse_retr( void ) noexcept;
   MemcachedStatus parse_bin_retr( MemcachedBinHdr &b,  char *ptr,
-                                  size_t &buflen );
-  MemcachedStatus parse_gat( void );
+                                  size_t &buflen ) noexcept;
+  MemcachedStatus parse_gat( void ) noexcept;
   MemcachedStatus parse_bin_touch( MemcachedBinHdr &b,  char *ptr,
-                                   size_t &buflen );
-  MemcachedStatus parse_del( void );
-  MemcachedStatus parse_incr( void );
+                                   size_t &buflen ) noexcept;
+  MemcachedStatus parse_del( void ) noexcept;
+  MemcachedStatus parse_incr( void ) noexcept;
   MemcachedStatus parse_bin_incr( MemcachedBinHdr &b,  char *ptr,
-                                 size_t &buflen );
-  MemcachedStatus parse_touch( void );
+                                 size_t &buflen ) noexcept;
+  MemcachedStatus parse_touch( void ) noexcept;
   MemcachedStatus parse_bin_op( MemcachedBinHdr &b,  char *ptr,
-                                size_t &buflen,  size_t extra_sz );
+                                size_t &buflen,  size_t extra_sz ) noexcept;
 };
 
 struct MemcachedRes {
@@ -398,9 +399,10 @@ struct MemcachedRes {
     ::memset( this, 0, sizeof( *this ) );
     this->res = r;
   }
-  void print( void );
-  MemcachedStatus unpack( void *buf,  size_t &buflen,  kv::ScratchMem &wrk );
-  MemcachedStatus parse_value_result( void );
+  void print( void ) noexcept;
+  MemcachedStatus unpack( void *buf,  size_t &buflen,
+                          kv::ScratchMem &wrk ) noexcept;
+  MemcachedStatus parse_value_result( void ) noexcept;
 };
 
 struct MemcachedStats {
@@ -442,10 +444,10 @@ struct MemcachedExec {
                                      this->seed2 );
     this->kctx.set( kv::KEYCTX_NO_COPY_ON_READ );
   }
-  MemcachedStatus unpack( void *buf,  size_t &buflen );
+  MemcachedStatus unpack( void *buf,  size_t &buflen ) noexcept;
   MemcachedStatus exec_key_setup( EvSocket *own,  EvPrefetchQueue *q,
-                                  EvKeyCtx *&ctx,  uint32_t n );
-  MemcachedStatus exec( EvSocket *svc,  EvPrefetchQueue *q );
+                                  EvKeyCtx *&ctx,  uint32_t n ) noexcept;
+  MemcachedStatus exec( EvSocket *svc,  EvPrefetchQueue *q ) noexcept;
   /* set the hash */
   void exec_key_set( EvKeyCtx &ctx ) { 
     this->key = ctx.set( this->kctx );
@@ -455,8 +457,8 @@ struct MemcachedExec {
     ctx.prefetch( this->kctx.ht,
       test_read_only( this->msg->cmd ) ? true : false );
   }
-  kv::KeyStatus exec_key_fetch( EvKeyCtx &ctx,  bool force_read );
-  MemcachedStatus exec_key_continue( EvKeyCtx &ctx );
+  kv::KeyStatus exec_key_fetch( EvKeyCtx &ctx,  bool force_read ) noexcept;
+  MemcachedStatus exec_key_continue( EvKeyCtx &ctx ) noexcept;
   /* fetch key for write and check type matches or is not set */
   kv::KeyStatus get_key_write( EvKeyCtx &ctx,  uint8_t type ) {
     kv::KeyStatus status = this->exec_key_fetch( ctx, false );
@@ -476,47 +478,48 @@ struct MemcachedExec {
       return ( ctx.type == 0 ) ? KEY_NOT_FOUND : KEY_NO_VALUE;
     return status;
   }
-  void multi_get_send( void );
-  size_t send_value( EvKeyCtx &ctx,  const void *data,  size_t size );
-  size_t send_bin_value( EvKeyCtx &ctx,  const void *data,  size_t size );
-  bool save_value( EvKeyCtx &ctx,  const void *data,  size_t size );
-  MemcachedStatus exec_store( EvKeyCtx &ctx );
-  MemcachedStatus exec_bin_store( EvKeyCtx &ctx );
-  MemcachedStatus exec_retr( EvKeyCtx &ctx );
-  MemcachedStatus exec_bin_retr( EvKeyCtx &ctx );
-  MemcachedStatus exec_retr_touch( EvKeyCtx &ctx );
-  MemcachedStatus exec_bin_retr_touch( EvKeyCtx &ctx );
-  MemcachedStatus exec_del( EvKeyCtx &ctx );
-  MemcachedStatus exec_bin_del( EvKeyCtx &ctx );
-  MemcachedStatus exec_touch( EvKeyCtx &ctx );
-  MemcachedStatus exec_bin_touch( EvKeyCtx &ctx );
-  MemcachedStatus exec_incr( EvKeyCtx &ctx );
-  MemcachedStatus exec_bin_incr( EvKeyCtx &ctx );
+  void multi_get_send( void ) noexcept;
+  size_t send_value( EvKeyCtx &ctx,  const void *data,  size_t size ) noexcept;
+  size_t send_bin_value( EvKeyCtx &ctx,  const void *data,
+                         size_t size ) noexcept;
+  bool save_value( EvKeyCtx &ctx,  const void *data,  size_t size ) noexcept;
+  MemcachedStatus exec_store( EvKeyCtx &ctx ) noexcept;
+  MemcachedStatus exec_bin_store( EvKeyCtx &ctx ) noexcept;
+  MemcachedStatus exec_retr( EvKeyCtx &ctx ) noexcept;
+  MemcachedStatus exec_bin_retr( EvKeyCtx &ctx ) noexcept;
+  MemcachedStatus exec_retr_touch( EvKeyCtx &ctx ) noexcept;
+  MemcachedStatus exec_bin_retr_touch( EvKeyCtx &ctx ) noexcept;
+  MemcachedStatus exec_del( EvKeyCtx &ctx ) noexcept;
+  MemcachedStatus exec_bin_del( EvKeyCtx &ctx ) noexcept;
+  MemcachedStatus exec_touch( EvKeyCtx &ctx ) noexcept;
+  MemcachedStatus exec_bin_touch( EvKeyCtx &ctx ) noexcept;
+  MemcachedStatus exec_incr( EvKeyCtx &ctx ) noexcept;
+  MemcachedStatus exec_bin_incr( EvKeyCtx &ctx ) noexcept;
 
-  void exec_run_to_completion( void );
-  void send_err( int status,  kv::KeyStatus kstatus = KEY_OK );
-  size_t send_string( const void *s );
+  void exec_run_to_completion( void ) noexcept;
+  void send_err( int status,  kv::KeyStatus kstatus = KEY_OK ) noexcept;
+  size_t send_string( const void *s ) noexcept;
   size_t send_bin_status( uint16_t status, const void *s = NULL,
-                          size_t slen = 0 );
-  size_t send_bin_status_key( uint16_t status, EvKeyCtx &ctx );
-  size_t send_string( const void *s,  size_t slen );
-  size_t send_err_kv( kv::KeyStatus kstatus );
-  void put_stats( void );
-  void put_stats_settings( void );
-  void put_stats_items( void );
-  void put_stats_sizes( void );
-  void put_stats_slabs( void );
-  void put_stats_conns( void );
+                          size_t slen = 0 ) noexcept;
+  size_t send_bin_status_key( uint16_t status, EvKeyCtx &ctx ) noexcept;
+  size_t send_string( const void *s,  size_t slen ) noexcept;
+  size_t send_err_kv( kv::KeyStatus kstatus ) noexcept;
+  void put_stats( void ) noexcept;
+  void put_stats_settings( void ) noexcept;
+  void put_stats_items( void ) noexcept;
+  void put_stats_sizes( void ) noexcept;
+  void put_stats_slabs( void ) noexcept;
+  void put_stats_conns( void ) noexcept;
   void release( void ) {
     this->wrk.release_all();
   }
-  bool do_slabs( void );
-  bool do_lru( void );
-  bool do_lru_crawler( void );
-  bool do_watch( void );
-  bool do_flush_all( void );
-  bool do_memlimit( void );
-  void do_no_op( void );
+  bool do_slabs( void ) noexcept;
+  bool do_lru( void ) noexcept;
+  bool do_lru_crawler( void ) noexcept;
+  bool do_watch( void ) noexcept;
+  bool do_flush_all( void ) noexcept;
+  bool do_memlimit( void ) noexcept;
+  void do_no_op( void ) noexcept;
 };
 
 }

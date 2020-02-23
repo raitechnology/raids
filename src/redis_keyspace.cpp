@@ -15,7 +15,7 @@ using namespace md;
 
 /* alloc temporary space for subject */
 inline bool
-RedisKeyspace::alloc_subj( size_t subj_len )
+RedisKeyspace::alloc_subj( size_t subj_len ) noexcept
 {
   if ( this->alloc_len < subj_len ) {
     size_t len = 20 + this->keylen + this->evtlen;
@@ -29,7 +29,7 @@ RedisKeyspace::alloc_subj( size_t subj_len )
 }
 
 inline size_t
-RedisKeyspace::db_str( size_t off )
+RedisKeyspace::db_str( size_t off ) noexcept
 {
   size_t i = 0;
   if ( this->db[ 0 ] == 0 ) {
@@ -56,7 +56,7 @@ RedisKeyspace::db_str( size_t off )
 }
 /* append "@db__:" to subject */
 inline size_t
-RedisKeyspace::db_to_subj( size_t off )
+RedisKeyspace::db_to_subj( size_t off ) noexcept
 {
   this->subj[ off++ ] = '@';
   off = this->db_str( off );
@@ -67,7 +67,7 @@ RedisKeyspace::db_to_subj( size_t off )
 }
 
 size_t
-RedisKeyspace::make_bsubj( const char *blk )
+RedisKeyspace::make_bsubj( const char *blk ) noexcept
 {
   size_t subj_len = 20 + this->keylen;
   if ( ! this->alloc_subj( subj_len ) )
@@ -82,7 +82,7 @@ RedisKeyspace::make_bsubj( const char *blk )
 }
 /* blk = blocking subject (listblkd, zsetblkd, strmblkd), or keyspace */
 bool
-RedisKeyspace::fwd_bsubj( const char *blk )
+RedisKeyspace::fwd_bsubj( const char *blk ) noexcept
 {
   size_t subj_len = this->make_bsubj( blk );
   if ( subj_len == 0 )
@@ -96,7 +96,7 @@ RedisKeyspace::fwd_bsubj( const char *blk )
 }
 /* publish __keyevent@N__:event <- key */
 bool
-RedisKeyspace::fwd_keyevent( void )
+RedisKeyspace::fwd_keyevent( void ) noexcept
 {
   size_t subj_len = 20 + this->evtlen;
   if ( ! this->alloc_subj( subj_len ) )
@@ -116,7 +116,7 @@ RedisKeyspace::fwd_keyevent( void )
 }
 /* publish __monitor_@N__:peer_address <- [ msg, result, time ] */
 bool
-RedisKeyspace::fwd_monitor( void )
+RedisKeyspace::fwd_monitor( void ) noexcept
 {
   size_t addr_len = this->exec.peer.get_peer_address_strlen();
   if ( ! this->alloc_subj( 20 + addr_len ) )
@@ -190,7 +190,7 @@ RedisKeyspace::fwd_monitor( void )
 }
 /* given a command and keys, publish keyspace events */
 bool
-RedisKeyspace::pub_keyspace_events( RedisExec &exec )
+RedisKeyspace::pub_keyspace_events( RedisExec &exec ) noexcept
 {
   /* translate cmd into an event */
   RedisKeyspace ev( exec );

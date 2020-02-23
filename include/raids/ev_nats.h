@@ -10,7 +10,7 @@ namespace ds {
 struct EvNatsListen : public EvTcpListen {
   EvListenOps ops;
   EvNatsListen( EvPoll &p ) : EvTcpListen( p, this->ops ) {}
-  virtual bool accept( void );
+  virtual bool accept( void ) noexcept;
   int listen( const char *ip,  int port ) {
     return this->EvTcpListen::listen( ip, port, "nats_listen" );
   }
@@ -74,24 +74,24 @@ struct EvNatsService : public EvConnection {
     this->name = this->lang = this->version = NULL;
     this->user = this->pass = this->auth_token = NULL;
   }
-  void process( void );
+  void process( void ) noexcept;
   void exec_key_prefetch( EvKeyCtx & ) {}
   int exec_key_continue( EvKeyCtx & ) { return 0; }
   bool timer_expire( uint64_t, uint64_t ) { return false; }
   /*HashData * resize_tab( HashData *curr,  size_t add_len );*/
-  void add_sub( void );
-  void add_wild( NatsStr &xsubj );
-  void rem_sid( uint32_t max_msgs );
-  void rem_wild( NatsStr &xsubj );
-  void rem_all_sub( void );
-  bool fwd_pub( void );
-  bool on_msg( EvPublish &pub );
-  bool hash_to_sub( uint32_t h,  char *key,  size_t &keylen );
-  bool fwd_msg( EvPublish &pub,  const void *sid,  size_t sid_len );
-  void parse_connect( const char *buf,  size_t sz );
-  void release( void );
-  void push_free_list( void );
-  void pop_free_list( void );
+  void add_sub( void ) noexcept;
+  void add_wild( NatsStr &xsubj ) noexcept;
+  void rem_sid( uint32_t max_msgs ) noexcept;
+  void rem_wild( NatsStr &xsubj ) noexcept;
+  void rem_all_sub( void ) noexcept;
+  bool fwd_pub( void ) noexcept;
+  bool on_msg( EvPublish &pub ) noexcept;
+  bool hash_to_sub( uint32_t h,  char *key,  size_t &keylen ) noexcept;
+  bool fwd_msg( EvPublish &pub,  const void *sid,  size_t sid_len ) noexcept;
+  void parse_connect( const char *buf,  size_t sz ) noexcept;
+  void release( void ) noexcept;
+  void push_free_list( void ) noexcept;
+  void pop_free_list( void ) noexcept;
   void process_close( void ) {}
 };
 

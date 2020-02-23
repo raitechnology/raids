@@ -30,7 +30,7 @@ using namespace ds;
 using namespace kv;
 
 int
-EvPoll::init( int numfds,  bool prefetch/*,  bool single*/ )
+EvPoll::init( int numfds,  bool prefetch/*,  bool single*/ ) noexcept
 {
   size_t sz = sizeof( this->ev[ 0 ] ) * numfds;
 
@@ -55,7 +55,7 @@ EvPoll::init( int numfds,  bool prefetch/*,  bool single*/ )
 }
 
 int
-EvPoll::init_shm( EvShm &shm )
+EvPoll::init_shm( EvShm &shm ) noexcept
 {
   this->map    = shm.map;
   this->ctx_id = shm.ctx_id;
@@ -67,7 +67,7 @@ EvPoll::init_shm( EvShm &shm )
 }
 
 int
-EvPoll::wait( int ms )
+EvPoll::wait( int ms ) noexcept
 {
   int n = ::epoll_wait( this->efd, this->ev, this->nfds, ms );
   if ( n < 0 ) {
@@ -109,50 +109,51 @@ sock_type_string( EvSockType t )
   return "unknown";
 }
 /* vtable dispatch */
-inline void EvSocket::v_write( void ) {
+inline void EvSocket::v_write( void ) noexcept {
   SOCK_CALL( this, write() );
 }
-inline void EvSocket::v_read( void ) {
+inline void EvSocket::v_read( void ) noexcept {
   SOCK_CALL( this, read() );
 }
-inline void EvSocket::v_process( void ) {
+inline void EvSocket::v_process( void ) noexcept {
   SOCK_CALL( this, process() );
 }
-inline void EvSocket::v_release( void ) {
+inline void EvSocket::v_release( void ) noexcept {
   SOCK_CALL( this, release() );
 }
-inline bool EvSocket::v_timer_expire( uint64_t tid, uint64_t eid ) {
+inline bool EvSocket::v_timer_expire( uint64_t tid, uint64_t eid ) noexcept {
   bool b = false;
   SOCK_CALL2( b, this, timer_expire( tid, eid ) );
   return b;
 }
-inline bool EvSocket::v_hash_to_sub( uint32_t h, char *k, size_t &klen ) {
+inline bool EvSocket::v_hash_to_sub( uint32_t h, char *k,
+                                     size_t &klen ) noexcept {
   bool b = false;
   SOCK_CALL2( b, this, hash_to_sub( h, k, klen ) );
   return b;
 }
-inline bool EvSocket::v_on_msg( EvPublish &pub ) {
+inline bool EvSocket::v_on_msg( EvPublish &pub ) noexcept {
   bool b = true;
   SOCK_CALL2( b, this, on_msg( pub ) );
   return b;
 }
-inline void EvSocket::v_exec_key_prefetch( EvKeyCtx &ctx ) {
+inline void EvSocket::v_exec_key_prefetch( EvKeyCtx &ctx ) noexcept {
   SOCK_CALL( this, exec_key_prefetch( ctx ) );
 }
-inline int  EvSocket::v_exec_key_continue( EvKeyCtx &ctx ) {
+inline int  EvSocket::v_exec_key_continue( EvKeyCtx &ctx ) noexcept {
   int status = 0;
   SOCK_CALL2( status, this, exec_key_continue( ctx ) );
   return status;
 }
-inline void EvSocket::v_process_shutdown( void ) {
+inline void EvSocket::v_process_shutdown( void ) noexcept {
   SOCK_CALL( this, process_shutdown() );
 }
-inline void EvSocket::v_process_close( void ) {
+inline void EvSocket::v_process_close( void ) noexcept {
   SOCK_CALL( this, process_close() );
 }
 
 void
-EvPoll::drain_prefetch( void )
+EvPoll::drain_prefetch( void ) noexcept
 {
   EvPrefetchQueue & pq = *this->prefetch_queue;
   EvKeyCtx * ctx[ PREFETCH_SIZE ];
@@ -213,7 +214,7 @@ EvPoll::drain_prefetch( void )
 }
 
 uint64_t
-EvPoll::current_coarse_ns( void ) const
+EvPoll::current_coarse_ns( void ) const noexcept
 {
   if ( this->map != NULL )
     return this->map->hdr.current_stamp;
@@ -221,7 +222,7 @@ EvPoll::current_coarse_ns( void ) const
 }
 
 bool
-EvPoll::dispatch( void )
+EvPoll::dispatch( void ) noexcept
 {
   EvSocket * s;
   uint64_t busy_ns = this->timer_queue->busy_delta(),
@@ -303,7 +304,7 @@ EvPoll::dispatch( void )
  * common, but multi / queue need to be used with multiple routes */
 bool
 EvPoll::publish_one( EvPublish &pub,  uint32_t *rcount_total,
-                     RoutePublishData &rpd )
+                     RoutePublishData &rpd ) noexcept
 {
   uint32_t * routes    = rpd.routes;
   uint32_t   rcount    = rpd.rcount;
@@ -331,7 +332,7 @@ EvPoll::publish_one( EvPublish &pub,  uint32_t *rcount_total,
 template<uint8_t N>
 bool
 EvPoll::publish_multi( EvPublish &pub,  uint32_t *rcount_total,
-                       RoutePublishData *rpd )
+                       RoutePublishData *rpd ) noexcept
 {
   EvSocket * s;
   uint32_t   min_route,
@@ -380,7 +381,7 @@ EvPoll::publish_multi( EvPublish &pub,  uint32_t *rcount_total,
 }
 /* same as above with a prio queue heap instead of linear search */
 bool
-EvPoll::publish_queue( EvPublish &pub,  uint32_t *rcount_total )
+EvPoll::publish_queue( EvPublish &pub,  uint32_t *rcount_total ) noexcept
 {
   RoutePublishQueue & queue     = this->pub_queue;
   RoutePublishData  * rpd       = queue.pop();
@@ -433,7 +434,7 @@ EvPoll::publish_queue( EvPublish &pub,  uint32_t *rcount_total )
  * db contains both exact matches and wildcard prefix matches */
 bool
 RoutePublish::forward_msg( EvPublish &pub,  uint32_t *rcount_total,
-                           uint8_t pref_cnt,  KvPrefHash *ph )
+                           uint8_t pref_cnt,  KvPrefHash *ph ) noexcept
 {
   EvPoll   & poll      = static_cast<EvPoll &>( *this );
   uint32_t * routes    = NULL;
@@ -499,7 +500,7 @@ RoutePublish::forward_msg( EvPublish &pub,  uint32_t *rcount_total,
 /* convert a hash into a subject string, this may have collisions */
 bool
 RoutePublish::hash_to_sub( uint32_t r,  uint32_t h,  char *key,
-                           size_t &keylen )
+                           size_t &keylen ) noexcept
 {
   EvPoll & poll = static_cast<EvPoll &>( *this );
   EvSocket *s;
@@ -510,7 +511,8 @@ RoutePublish::hash_to_sub( uint32_t r,  uint32_t h,  char *key,
 }
 /* track number of subscribes to keyspace subjects to enable them */
 inline void
-RoutePublish::update_keyspace_count( const char *sub,  size_t len,  int add )
+RoutePublish::update_keyspace_count( const char *sub,  size_t len,
+                                     int add ) noexcept
 {
   /* keyspace subjects are special, since subscribing to them can create
    * some overhead */
@@ -545,7 +547,7 @@ RoutePublish::update_keyspace_count( const char *sub,  size_t len,  int add )
 /* external patterns from kv pubsub */
 void
 EvPoll::add_pattern_route( const char *sub,  size_t prefix_len,  uint32_t hash,
-                           uint32_t fd )
+                           uint32_t fd ) noexcept
 {
   size_t pre_len = ( prefix_len < 11 ? prefix_len : 11 );
   /* if first route added for hash */
@@ -557,7 +559,7 @@ EvPoll::add_pattern_route( const char *sub,  size_t prefix_len,  uint32_t hash,
 
 void
 EvPoll::del_pattern_route( const char *sub,  size_t prefix_len,  uint32_t hash,
-                           uint32_t fd )
+                           uint32_t fd ) noexcept
 {
   size_t pre_len = ( prefix_len < 11 ? prefix_len : 11 );
   /* if last route deleted */
@@ -569,7 +571,7 @@ EvPoll::del_pattern_route( const char *sub,  size_t prefix_len,  uint32_t hash,
 /* external routes from kv pubsub */
 void
 EvPoll::add_route( const char *sub,  size_t sub_len,  uint32_t hash,
-                   uint32_t fd )
+                   uint32_t fd ) noexcept
 {
   /* if first route added for hash */
   if ( this->sub_route.add_route( hash, fd ) == 1 ) {
@@ -582,7 +584,7 @@ EvPoll::add_route( const char *sub,  size_t sub_len,  uint32_t hash,
 
 void
 EvPoll::del_route( const char *sub,  size_t sub_len,  uint32_t hash,
-                   uint32_t fd )
+                   uint32_t fd ) noexcept
 {
   /* if last route deleted */
   if ( this->sub_route.del_route( hash, fd ) == 0 ) {
@@ -596,7 +598,7 @@ EvPoll::del_route( const char *sub,  size_t sub_len,  uint32_t hash,
 void
 RoutePublish::notify_sub( uint32_t h,  const char *sub,  size_t len,
                           uint32_t sub_id,  uint32_t rcnt,  char src_type,
-                          const char *rep,  size_t rlen )
+                          const char *rep,  size_t rlen ) noexcept
 {
   EvPoll & poll = static_cast<EvPoll &>( *this );
   if ( len > 11 )
@@ -606,7 +608,8 @@ RoutePublish::notify_sub( uint32_t h,  const char *sub,  size_t len,
 
 void
 RoutePublish::notify_unsub( uint32_t h,  const char *sub,  size_t len,
-                            uint32_t sub_id,  uint32_t rcnt,  char src_type )
+                            uint32_t sub_id,  uint32_t rcnt,
+                            char src_type ) noexcept
 {
   EvPoll & poll = static_cast<EvPoll &>( *this );
   if ( len > 11 )
@@ -617,7 +620,8 @@ RoutePublish::notify_unsub( uint32_t h,  const char *sub,  size_t len,
 void
 RoutePublish::notify_psub( uint32_t h,  const char *pattern,  size_t len,
                            const char *prefix,  uint8_t prefix_len,
-                           uint32_t sub_id,  uint32_t rcnt,  char src_type )
+                           uint32_t sub_id,  uint32_t rcnt,
+                           char src_type ) noexcept
 {
   EvPoll & poll = static_cast<EvPoll &>( *this );
   size_t pre_len = ( prefix_len < 11 ? prefix_len : 11 );
@@ -629,7 +633,8 @@ RoutePublish::notify_psub( uint32_t h,  const char *pattern,  size_t len,
 void
 RoutePublish::notify_punsub( uint32_t h,  const char *pattern,  size_t len,
                              const char *prefix,  uint8_t prefix_len,
-                             uint32_t sub_id,  uint32_t rcnt,  char src_type )
+                             uint32_t sub_id,  uint32_t rcnt,
+                             char src_type ) noexcept
 {
   EvPoll & poll = static_cast<EvPoll &>( *this );
   size_t pre_len = ( prefix_len < 11 ? prefix_len : 11 );
@@ -639,7 +644,7 @@ RoutePublish::notify_punsub( uint32_t h,  const char *pattern,  size_t len,
 }
 /* shutdown and close all open socks */
 void
-EvPoll::process_quit( void )
+EvPoll::process_quit( void ) noexcept
 {
   if ( this->quit ) {
     EvSocket *s = this->active_list.hd;
@@ -666,7 +671,7 @@ EvPoll::process_quit( void )
 }
 /* convert sockaddr into a string and set peer_address[] */
 void
-PeerData::set_addr( const sockaddr *sa )
+PeerData::set_addr( const sockaddr *sa ) noexcept
 {
   const size_t maxlen = sizeof( this->peer_address );
   char         buf[ maxlen ],
@@ -741,13 +746,13 @@ PeerData::set_addr( const sockaddr *sa )
 }
 
 bool
-EvSocketOps::match( PeerData &pd,  PeerMatchArgs &ka )
+EvSocketOps::match( PeerData &pd,  PeerMatchArgs &ka ) noexcept
 {
   return this->client_match( pd, ka, NULL );
 }
 
 int
-EvSocketOps::client_list( PeerData &pd,  char *buf,  size_t buflen )
+EvSocketOps::client_list( PeerData &pd,  char *buf,  size_t buflen ) noexcept
 {
   /* id=1082 addr=[::1]:43362 fd=8 name= age=1 idle=0 flags=N */
   static const uint64_t ONE_NS = 1000000000;
@@ -772,7 +777,7 @@ EvSocketOps::client_list( PeerData &pd,  char *buf,  size_t buflen )
 }
 
 bool
-EvSocketOps::client_match( PeerData &pd,  PeerMatchArgs &ka,  ... )
+EvSocketOps::client_match( PeerData &pd,  PeerMatchArgs &ka,  ... ) noexcept
 {
   /* match filters, if any don't match return false */
   if ( ka.id != 0 )
@@ -811,7 +816,7 @@ EvSocketOps::client_match( PeerData &pd,  PeerMatchArgs &ka,  ... )
 }
 
 bool
-EvSocketOps::client_kill( PeerData &pd )
+EvSocketOps::client_kill( PeerData &pd ) noexcept
 {
   EvSocket &s = (EvSocket &) pd;
   /* if already shutdown, close up immediately */
@@ -829,13 +834,14 @@ EvSocketOps::client_kill( PeerData &pd )
 }
 
 bool
-EvConnectionOps::match( PeerData &pd,  PeerMatchArgs &ka )
+EvConnectionOps::match( PeerData &pd,  PeerMatchArgs &ka ) noexcept
 {
   return this->client_match( pd, ka, MARG( "tcp" ), NULL );
 }
 
 int
-EvConnectionOps::client_list( PeerData &pd,  char *buf,  size_t buflen )
+EvConnectionOps::client_list( PeerData &pd,  char *buf,
+                              size_t buflen ) noexcept
 {
   EvConnection & c = (EvConnection &) pd;
   int i = this->EvSocketOps::client_list( pd, buf, buflen );
@@ -852,7 +858,7 @@ EvConnectionOps::client_list( PeerData &pd,  char *buf,  size_t buflen )
 }
 
 void
-EvSocketOps::client_stats( PeerData &pd,  PeerStats &ps )
+EvSocketOps::client_stats( PeerData &pd,  PeerStats &ps ) noexcept
 {
   EvSocket & s = (EvSocket &) pd;
   ps.bytes_recv += s.bytes_recv;
@@ -862,7 +868,7 @@ EvSocketOps::client_stats( PeerData &pd,  PeerStats &ps )
 }
 
 void
-EvSocketOps::retired_stats( PeerData &pd,  PeerStats &ps )
+EvSocketOps::retired_stats( PeerData &pd,  PeerStats &ps ) noexcept
 {
   EvSocket & s = (EvSocket &) pd;
   ps.bytes_recv += s.poll.peer_stats.bytes_recv;
@@ -873,13 +879,13 @@ EvSocketOps::retired_stats( PeerData &pd,  PeerStats &ps )
 }
 
 bool
-EvListenOps::match( PeerData &pd,  PeerMatchArgs &ka )
+EvListenOps::match( PeerData &pd,  PeerMatchArgs &ka ) noexcept
 {
   return this->client_match( pd, ka, MARG( "listen" ), NULL );
 }
 
 int
-EvListenOps::client_list( PeerData &pd,  char *buf,  size_t buflen )
+EvListenOps::client_list( PeerData &pd,  char *buf,  size_t buflen ) noexcept
 {
   EvListen & l = (EvListen &) pd;
   int i = this->EvSocketOps::client_list( pd, buf, buflen );
@@ -892,20 +898,20 @@ EvListenOps::client_list( PeerData &pd,  char *buf,  size_t buflen )
 }
 
 void
-EvListenOps::client_stats( PeerData &pd,  PeerStats &ps )
+EvListenOps::client_stats( PeerData &pd,  PeerStats &ps ) noexcept
 {
   EvListen & l = (EvListen &) pd;
   ps.accept_cnt += l.accept_cnt;
 }
 
 bool
-EvUdpOps::match( PeerData &pd,  PeerMatchArgs &ka )
+EvUdpOps::match( PeerData &pd,  PeerMatchArgs &ka ) noexcept
 {
   return this->client_match( pd, ka, MARG( "udp" ), NULL );
 }
 
 int
-EvUdpOps::client_list( PeerData &pd,  char *buf,  size_t buflen )
+EvUdpOps::client_list( PeerData &pd,  char *buf,  size_t buflen ) noexcept
 {
   EvUdp & u = (EvUdp &) pd;
   int i = this->EvSocketOps::client_list( pd, buf, buflen );
@@ -920,7 +926,7 @@ EvUdpOps::client_list( PeerData &pd,  char *buf,  size_t buflen )
 
 /* enable epolling of sock fd */
 int
-EvPoll::add_sock( EvSocket *s )
+EvPoll::add_sock( EvSocket *s ) noexcept
 {
   /* make enough space for fd */
   if ( s->fd > this->maxfd ) {
@@ -976,7 +982,7 @@ EvPoll::add_sock( EvSocket *s )
 /* start a timer event */
 bool
 RoutePublish::add_timer_seconds( int id,  uint32_t ival,  uint64_t timer_id,
-                                 uint64_t event_id )
+                                 uint64_t event_id ) noexcept
 {
   EvPoll & poll = static_cast<EvPoll &>( *this );
   return poll.timer_queue->add_timer_seconds( id, ival, timer_id, event_id );
@@ -984,7 +990,7 @@ RoutePublish::add_timer_seconds( int id,  uint32_t ival,  uint64_t timer_id,
 
 bool
 RoutePublish::add_timer_millis( int id,  uint32_t ival,  uint64_t timer_id,
-                                uint64_t event_id )
+                                uint64_t event_id ) noexcept
 {
   EvPoll & poll = static_cast<EvPoll &>( *this );
   return poll.timer_queue->add_timer_units( id, ival, IVAL_MILLIS, timer_id,
@@ -992,14 +998,15 @@ RoutePublish::add_timer_millis( int id,  uint32_t ival,  uint64_t timer_id,
 }
 
 bool
-RoutePublish::remove_timer( int id,  uint64_t timer_id,  uint64_t event_id )
+RoutePublish::remove_timer( int id,  uint64_t timer_id,
+                            uint64_t event_id ) noexcept
 {
   EvPoll & poll = static_cast<EvPoll &>( *this );
   return poll.timer_queue->remove_timer( id, timer_id, event_id );
 }
 /* dispatch a timer firing */
 bool
-EvPoll::timer_expire( EvTimerEvent &ev )
+EvPoll::timer_expire( EvTimerEvent &ev ) noexcept
 {
   EvSocket *s;
   bool b = false;
@@ -1009,7 +1016,7 @@ EvPoll::timer_expire( EvTimerEvent &ev )
 }
 /* remove a sock fd from epolling */
 void
-EvPoll::remove_sock( EvSocket *s )
+EvPoll::remove_sock( EvSocket *s ) noexcept
 {
   struct epoll_event event;
   if ( s->fd < 0 )
@@ -1044,7 +1051,7 @@ EvPoll::remove_sock( EvSocket *s )
 }
 /* fill up recv buffers */
 void
-EvConnection::read( void )
+EvConnection::read( void ) noexcept
 {
   this->adjust_recv();
   for (;;) {
@@ -1092,7 +1099,7 @@ EvConnection::read( void )
 }
 /* if msg is too large for existing buffers, resize it */
 bool
-EvConnection::resize_recv_buf( void )
+EvConnection::resize_recv_buf( void ) noexcept
 {
   size_t newsz = this->recv_size * 2;
   if ( newsz != (size_t) (uint32_t) newsz )
@@ -1111,7 +1118,7 @@ EvConnection::resize_recv_buf( void )
 }
 /* write data to sock fd */
 void
-EvConnection::write( void )
+EvConnection::write( void ) noexcept
 {
   struct msghdr h;
   ssize_t nbytes;
@@ -1175,7 +1182,7 @@ EvConnection::write( void )
 }
 /* use mmsg for udp sockets */
 bool
-EvUdp::alloc_mmsg( void )
+EvUdp::alloc_mmsg( void ) noexcept
 {
   static const size_t gsz = sizeof( struct sockaddr_storage ) +
                             sizeof( struct iovec ),
@@ -1224,7 +1231,7 @@ EvUdp::alloc_mmsg( void )
 }
 /* read udp packets */
 void
-EvUdp::read( void )
+EvUdp::read( void ) noexcept
 {
   int nmsgs = 0;
   if ( this->in_moff == this->in_size ) {
@@ -1270,7 +1277,7 @@ EvUdp::read( void )
 }
 /* write udp packets */
 void
-EvUdp::write( void )
+EvUdp::write( void ) noexcept
 {
   int nmsgs = 0;
   if ( this->out_nmsgs > 1 ) {
@@ -1305,7 +1312,7 @@ EvUdp::write( void )
 }
 /* if some alloc failed, kill the client */
 void
-EvConnection::close_alloc_error( void )
+EvConnection::close_alloc_error( void ) noexcept
 {
   fprintf( stderr, "Allocation failed! Closing connection\n" );
   this->popall();
@@ -1314,7 +1321,7 @@ EvConnection::close_alloc_error( void )
 /* when a sock is not dispatch()ed, it may need to be rearranged in the queue
  * for correct priority */
 void
-EvSocket::idle_push( EvState s )
+EvSocket::idle_push( EvState s ) noexcept
 {
   if ( this->state == 0 ) {
   do_push:;

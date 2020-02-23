@@ -48,7 +48,7 @@ enum {
 };
 
 MemcachedStatus
-MemcachedExec::unpack( void *buf,  size_t &buflen )
+MemcachedExec::unpack( void *buf,  size_t &buflen ) noexcept
 {
   this->msg = (MemcachedMsg *) this->strm.alloc_temp( sizeof( MemcachedMsg ) );
   if ( this->msg == NULL )
@@ -64,7 +64,7 @@ MemcachedExec::unpack( void *buf,  size_t &buflen )
 }
 
 const char *
-rai::ds::memcached_cmd_string( uint8_t cmd )
+rai::ds::memcached_cmd_string( uint8_t cmd ) noexcept
 {
   switch ( (MemcachedCmd) ( cmd & MC_CMD_MASK ) ) {
     case MC_NONE: return "NONE";
@@ -102,7 +102,7 @@ rai::ds::memcached_cmd_string( uint8_t cmd )
 }
 
 void
-MemcachedMsg::print( void )
+MemcachedMsg::print( void ) noexcept
 {
   uint32_t i, j;
   printf( "%s", memcached_cmd_string( this->cmd ) );
@@ -155,7 +155,7 @@ MemcachedMsg::print( void )
 }
 
 const char *
-rai::ds::memcached_res_string( uint8_t res )
+rai::ds::memcached_res_string( uint8_t res ) noexcept
 {
   switch ( (MemcachedResult) res ) {
     case MR_NONE: return "NONE";
@@ -185,7 +185,7 @@ rai::ds::memcached_res_string( uint8_t res )
 }
 
 void
-MemcachedRes::print( void )
+MemcachedRes::print( void ) noexcept
 {
   if ( this->res == MR_INT ) {
     printf( "%lu", this->ival );
@@ -330,7 +330,7 @@ parse_mcargs( char *ptr,  char *end,  ScratchMem &wrk,  MemcachedArgs *&args )
 }
 
 MemcachedStatus
-MemcachedMsg::unpack( void *buf,  size_t &buflen,  ScratchMem &wrk )
+MemcachedMsg::unpack( void *buf,  size_t &buflen,  ScratchMem &wrk ) noexcept
 {
   char  * ptr = (char *) buf,
         * eol,
@@ -507,7 +507,7 @@ get_u32( const char *str,  size_t len,  uint32_t &val )
 }
 
 MemcachedStatus
-MemcachedRes::unpack( void *buf,  size_t &buflen,  ScratchMem &wrk )
+MemcachedRes::unpack( void *buf,  size_t &buflen,  ScratchMem &wrk ) noexcept
 {
   char  * s = (char *) buf,
         * eol;
@@ -567,7 +567,7 @@ MemcachedRes::unpack( void *buf,  size_t &buflen,  ScratchMem &wrk )
 }
 
 MemcachedStatus
-MemcachedRes::parse_value_result( void )
+MemcachedRes::parse_value_result( void ) noexcept
 {
   MemcachedStatus r;
   /* VALUE key flags msglen [cas] */
@@ -586,7 +586,7 @@ MemcachedRes::parse_value_result( void )
 }
 
 MemcachedStatus
-MemcachedMsg::parse_store( void )
+MemcachedMsg::parse_store( void ) noexcept
 {
   MemcachedStatus r;
   /* SET key flags ttl msglen [noreply] */
@@ -609,7 +609,7 @@ MemcachedMsg::parse_store( void )
 }
 
 MemcachedStatus
-MemcachedMsg::parse_cas( void )
+MemcachedMsg::parse_cas( void ) noexcept
 {
   MemcachedStatus r;
   /* CAS key flags ttl msglen cas-unique-id [noreply] */
@@ -633,7 +633,7 @@ MemcachedMsg::parse_cas( void )
 }
 
 MemcachedStatus
-MemcachedMsg::parse_retr( void )
+MemcachedMsg::parse_retr( void ) noexcept
 {
   /* GET key [key2] ... */
   if ( this->argcnt == 0 )
@@ -649,7 +649,7 @@ MemcachedMsg::parse_retr( void )
 }
 
 MemcachedStatus
-MemcachedMsg::parse_gat( void )
+MemcachedMsg::parse_gat( void ) noexcept
 {
   MemcachedStatus r;
   /* GAT ttl key [key2] ... */
@@ -668,7 +668,7 @@ MemcachedMsg::parse_gat( void )
 }
 
 MemcachedStatus
-MemcachedMsg::parse_del( void )
+MemcachedMsg::parse_del( void ) noexcept
 {
   /* DELETE key [noreply] */
   if ( this->argcnt != 1 && this->argcnt != 2 )
@@ -685,7 +685,7 @@ MemcachedMsg::parse_del( void )
 }
 
 MemcachedStatus
-MemcachedMsg::parse_incr( void )
+MemcachedMsg::parse_incr( void ) noexcept
 {
   MemcachedStatus r;
   /* INCR key value [noreply] */
@@ -705,7 +705,7 @@ MemcachedMsg::parse_incr( void )
 }
 
 MemcachedStatus
-MemcachedMsg::parse_touch( void )
+MemcachedMsg::parse_touch( void ) noexcept
 {
   MemcachedStatus r;
   /* TOUCH key ttl [noreply] */
@@ -725,7 +725,8 @@ MemcachedMsg::parse_touch( void )
 }
 
 MemcachedStatus
-MemcachedMsg::parse_bin_store( MemcachedBinHdr &b,  char *ptr,  size_t &buflen )
+MemcachedMsg::parse_bin_store( MemcachedBinHdr &b,  char *ptr,
+                               size_t &buflen ) noexcept
 {
   /* SET, ADD, REPLACE:  has key, has extra flags+ttl, may have msg */
   size_t keylen  = __builtin_bswap16( b.keylen ),
@@ -757,7 +758,8 @@ MemcachedMsg::parse_bin_store( MemcachedBinHdr &b,  char *ptr,  size_t &buflen )
 }
 
 MemcachedStatus
-MemcachedMsg::parse_bin_pend( MemcachedBinHdr &b,  char *ptr,  size_t &buflen )
+MemcachedMsg::parse_bin_pend( MemcachedBinHdr &b,  char *ptr,
+                              size_t &buflen ) noexcept
 {
   /* APPEND, PREPEND:  has key, has msg */
   size_t keylen  = __builtin_bswap16( b.keylen ),
@@ -786,7 +788,8 @@ MemcachedMsg::parse_bin_pend( MemcachedBinHdr &b,  char *ptr,  size_t &buflen )
 }
 
 MemcachedStatus
-MemcachedMsg::parse_bin_retr( MemcachedBinHdr &b,  char *ptr,  size_t &buflen )
+MemcachedMsg::parse_bin_retr( MemcachedBinHdr &b,  char *ptr,
+                              size_t &buflen ) noexcept
 {
   /* DELETE, GET, GETQ, GETK, GETKQ:  has key */
   size_t keylen  = __builtin_bswap16( b.keylen ),
@@ -815,7 +818,8 @@ MemcachedMsg::parse_bin_retr( MemcachedBinHdr &b,  char *ptr,  size_t &buflen )
 }
 
 MemcachedStatus
-MemcachedMsg::parse_bin_touch( MemcachedBinHdr &b,  char *ptr,  size_t &buflen )
+MemcachedMsg::parse_bin_touch( MemcachedBinHdr &b,  char *ptr,
+                               size_t &buflen ) noexcept
 {
   /* TOUCH, GAT, GATQ:  has key, has extra ttl */
   size_t keylen  = __builtin_bswap16( b.keylen ),
@@ -847,7 +851,8 @@ MemcachedMsg::parse_bin_touch( MemcachedBinHdr &b,  char *ptr,  size_t &buflen )
 }
 
 MemcachedStatus
-MemcachedMsg::parse_bin_incr( MemcachedBinHdr &b,  char *ptr,  size_t &buflen )
+MemcachedMsg::parse_bin_incr( MemcachedBinHdr &b,  char *ptr,
+                              size_t &buflen ) noexcept
 {
   /* INCR, DECR:  has key, has extra inc+ini+ttl */
   size_t keylen  = __builtin_bswap16( b.keylen ),
@@ -882,7 +887,7 @@ MemcachedMsg::parse_bin_incr( MemcachedBinHdr &b,  char *ptr,  size_t &buflen )
 
 MemcachedStatus
 MemcachedMsg::parse_bin_op( MemcachedBinHdr &b,  char *ptr,  size_t &buflen,
-                            size_t extra_sz )
+                            size_t extra_sz ) noexcept
 {
   /* QUIT, VERSION:  no key, may have extra */
   size_t keylen  = __builtin_bswap16( b.keylen ),
@@ -915,7 +920,7 @@ MemcachedMsg::parse_bin_op( MemcachedBinHdr &b,  char *ptr,  size_t &buflen,
 }
 
 void
-MemcachedExec::send_err( int status,  KeyStatus kstatus )
+MemcachedExec::send_err( int status,  KeyStatus kstatus ) noexcept
 {
   size_t sz = 0;
   switch ( (MemcachedStatus) status ) {
@@ -1001,13 +1006,13 @@ MemcachedExec::send_err( int status,  KeyStatus kstatus )
 }
 
 size_t
-MemcachedExec::send_string( const void *s )
+MemcachedExec::send_string( const void *s ) noexcept
 {
   return this->send_string( s, ::strlen( (const char *) s ) );
 }
 
 size_t 
-MemcachedExec::send_string( const void *s,  size_t slen )
+MemcachedExec::send_string( const void *s,  size_t slen ) noexcept
 {
   char * buf = this->strm.alloc( slen + 2 );
 
@@ -1021,7 +1026,8 @@ MemcachedExec::send_string( const void *s,  size_t slen )
 }
 
 size_t 
-MemcachedExec::send_bin_status( uint16_t status,  const void *s,  size_t slen )
+MemcachedExec::send_bin_status( uint16_t status,  const void *s,
+                                size_t slen ) noexcept
 {
   if ( s == NULL ) {
     /* strings copied from memcached.c:1430 */
@@ -1066,7 +1072,7 @@ MemcachedExec::send_bin_status( uint16_t status,  const void *s,  size_t slen )
 }
 
 size_t 
-MemcachedExec::send_bin_status_key( uint16_t status,  EvKeyCtx &ctx )
+MemcachedExec::send_bin_status_key( uint16_t status,  EvKeyCtx &ctx ) noexcept
 {
   char   * key    = ctx.kbuf.u.buf;
   uint16_t keylen = ctx.kbuf.keylen - 1;
@@ -1089,7 +1095,7 @@ MemcachedExec::send_bin_status_key( uint16_t status,  EvKeyCtx &ctx )
 }
 
 size_t
-MemcachedExec::send_err_kv( KeyStatus kstatus )
+MemcachedExec::send_err_kv( KeyStatus kstatus ) noexcept
 {
   size_t bsz = 256;
   char * buf = this->strm.alloc( bsz );
@@ -1105,7 +1111,7 @@ MemcachedExec::send_err_kv( KeyStatus kstatus )
 
 MemcachedStatus
 MemcachedExec::exec_key_setup( EvSocket *own,  EvPrefetchQueue *q,
-                               EvKeyCtx *&ctx,  uint32_t n )
+                               EvKeyCtx *&ctx,  uint32_t n ) noexcept
 {
   const char * key    = this->msg->args[ n ].str;
   size_t       keylen = this->msg->args[ n ].len;
@@ -1121,7 +1127,7 @@ MemcachedExec::exec_key_setup( EvSocket *own,  EvPrefetchQueue *q,
 }
 
 MemcachedStatus
-MemcachedExec::exec( EvSocket *svc,  EvPrefetchQueue *q )
+MemcachedExec::exec( EvSocket *svc,  EvPrefetchQueue *q ) noexcept
 {
   if ( this->msg->pad != 0xaa ) {
     return MEMCACHED_BAD_PAD;
@@ -1220,7 +1226,7 @@ MemcachedExec::exec( EvSocket *svc,  EvPrefetchQueue *q )
 }
 
 kv::KeyStatus
-MemcachedExec::exec_key_fetch( EvKeyCtx &ctx,  bool force_read )
+MemcachedExec::exec_key_fetch( EvKeyCtx &ctx,  bool force_read ) noexcept
 {
   if ( test_read_only( this->msg->cmd ) || force_read ) {
     ctx.kstatus = this->kctx.find( &this->wrk );
@@ -1242,7 +1248,7 @@ MemcachedExec::exec_key_fetch( EvKeyCtx &ctx,  bool force_read )
 }
 
 MemcachedStatus
-MemcachedExec::exec_key_continue( EvKeyCtx &ctx )
+MemcachedExec::exec_key_continue( EvKeyCtx &ctx ) noexcept
 {
   if ( this->msg->pad != 0xaa ) {
     ctx.status = MEMCACHED_BAD_PAD;
@@ -1343,7 +1349,7 @@ skip_key:;
 }
 
 void
-MemcachedExec::exec_run_to_completion( void )
+MemcachedExec::exec_run_to_completion( void ) noexcept
 {
   if ( this->key_cnt == 1 ) { /* only one key */
     while ( this->key->status == MEMCACHED_CONTINUE ||
@@ -1370,7 +1376,7 @@ MemcachedExec::exec_run_to_completion( void )
 }
 
 MemcachedStatus
-MemcachedExec::exec_store( EvKeyCtx &ctx )
+MemcachedExec::exec_store( EvKeyCtx &ctx ) noexcept
 {
   const char * value;
   size_t       valuelen,
@@ -1489,7 +1495,7 @@ MemcachedExec::exec_store( EvKeyCtx &ctx )
 }
 
 MemcachedStatus
-MemcachedExec::exec_bin_store( EvKeyCtx &ctx )
+MemcachedExec::exec_bin_store( EvKeyCtx &ctx ) noexcept
 {
   const char * value;
   size_t       valuelen,
@@ -1621,7 +1627,7 @@ MemcachedExec::exec_bin_store( EvKeyCtx &ctx )
 }
 
 void
-MemcachedExec::multi_get_send( void )
+MemcachedExec::multi_get_send( void ) noexcept
 {
   for ( uint32_t i = 0; i < this->key_cnt; i++ ) {
     EvKeyTempResult * part;
@@ -1665,7 +1671,8 @@ format_value( char *str,  const char *key,  uint16_t keylen,  uint32_t flags,
 }
 
 size_t
-MemcachedExec::send_value( EvKeyCtx &ctx,  const void *data,  size_t size )
+MemcachedExec::send_value( EvKeyCtx &ctx,  const void *data,
+                           size_t size ) noexcept
 {
   /* VALUE key <flags> <len> \r\n END \r\n */
   char   * key    = ctx.kbuf.u.buf;
@@ -1682,7 +1689,8 @@ MemcachedExec::send_value( EvKeyCtx &ctx,  const void *data,  size_t size )
 }
 
 size_t 
-MemcachedExec::send_bin_value( EvKeyCtx &ctx,  const void *s,  size_t slen )
+MemcachedExec::send_bin_value( EvKeyCtx &ctx,  const void *s,
+                               size_t slen ) noexcept
 {
   /* binary GET[Qk] result: flags + cas + maybe key + data */
   uint16_t keylen  = ( this->msg->wants_key() ? ctx.kbuf.keylen - 1 : 0 );
@@ -1712,7 +1720,7 @@ MemcachedExec::send_bin_value( EvKeyCtx &ctx,  const void *s,  size_t slen )
 }
 
 bool
-MemcachedExec::save_value( EvKeyCtx &ctx,  const void *data,  size_t size )
+MemcachedExec::save_value( EvKeyCtx &ctx,  const void *data,  size_t size ) noexcept
 {
   char   * key    = ctx.kbuf.u.buf;
   uint16_t keylen = ctx.kbuf.keylen - 1;
@@ -1741,7 +1749,7 @@ MemcachedExec::save_value( EvKeyCtx &ctx,  const void *data,  size_t size )
 }
 
 MemcachedStatus
-MemcachedExec::exec_retr( EvKeyCtx &ctx )
+MemcachedExec::exec_retr( EvKeyCtx &ctx ) noexcept
 {
   void * data;
   size_t size;
@@ -1778,7 +1786,7 @@ MemcachedExec::exec_retr( EvKeyCtx &ctx )
 }
 
 MemcachedStatus
-MemcachedExec::exec_bin_retr( EvKeyCtx &ctx )
+MemcachedExec::exec_bin_retr( EvKeyCtx &ctx ) noexcept
 {
   void * data;
   size_t size;
@@ -1813,7 +1821,7 @@ MemcachedExec::exec_bin_retr( EvKeyCtx &ctx )
 }
 
 MemcachedStatus
-MemcachedExec::exec_retr_touch( EvKeyCtx &ctx )
+MemcachedExec::exec_retr_touch( EvKeyCtx &ctx ) noexcept
 {
   void   * data;
   size_t   size;
@@ -1855,7 +1863,7 @@ MemcachedExec::exec_retr_touch( EvKeyCtx &ctx )
 }
 
 MemcachedStatus
-MemcachedExec::exec_bin_retr_touch( EvKeyCtx &ctx )
+MemcachedExec::exec_bin_retr_touch( EvKeyCtx &ctx ) noexcept
 {
   void   * data;
   size_t   size;
@@ -1896,7 +1904,7 @@ MemcachedExec::exec_bin_retr_touch( EvKeyCtx &ctx )
 }
 
 MemcachedStatus
-MemcachedExec::exec_del( EvKeyCtx &ctx )
+MemcachedExec::exec_del( EvKeyCtx &ctx ) noexcept
 {
   bool del = false;
   /* DELETE key1 [noreply] */
@@ -1918,7 +1926,7 @@ MemcachedExec::exec_del( EvKeyCtx &ctx )
 }
 
 MemcachedStatus
-MemcachedExec::exec_bin_del( EvKeyCtx &ctx )
+MemcachedExec::exec_bin_del( EvKeyCtx &ctx ) noexcept
 {
   bool del = false;
   /* DELETE key1 [noreply] */
@@ -1952,7 +1960,7 @@ MemcachedExec::exec_bin_del( EvKeyCtx &ctx )
 }
 
 MemcachedStatus
-MemcachedExec::exec_touch( EvKeyCtx &ctx )
+MemcachedExec::exec_touch( EvKeyCtx &ctx ) noexcept
 {
   uint64_t ns;
   bool not_found = false;
@@ -1989,7 +1997,7 @@ MemcachedExec::exec_touch( EvKeyCtx &ctx )
 }
 
 MemcachedStatus
-MemcachedExec::exec_bin_touch( EvKeyCtx &ctx )
+MemcachedExec::exec_bin_touch( EvKeyCtx &ctx ) noexcept
 {
   uint64_t ns;
   bool not_found = false;
@@ -2026,7 +2034,7 @@ MemcachedExec::exec_bin_touch( EvKeyCtx &ctx )
 }
 
 MemcachedStatus
-MemcachedExec::exec_incr( EvKeyCtx &ctx )
+MemcachedExec::exec_incr( EvKeyCtx &ctx ) noexcept
 {
   void   * data;
   char   * str;
@@ -2079,7 +2087,7 @@ MemcachedExec::exec_incr( EvKeyCtx &ctx )
 }
 
 MemcachedStatus
-MemcachedExec::exec_bin_incr( EvKeyCtx &ctx )
+MemcachedExec::exec_bin_incr( EvKeyCtx &ctx ) noexcept
 {
   void   * data;
   size_t   size,
@@ -2164,7 +2172,7 @@ struct StatFmt {
 };
 
 void
-MemcachedExec::put_stats( void )
+MemcachedExec::put_stats( void ) noexcept
 {
   uint64_t now = kv_current_realtime_ns();
   StatFmt fmt( this->strm.alloc( 4 * 1024 ), 4 * 1024 );
@@ -2218,7 +2226,7 @@ MemcachedExec::put_stats( void )
 }
 
 void
-MemcachedExec::put_stats_settings( void )
+MemcachedExec::put_stats_settings( void ) noexcept
 {
   StatFmt fmt( this->strm.alloc( 4 * 1024 ), 4 * 1024 );
 
@@ -2234,7 +2242,7 @@ MemcachedExec::put_stats_settings( void )
 }
 
 void
-MemcachedExec::put_stats_items( void )
+MemcachedExec::put_stats_items( void ) noexcept
 {
 /*
 STAT items:12:number 311074
@@ -2245,7 +2253,7 @@ STAT items:12:number_cold 186645
 }
 
 void
-MemcachedExec::put_stats_sizes( void )
+MemcachedExec::put_stats_sizes( void ) noexcept
 {
 /*
 histogram of sizes
@@ -2253,7 +2261,7 @@ histogram of sizes
 }
 
 void
-MemcachedExec::put_stats_slabs( void )
+MemcachedExec::put_stats_slabs( void ) noexcept
 {
 /*
 STAT 12:chunk_size 1184
@@ -2278,7 +2286,7 @@ STAT total_malloced 369098752
 }
 
 void
-MemcachedExec::put_stats_conns( void )
+MemcachedExec::put_stats_conns( void ) noexcept
 {
 /*
 STAT 28:addr tcp:127.0.0.1:11211
@@ -2297,7 +2305,7 @@ STAT 31:secs_since_last_cmd 268101
 }
 
 bool
-MemcachedExec::do_slabs( void )
+MemcachedExec::do_slabs( void ) noexcept
 {
 /*
 slabs reassign <source class> <dest class>
@@ -2305,7 +2313,7 @@ slabs reassign <source class> <dest class>
   return true;
 }
 bool
-MemcachedExec::do_lru( void )
+MemcachedExec::do_lru( void ) noexcept
 {
 /*
 lru <tune|mode|temp_ttl> <option list>
@@ -2313,7 +2321,7 @@ lru <tune|mode|temp_ttl> <option list>
   return true;
 }
 bool
-MemcachedExec::do_lru_crawler( void )
+MemcachedExec::do_lru_crawler( void ) noexcept
 {
 /*
 lru_crawler <enable|disable>
@@ -2323,7 +2331,7 @@ lru_crawler tocrawl <32u>
   return true;
 }
 bool
-MemcachedExec::do_watch( void )
+MemcachedExec::do_watch( void ) noexcept
 {
 /*
 watch <fetchers|mutations|evictions>
@@ -2331,7 +2339,7 @@ watch <fetchers|mutations|evictions>
   return true;
 }
 bool
-MemcachedExec::do_flush_all( void )
+MemcachedExec::do_flush_all( void ) noexcept
 {
 /*
 flush_all [delay_secs]
@@ -2339,7 +2347,7 @@ flush_all [delay_secs]
   return true;
 }
 bool
-MemcachedExec::do_memlimit( void )
+MemcachedExec::do_memlimit( void ) noexcept
 {
 /*
 cache_memlimit  <nbytes>
@@ -2347,9 +2355,8 @@ cache_memlimit  <nbytes>
   return true;
 }
 void
-MemcachedExec::do_no_op( void )
+MemcachedExec::do_no_op( void ) noexcept
 {
   static const uint8_t no_op[ 24 ] = { 0x80, 0x0a };
   this->strm.append( no_op, 24 );
 }
-

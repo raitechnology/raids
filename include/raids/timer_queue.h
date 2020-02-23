@@ -48,15 +48,15 @@ struct EvTimerQueue : public EvSocket {
   }
   /* add timer that expires in ival units */
   bool add_timer_units( int id,  uint32_t ival,  TimerUnits u,
-                        uint64_t timer_id,  uint64_t event_id );
+                        uint64_t timer_id,  uint64_t event_id ) noexcept;
   /* if timer_id exists remove and return true */
-  bool remove_timer( int id,  uint64_t timer_id,  uint64_t event_id );
-  void repost( void );
-  bool read( void );
+  bool remove_timer( int id,  uint64_t timer_id,  uint64_t event_id ) noexcept;
+  void repost( void ) noexcept;
+  bool read( void ) noexcept;
   void write( void ) {}
   void release( void ) {}
-  bool set_timer( void );
-  void process( void );
+  bool set_timer( void ) noexcept;
+  void process( void ) noexcept;
   void exec_key_prefetch( EvKeyCtx & ) {}
   int exec_key_continue( EvKeyCtx & ) { return 0; }
   bool timer_expire( uint64_t, uint64_t ) { return false; }
@@ -68,7 +68,7 @@ struct EvTimerQueue : public EvSocket {
   }
   void process_close( void ) {}
 
-  static EvTimerQueue *create_timer_queue( EvPoll &p );
+  static EvTimerQueue *create_timer_queue( EvPoll &p ) noexcept;
 };
 
 }

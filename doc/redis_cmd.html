@@ -5010,7 +5010,11 @@ bounds.</p>
 </div>
 <div class="paragraph">
 <div class="title">Description</div>
-<p>Get range of members between scores.</p>
+<p>Get range of members between ranked indices.  The elements are sorted
+by score, low to high, so the 0th indexed element is the lowest score
+and ranked lowest.  The start and stop can be negative, which would
+index from the highest score, so the -1 indexed element is the highest
+score and ranked highest.</p>
 </div>
 <div class="paragraph">
 <div class="title">Return</div>
@@ -7528,7 +7532,7 @@ idle time, and a delivery count.</p>
 </div>
 <div id="footer">
 <div id="footer-text">
-Last updated 2020-02-02 21:18:09 PST
+Last updated 2020-02-05 04:57:24 PST
 </div>
 </div>
 </body>

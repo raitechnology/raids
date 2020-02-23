@@ -32,14 +32,14 @@ struct Term {
     ::memset( this, 0, sizeof( *this ) );
   }
 
-  void tty_init( void );
+  void tty_init( void ) noexcept;
   void tty_out_reset( void ) { this->out_len = 0; }
-  void tty_release( void );
-  void show_help( void );
-  void tty_input( const void *data,  size_t data_len );
-  int tty_read( void *buf,  size_t buflen );
-  int tty_write( const void *buf,  size_t buflen );
-  bool tty_prompt( void );
+  void tty_release( void ) noexcept;
+  void show_help( void ) noexcept;
+  void tty_input( const void *data,  size_t data_len ) noexcept;
+  int tty_read( void *buf,  size_t buflen ) noexcept;
+  int tty_write( const void *buf,  size_t buflen ) noexcept;
+  bool tty_prompt( void ) noexcept;
 };
 
 }

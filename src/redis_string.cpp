@@ -21,7 +21,7 @@ enum {
 };
 
 ExecStatus
-RedisExec::exec_append( EvKeyCtx &ctx )
+RedisExec::exec_append( EvKeyCtx &ctx ) noexcept
 {
   void       * data    = NULL;
   const char * value;
@@ -51,7 +51,7 @@ RedisExec::exec_append( EvKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::exec_bitcount( EvKeyCtx &ctx )
+RedisExec::exec_bitcount( EvKeyCtx &ctx ) noexcept
 {
   int64_t start = 0, end = -1;
 
@@ -114,7 +114,7 @@ RedisExec::exec_bitcount( EvKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::exec_bitfield( EvKeyCtx &ctx )
+RedisExec::exec_bitfield( EvKeyCtx &ctx ) noexcept
 {
   Bitfield     * bf;
   void         * data;
@@ -394,7 +394,8 @@ typedef void (*f16_t)( uint16_t &, uint16_t );
 typedef void (*f8_t)( uint8_t &, uint8_t );
 
 static inline void
-bitop( f64_t op64, f32_t op32, f16_t op16, f8_t op8, void *x, void *y, size_t sz )
+bitop( f64_t op64, f32_t op32, f16_t op16, f8_t op8, void *x, void *y,
+       size_t sz )
 {
   size_t i;
   for ( i = 0; i + 8 <= sz; i += 8 ) {
@@ -434,7 +435,7 @@ static void not_bits( void *x,  size_t sz ) {
 }
 
 ExecStatus
-RedisExec::exec_bitop( EvKeyCtx &ctx )
+RedisExec::exec_bitop( EvKeyCtx &ctx ) noexcept
 {
   enum { BIT_AND_OP = 0, BIT_OR_OP = 1, BIT_XOR_OP = 3, BIT_NOT_OP = 4 } op;
   void * data,
@@ -526,7 +527,7 @@ RedisExec::exec_bitop( EvKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::exec_bitpos( EvKeyCtx &ctx )
+RedisExec::exec_bitpos( EvKeyCtx &ctx ) noexcept
 {
   int64_t  bit,
            start_off = 0,
@@ -600,13 +601,13 @@ RedisExec::exec_bitpos( EvKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::exec_decr( EvKeyCtx &ctx )
+RedisExec::exec_decr( EvKeyCtx &ctx ) noexcept
 {
   return this->do_add( ctx, -1 );
 }
 
 ExecStatus
-RedisExec::exec_decrby( EvKeyCtx &ctx )
+RedisExec::exec_decrby( EvKeyCtx &ctx ) noexcept
 {
   int64_t decr;
   if ( ! this->msg.get_arg( 2, decr ) )
@@ -615,7 +616,7 @@ RedisExec::exec_decrby( EvKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::exec_get( EvKeyCtx &ctx )
+RedisExec::exec_get( EvKeyCtx &ctx ) noexcept
 {
   void * data;
   size_t size;
@@ -639,7 +640,7 @@ RedisExec::exec_get( EvKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::exec_getbit( EvKeyCtx &ctx )
+RedisExec::exec_getbit( EvKeyCtx &ctx ) noexcept
 {
   int64_t off;
   void  * data;
@@ -674,7 +675,7 @@ RedisExec::exec_getbit( EvKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::exec_getrange( EvKeyCtx &ctx )
+RedisExec::exec_getrange( EvKeyCtx &ctx ) noexcept
 {
   int64_t    start  = 0,
              end    = -1;
@@ -731,7 +732,7 @@ RedisExec::exec_getrange( EvKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::exec_getset( EvKeyCtx &ctx )
+RedisExec::exec_getset( EvKeyCtx &ctx ) noexcept
 {
   const char * value;
   size_t       valuelen,
@@ -767,13 +768,13 @@ RedisExec::exec_getset( EvKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::exec_incr( EvKeyCtx &ctx )
+RedisExec::exec_incr( EvKeyCtx &ctx ) noexcept
 {
   return this->do_add( ctx, 1 ); /* INCR key */
 }
 
 ExecStatus
-RedisExec::exec_incrby( EvKeyCtx &ctx )
+RedisExec::exec_incrby( EvKeyCtx &ctx ) noexcept
 {
   int64_t incr;
   if ( ! this->msg.get_arg( 2, incr ) ) /* INCRBY key incr */
@@ -782,7 +783,7 @@ RedisExec::exec_incrby( EvKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::do_add( EvKeyCtx &ctx,  int64_t incr ) /* incr/decr value */
+RedisExec::do_add( EvKeyCtx &ctx,  int64_t incr ) noexcept /* incr/decr value */
 {
   void * data;
   char * str;
@@ -821,7 +822,7 @@ RedisExec::do_add( EvKeyCtx &ctx,  int64_t incr ) /* incr/decr value */
 }
 
 ExecStatus
-RedisExec::exec_incrbyfloat( EvKeyCtx &ctx )
+RedisExec::exec_incrbyfloat( EvKeyCtx &ctx ) noexcept
 {
   char         fpdata[ 64 ];
   Decimal128   fp;
@@ -871,7 +872,7 @@ RedisExec::exec_incrbyfloat( EvKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::exec_mget( EvKeyCtx &ctx )
+RedisExec::exec_mget( EvKeyCtx &ctx ) noexcept
 {
   void   * data;
   uint64_t size;
@@ -897,13 +898,13 @@ RedisExec::exec_mget( EvKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::exec_mset( EvKeyCtx &ctx )
+RedisExec::exec_mset( EvKeyCtx &ctx ) noexcept
 {
   return this->do_set_value( ctx, ctx.argn+1, 0 );
 }
 
 ExecStatus
-RedisExec::exec_msetnx( EvKeyCtx &ctx )
+RedisExec::exec_msetnx( EvKeyCtx &ctx ) noexcept
 {
   if ( ctx.dep == 0 ) {
     /* if a key already exists, send zero and make no changes */
@@ -918,7 +919,7 @@ RedisExec::exec_msetnx( EvKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::exec_psetex( EvKeyCtx &ctx )
+RedisExec::exec_psetex( EvKeyCtx &ctx ) noexcept
 {
   int64_t  ival;
   uint64_t ns;
@@ -931,7 +932,7 @@ RedisExec::exec_psetex( EvKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::exec_set( EvKeyCtx &ctx )
+RedisExec::exec_set( EvKeyCtx &ctx ) noexcept
 {
   const char * op;
   size_t       oplen;
@@ -979,7 +980,7 @@ RedisExec::exec_set( EvKeyCtx &ctx )
 
 ExecStatus
 RedisExec::do_set_value_expire( EvKeyCtx &ctx,  int n,  uint64_t ns,
-                                int flags )
+                                int flags ) noexcept
 {
   /* time used to determine whether a timestamp or not */
   static const uint64_t TEN_YEARS_NS = (uint64_t) ( 10 * 12 ) *
@@ -1020,7 +1021,7 @@ RedisExec::do_set_value_expire( EvKeyCtx &ctx,  int n,  uint64_t ns,
 }
 
 ExecStatus
-RedisExec::do_set_value( EvKeyCtx &ctx,  int n,  int flags )
+RedisExec::do_set_value( EvKeyCtx &ctx,  int n,  int flags ) noexcept
 {
   const char * value;
   size_t       valuelen;
@@ -1057,7 +1058,7 @@ RedisExec::do_set_value( EvKeyCtx &ctx,  int n,  int flags )
 }
 
 ExecStatus
-RedisExec::exec_setbit( EvKeyCtx &ctx )
+RedisExec::exec_setbit( EvKeyCtx &ctx ) noexcept
 {
   int64_t  off,
            bitval;
@@ -1100,7 +1101,7 @@ RedisExec::exec_setbit( EvKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::exec_setex( EvKeyCtx &ctx )
+RedisExec::exec_setex( EvKeyCtx &ctx ) noexcept
 {
   int64_t  ival;
   uint64_t ns;
@@ -1112,13 +1113,13 @@ RedisExec::exec_setex( EvKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::exec_setnx( EvKeyCtx &ctx )
+RedisExec::exec_setnx( EvKeyCtx &ctx ) noexcept
 {
   return this->do_set_value( ctx, 2, K_MUST_NOT_EXIST ); /* SETNX key value */
 }
 
 ExecStatus
-RedisExec::exec_setrange( EvKeyCtx &ctx )
+RedisExec::exec_setrange( EvKeyCtx &ctx ) noexcept
 {
   void       * data    = NULL;
   int64_t      off;
@@ -1155,7 +1156,7 @@ RedisExec::exec_setrange( EvKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::exec_strlen( EvKeyCtx &ctx )
+RedisExec::exec_strlen( EvKeyCtx &ctx ) noexcept
 {
   uint64_t data_sz = 0;
   /* STRLEN key */
@@ -1172,4 +1173,3 @@ RedisExec::exec_strlen( EvKeyCtx &ctx )
     case KEY_NO_VALUE: return ERR_BAD_TYPE;
   }
 }
-

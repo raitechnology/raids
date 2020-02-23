@@ -12,7 +12,7 @@ using namespace ds;
 using namespace md;
 
 ExecStatus
-RedisExec::exec_xinfo( EvKeyCtx &ctx )
+RedisExec::exec_xinfo( EvKeyCtx &ctx ) noexcept
 {
   ExecStreamCtx stream( *this, ctx );
   switch ( stream.get_key_read() ) {
@@ -41,7 +41,7 @@ RedisExec::exec_xinfo( EvKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::xinfo_consumers( ExecStreamCtx &stream )
+RedisExec::xinfo_consumers( ExecStreamCtx &stream ) noexcept
 {
   StreamBuf::BufQueue q( this->strm );
   MDMsgMem     tmp;
@@ -129,7 +129,7 @@ RedisExec::xinfo_consumers( ExecStreamCtx &stream )
 }
 
 ExecStatus
-RedisExec::xinfo_groups( ExecStreamCtx &stream )
+RedisExec::xinfo_groups( ExecStreamCtx &stream ) noexcept
 {
   StreamBuf::BufQueue q( this->strm );
   MDMsgMem     tmp;
@@ -209,7 +209,7 @@ RedisExec::xinfo_groups( ExecStreamCtx &stream )
 }
 
 ExecStatus
-RedisExec::xinfo_streams( ExecStreamCtx &stream )
+RedisExec::xinfo_streams( ExecStreamCtx &stream ) noexcept
 {
   StreamBuf::BufQueue q( this->strm );
   MDMsgMem     tmp;
@@ -290,7 +290,7 @@ get_next_id( kv::KeyCtx &kctx,  char *id,  size_t &idlen )
 }
 
 ExecStatus
-RedisExec::exec_xadd( EvKeyCtx &ctx )
+RedisExec::exec_xadd( EvKeyCtx &ctx ) noexcept
 {
   /* XADD key [MAXLEN [~] N] id field string [field string ...] */
   ExecStreamCtx stream( *this, ctx );
@@ -414,7 +414,7 @@ RedisExec::exec_xadd( EvKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::exec_xtrim( EvKeyCtx &ctx )
+RedisExec::exec_xtrim( EvKeyCtx &ctx ) noexcept
 {
   ExecStreamCtx stream( *this, ctx );
   MDMsgMem      tmp;
@@ -459,7 +459,7 @@ RedisExec::exec_xtrim( EvKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::exec_xdel( EvKeyCtx &ctx )
+RedisExec::exec_xdel( EvKeyCtx &ctx ) noexcept
 {
   ExecStreamCtx stream( *this, ctx );
   MDMsgMem      tmp;
@@ -498,7 +498,7 @@ RedisExec::exec_xdel( EvKeyCtx &ctx )
 
 bool
 RedisExec::construct_xfield_output( ExecStreamCtx &stream,  size_t idx,
-                                    StreamBuf::BufQueue &q )
+                                    StreamBuf::BufQueue &q ) noexcept
 {
   MDMsgMem tmp;
   ListData ld;
@@ -524,7 +524,7 @@ RedisExec::construct_xfield_output( ExecStreamCtx &stream,  size_t idx,
 }
 
 ExecStatus
-RedisExec::exec_xrange( EvKeyCtx &ctx )
+RedisExec::exec_xrange( EvKeyCtx &ctx ) noexcept
 {
   StreamBuf::BufQueue q( this->strm );
   ExecStreamCtx stream( *this, ctx );
@@ -599,14 +599,14 @@ RedisExec::exec_xrange( EvKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::exec_xrevrange( EvKeyCtx &ctx )
+RedisExec::exec_xrevrange( EvKeyCtx &ctx ) noexcept
 {
   /* XREVRANGE key start end [COUNT count] */
   return this->exec_xrange( ctx );
 }
 
 ExecStatus
-RedisExec::exec_xlen( EvKeyCtx &ctx )
+RedisExec::exec_xlen( EvKeyCtx &ctx ) noexcept
 {
   ExecStreamCtx stream( *this, ctx );
   /* XLEN key */
@@ -625,7 +625,7 @@ RedisExec::exec_xlen( EvKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::exec_xread( EvKeyCtx &ctx )
+RedisExec::exec_xread( EvKeyCtx &ctx ) noexcept
 {
   StreamBuf::BufQueue q( this->strm );
   ExecStreamCtx stream( *this, ctx );
@@ -733,7 +733,7 @@ RedisExec::exec_xread( EvKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::exec_xreadgroup( EvKeyCtx &ctx )
+RedisExec::exec_xreadgroup( EvKeyCtx &ctx ) noexcept
 {
   StreamBuf::BufQueue q( this->strm );
   ExecStreamCtx    stream( *this, ctx );
@@ -880,7 +880,7 @@ RedisExec::exec_xreadgroup( EvKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::finish_xread( EvKeyCtx &ctx,  StreamBuf::BufQueue &q )
+RedisExec::finish_xread( EvKeyCtx &ctx,  StreamBuf::BufQueue &q ) noexcept
 {
   /* the xread and xreadgroup format is ar[ key[ field data(q) ], ... ] */
   if ( ctx.kstatus != KEY_NOT_FOUND && q.hd != NULL ) {
@@ -928,7 +928,7 @@ RedisExec::finish_xread( EvKeyCtx &ctx,  StreamBuf::BufQueue &q )
 }
 
 ExecStatus
-RedisExec::exec_xsetid( EvKeyCtx &ctx )
+RedisExec::exec_xsetid( EvKeyCtx &ctx ) noexcept
 {
   ExecStreamCtx stream( *this, ctx );
   MDMsgMem      tmp;
@@ -964,7 +964,7 @@ RedisExec::exec_xsetid( EvKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::exec_xgroup( EvKeyCtx &ctx )
+RedisExec::exec_xgroup( EvKeyCtx &ctx ) noexcept
 {
   ExecStreamCtx stream( *this, ctx );
   MDMsgMem      tmp;
@@ -1058,7 +1058,7 @@ RedisExec::exec_xgroup( EvKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::exec_xack( EvKeyCtx &ctx )
+RedisExec::exec_xack( EvKeyCtx &ctx ) noexcept
 {
   ExecStreamCtx stream( *this, ctx );
   MDMsgMem      tmp;
@@ -1094,7 +1094,7 @@ RedisExec::exec_xack( EvKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::exec_xclaim( EvKeyCtx &ctx )
+RedisExec::exec_xclaim( EvKeyCtx &ctx ) noexcept
 {
   StreamBuf::BufQueue q( this->strm );
   ExecStreamCtx stream( *this, ctx );
@@ -1215,7 +1215,7 @@ RedisExec::exec_xclaim( EvKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::exec_xpending( EvKeyCtx &ctx )
+RedisExec::exec_xpending( EvKeyCtx &ctx ) noexcept
 {
   StreamBuf::BufQueue q( this->strm );
   ExecStreamCtx stream( *this, ctx );
@@ -1424,4 +1424,3 @@ RedisExec::exec_xpending( EvKeyCtx &ctx )
   this->strm.append_iov( q );
   return EXEC_OK;
 }
-

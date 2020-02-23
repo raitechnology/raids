@@ -57,11 +57,11 @@ enum StrCvtStatus {
   STR_CVT_BAD_FLOAT      = 4
 };
 /* str length sz to int */
-int string_to_int( const char *str,  size_t sz,  int64_t &ival );
+int string_to_int( const char *str,  size_t sz,  int64_t &ival ) noexcept;
 /* str length sz to uint */
-int string_to_uint( const char *str,  size_t sz,  uint64_t &ival );
+int string_to_uint( const char *str,  size_t sz,  uint64_t &ival ) noexcept;
 /* str length sz to double */
-int string_to_dbl( const char *str,  size_t sz,  double &fval );
+int string_to_dbl( const char *str,  size_t sz,  double &fval ) noexcept;
 
 static inline size_t crlf( char *b,  size_t i ) {
   b[ i ] = '\r'; b[ i + 1 ] = '\n'; return i + 2;

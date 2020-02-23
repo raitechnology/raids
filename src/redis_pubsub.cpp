@@ -24,7 +24,7 @@ enum {
 };
 
 void
-RedisExec::rem_all_sub( void )
+RedisExec::rem_all_sub( void ) noexcept
 {
   RedisSubRoutePos     pos;
   RedisPatternRoutePos ppos;
@@ -66,7 +66,7 @@ RedisExec::rem_all_sub( void )
 }
 
 void
-RedisPatternMap::release( void )
+RedisPatternMap::release( void ) noexcept
 {
   RedisPatternRoutePos ppos;
 
@@ -86,7 +86,7 @@ RedisPatternMap::release( void )
 }
 
 void
-RedisContinueMap::release( void )
+RedisContinueMap::release( void ) noexcept
 {
   kv::DLinkList<RedisContinueMsg> list;
   RedisContinueMsg *cm;
@@ -112,7 +112,7 @@ RedisContinueMap::release( void )
 }
 
 bool
-RedisExec::pub_message( EvPublish &pub,  RedisPatternRoute *rt )
+RedisExec::pub_message( EvPublish &pub,  RedisPatternRoute *rt ) noexcept
 {
   static const char   hdr[]   = "*3\r\n$7\r\nmessage\r\n",
                       phdr[]  = "*4\r\n$8\r\npmessage\r\n";
@@ -199,7 +199,7 @@ RedisExec::pub_message( EvPublish &pub,  RedisPatternRoute *rt )
 }
 
 int
-RedisExec::do_pub( EvPublish &pub,  RedisContinueMsg *&cm )
+RedisExec::do_pub( EvPublish &pub,  RedisContinueMsg *&cm ) noexcept
 {
   int status = 0;
   /* don't publish to self ?? (redis does not allow pub w/sub on same conn) */
@@ -277,7 +277,8 @@ RedisExec::do_pub( EvPublish &pub,  RedisContinueMsg *&cm )
 }
 
 bool
-RedisExec::continue_expire( uint64_t event_id,  RedisContinueMsg *&cm )
+RedisExec::continue_expire( uint64_t event_id,
+                            RedisContinueMsg *&cm ) noexcept
 {
   for ( cm = this->wait_list.hd; cm != NULL; cm = cm->next ) {
     if ( cm->msgid == (uint32_t) event_id ) {
@@ -293,7 +294,7 @@ RedisExec::continue_expire( uint64_t event_id,  RedisContinueMsg *&cm )
 }
 
 void
-RedisExec::pop_continue_tab( RedisContinueMsg *cm )
+RedisExec::pop_continue_tab( RedisContinueMsg *cm ) noexcept
 {
   if ( ( cm->state & CM_CONT_TAB ) == 0 )
     return;
@@ -317,7 +318,7 @@ RedisExec::pop_continue_tab( RedisContinueMsg *cm )
 }
 
 void
-RedisExec::push_continue_list( RedisContinueMsg *cm )
+RedisExec::push_continue_list( RedisContinueMsg *cm ) noexcept
 {
   if ( ( cm->state & CM_WAIT_LIST ) != 0 ) {
     this->wait_list.pop( cm );
@@ -330,14 +331,14 @@ RedisExec::push_continue_list( RedisContinueMsg *cm )
 }
 
 ExecStatus
-RedisExec::exec_psubscribe( void )
+RedisExec::exec_psubscribe( void ) noexcept
 {
   /* PSUBSCRIBE subj [subj ..] */
   return this->do_sub( DO_PSUBSCRIBE );
 }
 
 bool
-RedisExec::do_hash_to_sub( uint32_t h,  char *key,  size_t &keylen )
+RedisExec::do_hash_to_sub( uint32_t h,  char *key,  size_t &keylen ) noexcept
 {
   RedisSubRoute * rt;
   if ( (rt = this->sub_tab.tab.find_by_hash( h )) != NULL ) {
@@ -349,7 +350,7 @@ RedisExec::do_hash_to_sub( uint32_t h,  char *key,  size_t &keylen )
 }
 
 ExecStatus
-RedisExec::exec_pubsub( void )
+RedisExec::exec_pubsub( void ) noexcept
 {
   StreamBuf::BufQueue q( this->strm );
   size_t cnt = 0;
@@ -436,7 +437,7 @@ RedisExec::exec_pubsub( void )
 }
 
 ExecStatus
-RedisExec::exec_publish( void )
+RedisExec::exec_publish( void ) noexcept
 {
   const char * subj;
   size_t       subj_len;
@@ -467,21 +468,21 @@ RedisExec::exec_publish( void )
 }
 
 ExecStatus
-RedisExec::exec_punsubscribe( void )
+RedisExec::exec_punsubscribe( void ) noexcept
 {
   /* UNSUBSCRIBE subj [subj ..] */
   return this->do_sub( DO_PUNSUBSCRIBE );
 }
 
 ExecStatus
-RedisExec::exec_subscribe( void )
+RedisExec::exec_subscribe( void ) noexcept
 {
   /* SUBSCRIBE subj [subj ..] */
   return this->do_sub( DO_SUBSCRIBE );
 }
 
 ExecStatus
-RedisExec::exec_unsubscribe( void )
+RedisExec::exec_unsubscribe( void ) noexcept
 {
   /* UNSUBSCRIBE subj [subj ..] */
   return this->do_sub( DO_UNSUBSCRIBE );
@@ -489,7 +490,7 @@ RedisExec::exec_unsubscribe( void )
 
 
 ExecStatus
-RedisExec::do_subscribe( const char *sub,  size_t len )
+RedisExec::do_subscribe( const char *sub,  size_t len ) noexcept
 {
   uint32_t h, rcnt;
 
@@ -503,7 +504,7 @@ RedisExec::do_subscribe( const char *sub,  size_t len )
 }
 
 ExecStatus
-RedisExec::do_unsubscribe( const char *sub,  size_t len )
+RedisExec::do_unsubscribe( const char *sub,  size_t len ) noexcept
 {
   uint32_t h, rcnt;
 
@@ -521,7 +522,7 @@ RedisExec::do_unsubscribe( const char *sub,  size_t len )
 }
 
 ExecStatus
-RedisExec::do_psubscribe( const char *sub,  size_t len )
+RedisExec::do_psubscribe( const char *sub,  size_t len ) noexcept
 {
   RedisPatternRoute * rt;
   char       buf[ 1024 ];
@@ -561,7 +562,7 @@ RedisExec::do_psubscribe( const char *sub,  size_t len )
 }
 
 ExecStatus
-RedisExec::do_punsubscribe( const char *sub,  size_t len )
+RedisExec::do_punsubscribe( const char *sub,  size_t len ) noexcept
 {
   char                buf[ 1024 ];
   PatternCvt          cvt( buf, sizeof( buf ) );
@@ -593,7 +594,7 @@ RedisExec::do_punsubscribe( const char *sub,  size_t len )
 }
 
 ExecStatus
-RedisExec::do_sub( int flags )
+RedisExec::do_sub( int flags ) noexcept
 {
   const char * hdr;
   size_t       hdr_sz;
@@ -726,7 +727,7 @@ RedisExec::do_sub( int flags )
   }
 }
 
-RedisContinueMsg::RedisContinueMsg( size_t mlen,  uint16_t kcnt )
+RedisContinueMsg::RedisContinueMsg( size_t mlen,  uint16_t kcnt ) noexcept
             : next( 0 ), back( 0 ), keycnt( kcnt ), state( 0 ),
               msgid( 0 ), msglen( mlen )
 {
@@ -735,7 +736,7 @@ RedisContinueMsg::RedisContinueMsg( size_t mlen,  uint16_t kcnt )
 }
 
 ExecStatus
-RedisExec::save_blocked_cmd( int64_t timeout_val )
+RedisExec::save_blocked_cmd( int64_t timeout_val ) noexcept
 {
   size_t             msglen = this->msg.pack_size();
   char             * buf;
@@ -847,7 +848,7 @@ RedisExec::save_blocked_cmd( int64_t timeout_val )
 }
 
 void
-RedisExec::drain_continuations( EvSocket *svc )
+RedisExec::drain_continuations( EvSocket *svc ) noexcept
 {
   RedisContinueMsg * cm;
   RedisMsgStatus     mstatus;
@@ -882,7 +883,7 @@ RedisExec::drain_continuations( EvSocket *svc )
           status = ERR_ALLOC_FAIL;
           /* FALLTHRU */
         default:
-          this->send_err( status );
+          this->send_status( status, KEY_OK );
           break;
       }
     }
@@ -896,4 +897,3 @@ RedisExec::drain_continuations( EvSocket *svc )
     this->blk_state = 0;
   }
 }
-

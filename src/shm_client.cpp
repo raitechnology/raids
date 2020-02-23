@@ -14,7 +14,7 @@ using namespace ds;
 using namespace kv;
 
 int
-EvShm::open( const char *mn )
+EvShm::open( const char *mn ) noexcept
 {
   HashTabGeom geom;
   this->map = HashTab::attach_map( mn, 0, geom );
@@ -26,20 +26,20 @@ EvShm::open( const char *mn )
 }
 
 void
-EvShm::print( void )
+EvShm::print( void ) noexcept
 {
   fputs( print_map_geom( this->map, this->ctx_id ), stdout );
   fflush( stdout );
 }
 
-EvShm::~EvShm()
+EvShm::~EvShm() noexcept
 {
   if ( this->map != NULL )
     this->close();
 }
 
 void
-EvShm::close( void )
+EvShm::close( void ) noexcept
 {
   if ( this->ctx_id != MAX_CTX_ID ) {
     map->detach_ctx( ctx_id );
@@ -49,19 +49,19 @@ EvShm::close( void )
   this->map = NULL;
 }
 
-EvShmClient::~EvShmClient()
+EvShmClient::~EvShmClient() noexcept
 {
 }
 
 void
-EvShmClient::process_shutdown( void )
+EvShmClient::process_shutdown( void ) noexcept
 {
   this->exec->rem_all_sub();
   this->pushpop( EV_CLOSE, EV_SHUTDOWN );
 }
 
 int
-EvShmClient::init_exec( void )
+EvShmClient::init_exec( void ) noexcept
 {
   void * e = aligned_malloc( sizeof( RedisExec ) );
   if ( e == NULL )
@@ -77,7 +77,7 @@ EvShmClient::init_exec( void )
 }
 
 bool
-EvShmClient::on_msg( EvPublish &pub )
+EvShmClient::on_msg( EvPublish &pub ) noexcept
 {
   RedisContinueMsg * cm = NULL;
   int status = this->exec->do_pub( pub, cm );
@@ -89,13 +89,13 @@ EvShmClient::on_msg( EvPublish &pub )
 }
 
 bool
-EvShmClient::hash_to_sub( uint32_t h,  char *key,  size_t &keylen )
+EvShmClient::hash_to_sub( uint32_t h,  char *key,  size_t &keylen ) noexcept
 {
   return this->exec->do_hash_to_sub( h, key, keylen );
 }
 
 void
-EvShmClient::send_data( char *buf,  size_t size )
+EvShmClient::send_data( char *buf,  size_t size ) noexcept
 {
   ExecStatus status;
 
@@ -112,7 +112,7 @@ EvShmClient::send_data( char *buf,  size_t size )
       status = ERR_ALLOC_FAIL;
       /* fall through */
     default:
-      this->exec->send_err( status );
+      this->exec->send_status( status, KEY_OK );
       break;
     case EXEC_QUIT:
     case EXEC_DEBUG:
@@ -122,7 +122,7 @@ EvShmClient::send_data( char *buf,  size_t size )
 }
 
 void
-EvShmClient::stream_to_msg( void )
+EvShmClient::stream_to_msg( void ) noexcept
 {
   if ( this->sz > 0 )
     this->flush();
@@ -157,8 +157,8 @@ EvShmClient::stream_to_msg( void )
 }
 
 /* EvShmSvc virtual functions */
-EvShmSvc::~EvShmSvc() {}
-int EvShmSvc::init_poll( void ) {
+EvShmSvc::~EvShmSvc() noexcept {}
+int EvShmSvc::init_poll( void ) noexcept {
   int status;
   this->PeerData::init_peer( 0, NULL, "shm_svc" );
   if ( (status = this->poll.add_sock( this )) == 0 )
@@ -166,13 +166,12 @@ int EvShmSvc::init_poll( void ) {
   this->fd = -1;
   return status;
 }
-bool EvShmSvc::timer_expire( uint64_t,  uint64_t ) { return false; }
-void EvShmSvc::read( void ) {}
-void EvShmSvc::write( void ) {}
-bool EvShmSvc::on_msg( EvPublish & ) { return false; }
-bool EvShmSvc::hash_to_sub( uint32_t,  char *,  size_t & ) { return false; }
-void EvShmSvc::process( void ) {}
-void EvShmSvc::process_shutdown( void ) {}
-void EvShmSvc::process_close( void ) {}
-void EvShmSvc::release( void ) {}
-
+bool EvShmSvc::timer_expire( uint64_t,  uint64_t ) noexcept { return false; }
+void EvShmSvc::read( void ) noexcept {}
+void EvShmSvc::write( void ) noexcept {}
+bool EvShmSvc::on_msg( EvPublish & ) noexcept { return false; }
+bool EvShmSvc::hash_to_sub( uint32_t,  char *,  size_t & ) noexcept { return false; }
+void EvShmSvc::process( void ) noexcept {}
+void EvShmSvc::process_shutdown( void ) noexcept {}
+void EvShmSvc::process_close( void ) noexcept {}
+void EvShmSvc::release( void ) noexcept {}

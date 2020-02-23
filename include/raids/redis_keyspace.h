@@ -21,13 +21,13 @@ struct RedisKeyspace {
     this->db[ 0 ] = 0;
   }
   /* alloc temp subject space for __key...@db__:xxx subject */
-  bool alloc_subj( size_t subj_len );
+  bool alloc_subj( size_t subj_len ) noexcept;
   /* fill in db[] */
-  size_t db_str( size_t off );
+  size_t db_str( size_t off ) noexcept;
   /* append "@db__:" to subj */
-  size_t db_to_subj( size_t off );
+  size_t db_to_subj( size_t off ) noexcept;
   /* a keyspace like subject, make_*_subj() below, * must be 8 chars */
-  size_t make_bsubj( const char *blk );
+  size_t make_bsubj( const char *blk ) noexcept;
   /* create a subject: __keyspace@db__:key */
   size_t make_keyspace_subj( void ) { return this->make_bsubj( "__keyspace" ); }
   /* create a subject: __listblkd@db__:key */
@@ -37,7 +37,7 @@ struct RedisKeyspace {
   /* create a subject: __strmblkd@db__:key */
   size_t make_strmblkd_subj( void ) { return this->make_bsubj( "__strmblkd" ); }
   /* forward a keyspace like msg below, fwd_*() */
-  bool fwd_bsubj( const char *blk );
+  bool fwd_bsubj( const char *blk ) noexcept;
   /* publish __keyspace@N__:key <- event */
   bool fwd_keyspace( void ) { return this->fwd_bsubj( "__keyspace" ); }
   /* publish __listblkd@N__:key <- event */
@@ -47,11 +47,11 @@ struct RedisKeyspace {
   /* publish __strmblkd@N__:key <- event */
   bool fwd_strmblkd( void ) { return this->fwd_bsubj( "__strmblkd" ); }
   /* publish __keyevent@N__:event <- key  (different than :key <- event above)*/
-  bool fwd_keyevent( void );
+  bool fwd_keyevent( void ) noexcept;
   /* publish __monitor_@N__ <- cmd */
-  bool fwd_monitor( void );
+  bool fwd_monitor( void ) noexcept;
   /* convert command into keyspace events and publish them */
-  static bool pub_keyspace_events( RedisExec &e );
+  static bool pub_keyspace_events( RedisExec &e ) noexcept;
 };
 
 }

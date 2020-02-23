@@ -101,7 +101,7 @@ using namespace md;
 
 static uint64_t uptime_stamp;
 
-EvCaprListen::EvCaprListen( EvPoll &p )
+EvCaprListen::EvCaprListen( EvPoll &p ) noexcept
             : EvTcpListen( p, this->ops ),
               sess( 0 ),
               timer_id( (uint64_t) EV_CAPR_SOCK << 56 )
@@ -112,7 +112,7 @@ EvCaprListen::EvCaprListen( EvPoll &p )
 }
 
 bool
-EvCaprListen::accept( void )
+EvCaprListen::accept( void ) noexcept
 {
   static int on = 1;
   struct sockaddr_storage addr;
@@ -177,7 +177,7 @@ print_rec( CaprMsgIn &rec )
 }
 
 void
-EvCaprService::process( void )
+EvCaprService::process( void ) noexcept
 {
   CaprMsgIn rec;
   size_t    buflen;
@@ -234,7 +234,7 @@ break_loop:;
 }
 
 bool
-EvCaprService::timer_expire( uint64_t tid,  uint64_t )
+EvCaprService::timer_expire( uint64_t tid,  uint64_t ) noexcept
 {
   if ( this->timer_id != tid )
     return false;
@@ -244,7 +244,7 @@ EvCaprService::timer_expire( uint64_t tid,  uint64_t )
 }
 
 void
-EvCaprService::reassert_subs( CaprMsgIn &rec )
+EvCaprService::reassert_subs( CaprMsgIn &rec ) noexcept
 {
   MDMsgMem  mem;
   MDMsg   * m = MDMsg::unpack( rec.msg_data, 0, rec.msg_data_len, 0, NULL,
@@ -300,7 +300,7 @@ from_hex_char( char b ) {
 }
 
 void
-EvCaprService::add_sub( CaprMsgIn &rec )
+EvCaprService::add_sub( CaprMsgIn &rec ) noexcept
 {
   char     sub[ CAPR_MAX_SUBJ_LEN ],
            reply[ CAPR_MAX_SUBJ_LEN * 2 ];
@@ -328,7 +328,7 @@ EvCaprService::add_sub( CaprMsgIn &rec )
 void
 EvCaprService::add_subscription( const char *sub,  uint32_t len,
                                  const char *reply,  uint32_t replylen,
-                                 bool is_wild )
+                                 bool is_wild ) noexcept
 {
   if ( ! is_wild ) {
     uint32_t h = kv_crc_c( sub, len, 0 ),
@@ -378,7 +378,7 @@ EvCaprService::add_subscription( const char *sub,  uint32_t len,
 }
 
 void
-EvCaprService::rem_sub( CaprMsgIn &rec )
+EvCaprService::rem_sub( CaprMsgIn &rec ) noexcept
 {
   char     sub[ CAPR_MAX_SUBJ_LEN ];
   bool     is_wild;
@@ -424,7 +424,7 @@ EvCaprService::rem_sub( CaprMsgIn &rec )
 }
 
 void
-EvCaprService::rem_all_sub( void )
+EvCaprService::rem_all_sub( void ) noexcept
 {
   CaprSubRoutePos     pos;
   CaprPatternRoutePos ppos;
@@ -453,7 +453,7 @@ EvCaprService::rem_all_sub( void )
 }
 
 bool
-EvCaprService::fwd_pub( CaprMsgIn &rec )
+EvCaprService::fwd_pub( CaprMsgIn &rec ) noexcept
 {
   char     sub[ CAPR_MAX_SUBJ_LEN ];
   uint32_t len = rec.get_subject( sub ),
@@ -464,7 +464,7 @@ EvCaprService::fwd_pub( CaprMsgIn &rec )
 }
 
 bool
-EvCaprService::on_msg( EvPublish &pub )
+EvCaprService::on_msg( EvPublish &pub ) noexcept
 {
   uint32_t pub_cnt = 0;
   for ( uint8_t cnt = 0; cnt < pub.prefix_cnt; cnt++ ) {
@@ -507,7 +507,7 @@ EvCaprService::on_msg( EvPublish &pub )
 }
 
 bool
-EvCaprService::hash_to_sub( uint32_t h,  char *key,  size_t &keylen )
+EvCaprService::hash_to_sub( uint32_t h,  char *key,  size_t &keylen ) noexcept
 {
   RouteLoc       loc;
   CaprSubRoute * rt = this->sub_tab.tab.find_by_hash( h, loc );
@@ -520,7 +520,7 @@ EvCaprService::hash_to_sub( uint32_t h,  char *key,  size_t &keylen )
 
 void
 EvCaprService::send( CaprMsgOut &rec,  size_t off,   const void *data,
-                     size_t data_len )
+                     size_t data_len ) noexcept
 {
   this->append2( &rec, off, data, data_len );
   this->bs += off + data_len;
@@ -528,7 +528,7 @@ EvCaprService::send( CaprMsgOut &rec,  size_t off,   const void *data,
 }
 
 bool
-EvCaprService::fwd_msg( EvPublish &pub,  const void *,  size_t )
+EvCaprService::fwd_msg( EvPublish &pub,  const void *,  size_t ) noexcept
 {
   CaprMsgOut rec;
   size_t off = rec.encode_publish( *this->sess, 0, pub.subject, pub.pub_type,
@@ -541,7 +541,7 @@ EvCaprService::fwd_msg( EvPublish &pub,  const void *,  size_t )
 
 void
 EvCaprService::get_inbox_addr( EvPublish &pub,  const char *&subj,
-                               uint8_t *addr )
+                               uint8_t *addr ) noexcept
 {
   const char * i = &pub.subject[ this->inboxlen - 1 ];
   ::memcpy( addr, &this->sid, 8 );
@@ -553,7 +553,7 @@ EvCaprService::get_inbox_addr( EvPublish &pub,  const char *&subj,
 }
 
 bool
-EvCaprService::fwd_inbox( EvPublish &pub )
+EvCaprService::fwd_inbox( EvPublish &pub ) noexcept
 {
   CaprMsgOut rec;
   uint8_t addr[ 12 ];
@@ -568,7 +568,7 @@ EvCaprService::fwd_inbox( EvPublish &pub )
 }
 
 void
-CaprPatternMap::release( void )
+CaprPatternMap::release( void ) noexcept
 {
   CaprPatternRoutePos ppos;
 
@@ -588,7 +588,7 @@ CaprPatternMap::release( void )
 }
 
 void
-EvCaprService::release( void )
+EvCaprService::release( void ) noexcept
 {
   printf( "capr release fd=%d\n", this->fd );
   if ( this->sess != NULL )
@@ -601,7 +601,7 @@ EvCaprService::release( void )
 }
 
 void
-EvCaprService::push_free_list( void )
+EvCaprService::push_free_list( void ) noexcept
 {
   if ( this->listfl == IN_ACTIVE_LIST )
     fprintf( stderr, "capr sock should not be in active list\n" );
@@ -612,7 +612,7 @@ EvCaprService::push_free_list( void )
 }
 
 void
-EvCaprService::pop_free_list( void )
+EvCaprService::pop_free_list( void ) noexcept
 {
   if ( this->listfl == IN_FREE_LIST ) {
     this->listfl = IN_NO_LIST;
@@ -621,7 +621,7 @@ EvCaprService::pop_free_list( void )
 }
 
 void
-EvCaprService::pub_session( uint8_t code )
+EvCaprService::pub_session( uint8_t code ) noexcept
 {
   static const char listen_str[]        = "sub-listen",
                     bcast_str[]         = "bcast-feed",
@@ -701,7 +701,7 @@ static const char addr_str[] = "addr",
 
 CaprSession *
 CaprSession::create( const char *addr,  const char *user,  const char *host,
-                     const char *app,  uint64_t sid )
+                     const char *app,  uint64_t sid ) noexcept
 {
   char          buf[ 8192 ];
   CaprSession * s = new ( buf ) CaprSession();
@@ -726,7 +726,7 @@ CaprSession::create( const char *addr,  const char *user,  const char *host,
 }
 
 CaprSession *
-CaprSession::copy( void ) const
+CaprSession::copy( void ) const noexcept
 {
   MDMsgMem      mem;
   MDReference   mref;
@@ -808,7 +808,7 @@ copy_subj_in( const uint8_t *buf,  char *subj,  bool &is_wild )
 }
 
 uint32_t
-CaprMsgIn::get_subscription( char *s,  bool &is_wild )
+CaprMsgIn::get_subscription( char *s,  bool &is_wild ) noexcept
 {
   return copy_subj_in( this->subj, s, is_wild );
 }
@@ -838,13 +838,13 @@ copy_subj_in2( const uint8_t *buf,  char *subj )
 }
 
 uint32_t
-CaprMsgIn::get_subject( char *s )
+CaprMsgIn::get_subject( char *s ) noexcept
 {
   return copy_subj_in2( this->subj, s );
 }
 
 uint32_t
-CaprMsgIn::get_inbox( char *buf )
+CaprMsgIn::get_inbox( char *buf ) noexcept
 {
   uint8_t * byt = (uint8_t *) (void *) &this->sid;
   uint32_t j = 7, k;
@@ -874,7 +874,7 @@ CaprMsgIn::get_inbox( char *buf )
 uint32_t
 CaprMsgOut::encode_publish( CaprSession &sess,  const uint8_t *addr,
                             const char *subj,  uint8_t code,
-                            uint32_t msg_len,  uint8_t msg_enc )
+                            uint32_t msg_len,  uint8_t msg_enc ) noexcept
 {
   uint32_t off;
 
@@ -901,7 +901,7 @@ CaprMsgOut::encode_publish( CaprSession &sess,  const uint8_t *addr,
 }
 
 int32_t
-CaprMsgIn::decode( uint8_t *capr_pkt,  size_t pkt_size )
+CaprMsgIn::decode( uint8_t *capr_pkt,  size_t pkt_size ) noexcept
 {
   size_t off;
   uint8_t n;

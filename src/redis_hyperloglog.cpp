@@ -13,7 +13,7 @@ using namespace ds;
 using namespace md;
 
 ExecStatus
-RedisExec::exec_pfadd( EvKeyCtx &ctx )
+RedisExec::exec_pfadd( EvKeyCtx &ctx ) noexcept
 {
   HyperLogLog * hll     = NULL;
   void        * data    = NULL;
@@ -58,7 +58,7 @@ RedisExec::exec_pfadd( EvKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::exec_pfcount( EvKeyCtx &ctx )
+RedisExec::exec_pfcount( EvKeyCtx &ctx ) noexcept
 {
   void   * data;
   uint64_t datalen;
@@ -113,7 +113,7 @@ RedisExec::exec_pfcount( EvKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::exec_pfmerge( EvKeyCtx &ctx )
+RedisExec::exec_pfmerge( EvKeyCtx &ctx ) noexcept
 {
   void   * data;
   uint64_t datalen;

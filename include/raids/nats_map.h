@@ -245,7 +245,7 @@ struct NatsSubMap {
     }
     return rt;
   }
-  void rem_wild( uint32_t h,  NatsStr &subj );
+  void rem_wild( uint32_t h,  NatsStr &subj ) noexcept;
 
   /* put in any elem, search for it and append if not found
    * sub_tab[ sub ] => sid, sid2...

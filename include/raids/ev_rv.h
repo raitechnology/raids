@@ -20,8 +20,8 @@ struct EvRvListen : public EvTcpListen {
   uint32_t    ipaddr;
   uint16_t    ipport;
   EvListenOps ops;
-  EvRvListen( EvPoll &p );
-  virtual bool accept( void );
+  EvRvListen( EvPoll &p ) noexcept;
+  virtual bool accept( void ) noexcept;
   int listen( const char *ip,  int port ) {
     return this->EvTcpListen::listen( ip, port, "rv_listen" );
   }
@@ -139,7 +139,7 @@ struct RvPatternMap {
   size_t sub_count( void ) const {
     return this->tab.pop_count();
   }
-  void release( void );
+  void release( void ) noexcept;
   /* put in new sub
    * tab[ sub ] => {cnt} */
   RvSubStatus put( uint32_t h,  const char *sub,  size_t len,
@@ -198,7 +198,7 @@ struct RvMsgIn {
 
   RvMsgIn() : msg( 0 ), iter( 0 ) {}
 
-  int unpack( void *msgbuf,  size_t msglen );
+  int unpack( void *msgbuf,  size_t msglen ) noexcept;
 };
 
 struct EvRvService : public EvConnection {
@@ -240,25 +240,26 @@ struct EvRvService : public EvConnection {
     this->network[ 0 ] = '\0';
     this->vmaj = this->vmin = this->vupd = 0;
   }
-  void send_info( bool agree );
-  void process( void );
+  void send_info( bool agree ) noexcept;
+  void process( void ) noexcept;
   void exec_key_prefetch( EvKeyCtx & ) {}
   int exec_key_continue( EvKeyCtx & ) { return 0; }
-  int recv_data( void *msg,  size_t msg_len );
-  int respond_info( void );
-  bool timer_expire( uint64_t tid,  uint64_t eid );
-  void add_sub( void );
-  void rem_sub( void );
-  void rem_all_sub( void );
-  bool fwd_pub( void );
-  bool on_msg( EvPublish &pub );
-  bool hash_to_sub( uint32_t h,  char *key,  size_t &keylen );
-  void send( void *hdr,  size_t off,   const void *data,  size_t data_len );
-  bool fwd_msg( EvPublish &pub,  const void *sid,  size_t sid_len );
-  void release( void );
-  void push_free_list( void );
-  void pop_free_list( void );
-  void pub_session( uint8_t code );
+  int recv_data( void *msg,  size_t msg_len ) noexcept;
+  int respond_info( void ) noexcept;
+  bool timer_expire( uint64_t tid,  uint64_t eid ) noexcept;
+  void add_sub( void ) noexcept;
+  void rem_sub( void ) noexcept;
+  void rem_all_sub( void ) noexcept;
+  bool fwd_pub( void ) noexcept;
+  bool on_msg( EvPublish &pub ) noexcept;
+  bool hash_to_sub( uint32_t h,  char *key,  size_t &keylen ) noexcept;
+  void send( void *hdr,  size_t off,   const void *data,
+             size_t data_len ) noexcept;
+  bool fwd_msg( EvPublish &pub,  const void *sid,  size_t sid_len ) noexcept;
+  void release( void ) noexcept;
+  void push_free_list( void ) noexcept;
+  void pop_free_list( void ) noexcept;
+  void pub_session( uint8_t code ) noexcept;
   void process_close( void ) {}
 };
 

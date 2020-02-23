@@ -34,63 +34,63 @@ enum {
 };
 
 ExecStatus
-RedisExec::exec_sadd( EvKeyCtx &ctx )
+RedisExec::exec_sadd( EvKeyCtx &ctx ) noexcept
 {
   /* SADD key member [member ...] */
   return this->do_swrite( ctx, DO_SADD );
 }
 
 ExecStatus
-RedisExec::exec_scard( EvKeyCtx &ctx )
+RedisExec::exec_scard( EvKeyCtx &ctx ) noexcept
 {
   /* SCARD key */
   return this->do_sread( ctx, DO_SCARD );
 }
 
 ExecStatus
-RedisExec::exec_sdiff( EvKeyCtx &ctx )
+RedisExec::exec_sdiff( EvKeyCtx &ctx ) noexcept
 {
   /* SDIFF key [key ...] */
   return this->do_ssetop( ctx, DO_SDIFF );
 }
 
 ExecStatus
-RedisExec::exec_sdiffstore( EvKeyCtx &ctx )
+RedisExec::exec_sdiffstore( EvKeyCtx &ctx ) noexcept
 {
   /* SDIFFSTORE dest key [key ...] */
   return this->do_ssetop( ctx, DO_SDIFFSTORE );
 }
 
 ExecStatus
-RedisExec::exec_sinter( EvKeyCtx &ctx )
+RedisExec::exec_sinter( EvKeyCtx &ctx ) noexcept
 {
   /* SINTER key [key ...] */
   return this->do_ssetop( ctx, DO_SINTER );
 }
 
 ExecStatus
-RedisExec::exec_sinterstore( EvKeyCtx &ctx )
+RedisExec::exec_sinterstore( EvKeyCtx &ctx ) noexcept
 {
   /* SINTERSTORE dest key [key ...] */
   return this->do_ssetop( ctx, DO_SINTERSTORE );
 }
 
 ExecStatus
-RedisExec::exec_sismember( EvKeyCtx &ctx )
+RedisExec::exec_sismember( EvKeyCtx &ctx ) noexcept
 {
   /* SISMEMBER key member */
   return this->do_sread( ctx, DO_SISMEMBER );
 }
 
 ExecStatus
-RedisExec::exec_smembers( EvKeyCtx &ctx )
+RedisExec::exec_smembers( EvKeyCtx &ctx ) noexcept
 {
   /* SMEMBERS key */
   return this->do_smultiscan( ctx, DO_SMEMBERS, NULL );
 }
 
 ExecStatus
-RedisExec::exec_smove( EvKeyCtx &ctx )
+RedisExec::exec_smove( EvKeyCtx &ctx ) noexcept
 {
   /* SMOVE src dest member */
   if ( ctx.argn == 2 && this->key_done == 0 )
@@ -99,42 +99,42 @@ RedisExec::exec_smove( EvKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::exec_spop( EvKeyCtx &ctx )
+RedisExec::exec_spop( EvKeyCtx &ctx ) noexcept
 {
   /* SPOP key [count] */
   return this->do_smultiscan( ctx, DO_SPOP, NULL );
 }
 
 ExecStatus
-RedisExec::exec_srandmember( EvKeyCtx &ctx )
+RedisExec::exec_srandmember( EvKeyCtx &ctx ) noexcept
 {
   /* SRANDMEMBER key [count] */
   return this->do_smultiscan( ctx, DO_SRANDMEMBER, NULL );
 }
 
 ExecStatus
-RedisExec::exec_srem( EvKeyCtx &ctx )
+RedisExec::exec_srem( EvKeyCtx &ctx ) noexcept
 {
   /* SREM key member [member ...] */
   return this->do_swrite( ctx, DO_SREM );
 }
 
 ExecStatus
-RedisExec::exec_sunion( EvKeyCtx &ctx )
+RedisExec::exec_sunion( EvKeyCtx &ctx ) noexcept
 {
   /* SUNION key [key  ...] */
   return this->do_ssetop( ctx, DO_SUNION );
 }
 
 ExecStatus
-RedisExec::exec_sunionstore( EvKeyCtx &ctx )
+RedisExec::exec_sunionstore( EvKeyCtx &ctx ) noexcept
 {
   /* SUNIONSTORE dest key [key ...] */
   return this->do_ssetop( ctx, DO_SUNIONSTORE );
 }
 
 ExecStatus
-RedisExec::exec_sscan( EvKeyCtx &ctx )
+RedisExec::exec_sscan( EvKeyCtx &ctx ) noexcept
 {
   /* SSCAN key curs [match pat] [count cnt] */
   ScanArgs   sa;
@@ -147,7 +147,7 @@ RedisExec::exec_sscan( EvKeyCtx &ctx )
 }
 
 ExecStatus
-RedisExec::do_sread( EvKeyCtx &ctx,  int flags )
+RedisExec::do_sread( EvKeyCtx &ctx,  int flags ) noexcept
 {
   ExecListCtx<SetData, MD_SET> set( *this, ctx );
   const char * arg    = NULL;
@@ -188,7 +188,7 @@ RedisExec::do_sread( EvKeyCtx &ctx,  int flags )
 }
 
 ExecStatus
-RedisExec::do_swrite( EvKeyCtx &ctx,  int flags )
+RedisExec::do_swrite( EvKeyCtx &ctx,  int flags ) noexcept
 {
   ExecListCtx<SetData, MD_SET> set( *this, ctx );
   const char * arg     = NULL;
@@ -306,7 +306,7 @@ RedisExec::do_swrite( EvKeyCtx &ctx,  int flags )
 }
 
 ExecStatus
-RedisExec::do_smultiscan( EvKeyCtx &ctx,  int flags,  ScanArgs *sa )
+RedisExec::do_smultiscan( EvKeyCtx &ctx,  int flags,  ScanArgs *sa ) noexcept
 {
   ExecListCtx<SetData, MD_SET> set( *this, ctx );
   StreamBuf::BufQueue q( this->strm );
@@ -462,7 +462,7 @@ finished:;
 }
 
 ExecStatus
-RedisExec::do_ssetop( EvKeyCtx &ctx,  int flags )
+RedisExec::do_ssetop( EvKeyCtx &ctx,  int flags ) noexcept
 {
   void * data;
   size_t datalen,
@@ -616,4 +616,3 @@ RedisExec::do_ssetop( EvKeyCtx &ctx,  int flags )
     default: return ERR_KV_STATUS;
   }
 }
-

@@ -15,7 +15,7 @@ using namespace rai;
 using namespace ds;
 
 int
-EvTcpListen::listen( const char *ip,  int port,  const char *k )
+EvTcpListen::listen( const char *ip,  int port,  const char *k ) noexcept
 {
   static int on = 1, off = 0;
   int  status = 0,
@@ -94,7 +94,7 @@ fail:;
 }
 
 int
-EvTcpClient::connect( const char *ip,  int port )
+EvTcpClient::connect( const char *ip,  int port ) noexcept
 {
   /* for setsockopt() */
   static int on = 1, off = 0;

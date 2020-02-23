@@ -54,39 +54,39 @@ enum EvSockType {
  * functions and discard the empty ones (how a final qualifier should work) */
 #define SOCK_CALL( S, F ) \
   switch ( S->type ) { \
-    case EV_REDIS_SOCK:     ((EvRedisService *) S)->F; break; \
-    case EV_HTTP_SOCK:      ((EvHttpService *) S)->F; break; \
-    case EV_LISTEN_SOCK:    ((EvListen *) S)->F; break; \
-    case EV_CLIENT_SOCK:    ((EvNetClient *) S)->F; break; \
-    case EV_TERMINAL:       ((EvTerminal *) S)->F; break; \
-    case EV_NATS_SOCK:      ((EvNatsService *) S)->F; break; \
-    case EV_CAPR_SOCK:      ((EvCaprService *) S)->F; break; \
-    case EV_RV_SOCK:        ((EvRvService *) S)->F; break; \
-    case EV_KV_PUBSUB:      ((KvPubSub *) S)->F; break; \
-    case EV_SHM_SOCK:       ((EvShmClient *) S)->F; break; \
-    case EV_TIMER_QUEUE:    ((EvTimerQueue *) S)->F; break; \
-    case EV_SHM_SVC:        ((EvShmSvc *) S)->F; break; \
-    case EV_MEMCACHED_SOCK: ((EvMemcachedService *) S)->F; break; \
-    case EV_MEMUDP_SOCK:    ((EvMemcachedUdp *) S)->F; break; \
-    case EV_CLIENTUDP_SOCK: ((EvUdpClient *) S)->F; break; \
+    case EV_REDIS_SOCK:     static_cast<EvRedisService *>( S )->F; break; \
+    case EV_HTTP_SOCK:      static_cast<EvHttpService *>( S )->F; break; \
+    case EV_LISTEN_SOCK:    static_cast<EvListen *>( S )->F; break; \
+    case EV_CLIENT_SOCK:    static_cast<EvNetClient *>( S )->F; break; \
+    case EV_TERMINAL:       static_cast<EvTerminal *>( S )->F; break; \
+    case EV_NATS_SOCK:      static_cast<EvNatsService *>( S )->F; break; \
+    case EV_CAPR_SOCK:      static_cast<EvCaprService *>( S )->F; break; \
+    case EV_RV_SOCK:        static_cast<EvRvService *>( S )->F; break; \
+    case EV_KV_PUBSUB:      static_cast<KvPubSub *>( S )->F; break; \
+    case EV_SHM_SOCK:       static_cast<EvShmClient *>( S )->F; break; \
+    case EV_TIMER_QUEUE:    static_cast<EvTimerQueue *>( S )->F; break; \
+    case EV_SHM_SVC:        static_cast<EvShmSvc *>( S )->F; break; \
+    case EV_MEMCACHED_SOCK: static_cast<EvMemcachedService *>( S )->F; break; \
+    case EV_MEMUDP_SOCK:    static_cast<EvMemcachedUdp *>( S )->F; break; \
+    case EV_CLIENTUDP_SOCK: static_cast<EvUdpClient *>( S )->F; break; \
   }
 #define SOCK_CALL2( R, S, F ) \
   switch ( S->type ) { \
-    case EV_REDIS_SOCK:     R = ((EvRedisService *) S)->F; break; \
-    case EV_HTTP_SOCK:      R = ((EvHttpService *) S)->F; break; \
-    case EV_LISTEN_SOCK:    R = ((EvListen *) S)->F; break; \
-    case EV_CLIENT_SOCK:    R = ((EvNetClient *) S)->F; break; \
-    case EV_TERMINAL:       R = ((EvTerminal *) S)->F; break; \
-    case EV_NATS_SOCK:      R = ((EvNatsService *) S)->F; break; \
-    case EV_CAPR_SOCK:      R = ((EvCaprService *) S)->F; break; \
-    case EV_RV_SOCK:        R = ((EvRvService *) S)->F; break; \
-    case EV_KV_PUBSUB:      R = ((KvPubSub *) S)->F; break; \
-    case EV_SHM_SOCK:       R = ((EvShmClient *) S)->F; break; \
-    case EV_TIMER_QUEUE:    R = ((EvTimerQueue *) S)->F; break; \
-    case EV_SHM_SVC:        R = ((EvShmSvc *) S)->F; break; \
-    case EV_MEMCACHED_SOCK: R = ((EvMemcachedService *) S)->F; break; \
-    case EV_MEMUDP_SOCK:    R = ((EvMemcachedUdp *) S)->F; break; \
-    case EV_CLIENTUDP_SOCK: R = ((EvUdpClient *) S)->F; break; \
+    case EV_REDIS_SOCK:     R = static_cast<EvRedisService *>( S )->F; break; \
+    case EV_HTTP_SOCK:      R = static_cast<EvHttpService *>( S )->F; break; \
+    case EV_LISTEN_SOCK:    R = static_cast<EvListen *>( S )->F; break; \
+    case EV_CLIENT_SOCK:    R = static_cast<EvNetClient *>( S )->F; break; \
+    case EV_TERMINAL:       R = static_cast<EvTerminal *>( S )->F; break; \
+    case EV_NATS_SOCK:      R = static_cast<EvNatsService *>( S )->F; break; \
+    case EV_CAPR_SOCK:      R = static_cast<EvCaprService *>( S )->F; break; \
+    case EV_RV_SOCK:        R = static_cast<EvRvService *>( S )->F; break; \
+    case EV_KV_PUBSUB:      R = static_cast<KvPubSub *>( S )->F; break; \
+    case EV_SHM_SOCK:       R = static_cast<EvShmClient *>( S )->F; break; \
+    case EV_TIMER_QUEUE:    R = static_cast<EvTimerQueue *>( S )->F; break; \
+    case EV_SHM_SVC:        R = static_cast<EvShmSvc *>( S )->F; break; \
+    case EV_MEMCACHED_SOCK: R = static_cast<EvMemcachedService *>(S)->F;break; \
+    case EV_MEMUDP_SOCK:    R = static_cast<EvMemcachedUdp *>( S )->F; break; \
+    case EV_CLIENTUDP_SOCK: R = static_cast<EvUdpClient *>( S )->F; break; \
   }
 
 enum EvState {
@@ -135,7 +135,7 @@ struct EvSocket : public PeerData /* fd and address of peer */ {
   void popall( void )     { this->state = 0; }
   void pushpop( int s, int t ) {
     this->state = ( this->state | ( 1U << s ) ) & ~( 1U << t ); }
-  void idle_push( EvState s );
+  void idle_push( EvState s ) noexcept;
   /* these should be overridden by subclass */
   /*bool publish( EvPublish &pub );
   bool hash_to_sub( uint32_t h,  char *key,  size_t &keylen );*/
@@ -148,17 +148,17 @@ struct EvSocket : public PeerData /* fd and address of peer */ {
     return x1 > x2 || ( x1 == x2 && s1->prio_cnt > s2->prio_cnt );
   }
   /* the "virtual" calls, dispatched based on this->type, inlined ev_net.cpp */
-  void v_write( void );
-  void v_read( void );
-  void v_process( void );
-  void v_release( void );
-  bool v_timer_expire( uint64_t tid, uint64_t eid );
-  bool v_hash_to_sub( uint32_t h, char *k, size_t &klen );
-  bool v_on_msg( EvPublish &pub );
-  void v_exec_key_prefetch( EvKeyCtx &ctx );
-  int  v_exec_key_continue( EvKeyCtx &ctx );
-  void v_process_shutdown( void );
-  void v_process_close( void );
+  void v_write( void ) noexcept;
+  void v_read( void ) noexcept;
+  void v_process( void ) noexcept;
+  void v_release( void ) noexcept;
+  bool v_timer_expire( uint64_t tid, uint64_t eid ) noexcept;
+  bool v_hash_to_sub( uint32_t h, char *k, size_t &klen ) noexcept;
+  bool v_on_msg( EvPublish &pub ) noexcept;
+  void v_exec_key_prefetch( EvKeyCtx &ctx ) noexcept;
+  int  v_exec_key_continue( EvKeyCtx &ctx ) noexcept;
+  void v_process_shutdown( void ) noexcept;
+  void v_process_close( void ) noexcept;
 };
 
 #if __cplusplus >= 201103L
@@ -167,12 +167,12 @@ struct EvSocket : public PeerData /* fd and address of peer */ {
 #endif
 
 struct EvSocketOps : public PeerOps {
-  virtual int client_list( PeerData &pd,  char *buf,  size_t buflen );
-  virtual bool client_kill( PeerData &pd );
-  virtual bool match( PeerData &pd,  PeerMatchArgs &ka );
-  virtual void client_stats( PeerData &pd,  PeerStats &ps );
-  virtual void retired_stats( PeerData &pd,  PeerStats &ps );
-  static bool client_match( PeerData &pd,  PeerMatchArgs &ka,  ... );
+  virtual int client_list( PeerData &pd,  char *buf,  size_t buflen ) noexcept;
+  virtual bool client_kill( PeerData &pd ) noexcept;
+  virtual bool match( PeerData &pd,  PeerMatchArgs &ka ) noexcept;
+  virtual void client_stats( PeerData &pd,  PeerStats &ps ) noexcept;
+  virtual void retired_stats( PeerData &pd,  PeerStats &ps ) noexcept;
+  static bool client_match( PeerData &pd,  PeerMatchArgs &ka,  ... ) noexcept;
 };
 
 static inline void *aligned_malloc( size_t sz ) {
@@ -268,31 +268,31 @@ struct EvPoll : public RoutePublish {
     ::memset( this->prefetch_cnt, 0, sizeof( this->prefetch_cnt ) );
   }
 
-  int init( int numfds,  bool prefetch/*,  bool single*/ );
-  int init_shm( EvShm &shm );    /* open shm pubsub */
+  int init( int numfds,  bool prefetch/*,  bool single*/ ) noexcept;
+  int init_shm( EvShm &shm ) noexcept;    /* open shm pubsub */
   void add_pattern_route( const char *sub,  size_t prefix_len,  uint32_t hash,
-                          uint32_t fd );
+                          uint32_t fd ) noexcept;
   void del_pattern_route( const char *sub,  size_t prefix_len,  uint32_t hash,
-                          uint32_t fd );
+                          uint32_t fd ) noexcept;
   void add_route( const char *sub,  size_t sub_len,  uint32_t hash,
-                  uint32_t fd );
+                  uint32_t fd ) noexcept;
   void del_route( const char *sub,  size_t sub_len,  uint32_t hash,
-                  uint32_t fd );
-  int wait( int ms );            /* call epoll() with ms timeout */
-  bool dispatch( void );         /* process any sock in the queues */
-  void drain_prefetch( void );   /* process prefetches */
+                  uint32_t fd ) noexcept;
+  int wait( int ms ) noexcept;            /* call epoll() with ms timeout */
+  bool dispatch( void ) noexcept;         /* process any sock in the queues */
+  void drain_prefetch( void ) noexcept;   /* process prefetches */
   bool publish_one( EvPublish &pub,  uint32_t *rcount_total,
-                    RoutePublishData &rpd );
+                    RoutePublishData &rpd ) noexcept;
   template<uint8_t N>
   bool publish_multi( EvPublish &pub,  uint32_t *rcount_total,
-                      RoutePublishData *rpd );
-  bool publish_queue( EvPublish &pub,  uint32_t *rcount_total );
-  uint64_t current_coarse_ns( void ) const;
+                      RoutePublishData *rpd ) noexcept;
+  bool publish_queue( EvPublish &pub,  uint32_t *rcount_total ) noexcept;
+  uint64_t current_coarse_ns( void ) const noexcept;
   /* add to poll set, name is a peer, alt is if listening or shm direct */
-  int add_sock( EvSocket *s );
-  void remove_sock( EvSocket *s ); /* remove from poll set */
-  bool timer_expire( EvTimerEvent &ev ); /* process timer event fired */
-  void process_quit( void );     /* quit state close socks */
+  int add_sock( EvSocket *s ) noexcept;
+  void remove_sock( EvSocket *s ) noexcept; /* remove from poll set */
+  bool timer_expire( EvTimerEvent &ev ) noexcept; /* process timer event fired */
+  void process_quit( void ) noexcept;     /* quit state close socks */
 };
 
 struct EvListen : public EvSocket {
@@ -303,7 +303,7 @@ struct EvListen : public EvSocket {
   EvListen( EvPoll &p,  PeerOps &o )
     : EvSocket( p, EV_LISTEN_SOCK, o ), accept_cnt( 0 ) {}
 
-  virtual bool accept( void ) { return false; }
+  virtual bool accept( void ) noexcept { return false; }
   void write( void ) {}
   void read( void ) { if ( this->accept() ) this->accept_cnt++; }
   void process( void ) {}
@@ -318,9 +318,9 @@ struct EvListen : public EvSocket {
 };
 
 struct EvListenOps : public EvSocketOps {
-  virtual int client_list( PeerData &pd,  char *buf,  size_t buflen );
-  virtual bool match( PeerData &pd,  PeerMatchArgs &ka );
-  virtual void client_stats( PeerData &pd,  PeerStats &ps );
+  virtual int client_list( PeerData &pd,  char *buf,  size_t buflen ) noexcept;
+  virtual bool match( PeerData &pd,  PeerMatchArgs &ka ) noexcept;
+  virtual void client_stats( PeerData &pd,  PeerStats &ps ) noexcept;
 };
 
 struct EvConnection : public EvSocket, public StreamBuf {
@@ -370,16 +370,16 @@ struct EvConnection : public EvSocket, public StreamBuf {
       this->off = 0;
     }
   }
-  bool resize_recv_buf( void );   /* need more buffer space */
-  void read( void );              /* fill recv buf */
-  void write( void );             /* flush stream buffer */
-  void close_alloc_error( void ); /* if stream buf alloc failed or similar */
+  bool resize_recv_buf( void ) noexcept;   /* need more buffer space */
+  void read( void ) noexcept;              /* fill recv buf */
+  void write( void ) noexcept;             /* flush stream buffer */
+  void close_alloc_error( void ) noexcept; /* if stream buf alloc failed */
   void process_shutdown( void ) { this->pushpop( EV_CLOSE, EV_SHUTDOWN ); }
 };
 
 struct EvConnectionOps : public EvSocketOps {
-  virtual int client_list( PeerData &pd,  char *buf,  size_t buflen );
-  virtual bool match( PeerData &pd,  PeerMatchArgs &ka );
+  virtual int client_list( PeerData &pd,  char *buf,  size_t buflen ) noexcept;
+  virtual bool match( PeerData &pd,  PeerMatchArgs &ka ) noexcept;
 };
 
 struct EvUdp : public EvSocket, public StreamBuf {
@@ -399,9 +399,9 @@ struct EvUdp : public EvSocket, public StreamBuf {
     this->in_moff = this->in_nmsgs = 0;
     this->out_nmsgs = this->in_size = 0;
   }
-  bool alloc_mmsg( void );
-  int listen( const char *ip,  int port,  const char *k );
-  int connect( const char *ip,  int port );
+  bool alloc_mmsg( void ) noexcept;
+  int listen( const char *ip,  int port,  const char *k ) noexcept;
+  int connect( const char *ip,  int port ) noexcept;
 
   void release_buffers( void ) { /* release all buffs */
     this->clear_buffers();
@@ -411,14 +411,14 @@ struct EvUdp : public EvSocket, public StreamBuf {
     this->zero();
     this->StreamBuf::reset();
   }
-  void read( void );             /* fill recv buf, return true if read some */
-  void write( void );            /* flush stream buffer */
+  void read( void ) noexcept;             /* fill recv buf, return true if read some */
+  void write( void ) noexcept;            /* flush stream buffer */
   void process_shutdown( void ) { this->pushpop( EV_CLOSE, EV_SHUTDOWN ); }
 };
 
 struct EvUdpOps : public EvSocketOps {
-  virtual int client_list( PeerData &pd,  char *buf,  size_t buflen );
-  virtual bool match( PeerData &pd,  PeerMatchArgs &ka );
+  virtual int client_list( PeerData &pd,  char *buf,  size_t buflen ) noexcept;
+  virtual bool match( PeerData &pd,  PeerMatchArgs &ka ) noexcept;
 };
 
 }

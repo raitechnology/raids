@@ -76,7 +76,7 @@ using namespace md;
  */
 static uint64_t uptime_stamp;
 
-EvRvListen::EvRvListen( EvPoll &p )
+EvRvListen::EvRvListen( EvPoll &p ) noexcept
             : EvTcpListen( p, this->ops ),
               timer_id( (uint64_t) EV_RV_SOCK << 56 ),
               ipaddr( 0 ),
@@ -105,7 +105,7 @@ EvRvListen::EvRvListen( EvPoll &p )
 }
 
 bool
-EvRvListen::accept( void )
+EvRvListen::accept( void ) noexcept
 {
   static int on = 1;
   struct sockaddr_storage addr;
@@ -173,7 +173,7 @@ EvRvListen::accept( void )
 }
 
 void
-EvRvService::send_info( bool agree )
+EvRvService::send_info( bool agree ) noexcept
 {
   static const uint32_t info_rec_prefix[] = { 2, 2, 0, 1, 0, 4 << 24, 4 << 24 };
   uint32_t info_rec[ 16 ];
@@ -195,7 +195,7 @@ EvRvService::send_info( bool agree )
 }
 
 void
-EvRvService::process( void )
+EvRvService::process( void ) noexcept
 {
   size_t  buflen, msglen;
   int32_t status = 0;
@@ -246,7 +246,7 @@ break_loop:;
 }
 
 int
-EvRvService::recv_data( void *msgbuf, size_t msglen )
+EvRvService::recv_data( void *msgbuf, size_t msglen ) noexcept
 {
   static const char *rv_status_string[] = RV_STATUS_STRINGS;
   int status;
@@ -305,7 +305,7 @@ match_int( MDName &nm,  MDReference &mref,  const char *s,  uint32_t &ival )
 }
 
 int
-EvRvService::respond_info( void )
+EvRvService::respond_info( void ) noexcept
 {
   RvFieldIter * iter = this->msg_in.iter;
   MDName        nm;
@@ -391,7 +391,7 @@ EvRvService::respond_info( void )
 }
 
 bool
-EvRvService::timer_expire( uint64_t tid,  uint64_t )
+EvRvService::timer_expire( uint64_t tid,  uint64_t ) noexcept
 {
   if ( this->timer_id != tid )
     return false;
@@ -400,7 +400,7 @@ EvRvService::timer_expire( uint64_t tid,  uint64_t )
 }
 
 void
-EvRvService::add_sub( void )
+EvRvService::add_sub( void ) noexcept
 {
   char   * sub = this->msg_in.sub;
   uint32_t len = this->msg_in.sublen;
@@ -453,7 +453,7 @@ EvRvService::add_sub( void )
 }
 
 void
-EvRvService::rem_sub( void )
+EvRvService::rem_sub( void ) noexcept
 {
   char   * sub = this->msg_in.sub;
   uint32_t len = this->msg_in.sublen;
@@ -498,7 +498,7 @@ EvRvService::rem_sub( void )
 }
 
 void
-EvRvService::rem_all_sub( void )
+EvRvService::rem_all_sub( void ) noexcept
 {
   RvSubRoutePos     pos;
   RvPatternRoutePos ppos;
@@ -527,7 +527,7 @@ EvRvService::rem_all_sub( void )
 }
 
 bool
-EvRvService::fwd_pub( void )
+EvRvService::fwd_pub( void ) noexcept
 {
   char   * sub     = this->msg_in.sub,
          * rep     = this->msg_in.reply;
@@ -559,7 +559,7 @@ EvRvService::fwd_pub( void )
 }
 
 bool
-EvRvService::on_msg( EvPublish &pub )
+EvRvService::on_msg( EvPublish &pub ) noexcept
 {
   uint32_t pub_cnt = 0;
   for ( uint8_t cnt = 0; cnt < pub.prefix_cnt; cnt++ ) {
@@ -594,7 +594,7 @@ EvRvService::on_msg( EvPublish &pub )
 }
 
 bool
-EvRvService::hash_to_sub( uint32_t h,  char *key,  size_t &keylen )
+EvRvService::hash_to_sub( uint32_t h,  char *key,  size_t &keylen ) noexcept
 {
   RouteLoc     loc;
   RvSubRoute * rt = this->sub_tab.tab.find_by_hash( h, loc );
@@ -607,7 +607,7 @@ EvRvService::hash_to_sub( uint32_t h,  char *key,  size_t &keylen )
 
 void
 EvRvService::send( void *hdr,  size_t off,   const void *data,
-                   size_t data_len )
+                   size_t data_len ) noexcept
 {
 #if 0
   if ( off + data_len < 8 * 1024 ) {
@@ -625,7 +625,7 @@ EvRvService::send( void *hdr,  size_t off,   const void *data,
 }
 
 bool
-EvRvService::fwd_msg( EvPublish &pub,  const void *,  size_t )
+EvRvService::fwd_msg( EvPublish &pub,  const void *,  size_t ) noexcept
 {
   uint8_t      buf[ 8 * 1024 ];
   RvMsgWriter  rvmsg( buf, sizeof( buf ) ),
@@ -704,7 +704,7 @@ EvRvService::fwd_msg( EvPublish &pub,  const void *,  size_t )
 }
 
 void
-RvPatternMap::release( void )
+RvPatternMap::release( void ) noexcept
 {
   RvPatternRoutePos ppos;
 
@@ -724,7 +724,7 @@ RvPatternMap::release( void )
 }
 
 void
-EvRvService::release( void )
+EvRvService::release( void ) noexcept
 {
   printf( "rv release fd=%d\n", this->fd );
   this->rem_all_sub();
@@ -735,7 +735,7 @@ EvRvService::release( void )
 }
 
 void
-EvRvService::push_free_list( void )
+EvRvService::push_free_list( void ) noexcept
 {
   if ( this->listfl == IN_ACTIVE_LIST )
     fprintf( stderr, "capr sock should not be in active list\n" );
@@ -746,7 +746,7 @@ EvRvService::push_free_list( void )
 }
 
 void
-EvRvService::pop_free_list( void )
+EvRvService::pop_free_list( void ) noexcept
 {
   if ( this->listfl == IN_FREE_LIST ) {
     this->listfl = IN_NO_LIST;
@@ -755,7 +755,7 @@ EvRvService::pop_free_list( void )
 }
 
 void
-EvRvService::pub_session( uint8_t )
+EvRvService::pub_session( uint8_t ) noexcept
 {
 }
 
@@ -790,7 +790,7 @@ copy_subj_in( const uint8_t *buf,  char *subj,  bool &is_wild )
 }
 
 int
-RvMsgIn::unpack( void *msgbuf,  size_t msglen )
+RvMsgIn::unpack( void *msgbuf,  size_t msglen ) noexcept
 {
   MDFieldIter * it;
   MDName        nm;

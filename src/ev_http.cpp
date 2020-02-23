@@ -17,7 +17,7 @@ using namespace rai;
 using namespace ds;
 
 bool
-EvHttpListen::accept( void )
+EvHttpListen::accept( void ) noexcept
 {
   static int on = 1;
   struct sockaddr_storage addr;
@@ -68,7 +68,7 @@ static char page404[] =
 "<html><body> Not  Found </body></html>\r\n";
 
 void
-EvHttpService::process( void )
+EvHttpService::process( void ) noexcept
 {
   StreamBuf       & strm = *this;
   //EvPrefetchQueue * q    = ( use_prefetch ? this->poll.prefetch_queue : NULL );
@@ -186,7 +186,7 @@ EvHttpService::process( void )
             /* FALLTHRU */
           default:
             this->msgs_sent++;
-            this->send_err( status );
+            this->send_status( (ExecStatus) status, KEY_OK );
             break;
           case EXEC_DEBUG:
             break;
@@ -326,7 +326,7 @@ not_found:;
 }
 
 bool
-EvHttpService::flush_term( void )
+EvHttpService::flush_term( void ) noexcept
 {
   const char * buf    = this->term.out_buf;
   size_t       buflen = this->term.out_len;
@@ -346,7 +346,7 @@ EvHttpService::flush_term( void )
 }
 
 bool
-EvHttpService::on_msg( EvPublish &pub )
+EvHttpService::on_msg( EvPublish &pub ) noexcept
 {
   RedisContinueMsg * cm = NULL;
   bool flow_good = true;
@@ -363,7 +363,7 @@ EvHttpService::on_msg( EvPublish &pub )
 }
 
 bool
-EvHttpService::timer_expire( uint64_t tid,  uint64_t event_id )
+EvHttpService::timer_expire( uint64_t tid,  uint64_t event_id ) noexcept
 {
   if ( tid == this->timer_id ) {
     RedisContinueMsg *cm = NULL;
@@ -376,13 +376,13 @@ EvHttpService::timer_expire( uint64_t tid,  uint64_t event_id )
 }
 
 bool
-EvHttpService::hash_to_sub( uint32_t h,  char *key,  size_t &keylen )
+EvHttpService::hash_to_sub( uint32_t h,  char *key,  size_t &keylen ) noexcept
 {
   return this->RedisExec::do_hash_to_sub( h, key, keylen );
 }
 
 void
-EvHttpService::write( void )
+EvHttpService::write( void ) noexcept
 {
   if ( this->websock_off != 0 &&
        this->websock_off < this->bytes_sent + this->pending() )
@@ -392,7 +392,7 @@ EvHttpService::write( void )
 }
 
 bool
-EvHttpService::frame_websock( void )
+EvHttpService::frame_websock( void ) noexcept
 {
   size_t msgcnt = this->wsmsgcnt;
   bool b = this->frame_websock2();
@@ -411,7 +411,7 @@ EvHttpService::frame_websock( void )
 }
 
 bool
-EvHttpService::frame_websock2( void )
+EvHttpService::frame_websock2( void ) noexcept
 {
   static const char eol[]    = "\r\n";
   static size_t     eol_size = sizeof( eol ) - 1;
@@ -578,7 +578,7 @@ get_mime_type( const char *path,  size_t len )
 }
 
 bool
-EvHttpService::send_file( const char *get,  size_t getlen )
+EvHttpService::send_file( const char *get,  size_t getlen ) noexcept
 {
   /* GET /somefile HTTP/1.1 */
   const char *obj = (const char *) ::memchr( get, '/', getlen ),
@@ -637,7 +637,7 @@ EvHttpService::send_file( const char *get,  size_t getlen )
 
 bool
 EvHttpService::send_ws_upgrade( const char *wsver, const char *wskey,
-                                size_t wskeylen,  const char *wspro )
+                                size_t wskeylen,  const char *wspro ) noexcept
 {
   static const char b64[] =
   "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -688,7 +688,7 @@ EvHttpService::send_ws_upgrade( const char *wsver, const char *wskey,
 }
 
 bool
-EvHttpService::send_ws_pong( const char *payload,  size_t len )
+EvHttpService::send_ws_pong( const char *payload,  size_t len ) noexcept
 {
   WebSocketFrame ws;
 
@@ -704,7 +704,7 @@ EvHttpService::send_ws_pong( const char *payload,  size_t len )
 }
 
 size_t
-EvHttpService::recv_wsframe( char *start,  char *end )
+EvHttpService::recv_wsframe( char *start,  char *end ) noexcept
 {
   WebSocketFrame ws;
   size_t hdrsz = ws.decode( start, end - start );
@@ -770,7 +770,7 @@ EvHttpService::recv_wsframe( char *start,  char *end )
 }
 
 void
-EvHttpService::release( void )
+EvHttpService::release( void ) noexcept
 {
   this->term.tty_release();
   if ( this->wsbuf != NULL )
@@ -781,7 +781,7 @@ EvHttpService::release( void )
 }
 
 void
-EvHttpService::push_free_list( void )
+EvHttpService::push_free_list( void ) noexcept
 {
   if ( this->listfl == IN_ACTIVE_LIST )
     fprintf( stderr, "redis sock should not be in active list\n" );
@@ -792,7 +792,7 @@ EvHttpService::push_free_list( void )
 }
 
 void
-EvHttpService::pop_free_list( void )
+EvHttpService::pop_free_list( void ) noexcept
 {
   if ( this->listfl == IN_FREE_LIST ) {
     this->listfl = IN_NO_LIST;
@@ -801,7 +801,7 @@ EvHttpService::pop_free_list( void )
 }
 
 bool
-EvHttpServiceOps::match( PeerData &pd,  PeerMatchArgs &ka )
+EvHttpServiceOps::match( PeerData &pd,  PeerMatchArgs &ka ) noexcept
 {
   EvHttpService & svc = (EvHttpService &) pd;
   if ( svc.sub_tab.sub_count() + svc.pat_tab.sub_count() != 0 ) {
@@ -816,7 +816,8 @@ EvHttpServiceOps::match( PeerData &pd,  PeerMatchArgs &ka )
 }
 
 int
-EvHttpServiceOps::client_list( PeerData &pd,  char *buf,  size_t buflen )
+EvHttpServiceOps::client_list( PeerData &pd,  char *buf,
+                               size_t buflen ) noexcept
 {
   int i = this->EvConnectionOps::client_list( pd, buf, buflen );
   if ( i >= 0 )

@@ -12,7 +12,7 @@ using namespace ds;
 using namespace kv;
 
 const char *
-rai::ds::redis_msg_status_string( RedisMsgStatus status ) {
+rai::ds::redis_msg_status_string( RedisMsgStatus status ) noexcept {
   switch ( status ) {
     case REDIS_MSG_OK:             return "OK";
     case REDIS_MSG_BAD_TYPE:       return "BAD_TYPE";
@@ -28,7 +28,7 @@ rai::ds::redis_msg_status_string( RedisMsgStatus status ) {
 }
 
 const char *
-rai::ds::redis_msg_status_description( RedisMsgStatus status ) {
+rai::ds::redis_msg_status_description( RedisMsgStatus status ) noexcept {
   switch ( status ) {
     case REDIS_MSG_OK:             return "OK";
     case REDIS_MSG_BAD_TYPE:       return "Message decoding error, bad type char";
@@ -70,7 +70,7 @@ static inline bool is_bulk_string( uint32_t tb ) {
 }
 
 RedisMsgStatus
-RedisMsg::pack2( void *buf,  size_t &buflen ) const
+RedisMsg::pack2( void *buf,  size_t &buflen ) const noexcept
 {
   char  * ptr = (char *) buf;
   size_t  i;
@@ -130,7 +130,7 @@ skip_trailing_crnl:;
 }
 
 size_t
-RedisMsg::pack( void *buf ) const
+RedisMsg::pack( void *buf ) const noexcept
 {
   char * ptr = (char *) buf;
   size_t i;
@@ -174,7 +174,7 @@ skip_trailing_crnl:;
 }
 
 size_t
-RedisMsg::pack_size( void ) const
+RedisMsg::pack_size( void ) const noexcept
 {
   size_t i;
   const uint32_t type_bit = data_type_mask<DataType>( this->type );
@@ -205,7 +205,7 @@ skip_trailing_crnl:;
 }
 
 bool
-RedisMsg::alloc_array( ScratchMem &wrk,  int64_t sz )
+RedisMsg::alloc_array( ScratchMem &wrk,  int64_t sz ) noexcept
 {
   this->type  = BULK_ARRAY;
   this->array = NULL;
@@ -220,7 +220,7 @@ RedisMsg::alloc_array( ScratchMem &wrk,  int64_t sz )
 }
 
 bool
-RedisMsg::string_array( ScratchMem &wrk,  int64_t sz,  ... )
+RedisMsg::string_array( ScratchMem &wrk,  int64_t sz,  ... ) noexcept
 {
   if ( ! this->alloc_array( wrk, sz ) )
     return false;
@@ -239,7 +239,7 @@ RedisMsg::string_array( ScratchMem &wrk,  int64_t sz,  ... )
 }
 /* Split a string into argv[]/argc, used when message is not structured */
 RedisMsgStatus
-RedisMsg::split( ScratchMem &wrk )
+RedisMsg::split( ScratchMem &wrk ) noexcept
 {
   RedisMsg * tmp = (RedisMsg *) wrk.alloc( sizeof( RedisMsg ) * 4 );
   char     * ptr = this->strval,
@@ -282,85 +282,107 @@ finished:;
 }
 /* Split buffer bytes into a message */
 RedisMsgStatus
-RedisMsg::unpack( void *buf,  size_t &buflen,  ScratchMem &wrk )
+RedisMsg::unpack( void *buf,  size_t &buflen,  ScratchMem &wrk ) noexcept
 {
-  char  * ptr = (char *) buf, /* buflen must be at least 1 */
-        * eol = (char *) ::memchr( &ptr[ 1 ], '\n', buflen - 1 );
-  size_t  i, j;
+  char  * ptr, * eol;
+  size_t  i, j, off = 0, bsz = buflen;
   RedisMsgStatus status;
 
-  if ( eol == NULL )
-    return REDIS_MSG_PARTIAL;
+  /* skip over whitespace */
+  ptr = (char *) buf;
+  for ( off = 0; off < bsz; off++ )
+    if ( (uint8_t) ptr[ off ] > ' ' )
+       break;
 
+  /* find a newline */
+  ptr  = &ptr[ off ];
+  bsz -= off;
+  for ( eol = &ptr[ 1 ]; ; eol++ ) {
+    if ( eol >= &ptr[ bsz ] )
+      return REDIS_MSG_PARTIAL;
+    if ( *eol == '\n' )
+      break;
+  }
+
+  /* i = count of chars without \r\n, j = count of chars to eol */
   i = eol - &ptr[ 1 ];
   j = i + 2;
   if ( ptr[ i ] == '\r' )
     i--;
-
+  /* a bitmask of '+', '-', ':', '$', '*' */
   const uint32_t type_bit = data_type_mask<char>( ptr[ 0 ] );
   if ( ! is_valid( type_bit ) ) {
     /* inline command */
     this->type   = SIMPLE_STRING;
     this->len    = i + 1;
     this->strval = ptr;
-    buflen = j;
+    buflen = j + off;
     return this->split( wrk );
   }
   this->type = (DataType) ptr[ 0 ];
 
+  /* no lengths, simple string or error */
   if ( is_simple_type( type_bit ) ) {
     this->len = i;
     this->strval = &ptr[ 1 ];
   }
+  /* an int64 */
   else if ( is_int_type( type_bit ) ) {
-    this->len  = 0;
+    this->len = 0; /* could set this to i */
     if ( (status = str_to_int( &ptr[ 1 ], i, this->ival )) != REDIS_MSG_OK )
       return status;
   }
+  /* a bulk string or bulk array, both have lengths */
   else {
     if ( (status = str_to_int( &ptr[ 1 ], i, this->len )) != REDIS_MSG_OK )
       return status;
     if ( is_bulk_string( type_bit ) ) {
+      /* test length */
       if ( this->len > 0 ) {
         this->strval = &ptr[ j ];
         j += this->len;
-        if ( j > buflen )
+        if ( j > bsz )
           return REDIS_MSG_PARTIAL;
       }
+      /* if len <= 0, zero length */
       else
         this->strval = NULL;
+      /* allow bulk without seeing the nl */
       if ( this->len >= 0 ) {
-        if ( j < buflen && ptr[ j ] == '\r' )
+        if ( j < bsz && ptr[ j ] == '\r' )
           j++;
-        if ( j < buflen && ptr[ j ] == '\n' )
+        if ( j < bsz && ptr[ j ] == '\n' )
           j++;
       }
     }
+    /* a bulk array */
     else {
+      /* allocate and recursively parse the elements */
       if ( this->len > 0 ) {
         this->array = (RedisMsg *) wrk.alloc( sizeof( RedisMsg ) * this->len );
         if ( this->array == NULL )
           return REDIS_MSG_ALLOC_FAIL;
         for ( size_t k = 0; k < (size_t) this->len; k++ ) {
-          size_t tmp = buflen - j;
-          if ( tmp == 0 )
+          if ( bsz <= j )
             return REDIS_MSG_PARTIAL;
+          size_t tmp = bsz - j;
           RedisMsgStatus stat = this->array[ k ].unpack( &ptr[ j ], tmp, wrk );
           if ( stat != REDIS_MSG_OK )
             return stat;
-          j += tmp;
+          j += tmp; /* accumulate the message size */
         }
       }
+      /* if len <= 0, zero length */
       else
         this->array = NULL;
     }
   }
-  buflen = j;
+  buflen = j + off;
   return REDIS_MSG_OK;
 }
 
 RedisMsg *
-RedisMsg::dup( ScratchMem &wrk )
+RedisMsg::dup( ScratchMem &wrk ) noexcept
 {
   RedisMsg *cpy = (RedisMsg *) wrk.alloc( sizeof( RedisMsg ) );
   if ( cpy == NULL )
@@ -369,8 +391,9 @@ RedisMsg::dup( ScratchMem &wrk )
 }
 
 RedisMsg *
-RedisMsg::dup2( ScratchMem &wrk,  RedisMsg &cpy )
+RedisMsg::dup2( ScratchMem &wrk,  RedisMsg &cpy ) noexcept
 {
+  /* recurse and copy the message into work mem */
   cpy.type = this->type;
   cpy.len  = this->len;
   if ( this->type == INTEGER_VALUE ) {
@@ -402,45 +425,39 @@ RedisMsg::dup2( ScratchMem &wrk,  RedisMsg &cpy )
   return &cpy;
 }
 
-int
-RedisMsg::match_arg( int n,  const char *str,  size_t sz,  ... )
+size_t
+RedisMsg::match_arg( size_t n,  const char *str,  size_t sz,
+                     ... ) const noexcept
 {
-  int64_t i, start, end;
-  int k = 0;
+  /* match strings at arg position n >= 0 && n < len */
+  if ( this->len <= 0 || n >= (size_t) this->len ) /* len could be negative */
+    return 0;
+
+  size_t k;
   va_list args;
-  if ( n < 0 ) {
-    start = -n;
-    end   = this->len;
-  }
-  else {
-    start = n;
-    end   = n + 1;
-    if ( end > this->len )
-      end = this->len;
-  }     
+  const RedisMsg & m = this->array[ n ];
+
+  if ( ! m.is_string() )
+    return 0;
+
   va_start( args, sz );
   for ( k = 1; ; k++ ) {
-    for ( i = start; i < end; i++ ) {
-      if ( this->array[ i ].is_string() ) {
-        if ( (size_t) this->array[ i ].len == sz &&
-          ::strncasecmp( str, this->array[ i ].strval, sz ) == 0 )
-        goto break_loop;
-      }
-    }
+    if ( (size_t) m.len == sz && ::strncasecmp( str, m.strval, sz ) == 0 )
+      break; /* match */
     str = va_arg( args, const char * );
+    /* args are terminated with NULL */
     if ( str == NULL ) {
-      k = 0;
-      goto break_loop;
+      k = 0; /* no match */
+      break;
     }
     sz = va_arg( args, size_t );
   }
-break_loop:;
   va_end( args );
   return k;
 }
 
 int
-rai::ds::string_to_int( const char *str,  size_t sz,  int64_t &ival )
+rai::ds::string_to_int( const char *str,  size_t sz,  int64_t &ival ) noexcept
 {
   /* max is 1844674407,3709551615, this table doesnn't overflow 32bits */
   static const uint32_t pow10[] = {     10000U * 10000U * 10,
@@ -512,7 +529,7 @@ rai::ds::string_to_int( const char *str,  size_t sz,  int64_t &ival )
 }
 
 int
-rai::ds::string_to_dbl( const char *str,  size_t sz,  double &fval )
+rai::ds::string_to_dbl( const char *str,  size_t sz,  double &fval ) noexcept
 {
   char buf[ 64 ], *endptr = NULL;
   /* null terminate string */
@@ -529,7 +546,7 @@ rai::ds::string_to_dbl( const char *str,  size_t sz,  double &fval )
 }
 
 int
-rai::ds::string_to_uint( const char *str,  size_t sz,  uint64_t &ival )
+rai::ds::string_to_uint( const char *str,  size_t sz,  uint64_t &ival ) noexcept
 {
   /* max is 1844674407,3709551615, this table doesnn't overflow 32bits */
   static const uint32_t pow10[] = {     10000U * 10000U * 10,
@@ -677,7 +694,7 @@ json_escape_string( const char *str,  size_t len,  char *out )
  * use to_almost_json_size() to determine the necessary length of the buffer
  */
 size_t
-RedisMsg::to_almost_json( char *buf,  bool be_weird ) const
+RedisMsg::to_almost_json( char *buf,  bool be_weird ) const noexcept
 {
   size_t elen;
   char   q;
@@ -733,7 +750,7 @@ RedisMsg::to_almost_json( char *buf,  bool be_weird ) const
 }
 
 size_t
-RedisMsg::to_almost_json_size( bool be_weird ) const
+RedisMsg::to_almost_json_size( bool be_weird ) const noexcept
 {
   size_t elen;
 
@@ -802,8 +819,8 @@ struct JsonInput {
       (int) (uint8_t) this->json[ this->offset ] : JSON_EOF;
   }
   void consume( size_t len ) { this->offset += len; }
-  bool match( char c1,  char c2,  char c3,  char c4,  char c5 );
-  int  eat_white( void );
+  bool match( char c1,  char c2,  char c3,  char c4,  char c5 ) noexcept;
+  int  eat_white( void ) noexcept;
 
   JsonInput( ScratchMem &w,  const char *js = NULL,  size_t off = 0,
              size_t len = 0 ) : wrk( w ) {
@@ -830,7 +847,8 @@ struct JsonInput {
 }
 
 RedisMsgStatus
-RedisMsg::unpack_json( const char *json,  size_t &len,  ScratchMem &wrk )
+RedisMsg::unpack_json( const char *json,  size_t &len,
+                       ScratchMem &wrk ) noexcept
 {
   JsonInput input( wrk, json, 0, len );
   RedisMsgStatus status = this->parse_json( input );
@@ -842,7 +860,7 @@ RedisMsg::unpack_json( const char *json,  size_t &len,  ScratchMem &wrk )
 }
 
 int
-JsonInput::eat_white( void )
+JsonInput::eat_white( void ) noexcept
 {
   int c = this->cur();
   if ( isspace( c ) ) {
@@ -858,7 +876,7 @@ JsonInput::eat_white( void )
 }
 
 bool
-JsonInput::match( char c1,  char c2,  char c3,  char c4,  char c5 )
+JsonInput::match( char c1,  char c2,  char c3,  char c4,  char c5 ) noexcept
 {
   if ( this->offset + 3 > this->length ||
        c1 != this->json[ this->offset ] ||
@@ -876,7 +894,7 @@ JsonInput::match( char c1,  char c2,  char c3,  char c4,  char c5 )
 }
 
 RedisMsgStatus
-RedisMsg::parse_json( JsonInput &input )
+RedisMsg::parse_json( JsonInput &input ) noexcept
 {
   int c = input.eat_white();
   switch ( c ) {
@@ -924,14 +942,14 @@ RedisMsg::parse_json( JsonInput &input )
 }
 
 RedisMsgStatus
-RedisMsg::parse_object( JsonInput & )
+RedisMsg::parse_object( JsonInput & ) noexcept
 {
   /* no way of representing objects */
   return REDIS_MSG_BAD_JSON;
 }
 
 RedisMsgStatus
-RedisMsg::parse_array( JsonInput &input )
+RedisMsg::parse_array( JsonInput &input ) noexcept
 {
   RedisMsgStatus status;
   size_t   sz  = 0;
@@ -1023,7 +1041,7 @@ hex_value( int c )
 }
 
 RedisMsgStatus
-RedisMsg::parse_string( JsonInput &input )
+RedisMsg::parse_string( JsonInput &input ) noexcept
 {
   size_t sz = 8;
   char * str,
@@ -1130,7 +1148,7 @@ RedisMsg::parse_string( JsonInput &input )
 }
 
 RedisMsgStatus
-RedisMsg::parse_number( JsonInput &input )
+RedisMsg::parse_number( JsonInput &input ) noexcept
 {
   uint64_t integral = 0;
   int      c;

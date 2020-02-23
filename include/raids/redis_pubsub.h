@@ -121,7 +121,7 @@ struct RedisPatternMap {
   size_t sub_count( void ) const {
     return this->tab.pop_count();
   }
-  void release( void );
+  void release( void ) noexcept;
   /* put in new sub
    * tab[ sub ] => {cnt} */
   RedisSubStatus put( uint32_t h,  const char *sub,  size_t len,
@@ -181,7 +181,7 @@ struct RedisContinueMsg {
   char             * msg;     /* the redis msg ascii buffer */
   size_t             msglen;  /* length of msg[] */
 
-  RedisContinueMsg( size_t mlen,  uint16_t kcnt );
+  RedisContinueMsg( size_t mlen,  uint16_t kcnt ) noexcept;
 };
 
 struct RedisContinue {
@@ -214,7 +214,7 @@ struct RedisContinueMap {
   size_t continue_count( void ) const {
     return this->tab.pop_count();
   }
-  void release( void );
+  void release( void ) noexcept;
   /* put in new sub
    * tab[ sub ] => {cnt} */
   RedisSubStatus put( uint32_t h,  const char *sub,  size_t len,

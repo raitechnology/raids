@@ -37,7 +37,7 @@ do_complete( LineCook *state,  const char * /*buf*/,  size_t off,
 }
 
 void
-Term::tty_init( void )
+Term::tty_init( void ) noexcept
 {
   static const char * prompt = /*ANSI_RED     "\\U00002764 " ANSI_NORMAL*/
                                ANSI_CYAN    "ds"    ANSI_NORMAL "@"
@@ -85,7 +85,7 @@ Term::tty_init( void )
 }
 
 bool
-Term::tty_prompt( void )
+Term::tty_prompt( void ) noexcept
 {
   size_t x = this->out_len;
   lc_tty_get_line( this->tty ); /* output a prompt */
@@ -93,7 +93,7 @@ Term::tty_prompt( void )
 }
 
 void
-Term::tty_release( void )
+Term::tty_release( void ) noexcept
 {
   if ( this->tty != NULL )
     lc_tty_release( this->tty );     /* free tty */
@@ -107,7 +107,7 @@ Term::tty_release( void )
 }
 
 void
-Term::show_help( void )
+Term::show_help( void ) noexcept
 {
   int  arg_num,   /* which arg is completed, 0 = first */
        arg_count, /* how many args */
@@ -156,7 +156,7 @@ Term::show_help( void )
 }
 
 void
-Term::tty_input( const void *buf,  size_t buflen )
+Term::tty_input( const void *buf,  size_t buflen ) noexcept
 {
   this->in_buf = buf;
   this->in_off = 0;
@@ -216,7 +216,7 @@ Term::tty_input( const void *buf,  size_t buflen )
 }
 
 int
-Term::tty_read( void *buf,  size_t buflen )
+Term::tty_read( void *buf,  size_t buflen ) noexcept
 {
   size_t len = this->in_len - this->in_off;
   if ( len > 0 ) {
@@ -230,7 +230,7 @@ Term::tty_read( void *buf,  size_t buflen )
 }
 
 int
-Term::tty_write( const void *buf, size_t buflen )
+Term::tty_write( const void *buf, size_t buflen ) noexcept
 {
   if ( buflen + this->out_len > this->out_buflen ) {
     void *p = ::realloc( this->out_buf, buflen + this->out_len );
@@ -243,4 +243,3 @@ Term::tty_write( const void *buf, size_t buflen )
   this->out_len += buflen;
   return buflen;
 }
-

@@ -110,7 +110,7 @@ init_server_info( uint64_t h1,  uint64_t h2,  uint16_t port )
 }
 
 bool
-EvNatsListen::accept( void )
+EvNatsListen::accept( void ) noexcept
 {
   static int on = 1;
   struct sockaddr_storage addr;
@@ -232,7 +232,7 @@ parse_args( char *start,  char *end,  char **args,  size_t *len )
 }
 
 void
-EvNatsService::process( void )
+EvNatsService::process( void ) noexcept
 {
   enum { DO_OK = 1, DO_ERR = 2, NEED_MORE = 4, FLOW_BACKPRESSURE = 8,
          HAS_PING = 16 };
@@ -414,7 +414,7 @@ break_loop:;
 }
 
 void
-EvNatsService::add_sub( void )
+EvNatsService::add_sub( void ) noexcept
 {
   NatsStr xsid( this->sid, this->sid_len );
   NatsStr xsubj( this->subject, this->subject_len );
@@ -436,7 +436,7 @@ EvNatsService::add_sub( void )
 }
 
 void
-EvNatsService::add_wild( NatsStr &xsubj )
+EvNatsService::add_wild( NatsStr &xsubj ) noexcept
 {
   NatsWildRec * rt;
   char          buf[ 1024 ];
@@ -474,7 +474,7 @@ EvNatsService::add_wild( NatsStr &xsubj )
 }
 
 void
-NatsSubMap::rem_wild( uint32_t h,  NatsStr &subj )
+NatsSubMap::rem_wild( uint32_t h,  NatsStr &subj ) noexcept
 {
   RouteLoc      loc;
   NatsWildRec * rt;
@@ -492,7 +492,7 @@ NatsSubMap::rem_wild( uint32_t h,  NatsStr &subj )
 }
 
 void
-EvNatsService::rem_wild( NatsStr &xsubj )
+EvNatsService::rem_wild( NatsStr &xsubj ) noexcept
 {
   char       buf[ 1024 ];
   PatternCvt cvt( buf, sizeof( buf ) );
@@ -510,7 +510,7 @@ EvNatsService::rem_wild( NatsStr &xsubj )
 }
 
 void
-EvNatsService::rem_sid( uint32_t max_msgs )
+EvNatsService::rem_sid( uint32_t max_msgs ) noexcept
 {
   NatsStr       xsid( this->sid, this->sid_len ),
                 xsubj;
@@ -563,7 +563,7 @@ EvNatsService::rem_sid( uint32_t max_msgs )
 }
 
 void
-EvNatsService::rem_all_sub( void )
+EvNatsService::rem_all_sub( void ) noexcept
 {
   NatsMapRec * rt;
   uint32_t     i;
@@ -584,7 +584,7 @@ EvNatsService::rem_all_sub( void )
 }
 
 bool
-EvNatsService::fwd_pub( void )
+EvNatsService::fwd_pub( void ) noexcept
 {
   NatsStr   xsub( this->subject, this->subject_len );
   EvPublish pub( this->subject, this->subject_len,
@@ -597,7 +597,7 @@ EvNatsService::fwd_pub( void )
 }
 
 bool
-EvNatsService::on_msg( EvPublish &pub )
+EvNatsService::on_msg( EvPublish &pub ) noexcept
 {
   bool flow_good = true;
 
@@ -662,7 +662,7 @@ EvNatsService::on_msg( EvPublish &pub )
 }
 
 bool
-EvNatsService::hash_to_sub( uint32_t h,  char *key,  size_t &keylen )
+EvNatsService::hash_to_sub( uint32_t h,  char *key,  size_t &keylen ) noexcept
 {
   NatsMapRec * rt;
   if ( (rt = this->map.sub_map.find_by_hash( h )) != NULL ) {
@@ -683,7 +683,8 @@ concat_hdr( char *p,  const char *q,  size_t sz )
 }
 
 bool
-EvNatsService::fwd_msg( EvPublish &pub,  const void *sid,  size_t sid_len )
+EvNatsService::fwd_msg( EvPublish &pub,  const void *sid,
+                        size_t sid_len ) noexcept
 {
   size_t msg_len_digits =
            ( pub.msg_len_digits > 0 ? pub.msg_len_digits :
@@ -761,7 +762,7 @@ static int connect_parse_int( const char *b ) {
 }
 
 void
-EvNatsService::parse_connect( const char *buf,  size_t sz )
+EvNatsService::parse_connect( const char *buf,  size_t sz ) noexcept
 {
   const char * start, * end, * p, * v, * comma;
   char * strbuf = this->buffer, **ptr = NULL;
@@ -846,7 +847,7 @@ finished:; /* update amount of buffer available */
 }
 
 void
-EvNatsService::release( void )
+EvNatsService::release( void ) noexcept
 {
   //printf( "nats release fd=%d\n", this->fd );
   this->rem_all_sub();
@@ -856,7 +857,7 @@ EvNatsService::release( void )
 }
 
 void
-EvNatsService::push_free_list( void )
+EvNatsService::push_free_list( void ) noexcept
 {
   if ( this->listfl == IN_ACTIVE_LIST )
     fprintf( stderr, "nats sock should not be in active list\n" );
@@ -867,12 +868,11 @@ EvNatsService::push_free_list( void )
 }
 
 void
-EvNatsService::pop_free_list( void )
+EvNatsService::pop_free_list( void ) noexcept
 {
   if ( this->listfl == IN_FREE_LIST ) {
     this->listfl = IN_NO_LIST;
     this->poll.free_nats.pop( this );
   }
 }
-
 

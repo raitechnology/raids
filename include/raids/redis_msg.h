@@ -23,8 +23,8 @@ enum RedisMsgStatus {
   REDIS_MSG_BAD_JSON
 };
 
-const char *redis_msg_status_string( RedisMsgStatus status );
-const char *redis_msg_status_description( RedisMsgStatus status );
+const char *redis_msg_status_string( RedisMsgStatus status ) noexcept;
+const char *redis_msg_status_description( RedisMsgStatus status ) noexcept;
 
 struct JsonInput;
 
@@ -142,15 +142,15 @@ struct RedisMsg {
     return false;
   }
   /* match argument by string, returns which arg matched, 0 if none
-   * the arg n indicates which arg to start, -2 means args [2 -> end]
-   *   int n = match( -2, "one", 3, "two", 3, NULL );
+   * the arg n indicates which arg
+   *   int n = match( 1, "one", 3, "two", 3, NULL );
    *   if ( n == 1 ) matched one
    *   if ( n == 2 ) matched two
    *   if ( n == 0 ) matched none */
   #define MARG( str ) str, sizeof( str ) - 1
   /* used as: match_arg( 1, MARG( "hello" ), MARG( "world" ), NULL ) */
-  int match_arg( int n,  const char *str,  size_t sz,  ... );
-
+  size_t match_arg( size_t n,  const char *str,  size_t sz,
+                    ... ) const noexcept;
   /* str length sz to int */
   static RedisMsgStatus str_to_int( const char *str,  size_t sz,
                                     int64_t &ival ) {
@@ -197,21 +197,23 @@ struct RedisMsg {
     this->len  = 0;
     this->ival = i;
   }
-  bool alloc_array( kv::ScratchMem &wrk,  int64_t sz );
-  bool string_array( kv::ScratchMem &wrk,  int64_t sz,  ... );
+  bool alloc_array( kv::ScratchMem &wrk,  int64_t sz ) noexcept;
+  bool string_array( kv::ScratchMem &wrk,  int64_t sz,  ... ) noexcept;
 
-  size_t pack_size( void ) const; /* pack() buf length */
-  size_t pack( void *buf ) const;
-  RedisMsgStatus pack2( void *buf,  size_t &len ) const; /* len is size */
-  RedisMsgStatus split( kv::ScratchMem &wrk ); /* splits cmd line into array */
+  size_t pack_size( void ) const noexcept; /* pack() buf length */
+  size_t pack( void *buf ) const noexcept;
+  RedisMsgStatus pack2( void *buf,  size_t &len ) const noexcept; /* len is sz*/
+  /* splits cmd line into array */
+  RedisMsgStatus split( kv::ScratchMem &wrk ) noexcept;
   /* try to decode one message, length of data decoded is returned in len */
-  RedisMsgStatus unpack( void *buf,  size_t &len,  kv::ScratchMem &wrk );
+  RedisMsgStatus unpack( void *buf,  size_t &len,
+                         kv::ScratchMem &wrk ) noexcept;
   /* copy message into scratch mem */
-  RedisMsg *dup( kv::ScratchMem &wrk );
-  RedisMsg *dup2( kv::ScratchMem &wrk,  RedisMsg &cpy );
+  RedisMsg *dup( kv::ScratchMem &wrk ) noexcept;
+  RedisMsg *dup2( kv::ScratchMem &wrk,  RedisMsg &cpy ) noexcept;
   /* similar to pack() and pack_size(), except in json format */
-  size_t to_almost_json_size( bool be_weird = true ) const;
-  size_t to_almost_json( char *buf,  bool be_weird = true ) const;
+  size_t to_almost_json_size( bool be_weird = true ) const noexcept;
+  size_t to_almost_json( char *buf,  bool be_weird = true ) const noexcept;
 
   /* decode json into msg */
   RedisMsgStatus unpack_json( const char *json,  kv::ScratchMem &wrk ) {
@@ -219,13 +221,13 @@ struct RedisMsg {
     return this->unpack_json( json, len, wrk );
   }
   RedisMsgStatus unpack_json( const char *json,  size_t &len,
-                              kv::ScratchMem &wrk );
+                              kv::ScratchMem &wrk ) noexcept;
   /* internal psuedo-json processing */
-  RedisMsgStatus parse_json( JsonInput &input );
-  RedisMsgStatus parse_object( JsonInput &input );
-  RedisMsgStatus parse_array( JsonInput &input );
-  RedisMsgStatus parse_string( JsonInput &input );
-  RedisMsgStatus parse_number( JsonInput &input );
+  RedisMsgStatus parse_json( JsonInput &input ) noexcept;
+  RedisMsgStatus parse_object( JsonInput &input ) noexcept;
+  RedisMsgStatus parse_array( JsonInput &input ) noexcept;
+  RedisMsgStatus parse_string( JsonInput &input ) noexcept;
+  RedisMsgStatus parse_number( JsonInput &input ) noexcept;
 };
 
 }

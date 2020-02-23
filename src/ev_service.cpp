@@ -17,14 +17,14 @@ using namespace rai;
 using namespace ds;
 using namespace kv;
 
-EvRedisListen::EvRedisListen( EvPoll &p )
+EvRedisListen::EvRedisListen( EvPoll &p ) noexcept
              : EvTcpListen( p, this->ops ),
                timer_id( (uint64_t) EV_REDIS_SOCK << 56 )
 {
 }
 
 bool
-EvRedisListen::accept( void )
+EvRedisListen::accept( void ) noexcept
 {
   static int on = 1;
   struct sockaddr_storage addr;
@@ -71,7 +71,7 @@ EvRedisListen::accept( void )
 }
 
 void
-EvRedisService::process( void )
+EvRedisService::process( void ) noexcept
 {
   if ( ! this->cont_list.is_empty() )
     this->drain_continuations( this );
@@ -129,7 +129,7 @@ EvRedisService::process( void )
         /* FALLTHRU */
       default:
         this->msgs_sent++;
-        this->send_err( status );
+        this->send_status( status, KEY_OK );
         break;
       case EXEC_DEBUG:
         this->debug();
@@ -143,7 +143,7 @@ EvRedisService::process( void )
 }
 
 bool
-EvRedisService::on_msg( EvPublish &pub )
+EvRedisService::on_msg( EvPublish &pub ) noexcept
 {
   RedisContinueMsg * cm = NULL;
   bool flow_good = true;
@@ -161,7 +161,7 @@ EvRedisService::on_msg( EvPublish &pub )
 }
 
 bool
-EvRedisService::timer_expire( uint64_t tid,  uint64_t event_id )
+EvRedisService::timer_expire( uint64_t tid,  uint64_t event_id ) noexcept
 {
   if ( tid == this->timer_id ) {
     RedisContinueMsg *cm = NULL;
@@ -174,13 +174,13 @@ EvRedisService::timer_expire( uint64_t tid,  uint64_t event_id )
 }
 
 bool
-EvRedisService::hash_to_sub( uint32_t h,  char *key,  size_t &keylen )
+EvRedisService::hash_to_sub( uint32_t h,  char *key,  size_t &keylen ) noexcept
 {
   return this->RedisExec::do_hash_to_sub( h, key, keylen );
 }
 
 void
-EvRedisService::release( void )
+EvRedisService::release( void ) noexcept
 {
   this->RedisExec::release();
   this->EvConnection::release_buffers();
@@ -188,7 +188,7 @@ EvRedisService::release( void )
 }
 
 void
-EvRedisService::push_free_list( void )
+EvRedisService::push_free_list( void ) noexcept
 {
   if ( this->listfl == IN_ACTIVE_LIST )
     fprintf( stderr, "redis sock should not be in active list\n" );
@@ -199,7 +199,7 @@ EvRedisService::push_free_list( void )
 }
 
 void
-EvRedisService::pop_free_list( void )
+EvRedisService::pop_free_list( void ) noexcept
 {
   if ( this->listfl == IN_FREE_LIST ) {
     this->listfl = IN_NO_LIST;
@@ -208,7 +208,7 @@ EvRedisService::pop_free_list( void )
 }
 
 bool
-EvRedisServiceOps::match( PeerData &pd,  PeerMatchArgs &ka )
+EvRedisServiceOps::match( PeerData &pd,  PeerMatchArgs &ka ) noexcept
 {
   EvRedisService & svc = (EvRedisService &) pd;
   if ( svc.sub_tab.sub_count() + svc.pat_tab.sub_count() != 0 ) {
@@ -223,7 +223,8 @@ EvRedisServiceOps::match( PeerData &pd,  PeerMatchArgs &ka )
 }
 
 int
-EvRedisServiceOps::client_list( PeerData &pd,  char *buf,  size_t buflen )
+EvRedisServiceOps::client_list( PeerData &pd,  char *buf,
+                                size_t buflen ) noexcept
 {
   int i = this->EvConnectionOps::client_list( pd, buf, buflen );
   if ( i >= 0 )
@@ -232,7 +233,7 @@ EvRedisServiceOps::client_list( PeerData &pd,  char *buf,  size_t buflen )
 }
 
 void
-EvRedisService::debug( void )
+EvRedisService::debug( void ) noexcept
 {
   struct sockaddr_storage addr;
   socklen_t addrlen;

@@ -9,12 +9,12 @@ namespace rai {
 namespace ds {
 
 struct EvCallback {
-  virtual bool on_data( char *buf,  size_t &buflen );
+  virtual bool on_data( char *buf,  size_t &buflen ) noexcept;
 #if 0
   virtual void on_msg( RedisMsg &msg );
   virtual void on_err( char *buf,  size_t buflen,  RedisMsgStatus status );
 #endif
-  virtual void on_close( void );
+  virtual void on_close( void ) noexcept;
 };
 
 struct EvClient {
@@ -22,7 +22,7 @@ struct EvClient {
 
   EvClient( EvCallback &callback ) : cb( callback ) {}
   /*virtual void send_msg( RedisMsg &msg );*/
-  virtual void send_data( char *buf,  size_t size );
+  virtual void send_data( char *buf,  size_t size ) noexcept;
   void exec_key_prefetch( EvKeyCtx & ) {}
   int exec_key_continue( EvKeyCtx & ) { return 0; }
   bool timer_expire( uint64_t, uint64_t ) { return false; }
@@ -36,9 +36,9 @@ struct EvShm {
 
   EvShm() : map( 0 ), ctx_id( kv::MAX_CTX_ID ) {}
   ~EvShm();
-  int open( const char *mn );
-  void print( void );
-  void close( void );
+  int open( const char *mn ) noexcept;
+  void print( void ) noexcept;
+  void close( void ) noexcept;
 };
 
 struct RedisExec;
@@ -52,18 +52,18 @@ struct EvShmClient : public EvShm, public EvClient, public StreamBuf,
     : EvClient( callback ), EvSocket( p, EV_SHM_SOCK, this->ops ), exec( 0 ) {
     this->pfd[ 0 ] = this->pfd[ 1 ] = -1;
   }
-  ~EvShmClient();
+  ~EvShmClient() noexcept;
 
-  int init_exec( void );
+  int init_exec( void ) noexcept;
   /*virtual void send_msg( RedisMsg &msg );*/
   void process( void ) {}
   void read( void ) {}
   void write( void ) {}
-  virtual void send_data( char *buf,  size_t size );
-  bool on_msg( EvPublish &pub );
-  bool hash_to_sub( uint32_t h,  char *key,  size_t &keylen );
-  void stream_to_msg( void );
-  void process_shutdown( void );
+  virtual void send_data( char *buf,  size_t size ) noexcept;
+  bool on_msg( EvPublish &pub ) noexcept;
+  bool hash_to_sub( uint32_t h,  char *key,  size_t &keylen ) noexcept;
+  void stream_to_msg( void ) noexcept;
+  void process_shutdown( void ) noexcept;
   void process_close( void ) {}
   void release( void ) {
     this->StreamBuf::reset();
@@ -74,20 +74,20 @@ struct EvShmSvc : public EvShm, public EvSocket {
   void * operator new( size_t, void *ptr ) { return ptr; }
   void operator delete( void *ptr ) { ::free( ptr ); }
   EvShmSvc( EvPoll &p, PeerOps &o ) : EvSocket( p, EV_SHM_SVC, o ) {}
-  virtual ~EvShmSvc();
+  virtual ~EvShmSvc() noexcept;
 
-  int init_poll( void );
-  virtual bool timer_expire( uint64_t tid,  uint64_t eid );
-  virtual void read( void );              /* return true if recv more data */
-  virtual void write( void );             /* return amount sent */
-  virtual bool on_msg( EvPublish &pub );  /* fwd pub message, true if fwded */
-  virtual bool hash_to_sub( uint32_t h,  char *key,  size_t &keylen );
+  int init_poll( void ) noexcept;
+  virtual bool timer_expire( uint64_t tid,  uint64_t eid ) noexcept;
+  virtual void read( void ) noexcept;     /* return true if recv more data */
+  virtual void write( void ) noexcept;    /* return amount sent */
+  virtual bool on_msg( EvPublish &pub ) noexcept;  /* fwd pub, true if fwded */
+  virtual bool hash_to_sub( uint32_t h,  char *key,  size_t &keylen ) noexcept;
   void exec_key_prefetch( EvKeyCtx & ) {}
   int exec_key_continue( EvKeyCtx & ) { return 0; }
-  virtual void process( void );           /* process protocol */
-  virtual void process_shutdown( void );  /* start shutdown */
-  virtual void process_close( void );     /* finish close */
-  virtual void release( void );           /* release allocations */
+  virtual void process( void ) noexcept;           /* process protocol */
+  virtual void process_shutdown( void ) noexcept;  /* start shutdown */
+  virtual void process_close( void ) noexcept;     /* finish close */
+  virtual void release( void ) noexcept;           /* release allocations */
 };
 
 struct EvNetClient : public EvClient, public EvConnection {
@@ -99,9 +99,9 @@ struct EvNetClient : public EvClient, public EvConnection {
   EvNetClient( EvPoll &p, EvCallback &callback,  EvSockType t = EV_CLIENT_SOCK )
     : EvClient( callback ), EvConnection( p, t, this->ops ) {}
   /*virtual void send_msg( RedisMsg &msg );*/
-  virtual void send_data( char *buf,  size_t size );
-  void process( void );
-  void process_close( void );
+  virtual void send_data( char *buf,  size_t size ) noexcept;
+  void process( void ) noexcept;
+  void process_close( void ) noexcept;
   void release( void ) {
     this->EvConnection::release_buffers();
   }
@@ -116,17 +116,17 @@ struct EvTerminal : public EvNetClient {
 
   EvTerminal( EvPoll &p,  EvCallback &callback )
     : EvNetClient( p, callback, EV_TERMINAL ), line( 0 ), line_len( 0 ) {}
-  int start( void );
-  void flush_out( void );
-  void process( void );
-  void finish( void );
-  void printf( const char *fmt,  ... )
+  int start( void ) noexcept;
+  void flush_out( void ) noexcept;
+  void process( void ) noexcept;
+  void finish( void ) noexcept;
+  void printf( const char *fmt,  ... ) noexcept
 #if defined( __GNUC__ )
       __attribute__((format(printf,2,3)));
 #else
       ;
 #endif
-  void process_line( const char *line );
+  void process_line( const char *line ) noexcept;
 };
 
 struct EvMemcachedMerge;
@@ -141,11 +141,11 @@ struct EvUdpClient : public EvClient, public EvUdp {
   EvUdpClient( EvPoll &p, EvCallback &callback,
                EvSockType t = EV_CLIENTUDP_SOCK )
     : EvClient( callback ), EvUdp( p, t, this->ops ), sav( 0 ), req_id( 0 ) {}
-  void process( void );
-  void process_close( void );
-  void release( void );
-  virtual void send_data( char *buf,  size_t size );
-  void write( void );
+  void process( void ) noexcept;
+  void process_close( void ) noexcept;
+  void release( void ) noexcept;
+  virtual void send_data( char *buf,  size_t size ) noexcept;
+  void write( void ) noexcept;
 };
 
 }

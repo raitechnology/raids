@@ -93,7 +93,7 @@ struct PingTest : public EvShmSvc, public KvSubNotifyList {
   }
   /* recv an incoming message from a subscription above, sent from a peer or
    * myself if subscribing to the same subject as publishing */
-  virtual bool on_msg( EvPublish &p ) {
+  virtual bool on_msg( EvPublish &p ) noexcept {
     const char * out;
     size_t       out_len;
     uint32_t     out_hash;
@@ -132,7 +132,7 @@ struct PingTest : public EvShmSvc, public KvSubNotifyList {
     }
     return true;
   }
-  virtual void on_sub( KvSubMsg &submsg ) {
+  virtual void on_sub( KvSubMsg &submsg ) noexcept {
     printf( "on_sub ctx_%u %s %.*s", submsg.src, submsg.msg_type_string(),
             (int) submsg.sublen, submsg.subject() );
     if ( submsg.replylen != 0 )
@@ -140,7 +140,7 @@ struct PingTest : public EvShmSvc, public KvSubNotifyList {
     printf( "\n" );
   }
   /* shutdown before close */
-  virtual void process_shutdown( void ) {
+  virtual void process_shutdown( void ) noexcept {
     if ( this->h != 0 ) {
       this->unsubscribe();
       this->h = 0;
@@ -163,7 +163,7 @@ struct PingTest : public EvShmSvc, public KvSubNotifyList {
     }
   }
   /* a timer expires every ns_ival, send messages */
-  virtual bool timer_expire( uint64_t, uint64_t ) {
+  virtual bool timer_expire( uint64_t, uint64_t ) noexcept {
     uint64_t now = this->poll.timer_queue->now;
     if ( this->last_time == 0 ) {
       this->last_time = now;

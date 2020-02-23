@@ -9,7 +9,7 @@ using namespace rai;
 using namespace ds;
 
 void
-RedisExec::discard_multi( void )
+RedisExec::discard_multi( void ) noexcept
 {
   if ( this->multi != NULL ) {
     this->multi->wrk.release_all();
@@ -19,7 +19,7 @@ RedisExec::discard_multi( void )
 }
 
 ExecStatus
-RedisExec::exec_discard( void )
+RedisExec::exec_discard( void ) noexcept
 {
   if ( this->multi == NULL )
     return ERR_BAD_DISCARD;
@@ -28,7 +28,7 @@ RedisExec::exec_discard( void )
 }
 
 ExecStatus
-RedisExec::exec_exec( void )
+RedisExec::exec_exec( void ) noexcept
 {
   RedisMultiExec * mul;
   ExecStatus       status;
@@ -75,7 +75,7 @@ RedisExec::exec_exec( void )
         status = ERR_ALLOC_FAIL;
         /* fall through */
       default:
-        this->send_err( status );
+        this->send_status( status, KEY_OK );
         break;
       case EXEC_QUIT:
       case EXEC_DEBUG:
@@ -98,7 +98,7 @@ static inline void *aligned_malloc( size_t sz ) {
 }
 
 bool
-RedisExec::make_multi( void )
+RedisExec::make_multi( void ) noexcept
 {
   void * p = aligned_malloc( sizeof( RedisMultiExec ) );
   if ( p == NULL )
@@ -108,7 +108,7 @@ RedisExec::make_multi( void )
 }
 
 ExecStatus
-RedisExec::exec_multi( void )
+RedisExec::exec_multi( void ) noexcept
 {
   if ( this->multi != NULL ) {
     if ( this->multi->multi_start )
@@ -123,7 +123,7 @@ RedisExec::exec_multi( void )
 }
 
 bool
-RedisMultiExec::append_msg( RedisMsg &msg )
+RedisMultiExec::append_msg( RedisMsg &msg ) noexcept
 {
   void *p = this->wrk.alloc( sizeof( RedisMsgList ) );
   if ( p == NULL )
@@ -139,7 +139,7 @@ RedisMultiExec::append_msg( RedisMsg &msg )
 
 bool
 RedisMultiExec::append_watch( uint64_t h1,  uint64_t h2,  uint64_t sn,
-                              uint64_t pos )
+                              uint64_t pos ) noexcept
 {
   void *p = this->wrk.alloc( sizeof( RedisWatchList ) );
   if ( p == NULL )
@@ -151,7 +151,7 @@ RedisMultiExec::append_watch( uint64_t h1,  uint64_t h2,  uint64_t sn,
 }
 
 ExecStatus
-RedisExec::exec_unwatch( void )
+RedisExec::exec_unwatch( void ) noexcept
 {
   if ( this->multi != NULL ) {
     this->multi->watch_list.init();
@@ -163,7 +163,7 @@ RedisExec::exec_unwatch( void )
 }
 
 ExecStatus
-RedisExec::exec_watch( EvKeyCtx &ctx )
+RedisExec::exec_watch( EvKeyCtx &ctx ) noexcept
 {
   uint64_t sn = 0, k1, k2, pos;
 
@@ -187,4 +187,3 @@ RedisExec::exec_watch( EvKeyCtx &ctx )
     return ERR_ALLOC_FAIL;
   return EXEC_SEND_OK;
 }
-

@@ -70,7 +70,7 @@ struct SubTest : public EvShmSvc {
   }
   /* recv an incoming message from a subscription above, sent from a peer or
    * myself if subscribing to the same subject as publishing */
-  virtual bool on_msg( EvPublish &p ) {
+  virtual bool on_msg( EvPublish &p ) noexcept {
     MDMsg * m = MDMsg::unpack( (void *) p.msg, 0, p.msg_len, p.msg_enc,
                                this->dict, &this->mem );
     if ( m != NULL ) {
@@ -85,7 +85,7 @@ struct SubTest : public EvShmSvc {
     return true;
   }
   /* shutdown before close */
-  virtual void process_shutdown( void ) {
+  virtual void process_shutdown( void ) noexcept {
     if ( this->h != 0 ) {
       this->unsubscribe();
       this->h = 0;
