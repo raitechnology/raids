@@ -425,7 +425,7 @@ struct MemcachedExec {
   void * operator new( size_t, void *ptr ) { return ptr; }
   void operator delete( void *ptr ) { ::free( ptr ); }
 
-  uint64_t seed,   seed2;     /* kv map hash seeds, different for each db */
+  kv::HashSeed     hs;        /* kv map hash seeds, different for each db */
   kv::KeyCtx       kctx;      /* key context used for every key in command */
   kv::WorkAllocT< 1024 > wrk; /* kv work buffer, reset before each key lookup */
   StreamBuf      & strm;      /* output buffer, result of command execution */
@@ -436,12 +436,11 @@ struct MemcachedExec {
                    key_done;  /* number of keys processed */
   MemcachedStats & stat;
 
-  MemcachedExec( kv::HashTab &map,  uint32_t ctx_id,  StreamBuf &s,
-                 MemcachedStats &st ) :
-      kctx( map, ctx_id, NULL ), strm( s ), msg( 0 ),
+  MemcachedExec( kv::HashTab &map,  uint32_t,  uint32_t dbx_id,
+                 StreamBuf &s,  MemcachedStats &st ) :
+      kctx( map, dbx_id, NULL ), strm( s ), msg( 0 ),
       key( 0 ), keys( 0 ), key_cnt( 0 ), key_done( 0 ), stat( st ) {
-    this->kctx.ht.hdr.get_hash_seed( this->kctx.db_num, this->seed,
-                                     this->seed2 );
+    this->kctx.ht.hdr.get_hash_seed( this->kctx.db_num, this->hs );
     this->kctx.set( kv::KEYCTX_NO_COPY_ON_READ );
   }
   MemcachedStatus unpack( void *buf,  size_t &buflen ) noexcept;

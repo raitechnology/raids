@@ -198,6 +198,7 @@ struct EvPoll : public RoutePublish {
   uint64_t             prio_tick,       /* priority queue ticker */
                        next_id;         /* unique id for connection */
   uint32_t             ctx_id,          /* this thread context */
+                       dbx_id,          /* the db context */
                        fdcnt;           /* num fds in poll set */
   int                  efd,             /* epoll fd */
                        nfds,            /* max epoll() fds, array sz this->ev */
@@ -262,8 +263,9 @@ struct EvPoll : public RoutePublish {
 
   EvPoll()
     : sock( 0 ), ev( 0 ), map( 0 ), prefetch_queue( 0 ), pubsub( 0 ),
-      timer_queue( 0 ), prio_tick( 0 ), next_id( 0 ), ctx_id( 0 ), fdcnt( 0 ),
-      efd( -1 ), nfds( -1 ), maxfd( -1 ), quit( 0 ), prefetch_pending( 0 ),
+      timer_queue( 0 ), prio_tick( 0 ), next_id( 0 ), ctx_id( kv::MAX_CTX_ID ),
+      dbx_id( kv::MAX_STAT_ID ), fdcnt( 0 ), efd( -1 ), nfds( -1 ),
+      maxfd( -1 ), quit( 0 ), prefetch_pending( 0 ),
       sub_route( *this ) /*, single_thread( false )*/ {
     ::memset( this->prefetch_cnt, 0, sizeof( this->prefetch_cnt ) );
   }

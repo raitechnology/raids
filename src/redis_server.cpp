@@ -678,7 +678,7 @@ RedisExec::exec_info( void ) noexcept
   }
 
   if ( ( info & INFO_SERVER ) != 0 ) {
-    print_map_geom( &map, this->kctx.thr_ctx.ctx_id, b, sz );
+    print_map_geom( &map, this->kctx.ctx_id, b, sz );
     size_t x = ::strlen( b );
     b   = &b[ x ];
     sz -= x;

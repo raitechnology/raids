@@ -358,7 +358,8 @@ RedisExec::do_smultiscan( EvKeyCtx &ctx,  int flags,  ScanArgs *sa ) noexcept
       ival = count;
     }
     else { /* generate random set elements */
-      rand::xoroshiro128plus &r = this->kctx.thr_ctx.rng;
+      uint32_t ctx_id = this->kctx.ctx_id;
+      rand::xoroshiro128plus &r = this->kctx.ht.ctx[ ctx_id ].rng;
       if ( ival == 1 ) {
         i = r.next() & set.x->index_mask;
         while ( i >= count )

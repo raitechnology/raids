@@ -153,7 +153,8 @@ EvNatsListen::accept( void ) noexcept
       else if ( myaddr.ss_family == AF_INET6 )
         port = ntohs( ((sockaddr_in6 *) &myaddr)->sin6_port );
     }
-    this->poll.map->hdr.get_hash_seed( KV_DB_COUNT-1, h1, h2 );
+    h1 = this->poll.map->hdr.create_stamp;
+    h2 = this->poll.map->hdr.seed[ 0 ].hash2;
     init_server_info( h1, h2, port );
   }
   c->PeerData::init_peer( sock, (struct sockaddr *) &addr, "nats" );

@@ -135,16 +135,21 @@ KvMsg::print( void ) noexcept
 }
 
 KvPubSub *
-KvPubSub::create( EvPoll &poll ) noexcept
+KvPubSub::create( EvPoll &poll,  uint8_t db_num ) noexcept
 {
   KvPubSub * ps;
-  int        fd;
   void     * p,
            * ibptr,
            * mcptr;
   size_t     i;
   char       ibname[ 12 ];
   sigset_t   mask;
+  int        fd;
+  uint32_t   dbx_id;
+
+  dbx_id = poll.map->attach_db( poll.ctx_id, db_num );
+  if ( dbx_id == MAX_STAT_ID )
+    return NULL;
 
   sigemptyset( &mask );
   sigaddset( &mask, kv_msg_signal );
@@ -164,7 +169,7 @@ KvPubSub::create( EvPoll &poll ) noexcept
     return NULL;
   mcptr = (void *) &((uint8_t *) p)[ sizeof( KvPubSub ) ];
   ibptr = (void *) &((uint8_t *) mcptr)[ sizeof( KvMsgQueue ) + 32 ];
-  ps = new ( p ) KvPubSub( poll, fd, mcptr, sys_mc, mc_name_size );
+  ps = new ( p ) KvPubSub( poll, fd, mcptr, sys_mc, mc_name_size, dbx_id );
   /* for each ctx_id create queue */
   for ( i = 0; i < MAX_CTX_ID; i++ ) {
     make_ibx( ibname, i );
@@ -199,17 +204,17 @@ KvPubSub::register_mcast( void ) noexcept
       if ( is_new )
         cr.zero();
       else {
-        for ( uint32_t ctx_id = 1; ctx_id < MAX_CTX_ID; ctx_id++ ) {
-          if ( this->ctx_id == ctx_id )
+        for ( uint32_t id = 1; id < MAX_CTX_ID; id++ ) {
+          if ( this->ctx_id == id )
             continue;
           /* check that this route is valid by pinging the pid */
-          if ( cr.is_set( ctx_id ) ) {
-            uint32_t pid = this->kctx.ht.ctx[ ctx_id ].ctx_pid;
+          if ( cr.is_set( id ) ) {
+            uint32_t pid = this->kctx.ht.ctx[ id ].ctx_pid;
             if ( pid == 0 ||
-                 this->kctx.ht.ctx[ ctx_id ].ctx_id == KV_NO_CTX_ID ||
+                 this->kctx.ht.ctx[ id ].ctx_id == KV_NO_CTX_ID ||
                  ::kill( pid, 0 ) != 0 ) {
-              this->dead_cr.set( ctx_id );
-              fprintf( stderr, "ctx %u pid %u is dead\n", ctx_id, pid );
+              this->dead_cr.set( id );
+              fprintf( stderr, "ctx %u pid %u is dead\n", id, pid );
             }
           }
         }
@@ -317,18 +322,14 @@ KvPubSub::subscribe_mcast( const char *sub,  size_t len,  bool activate,
   KeyStatus     status;
   bool          res = false;
 
-  if ( len + 1 > MAX_KEY_BUF_SIZE ) {
+  if ( kbuf.copy( sub, len + 1 ) != len + 1 ) {
     size_t sz = sizeof( KeyFragment ) + len;
     kb = (KeyFragment *) this->wrkq.alloc( sz );
+    ::memcpy( kb->u.buf, sub, len );
   }
-  kb->keylen = len + 1;
-  ::memcpy( kb->u.buf, sub, len );
   kb->u.buf[ len ] = '\0';
-  hash1 = this->seed1;
-  hash2 = this->seed2;
-  kb->hash( hash1, hash2 );
-  this->kctx.set_key( *kb );
-  this->kctx.set_hash( hash1, hash2 );
+  this->hs.hash( *kb, hash1, hash2 );
+  this->rt_kctx.set_hash( hash1, hash2 );
   /* check if already set by using find(), lower cost when route is expected
    * to be set */
   if ( use_find ) {
@@ -582,7 +583,7 @@ KvPubSub::process( void ) noexcept
   CubeRoute128  cr;
   HashTab     * map = this->poll.map;
   KeyFragment * kp;
-  KeyCtx        scan_kctx( *map, this->poll.ctx_id, NULL );
+  KeyCtx        scan_kctx( *map, this->dbx_id, NULL );
   uint64_t      ht_size = map->hdr.ht_size, sz;
   void        * val;
   KeyStatus     status;
@@ -904,18 +905,13 @@ KvPubSub::get_sub_mcast( const char *sub,  size_t len,
                 hash2;
   KeyStatus     status;
 
-  if ( len + 1 > MAX_KEY_BUF_SIZE ) {
+  if ( kbuf.copy( sub, len + 1 ) != len + 1 ) {
     size_t sz = sizeof( KeyFragment ) + len;
     kb = (KeyFragment *) this->wrkq.alloc( sz );
+    ::memcpy( kb->u.buf, sub, len );
   }
-  kb->keylen = len + 1;
-  ::memcpy( kb->u.buf, sub, len );
   kb->u.buf[ len ] = '\0';
-  hash1 = this->seed1;
-  hash2 = this->seed2;
-  kb->hash( hash1, hash2 );
-
-  this->rt_kctx.set_key( *kb );
+  this->hs.hash( *kb, hash1, hash2 );
   this->rt_kctx.set_hash( hash1, hash2 );
   /* check if already set by using find(), lower cost when route is expected
    * to be set */

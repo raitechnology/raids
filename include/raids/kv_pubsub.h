@@ -27,8 +27,9 @@ struct KvMsgQueue {
     : src_session_id( 0 ), ibx_seqno( 0 ), src_seqno( 0 ) {
     this->kbuf.keylen = namelen;
     ::memcpy( this->kbuf.u.buf, name, namelen );
-    kctx.ht.hdr.get_hash_seed( kctx.db_num, this->hash1, this->hash2 );
-    this->kbuf.hash( this->hash1, this->hash2 ); 
+    kv::HashSeed hs;
+    kctx.ht.hdr.get_hash_seed( kctx.db_num, hs );
+    hs.hash( this->kbuf, this->hash1, this->hash2 );
   } 
 };
 
@@ -197,10 +198,10 @@ enum KvPubSubFlag {
 struct KvPubSub : public EvSocket {
   uint16_t     ctx_id,                 /* my endpoint */
                flags;                  /* KvPubSubFlags above */
-  uint32_t     pad;
-  uint64_t     seed1, seed2,           /* seeds of the shm keys */
-               session_id,             /* session id of the my endpoint */
+  uint32_t     dbx_id;                 /* db xref */
+  uint64_t     session_id,             /* session id of the my endpoint */
                next_seqno;             /* next seqno of msg sent */
+  kv::HashSeed hs;                     /* seed for db */
 
   KvSubTab     sub_tab;                /* subject route table to shm */
   kv::KeyCtx   kctx,                   /* a kv context for send/recv msgs */
@@ -218,23 +219,20 @@ struct KvPubSub : public EvSocket {
   CubeRoute128             dead_cr;
 
   void * operator new( size_t, void *ptr ) { return ptr; }
-  KvPubSub( EvPoll &p,  int sock,  void *mcptr,  const char *mc,  size_t mclen )
-    : EvSocket( p, EV_KV_PUBSUB, this->ops ),
-      ctx_id( p.ctx_id ), flags( KV_DO_NOTIFY ), seed1( 0 ), seed2( 0 ),
-      session_id( 0 ), next_seqno( 0 ),
-      kctx( *p.map, p.map->ctx[ p.ctx_id ], p.map->ctx[ p.ctx_id ].stat2,
-            p.map->ctx[ p.ctx_id ].db_num2, NULL ),
-      rt_kctx( *p.map, p.map->ctx[ p.ctx_id ], p.map->ctx[ p.ctx_id ].stat2,
-               p.map->ctx[ p.ctx_id ].db_num2, NULL ),
+  KvPubSub( EvPoll &p,  int sock,  void *mcptr,  const char *mc,  size_t mclen,
+            uint32_t xid ) : EvSocket( p, EV_KV_PUBSUB, this->ops ),
+      ctx_id( p.ctx_id ), flags( KV_DO_NOTIFY ), 
+      dbx_id( xid ), session_id( 0 ), next_seqno( 0 ),
+      kctx( *p.map, xid ),
+      rt_kctx( *p.map, xid ),
       mcast( *(new ( mcptr ) KvMsgQueue( this->kctx, mc, mclen )) ) {
     ::memset( this->inbox, 0, sizeof( this->inbox ) );
     this->PeerData::init_peer( sock, NULL, "kv" );
     this->session_id = p.map->ctx[ p.ctx_id ].rng.next();
-    this->kctx.ht.hdr.get_hash_seed( this->kctx.db_num, this->seed1,
-                                     this->seed2 );
+    this->kctx.ht.hdr.get_hash_seed( this->kctx.db_num, this->hs );
   }
 
-  static KvPubSub *create( EvPoll &p ) noexcept;
+  static KvPubSub *create( EvPoll &p,  uint8_t db_num ) noexcept;
   bool register_mcast( void ) noexcept;
   bool clear_mcast_dead_routes( void ) noexcept;
   bool unregister_mcast( void ) noexcept;

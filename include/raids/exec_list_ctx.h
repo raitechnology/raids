@@ -89,7 +89,7 @@ struct ExecListCtx {
                   datalen = this->x->resize_size( count, ndata );
 
     this->retry += 16; /* in case of miscalculation */
-    msg = new ( tmpm ) kv::MsgCtx( this->kctx.ht, this->kctx.thr_ctx );
+    msg = new ( tmpm ) kv::MsgCtx( this->kctx );
     msg->set_key( this->ctx.kbuf );
     msg->set_hash( this->ctx.hash1, this->ctx.hash2 );
     this->ctx.kstatus = msg->alloc_segment( &data, datalen, 8 );

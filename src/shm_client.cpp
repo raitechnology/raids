@@ -14,13 +14,16 @@ using namespace ds;
 using namespace kv;
 
 int
-EvShm::open( const char *mn ) noexcept
+EvShm::open( const char *mn,  uint8_t db_num ) noexcept
 {
   HashTabGeom geom;
   this->map = HashTab::attach_map( mn, 0, geom );
   if ( this->map != NULL ) {
-    this->ctx_id = map->attach_ctx( ::getpid(), 0, 254 );
-    return 0;
+    this->ctx_id = map->attach_ctx( ::getpid() );
+    if ( this->ctx_id != MAX_CTX_ID ) {
+      this->dbx_id = map->attach_db( this->ctx_id, db_num );
+      return 0;
+    }
   }
   return -1;
 }
@@ -69,8 +72,8 @@ EvShmClient::init_exec( void ) noexcept
   if ( ::pipe2( this->pfd, O_NONBLOCK ) < 0 )
     return -1;
   this->PeerData::init_peer( this->pfd[ 0 ], NULL, "shm" );
-  this->exec = new ( e ) RedisExec( *this->map, this->ctx_id, *this,
-                                    this->poll.sub_route, *this );
+  this->exec = new ( e ) RedisExec( *this->map, this->ctx_id, this->dbx_id,
+                                    *this, this->poll.sub_route, *this );
   this->exec->sub_id = this->fd;
   this->poll.add_sock( this );
   return 0;

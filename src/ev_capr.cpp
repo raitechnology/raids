@@ -145,10 +145,10 @@ EvCaprListen::accept( void ) noexcept
   ::fcntl( sock, F_SETFL, O_NONBLOCK | ::fcntl( sock, F_GETFL ) );
 
   if ( this->sess == NULL ) {
-    uint64_t h1, h2;
+    uint64_t h1;
     const char * user = ::getenv( "USER" );
     char host[ 256 ];
-    this->poll.map->hdr.get_hash_seed( KV_DB_COUNT-1, h1, h2 );
+    h1 = this->poll.map->hdr.create_stamp;
     ::gethostname( host, sizeof( host ) );
     this->sess = CaprSession::create( "localhost", user, host, "ds", h1 );
   }

@@ -131,7 +131,7 @@ struct RedisExec {
   void * operator new( size_t, void *ptr ) { return ptr; }
   void operator delete( void *ptr ) { ::free( ptr ); }
 
-  uint64_t seed,   seed2;     /* kv map hash seeds, different for each db */
+  kv::HashSeed     hs;        /* kv map hash seeds, different for each db */
   kv::KeyCtx       kctx;      /* key context used for every key in command */
   kv::WorkAllocT< 1024 > wrk; /* kv work buffer, reset before each key lookup */
   kv::DLinkList<RedisContinueMsg> cont_list, /* continuations ready to run */
@@ -166,16 +166,15 @@ struct RedisExec {
                    next_event_id; /* next event id for timers */
   uint64_t         timer_id;  /* timer id of this service */
 
-  RedisExec( kv::HashTab &map,  uint32_t ctx_id,  StreamBuf &s,
-             RouteDB &rdb,  PeerData &pd ) :
-      kctx( map, ctx_id, NULL ), strm( s ), strm_start( s.pending() ),
+  RedisExec( kv::HashTab &map,  uint32_t ,  uint32_t dbx_id,
+             StreamBuf &s,  RouteDB &rdb,  PeerData &pd ) :
+      kctx( map, dbx_id, NULL ), strm( s ), strm_start( s.pending() ),
       key( 0 ), keys( 0 ), key_cnt( 0 ), key_done( 0 ), multi( 0 ),
       cmd( NO_CMD ), catg( NO_CATG ), blk_state( 0 ), cmd_state( 0 ),
       key_flags( 0 ),
       sub_route( rdb ), peer( pd ), sub_id( ~0U ), next_event_id( 0 ),
       timer_id( 0 ) {
-    this->kctx.ht.hdr.get_hash_seed( this->kctx.db_num, this->seed,
-                                     this->seed2 );
+    this->kctx.ht.hdr.get_hash_seed( this->kctx.db_num, this->hs );
     this->kctx.set( kv::KEYCTX_NO_COPY_ON_READ );
   }
   /* stop a continuation and send null */

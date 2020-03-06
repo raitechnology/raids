@@ -1118,8 +1118,7 @@ MemcachedExec::exec_key_setup( EvSocket *own,  EvPrefetchQueue *q,
   void *p = this->strm.alloc_temp( EvKeyCtx::size( keylen ) );
   if ( p == NULL )
     return MEMCACHED_ALLOC_FAIL;
-  ctx = new ( p ) EvKeyCtx( this->kctx.ht, own, key, keylen, n,
-                            this->seed, this->seed2 );
+  ctx = new ( p ) EvKeyCtx( this->kctx.ht, own, key, keylen, n, this->hs );
   if ( q != NULL && ! q->push( ctx ) )
     return MEMCACHED_ALLOC_FAIL;
   ctx->status = MEMCACHED_CONTINUE;

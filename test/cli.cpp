@@ -77,7 +77,7 @@ struct MyClient {
   }
   int shm_open( const char *map ) {
     int status;
-    if ( (status = this->shm.open( map )) == 0 ) {
+    if ( (status = this->shm.open( map, 0 /* db */)) == 0 ) {
       if ( this->poll.init_shm( this->shm ) != 0 ) {
         fprintf( stderr, "unable to init shm\n" );
         status = 3;

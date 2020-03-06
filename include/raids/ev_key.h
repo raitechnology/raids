@@ -73,10 +73,9 @@ struct EvKeyCtx {
   kv::KeyFragment   kbuf;   /* key material, extends past structure */
 
   EvKeyCtx( kv::HashTab &h,  EvSocket *own,  const char *key,  size_t keylen,
-            const int n,  const uint64_t seed,  const uint64_t seed2 )
-     : ht( h ), owner( own ), hash1( seed ), hash2( seed2 ), ival( 0 ),
-       part( 0 ), argn( n ), status( 0 ), flags( EKF_IS_READ_ONLY ),
-       kstatus( KEY_OK ), dep( 0 ), type( 0 ) {
+            const int n,  const kv::HashSeed &hs )
+     : ht( h ), owner( own ), ival( 0 ), part( 0 ), argn( n ), status( 0 ),
+       flags( EKF_IS_READ_ONLY ), kstatus( KEY_OK ), dep( 0 ), type( 0 ) {
     uint16_t * p = (uint16_t *) (void *) this->kbuf.u.buf,
              * k = (uint16_t *) (void *) key,
              * e = (uint16_t *) (void *) &key[ keylen ];
@@ -85,7 +84,7 @@ struct EvKeyCtx {
     } while ( k < e );
     this->kbuf.u.buf[ keylen ] = '\0'; /* string keys terminate with nul char */
     this->kbuf.keylen = keylen + 1;
-    this->kbuf.hash( this->hash1, this->hash2 );
+    hs.hash( this->kbuf, this->hash1, this->hash2 );
   }
   static size_t size( size_t keylen ) {
     return sizeof( EvKeyCtx ) + keylen; /* alloc size of *this */

@@ -99,7 +99,8 @@ EvMemcachedUdp::init( void ) noexcept
   if ( stat.boot_time == 0 )
     stat.boot_time = kv_current_realtime_ns();
   this->exec = new ( this->execbuf )
-    MemcachedExec( *this->poll.map, this->poll.ctx_id, *this, stat );
+    MemcachedExec( *this->poll.map, this->poll.ctx_id, this->poll.dbx_id,
+                   *this, stat );
 }
 
 const char *

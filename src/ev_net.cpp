@@ -59,7 +59,8 @@ EvPoll::init_shm( EvShm &shm ) noexcept
 {
   this->map    = shm.map;
   this->ctx_id = shm.ctx_id;
-  if ( (this->pubsub = KvPubSub::create( *this )) == NULL ) {
+  this->dbx_id = shm.dbx_id;
+  if ( (this->pubsub = KvPubSub::create( *this, 254 )) == NULL ) {
     fprintf( stderr, "unable to open unix kv dgram socket\n" );
     return -1;
   }

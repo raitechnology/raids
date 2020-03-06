@@ -32,11 +32,12 @@ struct EvClient {
 
 struct EvShm {
   kv::HashTab * map;
-  uint32_t      ctx_id;
+  uint32_t      ctx_id,
+                dbx_id;
 
-  EvShm() : map( 0 ), ctx_id( kv::MAX_CTX_ID ) {}
+  EvShm() : map( 0 ), ctx_id( kv::MAX_CTX_ID ), dbx_id( kv::MAX_STAT_ID ) {}
   ~EvShm();
-  int open( const char *mn ) noexcept;
+  int open( const char *mn,  uint8_t db_num ) noexcept;
   void print( void ) noexcept;
   void close( void ) noexcept;
 };

@@ -73,7 +73,7 @@ main( int argc, char *argv[] )
     return 0;
   }
 
-  if ( shm.open( mn ) != 0 )
+  if ( shm.open( mn, 0 /* db */) != 0 )
     return 1;
   shm.print();
 

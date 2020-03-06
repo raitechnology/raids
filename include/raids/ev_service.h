@@ -29,7 +29,7 @@ struct EvRedisService : public EvConnection, public RedisExec {
   void * operator new( size_t, void *ptr ) { return ptr; }
 
   EvRedisService( EvPoll &p ) : EvConnection( p, EV_REDIS_SOCK, this->ops ),
-      RedisExec( *p.map, p.ctx_id, *this, p.sub_route, *this ) {}
+      RedisExec( *p.map, p.ctx_id, p.dbx_id, *this, p.sub_route, *this ) {}
   void process( void ) noexcept;
   bool on_msg( EvPublish &pub ) noexcept;
   bool timer_expire( uint64_t tid,  uint64_t event_id ) noexcept;

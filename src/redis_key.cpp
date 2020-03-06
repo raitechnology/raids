@@ -313,12 +313,13 @@ RedisExec::do_pttl( EvKeyCtx &ctx,  int64_t units ) noexcept
 ExecStatus
 RedisExec::exec_randomkey( void ) noexcept
 {
-  uint64_t pos     = this->kctx.thr_ctx.rng.next();
+  uint32_t ctx_id  = this->kctx.ctx_id;
+  uint64_t pos     = this->kctx.ht.ctx[ ctx_id ].rng.next();
   uint64_t ht_size = this->kctx.ht_size;
 
   pos = this->kctx.ht.hdr.ht_mod( pos ); /* RANDOMKEY */
   for ( uint64_t cnt = 0; cnt < ht_size; cnt++ ) {
-    KeyStatus status = this->kctx.fetch( &this->wrk, pos, 0, true );
+    KeyStatus status = this->kctx.fetch( &this->wrk, pos, true );
     if ( status == KEY_OK ) {
       KeyFragment *kp;
       status = this->kctx.get_key( kp );
@@ -563,7 +564,7 @@ RedisExec::scan_keys( ScanArgs &sa ) noexcept
 
   uint64_t ht_size = this->kctx.ht.hdr.ht_size;
   for ( ; (uint64_t) sa.pos < ht_size; sa.pos++ ) {
-    KeyStatus status = this->kctx.fetch( &this->wrk, sa.pos, 0, true );
+    KeyStatus status = this->kctx.fetch( &this->wrk, sa.pos, true );
     if ( status == KEY_OK ) {
       KeyFragment *kp;
       status = this->kctx.get_key( kp );

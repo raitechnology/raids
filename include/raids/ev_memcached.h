@@ -105,7 +105,7 @@ struct EvMemcachedService : public EvConnection, public MemcachedExec {
 
   EvMemcachedService( EvPoll &p,  MemcachedStats &st )
     : EvConnection( p, EV_MEMCACHED_SOCK, this->ops ),
-      MemcachedExec( *p.map, p.ctx_id, *this, st ) {}
+      MemcachedExec( *p.map, p.ctx_id, p.dbx_id, *this, st ) {}
   void process( void ) noexcept;
   bool timer_expire( uint64_t, uint64_t ) { return false; }
   bool hash_to_sub( uint32_t, char *, size_t & ) { return false; }
