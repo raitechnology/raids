@@ -329,7 +329,8 @@ KvPubSub::subscribe_mcast( const char *sub,  size_t len,  bool activate,
   }
   kb->u.buf[ len ] = '\0';
   this->hs.hash( *kb, hash1, hash2 );
-  this->rt_kctx.set_hash( hash1, hash2 );
+  this->kctx.set_key( *kb );
+  this->kctx.set_hash( hash1, hash2 );
   /* check if already set by using find(), lower cost when route is expected
    * to be set */
   if ( use_find ) {
@@ -912,6 +913,7 @@ KvPubSub::get_sub_mcast( const char *sub,  size_t len,
   }
   kb->u.buf[ len ] = '\0';
   this->hs.hash( *kb, hash1, hash2 );
+  this->rt_kctx.set_key( *kb );
   this->rt_kctx.set_hash( hash1, hash2 );
   /* check if already set by using find(), lower cost when route is expected
    * to be set */

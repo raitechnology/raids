@@ -97,7 +97,6 @@ struct PingTest : public EvShmSvc, public KvSubNotifyList {
     const char * out;
     size_t       out_len;
     uint32_t     out_hash;
-    /*printf( "on_msg\n" );*/
     /* first case is the reflecter, just sending what was recved */
     if ( this->round_trip && ! this->active_ping ) {
       if ( p.reply_len > 0 ) {
