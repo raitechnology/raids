@@ -517,8 +517,8 @@ RedisExec::exec_nokeys( void ) noexcept
     case ECHO_CMD:         return this->exec_echo();
     case PING_CMD:         return this->exec_ping();
     case QUIT_CMD:         return this->exec_quit(); //EXEC_QUIT;
-#if 0
     case SELECT_CMD:       return this->exec_select();
+#if 0
     case SWAPDB_CMD:       return this->exec_swapdb();
 #endif
     /* SERVER */
@@ -530,11 +530,9 @@ RedisExec::exec_nokeys( void ) noexcept
     case COMMAND_CMD:      return this->exec_command();
     case CONFIG_CMD:       return this->exec_config();
     case DBSIZE_CMD:       return this->exec_dbsize();
-#if 0
     case DEBUG_CMD:        return this->exec_debug();
     case FLUSHALL_CMD:     return this->exec_flushall();
     case FLUSHDB_CMD:      return this->exec_flushdb();
-#endif
     case INFO_CMD:         return this->exec_info();
 #if 0
     case LASTSAVE_CMD:     return this->exec_lastsave();
@@ -640,9 +638,9 @@ RedisExec::exec_key_continue( EvKeyCtx &ctx ) noexcept
 #if 0
       case AUTH_CMD:
 #endif
-      case ECHO_CMD: case PING_CMD: case QUIT_CMD:
+      case ECHO_CMD: case PING_CMD: case QUIT_CMD: case SELECT_CMD:
 #if 0
-      case SELECT_CMD: case SWAPDB_CMD:
+      case SWAPDB_CMD:
 #endif
                           ctx.status = ERR_BAD_CMD; break; /* in exec() */
       /* GEO */
@@ -741,11 +739,9 @@ RedisExec::exec_key_continue( EvKeyCtx &ctx ) noexcept
       case COMMAND_CMD:
       case CONFIG_CMD:
       case DBSIZE_CMD:
-#if 0
       case DEBUG_CMD:
       case FLUSHALL_CMD:
       case FLUSHDB_CMD:
-#endif
       case INFO_CMD:
 #if 0
       case LASTSAVE_CMD:

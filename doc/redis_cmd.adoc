@@ -187,7 +187,7 @@ Connection
 | <<echo>> | 2 | 0 | 0 | 0 | 
 | <<ping>> | -1 | 0 | 0 | 0 | 
 | <<quit>> | -1 | 0 | 0 | 0 | 
-//| <<select>> | 2 | 0 | 0 | 0 | 
+| <<select>> | 2 | 0 | 0 | 0 | 
 //| <<swapdb>> | 3 | 0 | 0 | 0 | admin
 |===========================================
 ////
@@ -259,7 +259,6 @@ Close the connection.
 .Return
 An *OK* is returned, then the connection is closed.
 
-////
 [[select]]
 select | choose db
 ~~~~~~~~~~~~~~~~~~
@@ -269,12 +268,12 @@ select db
 ----
 .Description
 Change the working database to db, where db is a number between 0 and
-253.  The db number 254 is used for PUBSUB routing, the db number 255
-is used for ACLs.
+255.
 
 .Return
-*OK*.
+*OK* or range or parse error.
 
+////
 [[swapdb]]
 swapdb | exchange dbs
 ~~~~~~~~~~~~~~~~~~~~~
@@ -1959,9 +1958,9 @@ Server
 | <<command>> | -1 | 0 | 0 | 0 |
 | <<config>> | -2 | 0 | 0 | 0 | admin
 | <<dbsize>> | 1 | 0 | 0 | 0 |
-//| <<debug>> | -1 | 0 | 0 | 0 | admin
-//| <<flushall>> | -1 | 0 | 0 | 0 | admin
-//| <<flushdb>> | -1 | 0 | 0 | 0 | admin
+| <<debug>> | -1 | 0 | 0 | 0 | admin
+| <<flushall>> | -1 | 0 | 0 | 0 | admin
+| <<flushdb>> | -1 | 0 | 0 | 0 | admin
 | <<info>> | -1 | 0 | 0 | 0 |
 //| <<lastsave>> | 1 | 0 | 0 | 0 |
 //| <<memory>> | -2 | 0 | 0 | 0 |
@@ -2001,7 +2000,7 @@ client | query connected clients
 .Usage
 ----
 client [setname name | getname | id | kill match | list match |
-        reply state ]
+        reply state]
 ----
 .Example
 ----
@@ -2094,6 +2093,9 @@ command [count | getkeys <cmd-full> | info [cmd] | help]
 .Description
 Get command details and help.
 
+.Return
+Array of strings, command info.
+
 [[config]]
 config | query config
 ~~~~~~~~~~~~~~~~~~~~~
@@ -2103,7 +2105,10 @@ config [get <param> | rewrite | set <param> <value> | resetstat]
 ----
 .Description
 Get, set config parameters.  There is no configuration, so these
-are not functional.
+are not functional except get, which returns sane values.
+
+.Return
+Array of config key values.
 
 [[dbsize]]
 dbsize | get number of keys
@@ -2119,16 +2124,81 @@ dbsize
 ----
 .Description
 Get number of keys in db.
-////
+
+.Return
+An integer number of keys.
+
 [[debug]]
 debug | run debug
 ~~~~~~~~~~~~~~~~~
 .Usage
 ----
-debug object key
+debug [object key | htstats]
+----
+.Example
+----
+> set hello world
+'OK'
+> debug object hello
+key:         "hello"
+hash:        2aa73a1eeb0b2d45:fd102121185ce157
+pos:         [732172]+0.0
+update_time: -4s
+flags:       string-Upd-Ival-Key-Stmp
+db:          0
+val:         0
+seqno:       3
+size:        5
 ----
 .Description
 Get debug info about key.
+
+.Example
+----
+> debug htstats
+db_num:  0
+
+-= totals =-
+read:    8896064
+write:   2045184
+spins:   0
+chains:  0
+add:     303
+drop:    2
+expire:  0
+htevict: 0
+afail:   0
+hit:     511040
+miss:    0
+cuckacq: 0
+cuckfet: 0
+cuckmov: 0
+cuckret: 0
+cuckmax: 0
+
+-= self =-
+read:    8896064
+write:   2045184
+spins:   0
+chains:  0
+add:     303
+drop:    2
+expire:  0
+htevict: 0
+afail:   0
+hit:     511040
+miss:    0
+cuckacq: 0
+cuckfet: 0
+cuckmov: 0
+cuckret: 0
+cuckmax: 0
+----
+.Description
+Get information about the hash table counters.
+
+.Return
+A string description of debug info or bad command error.
 
 [[flushall]]
 flushall | remove keys
@@ -2140,6 +2210,9 @@ flushall [async]
 .Description
 Remove keys from all dbs.
 
+.Return
+*OK* if successful, error otherwise.
+
 [[flushdb]]
 flushdb | remove keys from db
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -2149,7 +2222,10 @@ flushdb [async]
 ----
 .Description
 Remove keys from selected db
-////
+
+.Return
+*OK* if successful, error otherwise.
+
 [[info]]
 info | query server stats
 ~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -2183,6 +2259,9 @@ used_cpu_total:       1.515147
 ----
 .Description
 Get version info and counters.
+
+.Return
+A text string with newlines that has the requested info.
 ////
 [[lastsave]]
 lastsave | last save time

@@ -236,8 +236,8 @@ struct KvPubSub : public EvSocket {
   bool register_mcast( void ) noexcept;
   bool clear_mcast_dead_routes( void ) noexcept;
   bool unregister_mcast( void ) noexcept;
-  bool subscribe_mcast( const char *sub,  size_t len,  bool activate,
-                        bool use_find ) noexcept;
+  enum UpdateEnum { DEACTIVATE = 0, ACTIVATE = 1, USE_FIND = 2 };
+  bool update_mcast_sub( const char *sub,  size_t len,  int flags ) noexcept;
   bool get_mcast_route( CubeRoute128 &cr ) noexcept;
   bool send_msg( KvMsg &msg ) noexcept;
   bool send_vec( size_t cnt,  void *vec,  uint64_t *siz,

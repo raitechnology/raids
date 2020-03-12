@@ -9,14 +9,36 @@
 #include <sys/time.h>
 #include <sys/utsname.h>
 #include <sys/resource.h>
+#define SPRINTF_RELA_TIME
+#include <raikv/rela_ts.h>
 #include <raikv/util.h>
 #include <raids/redis_exec.h>
 #include <raids/redis_cmd_db.h>
 #include <raids/route_db.h>
+#include <raimd/md_types.h>
 
 using namespace rai;
 using namespace ds;
 using namespace kv;
+using namespace md;
+
+static void xnprintf( char *&b,  size_t &sz,  const char *format, ... )
+  __attribute__((format(printf,3,4)));
+
+static void
+xnprintf( char *&b,  size_t &sz,  const char *format, ... )
+{
+  va_list args;
+  size_t  x;
+  if ( sz > 0 ) {
+    va_start( args, format );
+    /*x =*/ vsnprintf( b, sz, format, args );
+    va_end( args );
+    x   = ::strnlen( b, sz );
+    b   = &b[ x ];
+    sz -= x;
+  }
+}
 
 /* CLUSTER */
 ExecStatus
@@ -73,7 +95,20 @@ RedisExec::exec_quit( void ) noexcept
 ExecStatus
 RedisExec::exec_select( void ) noexcept
 {
-  return ERR_BAD_CMD;
+  int64_t db;
+  if ( ! this->msg.get_arg( 1, db ) || db < 0 || db >= (int64_t) DB_COUNT )
+    return ERR_BAD_RANGE;
+
+  uint32_t ctx_id = this->kctx.ctx_id,
+           dbx_id = this->kctx.ht.attach_db( ctx_id, (uint8_t) db );
+  
+  if ( dbx_id == MAX_STAT_ID )
+    return ERR_BAD_RANGE;
+
+  this->kctx.set_db( dbx_id );
+  this->kctx.ht.hdr.get_hash_seed( this->kctx.db_num, this->hs );
+  this->kctx.set( kv::KEYCTX_NO_COPY_ON_READ );
+  return EXEC_SEND_OK;
 }
 
 ExecStatus
@@ -496,49 +531,318 @@ RedisExec::exec_config( void ) noexcept
 ExecStatus
 RedisExec::exec_dbsize( void ) noexcept
 {
-  this->send_int( this->kctx.ht.hdr.last_entry_count );
+  HashCounters tot;
+  this->kctx.ht.get_db_stats( tot, this->kctx.db_num );
+  this->send_int( (int64_t) ( tot.add - tot.drop ) );
+  return EXEC_OK;
+}
+
+static char *
+copy_fl( char *buf,  const char *s )
+{
+  while ( ( *buf = *s ) != '\0' )
+    buf++, s++;
+  return buf;
+}
+
+static char *
+flags_string( uint16_t fl,  uint8_t type,  char *buf )
+{
+  char *s = buf;
+  /**buf++ = (char) ( fl & FL_ALIGNMENT ) + '0';*/
+  buf = copy_fl( buf, md_type_str( (MDType) type ) );
+  if ( ( fl & FL_SEQNO ) != 0 )
+    buf = copy_fl( buf, "-Sno" );
+  if ( ( fl & FL_MSG_LIST ) != 0 )
+    buf = copy_fl( buf, "-Mls" );
+  if ( ( fl & FL_SEGMENT_VALUE ) != 0 )
+    buf = copy_fl( buf, "-Seg" );
+  if ( ( fl & FL_UPDATED ) != 0 )
+    buf = copy_fl( buf, "-Upd" );
+  if ( ( fl & FL_IMMEDIATE_VALUE ) != 0 )
+    buf = copy_fl( buf, "-Ival" );
+  if ( ( fl & FL_IMMEDIATE_KEY ) != 0 )
+    buf = copy_fl( buf, "-Key" );
+  if ( ( fl & FL_PART_KEY ) != 0 )
+    buf = copy_fl( buf, "-Part" );
+  if ( ( fl & FL_DROPPED ) != 0 )
+    buf = copy_fl( buf, "-Drop" );
+  if ( ( fl & FL_EXPIRE_STAMP ) != 0 )
+    buf = copy_fl( buf, "-Exp" );
+  if ( ( fl & FL_UPDATE_STAMP ) != 0 )
+    buf = copy_fl( buf, "-Stmp" );
+  if ( ( fl & FL_MOVED ) != 0 )
+    buf = copy_fl( buf, "-Mved" );
+  if ( ( fl & FL_BUSY ) != 0 )
+    buf = copy_fl( buf, "-Busy" );
+  *buf = '\0';
+  return s;
+}
+
+ExecStatus
+RedisExec::debug_object( void ) noexcept
+{
+  const char * key;
+  size_t       keylen;
+  char         buf[ 1024 ],
+             * b  = buf,
+             * s;
+  size_t       n  = sizeof( buf ),
+               len;
+  uint64_t     natural_pos,
+               pos_off = 0;
+
+  if ( ! this->msg.get_arg( 2, key, keylen ) )
+    return ERR_BAD_ARGS;
+  void *p = this->strm.alloc_temp( EvKeyCtx::size( keylen ) );
+  if ( p == NULL )
+    return ERR_ALLOC_FAIL;
+
+  EvKeyCtx * ctx = new ( p ) EvKeyCtx( this->kctx.ht, NULL, key, keylen, 0,
+                                       this->hs );
+  this->exec_key_set( *ctx );
+  ctx->kstatus = this->kctx.find( &this->wrk );
+
+  if ( keylen > 32 ) {
+    b = this->strm.alloc_temp( keylen + 1024 );
+    n = keylen + 1024;
+  }
+  s = b;
+  len = n;
+
+  xnprintf( b, n, "key:         \"%.*s\"\r\n", (int) keylen, key );
+  xnprintf( b, n, "hash:        %08lx:%08lx\r\n",
+                  ctx->hash1, ctx->hash2 );
+  this->kctx.get_pos_info( natural_pos, pos_off );
+  xnprintf( b, n, "pos:         [%lu]+%u.%lu\r\n",
+       this->kctx.pos, this->kctx.inc, pos_off );
+
+  if ( ctx->kstatus != KEY_OK ) {
+    xnprintf( b, n, "status:      %d/%s %s\r\n",
+                    ctx->kstatus, kv_key_status_string( ctx->kstatus ),
+                    kv_key_status_description( ctx->kstatus ) );
+  }
+  else {
+    uint64_t sno, exp_ns, upd_ns, cur = 0;
+    char buf[ 128 ];
+    if ( this->kctx.get_stamps( exp_ns, upd_ns ) == KEY_OK ) {
+      if ( upd_ns != 0 ) {
+        if ( cur == 0 )
+          cur = current_realtime_ns();
+        xnprintf( b, n, "update_time: %s\r\n",
+                sprintf_rela_time( upd_ns, cur, NULL, buf, sizeof( buf ) ) );
+      }
+      if ( exp_ns != 0 ) {
+        if ( cur == 0 )
+          cur = current_realtime_ns();
+        xnprintf( b, n, "expire_time: %s\r\n",
+                sprintf_rela_time( exp_ns, cur, NULL, buf, sizeof( buf ) ) );
+      }
+    }
+
+    xnprintf( b, n, "flags:       %s\r\n",
+         flags_string( this->kctx.entry->flags, this->kctx.get_type(), buf ) );
+
+    if ( this->kctx.entry->test( FL_SEQNO ) )
+      sno = this->kctx.entry->seqno( this->kctx.hash_entry_size );
+    else
+      sno = this->kctx.serial - ( this->kctx.key & ValueCtr::SERIAL_MASK );
+
+    xnprintf( b, n, "db:          %u\r\n"
+                    "val:         %u\r\n"
+                    "seqno:       %lu\r\n",
+                    this->kctx.get_db(), this->kctx.get_val(), sno );
+
+    if ( this->kctx.entry->test( FL_SEGMENT_VALUE ) ) {
+      ValueGeom geom;
+      this->kctx.entry->get_value_geom( this->kctx.hash_entry_size, geom,
+                                        this->kctx.ht.hdr.seg_align_shift );
+      xnprintf( b, n, "segment:     %u\r\n"
+                      "size:        %lu\r\n"
+                      "offset:      %lu\r\n",
+                      geom.segment, geom.size, geom.offset );
+    }
+    else if ( this->kctx.entry->test( FL_IMMEDIATE_VALUE ) ) {
+      uint64_t sz = 0;
+      this->kctx.get_size( sz );
+      xnprintf( b, n, "size:        %lu\r\n", sz );
+    }
+  }
+  this->strm.sz += this->send_string( s, len - n );
+
+  return EXEC_OK;
+}
+
+ExecStatus
+RedisExec::debug_htstats( void ) noexcept
+{
+  char         buf[ 1024 ],
+             * b  = buf,
+             * s;
+  size_t       n  = sizeof( buf ),
+               len;
+  s = b;
+  len = n;
+
+  HashCounters tot, & sta = this->kctx.stat;
+  this->kctx.ht.get_db_stats( tot, this->kctx.db_num );
+  xnprintf( b, n, "db_num:  %u\r\n", this->kctx.db_num );
+  xnprintf( b, n, "\r\n-= totals =-\r\n" );
+  xnprintf( b, n, "read:    %lu\r\n", tot.rd );
+  xnprintf( b, n, "write:   %lu\r\n", tot.wr );
+  xnprintf( b, n, "spins:   %lu\r\n", tot.spins );
+  xnprintf( b, n, "chains:  %lu\r\n", tot.chains );
+  xnprintf( b, n, "add:     %lu\r\n", tot.add );
+  xnprintf( b, n, "drop:    %lu\r\n", tot.drop );
+  xnprintf( b, n, "expire:  %lu\r\n", tot.expire );
+  xnprintf( b, n, "htevict: %lu\r\n", tot.htevict );
+  xnprintf( b, n, "afail:   %lu\r\n", tot.afail );
+  xnprintf( b, n, "hit:     %lu\r\n", tot.hit );
+  xnprintf( b, n, "miss:    %lu\r\n", tot.miss );
+  xnprintf( b, n, "cuckacq: %lu\r\n", tot.cuckacq );
+  xnprintf( b, n, "cuckfet: %lu\r\n", tot.cuckfet );
+  xnprintf( b, n, "cuckmov: %lu\r\n", tot.cuckmov );
+  xnprintf( b, n, "cuckret: %lu\r\n", tot.cuckret );
+  xnprintf( b, n, "cuckmax: %lu\r\n", tot.cuckmax );
+  xnprintf( b, n, "\r\n-= self =-\r\n" );
+  xnprintf( b, n, "read:    %lu\r\n", sta.rd );
+  xnprintf( b, n, "write:   %lu\r\n", sta.wr );
+  xnprintf( b, n, "spins:   %lu\r\n", sta.spins );
+  xnprintf( b, n, "chains:  %lu\r\n", sta.chains );
+  xnprintf( b, n, "add:     %lu\r\n", sta.add );
+  xnprintf( b, n, "drop:    %lu\r\n", sta.drop );
+  xnprintf( b, n, "expire:  %lu\r\n", sta.expire );
+  xnprintf( b, n, "htevict: %lu\r\n", sta.htevict );
+  xnprintf( b, n, "afail:   %lu\r\n", sta.afail );
+  xnprintf( b, n, "hit:     %lu\r\n", sta.hit );
+  xnprintf( b, n, "miss:    %lu\r\n", sta.miss );
+  xnprintf( b, n, "cuckacq: %lu\r\n", sta.cuckacq );
+  xnprintf( b, n, "cuckfet: %lu\r\n", sta.cuckfet );
+  xnprintf( b, n, "cuckmov: %lu\r\n", sta.cuckmov );
+  xnprintf( b, n, "cuckret: %lu\r\n", sta.cuckret );
+  xnprintf( b, n, "cuckmax: %lu\r\n", sta.cuckmax );
+
+  this->strm.sz += this->send_string( s, len - n );
+
   return EXEC_OK;
 }
 
 ExecStatus
 RedisExec::exec_debug( void ) noexcept
 {
-  return EXEC_DEBUG;
+  switch ( this->msg.match_arg( 1, MARG( "segfault" ),
+                              /*2*/MARG( "panic" ),
+                              /*3*/MARG( "restart" ),
+                              /*4*/MARG( "crash-and-recovery" ),
+                              /*5*/MARG( "assert" ),
+                              /*6*/MARG( "reload" ),
+                              /*7*/MARG( "loadaof" ),
+                              /*8*/MARG( "object" ),
+                              /*9*/MARG( "sdslen" ),
+                             /*10*/MARG( "ziplist" ),
+                             /*11*/MARG( "populate" ),
+                             /*12*/MARG( "digest" ),
+                             /*13*/MARG( "sleep" ),
+                             /*14*/MARG( "set-active-expire" ),
+                             /*15*/MARG( "lua-always-replicate-commands" ),
+                             /*16*/MARG( "error" ),
+                             /*17*/MARG( "structsize" ),
+                             /*18*/MARG( "htstats" ),
+                             /*19*/MARG( "change-repl-id" ),
+                                   NULL ) ) {
+    default: return EXEC_DEBUG;
+    case 1: /* segfault -- Crash the server with sigsegv */
+    case 2: /* panic -- Crash the server simulating a panic */
+    case 3: /* restart  -- Graceful restart: save config, db, restart */
+    case 4: /* crash-and-recovery <ms> -- Hard crash and restart after delay */
+    case 5: /* assert   -- Crash by assertion failed */
+    case 6: /* reload   -- Save the RDB on disk and reload it back in memory */
+    case 7: /* loadaof  -- Flush the AOF buf on disk and reload AOF in memory */
+      return ERR_BAD_CMD;
+    case 8: /* object <key> -- Show low level info about key and value */
+      return this->debug_object();
+    case 9: /* sdslen <key> -- Show low level SDS string info key and value */
+    case 10: /* ziplist <key> -- Show low level info about ziplist encoding */
+    case 11: /* populate <count> [prefix] [size] -- Create <count> string keys
+                named key:<num>. If a prefix is specified is used instead of 
+                the \'key\' prefix. */
+    case 12: /* digest   -- Outputs an hex signature of the current DB */
+    case 13: /* sleep <seconds> -- Stop the server for <seconds> */
+    case 14: /* set-active-expire (0|1) -- Setting it to 0 disables expiring
+                keys in background when they are not accessed (otherwise the
+                Redis behavior). Setting it to 1 reenables back the default */
+    case 15: /* lua-always-replicate-commands (0|1) -- Setting it to 1 makes
+                Lua replication defaulting to replicating single commands,
+                without the script having to enable effects replication */
+    case 16: /* error <string> -- Return a Redis protocol error with <string>
+                as message */
+    case 17: /* structsize -- Return the size of Redis core C structures */
+      return ERR_BAD_CMD;
+    case 18: /* htstats <dbid> -- Return hash table statistics of the
+                specified Redis database. */
+      return this->debug_htstats();
+    case 19: /* change-repl-id -- Change the replication IDs of the instance;
+                Dangerous, should be used only for testing the replication
+                subsystem */
+      return ERR_BAD_CMD;
+  }
 }
 
 ExecStatus
 RedisExec::exec_flushall( void ) noexcept
 {
   /* delete all keys */
-  this->send_ok();
-  return EXEC_OK;
+  HashCounters tot;
+  for ( uint8_t db_num = 0; db_num < 254; db_num++ ) {
+    if ( this->kctx.ht.hdr.test_db_opened( db_num ) ) {
+      this->kctx.ht.get_db_stats( tot, db_num );
+      if ( tot.add > tot.drop )
+        this->flushdb( db_num );
+    }
+  }
+  return EXEC_SEND_OK;
 }
 
 ExecStatus
 RedisExec::exec_flushdb( void ) noexcept
 {
-  /* delete current db */
-  this->send_ok();
-  return EXEC_OK;
+  this->flushdb( this->kctx.db_num );
+  return EXEC_SEND_OK;
 }
 
-static int xnprintf( char *&b,  size_t &sz,  const char *format, ... )
-  __attribute__((format(printf,3,4)));
-
-static int
-xnprintf( char *&b,  size_t &sz,  const char *format, ... )
+void
+RedisExec::flushdb( uint8_t db_num ) noexcept
 {
-#ifndef va_copy
-#define va_copy( dst, src ) memcpy( &( dst ), &( src ), sizeof( va_list ) )
-#endif
-  va_list args;
-  size_t  x;
-  va_start( args, format );
-  x = vsnprintf( b, sz, format, args );
-  va_end( args );
-  b   = &b[ x ];
-  sz -= x;
-  return x;
+  KeyCtx    scan_kctx( this->kctx );
+  uint64_t  ht_size = this->kctx.ht.hdr.ht_size;
+  uint32_t  ctx_id = scan_kctx.ctx_id,
+            dbx_id = scan_kctx.ht.attach_db( ctx_id, db_num );
+  KeyStatus status;
+  
+  if ( dbx_id == MAX_STAT_ID )
+    return;
+
+  scan_kctx.set_db( dbx_id );
+  for ( uint64_t pos = 0; pos < ht_size; pos++ ) {
+    status = scan_kctx.fetch( &this->wrk, pos );
+    if ( status != KEY_OK ) /* could be NOT_FOUND */
+      continue;
+    if ( scan_kctx.entry->test( FL_DROPPED ) != 0 ||
+         scan_kctx.get_db() != db_num )
+      continue;
+    for (;;) {
+      status = scan_kctx.try_acquire_position( pos );
+      if ( status != KEY_BUSY )
+        break;
+    }
+    if ( status <= KEY_IS_NEW ) { /* ok or is new */
+      if ( scan_kctx.entry->test( FL_DROPPED ) == 0 &&
+           scan_kctx.get_db() == db_num ) {
+        scan_kctx.tombstone();
+      }
+      scan_kctx.release();
+    }
+  }
 }
 
 static int
@@ -713,15 +1017,15 @@ RedisExec::exec_info( void ) noexcept
                 (uint32_t) ( map.hdr.ht_load * 100.0 + 0.5 ) );
       xnprintf( b, sz, "ht_value_load:        %u\r\n",
                 (uint32_t) ( map.hdr.value_load * 100.0 + 0.5 ) );
-      xnprintf( b, sz, "ht_entries            %s\r\n",
+      xnprintf( b, sz, "ht_entries:           %s\r\n",
                 mstring( tot.add - tot.drop, tmp, 1000 ) );
-      xnprintf( b, sz, "ht_gc                 %s\r\n",
+      xnprintf( b, sz, "ht_gc:                %s\r\n",
                 mstring( (double) chg.move_msgs, tmp, 1000 ) );
-      xnprintf( b, sz, "ht_drop               %s\r\n",
+      xnprintf( b, sz, "ht_drop:              %s\r\n",
                 mstring( (double) ops.drop, tmp, 1000 ) );
-      xnprintf( b, sz, "ht_hit                %s\r\n",
+      xnprintf( b, sz, "ht_hit:               %s\r\n",
                 mstring( (double) ops.hit, tmp, 1000 ) );
-      xnprintf( b, sz, "ht_miss               %s\r\n",
+      xnprintf( b, sz, "ht_miss:              %s\r\n",
                 mstring( (double) ops.miss, tmp, 1000 ) );
 
       delete hts;

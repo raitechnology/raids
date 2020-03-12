@@ -370,9 +370,12 @@ struct RedisExec {
   ExecStatus exec_command( void ) noexcept;
   ExecStatus exec_config( void ) noexcept;
   ExecStatus exec_dbsize( void ) noexcept;
+  ExecStatus debug_object( void ) noexcept;
+  ExecStatus debug_htstats( void ) noexcept;
   ExecStatus exec_debug( void ) noexcept;
   ExecStatus exec_flushall( void ) noexcept;
   ExecStatus exec_flushdb( void ) noexcept;
+  void flushdb( uint8_t db_num ) noexcept;
   ExecStatus exec_info( void ) noexcept;
   ExecStatus exec_lastsave( void ) noexcept;
   ExecStatus exec_memory( void ) noexcept;

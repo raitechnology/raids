@@ -39,17 +39,18 @@ static inline char hdigit( uint8_t h ) {
 }
 
 static const char   sys_mc[]  = "_SYS.MC",
-                    sys_ibx[] = "_SYS.IBX.";
+                    sys_ibx[] = "_SYS.";
 static const size_t mc_name_size  = sizeof( sys_mc ),
-                    ibx_name_size = 12;
+                    ibx_name_size = sizeof( sys_ibx ) + 2;
+/* 8 byte inbox size is the limit for msg list with immediate key */
 
 static void
 make_ibx( char *ibname,  uint16_t ctx_id )
 {
   ::strcpy( ibname, sys_ibx );
-  ibname[  9 ] = hdigit( ( ctx_id >> 4 ) & 0xf );
-  ibname[ 10 ] = hdigit( ctx_id & 0xf );
-  ibname[ 11 ] = '\0';
+  ibname[ ibx_name_size - 3 ] = hdigit( ( ctx_id >> 4 ) & 0xf );
+  ibname[ ibx_name_size - 2 ] = hdigit( ctx_id & 0xf );
+  ibname[ ibx_name_size - 1 ] = '\0';
 }
 #if 0
 static inline size_t
@@ -310,8 +311,7 @@ KvPubSub::unregister_mcast( void ) noexcept
 }
 
 bool
-KvPubSub::subscribe_mcast( const char *sub,  size_t len,  bool activate,
-                           bool use_find ) noexcept
+KvPubSub::update_mcast_sub( const char *sub,  size_t len,  int flags ) noexcept
 {
   KeyBuf        kbuf;
   KeyFragment * kb = &kbuf;
@@ -333,13 +333,13 @@ KvPubSub::subscribe_mcast( const char *sub,  size_t len,  bool activate,
   this->kctx.set_hash( hash1, hash2 );
   /* check if already set by using find(), lower cost when route is expected
    * to be set */
-  if ( use_find ) {
+  if ( ( flags & USE_FIND ) != 0 ) {
     if ( (status = this->kctx.find( &this->wrk )) == KEY_OK ) {
       if ( (status = this->kctx.value( &val, sz )) == KEY_OK &&
            sz == sizeof( CubeRoute128 ) ) {
         CubeRoute128 cr;
         cr.copy_from( val );
-        if ( activate ) {
+        if ( ( flags & ACTIVATE ) != 0 ) {
           if ( cr.is_set( this->ctx_id ) )
             return true;
         }
@@ -355,7 +355,7 @@ KvPubSub::subscribe_mcast( const char *sub,  size_t len,  bool activate,
     CubeRoute128 *cr;
     /* new sub */
     if ( status == KEY_IS_NEW ) {
-      if ( activate ) {
+      if ( ( flags & ACTIVATE ) != 0 ) {
         status = this->kctx.resize( &val, KV_CTX_BYTES );
         if ( status == KEY_OK ) {
           cr = (CubeRoute128 *) val;
@@ -373,7 +373,7 @@ KvPubSub::subscribe_mcast( const char *sub,  size_t len,  bool activate,
       if ( status == KEY_OK && sz == KV_CTX_BYTES ) {
         res = true;
         cr = (CubeRoute128 *) val;
-        if ( activate ) {
+        if ( ( flags & ACTIVATE ) != 0 ) {
           cr->set( this->ctx_id );
         }
         else {
@@ -385,7 +385,7 @@ KvPubSub::subscribe_mcast( const char *sub,  size_t len,  bool activate,
     }
     this->kctx.release();
   }
-  if ( ! res && activate ) {
+  if ( ! res && ( flags & ACTIVATE ) != 0 ) {
     fprintf( stderr, "Unable to register subject %.*s mcast, kv status %d\n",
              (int) len, sub, (int) status );
   }
@@ -483,17 +483,17 @@ KvPubSub::do_sub( uint32_t h,  const char *sub,  size_t len,
                   uint32_t /*sub_id*/,  uint32_t rcnt,  char src_type,
                   const char *rep,  size_t rlen ) noexcept
 {
-  bool use_find = true;
+  int use_find = USE_FIND;
   if ( rcnt == 1 ) /* first route added */
-    use_find = false;
+    use_find = 0;
   else if ( rcnt == 2 ) { /* if first route and subscribed elsewhere */
     if ( this->poll.sub_route.is_member( h, this->fd ) )
-      use_find = false;
+      use_find = 0;
   }
   /* subscribe must check the route is set because the hash used for the route
    * is may have collisions:  when another subject is subscribed and has a
    * collision, the route count will be for both subjects */
-  this->subscribe_mcast( sub, len, true, use_find );
+  this->update_mcast_sub( sub, len, use_find | ACTIVATE );
 
   KvSubMsg *submsg =
     this->create_kvsubmsg( h, sub, len, src_type, KV_MSG_SUB, rep, rlen );
@@ -515,7 +515,7 @@ KvPubSub::do_unsub( uint32_t h,  const char *sub,  size_t len,
       do_unsubscribe = true;
   }
   if ( do_unsubscribe )
-    this->subscribe_mcast( sub, len, false, false );
+    this->update_mcast_sub( sub, len, DEACTIVATE );
 
   KvSubMsg *submsg =
     this->create_kvsubmsg( h, sub, len, src_type, KV_MSG_UNSUB, NULL, 0 );
@@ -530,18 +530,18 @@ KvPubSub::do_psub( uint32_t h,  const char *pattern,  size_t len,
                    const char *prefix,  uint8_t prefix_len,
                    uint32_t,  uint32_t rcnt,  char src_type ) noexcept
 {
-  bool use_find = true;
+  int use_find = USE_FIND;
   if ( rcnt == 1 ) /* first route added */
-    use_find = false;
+    use_find = 0;
   else if ( rcnt == 2 ) { /* if first route and subscribed elsewhere */
     if ( this->poll.sub_route.is_member( h, this->fd ) )
-      use_find = false;
+      use_find = 0;
   }
   /* subscribe must check the route is set because the hash used for the route
    * is may have collisions:  when another subject is subscribed and has a
    * collision, the route count will be for both subjects */
   SysWildSub w( prefix, prefix_len );
-  this->subscribe_mcast( w.sub, w.len, true, use_find );
+  this->update_mcast_sub( w.sub, w.len, use_find | ACTIVATE );
 
   KvSubMsg *submsg =
     this->create_kvpsubmsg( h, pattern, len, prefix, prefix_len, src_type,
@@ -567,7 +567,7 @@ KvPubSub::do_punsub( uint32_t h,  const char *pattern,  size_t len,
   }
   SysWildSub w( prefix, prefix_len );
   if ( do_unsubscribe )
-    this->subscribe_mcast( w.sub, w.len, false, false );
+    this->update_mcast_sub( w.sub, w.len, DEACTIVATE );
   KvSubMsg *submsg =
     this->create_kvpsubmsg( h, pattern, len, prefix, prefix_len, src_type,
                             KV_MSG_PUNSUB );
