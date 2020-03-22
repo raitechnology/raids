@@ -4116,8 +4116,20 @@ discard | discard trans
 ----
 discard 
 ----
+.Example
+----
+> multi
+'OK'
+> incr x
+'QUEUED'
+> discard
+'OK'
+----
 .Description
-Discard cmds issued after multi
+Discards watch commands and discards commands queued by multi.
+
+.Return
+*OK* or error when no multi is started.
 
 [[exec]]
 exec | run trans
@@ -4126,8 +4138,21 @@ exec | run trans
 ----
 exec 
 ----
+.Example
+----
+> multi
+'OK'
+> set x 10
+'QUEUED'
+> exec
+['OK']
+----
 .Description
-Execute all commands after multi
+Execute commands queued by multi as an atomic unit.
+
+.Return
+An array of results, an element for every command, or *null* when a watch
+fails.
 
 [[multi]]
 multi | start trans
@@ -4136,8 +4161,30 @@ multi | start trans
 ----
 multi 
 ----
+.Example
+----
+> multi
+'OK'
+> set x 10
+'QUEUED'
+> exec
+['OK']
+> multi
+'OK'
+> set
+`ERR arguments format cmd: \'set\'`
+> set x 10
+'QUEUED'
+> exec
+`ERR transaction aborted, error cmd: \'exec\'`
+----
 .Description
-Multi start transaction
+Start a transaction, commands issued after multi but before exec are
+queued execution.  The syntax of the command and arguments is checked before
+being queued, so a command may be *QUEUED* or have an syntax error result.
+
+.Return
+*OK*.
 
 [[unwatch]]
 unwatch | stop watching
@@ -4146,8 +4193,18 @@ unwatch | stop watching
 ----
 unwatch 
 ----
+.Example
+----
+> watch x
+'OK'
+> unwatch
+'OK'
+----
 .Description
-Forget watched keys
+Discard watched keys.
+
+.Return
+*OK*.
 
 [[watch]]
 watch | start watching
@@ -4156,8 +4213,24 @@ watch | start watching
 ----
 watch key [key ...]
 ----
+.Example
+----
+> watch x
+'OK'
+> multi
+'OK'
+> set x 10
+'QUEUED'
+> exec
+null
+----
 .Description
-Watch keys to determine multi/exec blk
+Watch keys before a multi transaction starts.  After exec is issued,
+all watched keys are examined to make sure that none have been modified.  If a
+watched key was modified, then the transaction aborts and *null* is returned.
+
+.Return
+*OK*.
 
 Stream
 ------

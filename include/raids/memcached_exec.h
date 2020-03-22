@@ -445,7 +445,8 @@ struct MemcachedExec {
   }
   MemcachedStatus unpack( void *buf,  size_t &buflen ) noexcept;
   MemcachedStatus exec_key_setup( EvSocket *own,  EvPrefetchQueue *q,
-                                  EvKeyCtx *&ctx,  uint32_t n ) noexcept;
+                                  EvKeyCtx *&ctx,  uint32_t n,
+                                  uint32_t idx ) noexcept;
   MemcachedStatus exec( EvSocket *svc,  EvPrefetchQueue *q ) noexcept;
   /* set the hash */
   void exec_key_set( EvKeyCtx &ctx ) { 

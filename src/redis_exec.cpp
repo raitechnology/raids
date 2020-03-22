@@ -9,6 +9,7 @@
 #include <raids/redis_cmd_db.h>
 #include <raids/redis_keyspace.h>
 #include <raids/route_db.h>
+#include <raids/redis_transaction.h>
 #include <raimd/md_types.h>
 
 using namespace rai;
@@ -216,7 +217,7 @@ RedisExec::array_string_result( void ) noexcept
 
 ExecStatus
 RedisExec::exec_key_setup( EvSocket *own,  EvPrefetchQueue *q,
-                           EvKeyCtx *&ctx,  int n ) noexcept
+                           EvKeyCtx *&ctx,  int n,  uint32_t idx ) noexcept
 {
   const char * key;
   size_t       keylen;
@@ -225,7 +226,7 @@ RedisExec::exec_key_setup( EvSocket *own,  EvPrefetchQueue *q,
   void *p = this->strm.alloc_temp( EvKeyCtx::size( keylen ) );
   if ( p == NULL )
     return ERR_ALLOC_FAIL;
-  ctx = new ( p ) EvKeyCtx( this->kctx.ht, own, key, keylen, n, this->hs );
+  ctx = new ( p ) EvKeyCtx( this->kctx.ht, own, key, keylen, n, idx, this->hs );
   if ( q != NULL && ! q->push( ctx ) )
     return ERR_ALLOC_FAIL;
   ctx->status = EXEC_CONTINUE;
@@ -405,12 +406,11 @@ RedisExec::calc_key_count( void ) noexcept
   return 0;
 }
 
-ExecStatus
-RedisExec::exec( EvSocket *svc,  EvPrefetchQueue *q ) noexcept
+inline ExecStatus
+RedisExec::prepare_exec_command( void ) noexcept
 {
   const char * arg0;
   size_t       arg0len;
-  ExecStatus   status;
 
   arg0 = this->msg.command( arg0len, this->argc );
   /* max command len is 17 (GEORADIUSBYMEMBER) */
@@ -419,17 +419,9 @@ RedisExec::exec( EvSocket *svc,  EvPrefetchQueue *q ) noexcept
 
   uint32_t h = get_redis_cmd_hash( arg0, arg0len );
   this->cmd  = get_redis_cmd( h );
+
   const RedisCmdData &c = cmd_db[ this->cmd ];
-
-  this->catg      = (RedisCatg) c.catg;
-  this->arity     = c.arity;
-  this->first     = c.first;
-  this->last      = c.last;
-  this->step      = c.step;
-  this->cmd_flags = c.flags;
-  this->key_flags = EKF_MONITOR; /* monitor always published if subscribed */
-  this->step_mask = 0;
-
+  this->setup_cmd( c );
   if ( c.hash != h )
     return ERR_BAD_CMD;
   if ( this->arity > 0 ) {
@@ -438,22 +430,42 @@ RedisExec::exec( EvSocket *svc,  EvPrefetchQueue *q ) noexcept
   }
   else if ( (size_t) -this->arity > this->argc )
     return ERR_BAD_ARGS;
+  return EXEC_OK;
+}
 
+ExecStatus
+RedisExec::exec( EvSocket *svc,  EvPrefetchQueue *q ) noexcept
+{
+  ExecStatus status;
+  
+  status = this->prepare_exec_command();
+  if ( status == EXEC_OK ) {
+    if ( ( this->cmd_flags & CMD_MOVABLE_FLAG ) != 0 ) {
+      if ( ! this->locate_movablekeys() )
+        status = ERR_BAD_ARGS;
+    }
+  }
   this->strm_start = this->strm.pending();
-  if ( ( this->cmd_flags & CMD_MOVABLE_FLAG ) != 0 )
-    if ( ! this->locate_movablekeys() )
-      return ERR_BAD_ARGS;
-  if ( this->multi != NULL ) {
+  /* if queueing cmds for transaction */
+  if ( ( this->cmd_state & CMD_STATE_MULTI_QUEUED ) != 0 ) {
+    if ( status != EXEC_OK ) {
+      this->multi->multi_abort = true;
+      return status;
+    }
     switch ( this->cmd ) {
       case EXEC_CMD:
       case MULTI_CMD:
       case DISCARD_CMD:
         break;
       default:
-        if ( ! this->multi->append_msg( this->msg ) )
-          return ERR_ALLOC_FAIL;
+        if ( (status = this->multi_queued( svc )) != EXEC_OK )
+          return status;
         return EXEC_QUEUED;
     }
+  }
+  else {
+    if ( status != EXEC_OK )
+      return status;
   }
   /* if there are keys, setup a keyctx for each one */
   if ( this->first > 0 ) {
@@ -466,7 +478,7 @@ RedisExec::exec( EvSocket *svc,  EvPrefetchQueue *q ) noexcept
     this->keys = &this->key;
     this->kctx.msg = NULL;
     /* setup first key */
-    status = this->exec_key_setup( svc, q, this->key, i );
+    status = this->exec_key_setup( svc, q, this->key, i, 0 );
     if ( status == EXEC_SETUP_OK ) {
       /* setup rest of keys, if any */
       if ( this->next_key( i ) ) {
@@ -480,8 +492,9 @@ RedisExec::exec( EvSocket *svc,  EvPrefetchQueue *q ) noexcept
         else {
           this->keys[ 0 ] = this->key;
           do {
-            status = this->exec_key_setup( svc, q,
-                                           this->keys[ this->key_cnt++ ], i );
+            status = this->exec_key_setup( svc, q, this->keys[ this->key_cnt ],
+                                           i, this->key_cnt );
+            this->key_cnt++;
           } while ( status == EXEC_SETUP_OK && this->next_key( i ) );
         }
       }
@@ -576,38 +589,45 @@ RedisExec::exec_nokeys( void ) noexcept
 kv::KeyStatus
 RedisExec::exec_key_fetch( EvKeyCtx &ctx,  bool force_read ) noexcept
 {
-  if ( ( this->cmd_flags & CMD_READ_FLAG ) != 0 || force_read ) {
-    for (;;) {
-      ctx.kstatus = this->kctx.find( &this->wrk );
-      ctx.flags  |= EKF_IS_READ_ONLY;
-      /* check if key expired */
-      if ( ctx.kstatus != KEY_OK || ! this->kctx.is_expired() )
-        break;
-      /* if expired, release entry and find it as new element */
+  /* if not executing multi transaction */
+  if ( ( this->cmd_state & CMD_STATE_EXEC_MULTI ) == 0 ) {
+    this->exec_key_set( ctx );
+    if ( ( this->cmd_flags & CMD_READ_FLAG ) != 0 || force_read ) {
+      for (;;) {
+        ctx.kstatus = this->kctx.find( &this->wrk );
+        ctx.flags  |= EKF_IS_READ_ONLY;
+        /* check if key expired */
+        if ( ctx.kstatus != KEY_OK || ! this->kctx.is_expired() )
+          break;
+        /* if expired, release entry and find it as new element */
+        ctx.kstatus = this->kctx.acquire( &this->wrk );
+        if ( ctx.kstatus == KEY_OK && this->kctx.is_expired() ) {
+          this->kctx.expire();
+          ctx.flags |= EKF_IS_EXPIRED | EKF_KEYSPACE_EVENT;
+        }
+        this->kctx.release();
+      }
+    }
+    else if ( ( this->cmd_flags & CMD_WRITE_FLAG ) != 0 ) {
       ctx.kstatus = this->kctx.acquire( &this->wrk );
       if ( ctx.kstatus == KEY_OK && this->kctx.is_expired() ) {
         this->kctx.expire();
-        ctx.flags |= EKF_IS_EXPIRED | EKF_KEYSPACE_EVENT;
+        ctx.flags  |= EKF_IS_EXPIRED | EKF_KEYSPACE_EVENT | EKF_IS_NEW;
+        ctx.kstatus = KEY_IS_NEW;
       }
-      this->kctx.release();
-    }
-  }
-  else if ( ( this->cmd_flags & CMD_WRITE_FLAG ) != 0 ) {
-    ctx.kstatus = this->kctx.acquire( &this->wrk );
-    if ( ctx.kstatus == KEY_OK && this->kctx.is_expired() ) {
-      this->kctx.expire();
-      ctx.flags  |= EKF_IS_EXPIRED | EKF_KEYSPACE_EVENT | EKF_IS_NEW;
-      ctx.kstatus = KEY_IS_NEW;
+      else {
+        ctx.flags |= ( ( ctx.kstatus == KEY_IS_NEW ) ? EKF_IS_NEW : 0 );
+      }
+      ctx.flags &= ~EKF_IS_READ_ONLY;
     }
     else {
-      ctx.flags |= ( ( ctx.kstatus == KEY_IS_NEW ) ? EKF_IS_NEW : 0 );
+      ctx.kstatus = KEY_NO_VALUE;
+      ctx.status  = ERR_BAD_CMD;
+      ctx.flags  |= EKF_IS_READ_ONLY;
     }
-    ctx.flags &= ~EKF_IS_READ_ONLY;
   }
   else {
-    ctx.kstatus = KEY_NO_VALUE;
-    ctx.status  = ERR_BAD_CMD;
-    ctx.flags  |= EKF_IS_READ_ONLY;
+    this->multi_key_fetch( ctx, force_read );
   }
   if ( ctx.kstatus == KEY_OK ) /* not new and is found */
     ctx.type = this->kctx.get_type();
@@ -622,7 +642,10 @@ RedisExec::exec_key_continue( EvKeyCtx &ctx ) noexcept
       return EXEC_CONTINUE;
     goto success;
   }
-  this->exec_key_set( ctx );
+#if 0
+  if ( ( this->cmd_flags & CMD_MULTI_EXEC_FLAG ) == 0 )
+    this->exec_key_set( ctx );
+#endif
   /*if ( this->kctx.kbuf != &ctx.kbuf ||
        this->kctx.key != ctx.hash1 || this->kctx.key2 != ctx.hash2 )
     this->exec_key_prefetch( ctx );*/
@@ -858,38 +881,42 @@ RedisExec::exec_key_continue( EvKeyCtx &ctx ) noexcept
     }
     /* set the type when key is new */
     if ( ! ctx.is_read_only() ) {
-      if ( ( ctx.flags & EKF_KEYSPACE_DEL ) == 0 ) {
-        if ( ctx.is_new() && exec_status_success( ctx.status ) ) {
-          uint8_t type;
-          if ( (type = ctx.type) == MD_NODATA ) {
-            switch ( this->catg ) {
-              default:               type = MD_NODATA;      break;
-              case GEO_CATG:         type = MD_GEO;         break;
-              case HASH_CATG:        type = MD_HASH;        break;
-              case HYPERLOGLOG_CATG: type = MD_HYPERLOGLOG; break;
-              case LIST_CATG:        type = MD_LIST;        break;
-              case PUBSUB_CATG:      type = MD_NODATA;      break;
-  #if 0
-              case SCRIPT_CATG:      type = MD_NODATA; /*MD_SCRIPT;*/  break;
-  #endif
-              case SET_CATG:         type = MD_SET;         break;
-              case SORTED_SET_CATG:  type = MD_ZSET;        break;
-              case STRING_CATG:      type = MD_STRING;      break;
-              case TRANSACTION_CATG: type = MD_NODATA;      break;
-              case STREAM_CATG:      type = MD_STREAM;      break;
+      if ( exec_status_success( ctx.status ) ) {
+        if ( ( ctx.flags & EKF_KEYSPACE_DEL ) == 0 ) {
+          if ( ctx.is_new() ) {
+            uint8_t type;
+            if ( (type = ctx.type) == MD_NODATA ) {
+              switch ( this->catg ) {
+                default:               type = MD_NODATA;      break;
+                case GEO_CATG:         type = MD_GEO;         break;
+                case HASH_CATG:        type = MD_HASH;        break;
+                case HYPERLOGLOG_CATG: type = MD_HYPERLOGLOG; break;
+                case LIST_CATG:        type = MD_LIST;        break;
+                case PUBSUB_CATG:      type = MD_NODATA;      break;
+    #if 0
+                case SCRIPT_CATG:      type = MD_NODATA; /*MD_SCRIPT;*/  break;
+    #endif
+                case SET_CATG:         type = MD_SET;         break;
+                case SORTED_SET_CATG:  type = MD_ZSET;        break;
+                case STRING_CATG:      type = MD_STRING;      break;
+                case TRANSACTION_CATG: type = MD_NODATA;      break;
+                case STREAM_CATG:      type = MD_STREAM;      break;
+              }
             }
+            if ( type != MD_NODATA ) {
+              this->kctx.set_type( type );
+              ctx.type = type;
+            }
+            this->kctx.set_val( 0 );
           }
-          if ( type != MD_NODATA ) {
-            this->kctx.set_type( type );
-            ctx.type = type;
-          }
-          this->kctx.set_val( 0 );
+          if ( ctx.type != MD_STREAM && ctx.type != MD_NODATA )
+            this->kctx.update_stamps( 0, this->kctx.ht.hdr.current_stamp );
         }
-        if ( ctx.type != MD_STREAM && ctx.type != MD_NODATA )
-          this->kctx.update_stamps( 0, this->kctx.ht.hdr.current_stamp );
+        this->key_flags |= ctx.flags;
       }
-      this->key_flags |= ctx.flags;
-      this->kctx.release();
+      /* if not executing multi transaction */
+      if ( ( this->cmd_state & CMD_STATE_EXEC_MULTI ) == 0 )
+        this->kctx.release();
     }
     /* read only */
     else {
@@ -908,7 +935,8 @@ RedisExec::exec_key_continue( EvKeyCtx &ctx ) noexcept
       }
     }
     /* continue if read key mutated while running */
-    if ( ctx.status != ERR_KV_STATUS || ctx.kstatus != KEY_MUTATED )
+    if ( ctx.status != ERR_KV_STATUS || ctx.kstatus != KEY_MUTATED ||
+         ( ctx.flags & EKF_IS_READ_ONLY ) == 0 )
       break;
   }
   /* if command is done */
@@ -1067,7 +1095,8 @@ RedisExec::send_status( ExecStatus stat,  KeyStatus kstat ) noexcept
     case ERR_KEY_DOESNT_EXIST:
     case ERR_BAD_MULTI:
     case ERR_BAD_EXEC:
-    case ERR_BAD_DISCARD: this->send_err_string( stat, kstat ); break;
+    case ERR_BAD_DISCARD:
+    case ERR_ABORT_TRANS: this->send_err_string( stat, kstat ); break;
 
     /* ok status */
     case EXEC_QUIT:
@@ -1096,6 +1125,7 @@ RedisExec::send_err_string( ExecStatus stat,  KeyStatus kstat ) noexcept
     case ERR_BAD_MULTI:        str = "-ERR bad multi, no nesting"; break;
     case ERR_BAD_EXEC:         str = "-ERR bad exec, no multi"; break;
     case ERR_BAD_DISCARD:      str = "-ERR bad discard, no multi"; break;
+    case ERR_ABORT_TRANS:      str = "-ERR transaction aborted, error"; break;
     default:                   str = "-ERR"; break;
   }
 

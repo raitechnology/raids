@@ -59,35 +59,51 @@ struct EvKeyCtx {
 
   static bool is_greater( EvKeyCtx *ctx,  EvKeyCtx *ctx2 ) noexcept;
   kv::HashTab     & ht;
-  EvSocket        * owner;  /* parent connection */
-  uint64_t          hash1,  /* 128 bit hash of key */
+  EvSocket        * owner;   /* parent connection */
+  uint64_t          hash1,   /* 128 bit hash of key */
                     hash2;
-  int64_t           ival;   /* if it returns int */
-  EvKeyTempResult * part;   /* saved data for key */
-  const int         argn;   /* which arg number of command */
-  int               status; /* result of exec for this key */
-  uint16_t          flags;  /* is new, is read only */
-  kv::KeyStatus     kstatus;/* result of key lookup */
-  uint8_t           dep,    /* depends on another key */
-                    type;   /* value type, string, list, hash, etc */
-  kv::KeyFragment   kbuf;   /* key material, extends past structure */
+  int64_t           ival;    /* if it returns int */
+  EvKeyTempResult * part;    /* saved data for key */
+  const int         argn;    /* which arg number of command */
+  int               status;  /* result of exec for this key */
+  kv::KeyStatus     kstatus; /* result of key lookup */
+  uint16_t          flags;   /* is new, is read only */
+  uint8_t           dep,     /* depends on another key */
+                    type;    /* value type, string, list, hash, etc */
+  const uint32_t    key_idx; /* if cmd has multiple keys */
+  uint16_t          pad;     /* align kbuf.u.buf[] on a 64 bit boundary */
+  kv::KeyFragment   kbuf;    /* key material, extends past structure */
 
-  EvKeyCtx( kv::HashTab &h,  EvSocket *own,  const char *key,  size_t keylen,
-            const int n,  const kv::HashSeed &hs )
+  EvKeyCtx( kv::HashTab &h,  EvSocket *own,  const void *key,  size_t keystrlen,
+            const int n,  const uint32_t idx,  const kv::HashSeed &hs )
      : ht( h ), owner( own ), ival( 0 ), part( 0 ), argn( n ), status( 0 ),
-       flags( EKF_IS_READ_ONLY ), kstatus( KEY_OK ), dep( 0 ), type( 0 ) {
-    uint16_t * p = (uint16_t *) (void *) this->kbuf.u.buf,
-             * k = (uint16_t *) (void *) key,
-             * e = (uint16_t *) (void *) &key[ keylen ];
+       kstatus( KEY_OK ), flags( EKF_IS_READ_ONLY ), dep( 0 ), type( 0 ),
+       key_idx( idx ) {
+    this->copy_key( key, keystrlen );
+    hs.hash( this->kbuf, this->hash1, this->hash2 );
+  }
+
+  EvKeyCtx( EvKeyCtx &ctx )
+     : ht( ctx.ht ), owner( ctx.owner ), hash1( ctx.hash1 ), hash2( ctx.hash2 ),
+       ival( 0 ), part( 0 ), argn( ctx.argn ), status( 0 ), kstatus( KEY_OK ),
+       flags( EKF_IS_READ_ONLY ), dep( 0 ), type( ctx.type ),
+       key_idx( ctx.key_idx ) {
+    this->copy_key( ctx.kbuf.u.buf, ctx.kbuf.keylen - 1 );
+  }
+
+  void copy_key( const void *key,  size_t keystrlen ) {
+    uint16_t       * p = (uint16_t *) (void *) this->kbuf.u.buf;
+    const uint16_t * k = (const uint16_t *) key,
+                   * e = &k[ ( keystrlen + 1 ) / 2 ];
     do {
       *p++ = *k++;
     } while ( k < e );
-    this->kbuf.u.buf[ keylen ] = '\0'; /* string keys terminate with nul char */
-    this->kbuf.keylen = keylen + 1;
-    hs.hash( this->kbuf, this->hash1, this->hash2 );
+    this->kbuf.u.buf[ keystrlen ] = '\0'; /* keys terminate with nul char */
+    this->kbuf.keylen = keystrlen + 1;
   }
-  static size_t size( size_t keylen ) {
-    return sizeof( EvKeyCtx ) + keylen; /* alloc size of *this */
+  static size_t size( size_t keystrlen ) {
+    /* alloc size of *this (kbuf has 4 bytes pad) */
+    return sizeof( EvKeyCtx ) + keystrlen;
   }
   const char *get_type_str( void ) const noexcept;
   EvKeyCtx *set( kv::KeyCtx &kctx ) {

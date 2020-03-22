@@ -53,7 +53,8 @@ enum ExecStatus {
   ERR_KEY_DOESNT_EXIST, /* when set with XX operator */
   ERR_BAD_MULTI,        /* nested multi transaction */
   ERR_BAD_EXEC,         /* no transaction active to exec */
-  ERR_BAD_DISCARD       /* no transaction active to discard */
+  ERR_BAD_DISCARD,      /* no transaction active to discard */
+  ERR_ABORT_TRANS       /* transaction aborted due to error */
 };
 
 inline static bool exec_status_success( int status ) {
@@ -72,6 +73,7 @@ struct PeerData;
 struct PeerMatchArgs;
 struct KvPubSub;
 struct ExecStreamCtx;
+struct RedisMultiExec;
 
 struct ScanArgs {
   int64_t pos,    /* position argument, the position where scan starts */
@@ -81,50 +83,13 @@ struct ScanArgs {
   ScanArgs() : pos( 0 ), maxcnt( 10 ), re( 0 ), md( 0 ) {}
 };
 
-struct RedisMsgList {
-  void * operator new( size_t, void *ptr ) { return ptr; }
-  void operator delete( void *ptr ) { ::free( ptr ); }
-  RedisMsgList * next,
-               * back;
-  RedisMsg     * msg;  /* pending multi exec msg */
-
-  RedisMsgList() : next( 0 ), back( 0 ), msg( 0 ) {}
-};
-
-struct RedisWatchList {
-  void * operator new( size_t, void *ptr ) { return ptr; }
-  void operator delete( void *ptr ) { ::free( ptr ); }
-  RedisWatchList * next,
-                 * back;
-  uint64_t hash1, hash2, serial, pos; /* the location of the watch */
-
-  RedisWatchList( uint64_t h1,  uint64_t h2,  uint64_t sn,  uint64_t p )
-    : next( 0 ), back( 0 ), hash1( h1 ), hash2( h2 ), serial( sn ), pos( p ) {}
-};
-
-struct RedisMultiExec {
-  void * operator new( size_t, void *ptr ) { return ptr; }
-  void operator delete( void *ptr ) { ::free( ptr ); }
-  kv::WorkAllocT< 1024 >        wrk;         /* space to use for msgs below */
-  kv::DLinkList<RedisMsgList>   msg_list;    /* msgs in the multi section */
-  kv::DLinkList<RedisWatchList> watch_list;  /* watched keys */
-  size_t                        msg_count,   /* how many msgs queued */
-                                watch_count; /* how many watches */
-  bool                          multi_start; /* whether in MULTI before EXEC */
-
-  RedisMultiExec() : msg_count( 0 ), watch_count( 0 ), multi_start( false ) {}
-
-  bool append_msg( RedisMsg &msg ) noexcept;
-
-  bool append_watch( uint64_t h1,  uint64_t h2,  uint64_t sn,
-                     uint64_t pos ) noexcept;
-};
-
 enum ExecCmdState { /* cmd_state flags */
   CMD_STATE_NORMAL            = 0, /* no flags */
   CMD_STATE_MONITOR           = 1, /* monitor cmd on */
   CMD_STATE_CLIENT_REPLY_SKIP = 2, /* skip output of next cmd */
-  CMD_STATE_CLIENT_REPLY_OFF  = 4  /* mute output until client reply on again */
+  CMD_STATE_CLIENT_REPLY_OFF  = 4, /* mute output until client reply on again */
+  CMD_STATE_MULTI_QUEUED      = 8, /* MULTI started, queue cmds */
+  CMD_STATE_EXEC_MULTI        = 16 /* EXEC transaction running */
 };
 
 struct RedisExec {
@@ -177,6 +142,16 @@ struct RedisExec {
     this->kctx.ht.hdr.get_hash_seed( this->kctx.db_num, this->hs );
     this->kctx.set( kv::KEYCTX_NO_COPY_ON_READ );
   }
+  void setup_cmd( const RedisCmdData &c ) {
+    this->catg      = (RedisCatg) c.catg;
+    this->arity     = c.arity;
+    this->first     = c.first;
+    this->last      = c.last;
+    this->step      = c.step;
+    this->cmd_flags = c.flags;
+    this->key_flags = EKF_MONITOR; /* monitor always published if subscribed */
+    this->step_mask = 0;
+  }
   /* stop a continuation and send null */
   bool continue_expire( uint64_t event_id,  RedisContinueMsg *&cm ) noexcept;
   /* remove and unsubscribe contiuation subjects from continue_tab */
@@ -195,8 +170,10 @@ struct RedisExec {
   size_t calc_key_count( void ) noexcept;
   /* set up a single key, there may be multiple in a command */
   ExecStatus exec_key_setup( EvSocket *svc,  EvPrefetchQueue *q,
-                             EvKeyCtx *&ctx,  int n ) noexcept;
+                             EvKeyCtx *&ctx,  int n,  uint32_t idx ) noexcept;
   void exec_run_to_completion( void ) noexcept;
+  /* resolve and setup command */
+  ExecStatus prepare_exec_command( void ) noexcept;
   /* parse set up a command */
   ExecStatus exec( EvSocket *svc,  EvPrefetchQueue *q ) noexcept;
   /* run cmd that doesn't have keys */
@@ -472,6 +449,10 @@ struct RedisExec {
   /* TRANSACTION */
   bool make_multi( void ) noexcept;
   void discard_multi( void ) noexcept;
+  void multi_key_fetch( EvKeyCtx &ctx,  bool force_read ) noexcept;
+  bool multi_try_lock( void ) noexcept;
+  void multi_release_lock( void ) noexcept;
+  ExecStatus multi_queued( EvSocket *svc ) noexcept;
   ExecStatus exec_discard( void ) noexcept;
   ExecStatus exec_exec( void ) noexcept;
   ExecStatus exec_multi( void ) noexcept;

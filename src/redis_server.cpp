@@ -15,6 +15,7 @@
 #include <raids/redis_exec.h>
 #include <raids/redis_cmd_db.h>
 #include <raids/route_db.h>
+#include <raids/redis_transaction.h>
 #include <raimd/md_types.h>
 
 using namespace rai;
@@ -32,6 +33,7 @@ xnprintf( char *&b,  size_t &sz,  const char *format, ... )
   size_t  x;
   if ( sz > 0 ) {
     va_start( args, format );
+    /* I don't trust vsnprintf return value, printf is a plugable fmt system */
     /*x =*/ vsnprintf( b, sz, format, args );
     va_end( args );
     x   = ::strnlen( b, sz );
@@ -599,7 +601,7 @@ RedisExec::debug_object( void ) noexcept
     return ERR_ALLOC_FAIL;
 
   EvKeyCtx * ctx = new ( p ) EvKeyCtx( this->kctx.ht, NULL, key, keylen, 0,
-                                       this->hs );
+                                       0, this->hs );
   this->exec_key_set( *ctx );
   ctx->kstatus = this->kctx.find( &this->wrk );
 

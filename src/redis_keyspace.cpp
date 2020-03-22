@@ -320,12 +320,14 @@ RedisKeyspace::pub_keyspace_events( RedisExec &exec ) noexcept
           ev.key    = (const char *) exec.keys[ i ]->kbuf.u.buf;
           ev.keylen = exec.keys[ i ]->kbuf.keylen - 1;
           if ( ( fl & EKF_KEYSPACE_DEL ) != 0 ) {
-            ev.evt    = "del";
-            ev.evtlen = 3;
-            if ( ( fl & EKF_KEYSPACE_FWD ) != 0 )
-              b &= ev.fwd_keyspace();
-            if ( ( fl & EKF_KEYEVENT_FWD ) != 0 )
-              b &= ev.fwd_keyevent();
+            if ( exec.cmd != DEL_CMD ) { /* DEL already sent del event */
+              ev.evt    = "del";
+              ev.evtlen = 3;
+              if ( ( fl & EKF_KEYSPACE_FWD ) != 0 )
+                b &= ev.fwd_keyspace();
+              if ( ( fl & EKF_KEYEVENT_FWD ) != 0 )
+                b &= ev.fwd_keyevent();
+            }
           }
           else if ( ( fl & EKF_KEYSPACE_TRIM ) != 0 ) {
             ev.evt    = "xtrim";

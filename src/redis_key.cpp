@@ -18,11 +18,10 @@ ExecStatus
 RedisExec::exec_del( EvKeyCtx &ctx ) noexcept
 {
   /* DEL key1 [key2 ...] */
-  if ( this->exec_key_fetch( ctx, true ) == KEY_OK && /* test exists */
-       this->exec_key_fetch( ctx ) == KEY_OK ) {
+  if ( this->exec_key_fetch( ctx ) == KEY_OK ) {
     this->kctx.tombstone();
     ctx.ival = 1;
-    ctx.flags |= EKF_KEYSPACE_EVENT;
+    ctx.flags |= EKF_KEYSPACE_EVENT | EKF_KEYSPACE_DEL;
   }
   else {
     ctx.ival = 0;

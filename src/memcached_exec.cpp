@@ -1111,14 +1111,15 @@ MemcachedExec::send_err_kv( KeyStatus kstatus ) noexcept
 
 MemcachedStatus
 MemcachedExec::exec_key_setup( EvSocket *own,  EvPrefetchQueue *q,
-                               EvKeyCtx *&ctx,  uint32_t n ) noexcept
+                               EvKeyCtx *&ctx,  uint32_t n,
+                               uint32_t idx ) noexcept
 {
   const char * key    = this->msg->args[ n ].str;
   size_t       keylen = this->msg->args[ n ].len;
   void *p = this->strm.alloc_temp( EvKeyCtx::size( keylen ) );
   if ( p == NULL )
     return MEMCACHED_ALLOC_FAIL;
-  ctx = new ( p ) EvKeyCtx( this->kctx.ht, own, key, keylen, n, this->hs );
+  ctx = new ( p ) EvKeyCtx( this->kctx.ht, own, key, keylen, n, idx, this->hs );
   if ( q != NULL && ! q->push( ctx ) )
     return MEMCACHED_ALLOC_FAIL;
   ctx->status = MEMCACHED_CONTINUE;
@@ -1142,7 +1143,7 @@ MemcachedExec::exec( EvSocket *svc,  EvPrefetchQueue *q ) noexcept
     this->key  = NULL;
     this->keys = &this->key;
     /* setup first key */
-    status = this->exec_key_setup( svc, q, this->key, i );
+    status = this->exec_key_setup( svc, q, this->key, i, 0 );
     if ( status == MEMCACHED_SETUP_OK ) {
       /* setup rest of keys, if any */
       if ( cnt > 1 ) {
@@ -1153,8 +1154,9 @@ MemcachedExec::exec( EvSocket *svc,  EvPrefetchQueue *q ) noexcept
         else {
           this->keys[ 0 ] = this->key;
           do {
-            status = this->exec_key_setup( svc, q,
-                                           this->keys[ this->key_cnt++ ], ++i );
+            status = this->exec_key_setup( svc, q, this->keys[ this->key_cnt ],
+                                           ++i, this->key_cnt );
+            this->key_cnt++;
           } while ( status == MEMCACHED_SETUP_OK && this->key_cnt  < cnt );
         }
       }

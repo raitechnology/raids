@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <!--[if IE]><meta http-equiv="X-UA-Compatible" content="IE=edge"><![endif]-->
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="generator" content="Asciidoctor 1.5.6.1">
+<meta name="generator" content="Asciidoctor 1.5.5">
 <title>Rai DS Redis commands</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Open+Sans:300,300italic,400,400italic,600,600italic%7CNoto+Serif:400,400italic,700,700italic%7CDroid+Sans+Mono:400,700">
 <style>
@@ -89,12 +89,13 @@ strong,b{font-weight:bold;line-height:inherit}
 small{font-size:60%;line-height:inherit}
 code{font-family:"Droid Sans Mono","DejaVu Sans Mono",monospace;font-weight:400;color:rgba(0,0,0,.9)}
 ul,ol,dl{font-size:1em;line-height:1.6;margin-bottom:1.25em;list-style-position:outside;font-family:inherit}
-ul,ol{margin-left:1.5em}
+ul,ol,ul.no-bullet,ol.no-bullet{margin-left:1.5em}
 ul li ul,ul li ol{margin-left:1.25em;margin-bottom:0;font-size:1em}
 ul.square li ul,ul.circle li ul,ul.disc li ul{list-style:inherit}
 ul.square{list-style-type:square}
 ul.circle{list-style-type:circle}
 ul.disc{list-style-type:disc}
+ul.no-bullet{list-style:none}
 ol li ul,ol li ol{margin-left:1.25em;margin-bottom:0}
 dl dt{margin-bottom:.3125em;font-weight:bold}
 dl dd{margin-bottom:1.25em}
@@ -130,11 +131,7 @@ strong strong{font-weight:400}
 kbd{font-family:"Droid Sans Mono","DejaVu Sans Mono",monospace;display:inline-block;color:rgba(0,0,0,.8);font-size:.65em;line-height:1.45;background-color:#f7f7f7;border:1px solid #ccc;-webkit-border-radius:3px;border-radius:3px;-webkit-box-shadow:0 1px 0 rgba(0,0,0,.2),0 0 0 .1em white inset;box-shadow:0 1px 0 rgba(0,0,0,.2),0 0 0 .1em #fff inset;margin:0 .15em;padding:.2em .5em;vertical-align:middle;position:relative;top:-.1em;white-space:nowrap}
 .keyseq kbd:first-child{margin-left:0}
 .keyseq kbd:last-child{margin-right:0}
-.menuseq,.menuref{color:#000}
-.menuseq b:not(.caret),.menuref{font-weight:inherit}
-.menuseq{word-spacing:-.02em}
-.menuseq b.caret{font-size:1.25em;line-height:.8}
-.menuseq i.caret{font-weight:bold;text-align:center;width:.45em}
+.menuseq,.menu{color:rgba(0,0,0,.8)}
 b.button:before,b.button:after{position:relative;top:-1px;font-weight:400}
 b.button:before{content:"[";padding:0 3px 0 2px}
 b.button:after{content:"]";padding:0 2px 0 3px}
@@ -201,7 +198,7 @@ table.tableblock>caption.title{white-space:nowrap;overflow:visible;max-width:0}
 table.tableblock #preamble>.sectionbody>.paragraph:first-of-type p{font-size:inherit}
 .admonitionblock>table{border-collapse:separate;border:0;background:none;width:100%}
 .admonitionblock>table td.icon{text-align:center;width:80px}
-.admonitionblock>table td.icon img{max-width:initial}
+.admonitionblock>table td.icon img{max-width:none}
 .admonitionblock>table td.icon .title{font-weight:bold;font-family:"Open Sans","DejaVu Sans",sans-serif;text-transform:uppercase}
 .admonitionblock>table td.content{padding-left:1.125em;padding-right:1.25em;border-left:1px solid #ddddd8;color:rgba(0,0,0,.6)}
 .admonitionblock>table td.content>:last-child>:last-child{margin-bottom:0}
@@ -257,13 +254,13 @@ table.pyhltable .linenodiv{background:none!important;padding-right:0!important}
 table.tableblock{max-width:100%;border-collapse:separate}
 table.tableblock td>.paragraph:last-child p>p:last-child,table.tableblock th>p:last-child,table.tableblock td>p:last-child{margin-bottom:0}
 table.tableblock,th.tableblock,td.tableblock{border:0 solid #dedede}
-table.grid-all>thead>tr>.tableblock,table.grid-all>tbody>tr>.tableblock{border-width:0 1px 1px 0}
-table.grid-all>tfoot>tr>.tableblock{border-width:1px 1px 0 0}
-table.grid-cols>*>tr>.tableblock{border-width:0 1px 0 0}
-table.grid-rows>thead>tr>.tableblock,table.grid-rows>tbody>tr>.tableblock{border-width:0 0 1px 0}
-table.grid-rows>tfoot>tr>.tableblock{border-width:1px 0 0 0}
-table.grid-all>*>tr>.tableblock:last-child,table.grid-cols>*>tr>.tableblock:last-child{border-right-width:0}
-table.grid-all>tbody>tr:last-child>.tableblock,table.grid-all>thead:last-child>tr>.tableblock,table.grid-rows>tbody>tr:last-child>.tableblock,table.grid-rows>thead:last-child>tr>.tableblock{border-bottom-width:0}
+table.grid-all th.tableblock,table.grid-all td.tableblock{border-width:0 1px 1px 0}
+table.grid-all tfoot>tr>th.tableblock,table.grid-all tfoot>tr>td.tableblock{border-width:1px 1px 0 0}
+table.grid-cols th.tableblock,table.grid-cols td.tableblock{border-width:0 1px 0 0}
+table.grid-all *>tr>.tableblock:last-child,table.grid-cols *>tr>.tableblock:last-child{border-right-width:0}
+table.grid-rows th.tableblock,table.grid-rows td.tableblock{border-width:0 0 1px 0}
+table.grid-all tbody>tr:last-child>th.tableblock,table.grid-all tbody>tr:last-child>td.tableblock,table.grid-all thead:last-child>tr>th.tableblock,table.grid-rows tbody>tr:last-child>th.tableblock,table.grid-rows tbody>tr:last-child>td.tableblock,table.grid-rows thead:last-child>tr>th.tableblock{border-bottom-width:0}
+table.grid-rows tfoot>tr>th.tableblock,table.grid-rows tfoot>tr>td.tableblock{border-width:1px 0 0 0}
 table.frame-all{border-width:1px}
 table.frame-sides{border-width:0 1px}
 table.frame-topbot{border-width:1px 0}
@@ -284,12 +281,10 @@ ul li ol{margin-left:1.5em}
 dl dd{margin-left:1.125em}
 dl dd:last-child,dl dd:last-child>:last-child{margin-bottom:0}
 ol>li p,ul>li p,ul dd,ol dd,.olist .olist,.ulist .ulist,.ulist .olist,.olist .ulist{margin-bottom:.625em}
-ul.checklist,ul.none,ol.none,ul.no-bullet,ol.no-bullet,ol.unnumbered,ul.unstyled,ol.unstyled{list-style-type:none}
-ul.no-bullet,ol.no-bullet,ol.unnumbered{margin-left:.625em}
-ul.unstyled,ol.unstyled{margin-left:0}
-ul.checklist{margin-left:.625em}
-ul.checklist li>p:first-child>.fa-square-o:first-child,ul.checklist li>p:first-child>.fa-check-square-o:first-child{width:1.25em;font-size:.8em;position:relative;bottom:.125em}
-ul.checklist li>p:first-child>input[type="checkbox"]:first-child{margin-right:.25em}
+ul.unstyled,ol.unnumbered,ul.checklist,ul.none{list-style-type:none}
+ul.unstyled,ol.unnumbered,ul.checklist{margin-left:.625em}
+ul.checklist li>p:first-child>.fa-square-o:first-child,ul.checklist li>p:first-child>.fa-check-square-o:first-child{width:1em;font-size:.85em}
+ul.checklist li>p:first-child>input[type="checkbox"]:first-child{width:1em;position:relative;top:1px}
 ul.inline{margin:0 auto .625em auto;margin-left:-1.375em;margin-right:0;padding:0;list-style:none;overflow:hidden}
 ul.inline>li{list-style:none;float:left;margin-left:1.375em;display:block}
 ul.inline>li>*{display:block}
@@ -306,8 +301,7 @@ ol.lowergreek{list-style-type:lower-greek}
 td.hdlist1,td.hdlist2{vertical-align:top;padding:0 .625em}
 td.hdlist1{font-weight:bold;padding-bottom:1.25em}
 .literalblock+.colist,.listingblock+.colist{margin-top:-.5em}
-.colist>table tr>td:first-of-type{padding:.4em .75em 0 .75em;line-height:1;vertical-align:top}
-.colist>table tr>td:first-of-type img{max-width:initial}
+.colist>table tr>td:first-of-type{padding:0 .75em;line-height:1}
 .colist>table tr>td:last-of-type{padding:.25em 0}
 .thumb,.th{line-height:0;display:inline-block;border:solid 4px #fff;-webkit-box-shadow:0 0 0 1px #ddd;box-shadow:0 0 0 1px #ddd}
 .imageblock.left,.imageblock[style*="float: left"]{margin:.25em .625em 1.25em 0}
@@ -370,7 +364,6 @@ div.unbreakable{page-break-inside:avoid}
 .yellow{color:#bfbf00}
 .yellow-background{background-color:#fafa00}
 span.icon>.fa{cursor:default}
-a span.icon>.fa{cursor:inherit}
 .admonitionblock td.icon [class^="fa icon-"]{font-size:2.5em;text-shadow:1px 1px 2px rgba(0,0,0,.5);cursor:default}
 .admonitionblock td.icon .icon-note:before{content:"\f05a";color:#19407c}
 .admonitionblock td.icon .icon-tip:before{content:"\f0eb";text-shadow:1px 1px 2px rgba(155,155,0,.8);color:#111}
@@ -444,6 +437,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <li><a href="#echo">echo | echo string</a></li>
 <li><a href="#ping">ping | reply with pong</a></li>
 <li><a href="#quit">quit | close connection</a></li>
+<li><a href="#select">select | choose db</a></li>
 </ul>
 </li>
 <li><a href="#_geo">Geo</a>
@@ -543,6 +537,9 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <li><a href="#command">command | query command info</a></li>
 <li><a href="#config">config | query config</a></li>
 <li><a href="#dbsize">dbsize | get number of keys</a></li>
+<li><a href="#debug">debug | run debug</a></li>
+<li><a href="#flushall">flushall | remove keys</a></li>
+<li><a href="#flushdb">flushdb | remove keys from db</a></li>
 <li><a href="#info">info | query server stats</a></li>
 <li><a href="#monitor">monitor | monitor commands</a></li>
 <li><a href="#shutdown">shutdown | shutdown server</a></li>
@@ -963,6 +960,14 @@ since the basic structures of system are different.</p>
 <td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
 <td class="tableblock halign-left valign-top"></td>
 </tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#select">select | choose db</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">2</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"></td>
+</tr>
 </tbody>
 </table>
 <div class="sect2">
@@ -1039,6 +1044,24 @@ when it is present.</p>
 <div class="paragraph">
 <div class="title">Return</div>
 <p>An <strong>OK</strong> is returned, then the connection is closed.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="select">select | choose db</h3>
+<div class="listingblock">
+<div class="title">Usage</div>
+<div class="content">
+<pre>select db</pre>
+</div>
+</div>
+<div class="paragraph">
+<div class="title">Description</div>
+<p>Change the working database to db, where db is a number between 0 and
+255.</p>
+</div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p><strong>OK</strong> or range or parse error.</p>
 </div>
 </div>
 </div>
@@ -3645,6 +3668,30 @@ subscriptions that the client has open.</p>
 <td class="tableblock halign-left valign-top"></td>
 </tr>
 <tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#debug">debug | run debug</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">admin</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#flushall">flushall | remove keys</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">admin</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#flushdb">flushdb | remove keys from db</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">admin</p></td>
+</tr>
+<tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#info">info | query server stats</a></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">-1</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
@@ -3684,7 +3731,7 @@ subscriptions that the client has open.</p>
 <div class="title">Usage</div>
 <div class="content">
 <pre>client [setname name | getname | id | kill match | list match |
-        reply state ]</pre>
+        reply state]</pre>
 </div>
 </div>
 <div class="listingblock">
@@ -3812,6 +3859,10 @@ will be muted.</p>
 <div class="title">Description</div>
 <p>Get command details and help.</p>
 </div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p>Array of strings, command info.</p>
+</div>
 </div>
 <div class="sect2">
 <h3 id="config">config | query config</h3>
@@ -3824,7 +3875,11 @@ will be muted.</p>
 <div class="paragraph">
 <div class="title">Description</div>
 <p>Get, set config parameters.  There is no configuration, so these
-are not functional.</p>
+are not functional except get, which returns sane values.</p>
+</div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p>Array of config key values.</p>
 </div>
 </div>
 <div class="sect2">
@@ -3845,6 +3900,125 @@ are not functional.</p>
 <div class="paragraph">
 <div class="title">Description</div>
 <p>Get number of keys in db.</p>
+</div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p>An integer number of keys.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="debug">debug | run debug</h3>
+<div class="listingblock">
+<div class="title">Usage</div>
+<div class="content">
+<pre>debug [object key | htstats]</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="title">Example</div>
+<div class="content">
+<pre>&gt; set hello world
+'OK'
+&gt; debug object hello
+key:         "hello"
+hash:        2aa73a1eeb0b2d45:fd102121185ce157
+pos:         [732172]+0.0
+update_time: -4s
+flags:       string-Upd-Ival-Key-Stmp
+db:          0
+val:         0
+seqno:       3
+size:        5</pre>
+</div>
+</div>
+<div class="paragraph">
+<div class="title">Description</div>
+<p>Get debug info about key.</p>
+</div>
+<div class="listingblock">
+<div class="title">Example</div>
+<div class="content">
+<pre>&gt; debug htstats
+db_num:  0
+
+-= totals =-
+read:    8896064
+write:   2045184
+spins:   0
+chains:  0
+add:     303
+drop:    2
+expire:  0
+htevict: 0
+afail:   0
+hit:     511040
+miss:    0
+cuckacq: 0
+cuckfet: 0
+cuckmov: 0
+cuckret: 0
+cuckmax: 0
+
+-= self =-
+read:    8896064
+write:   2045184
+spins:   0
+chains:  0
+add:     303
+drop:    2
+expire:  0
+htevict: 0
+afail:   0
+hit:     511040
+miss:    0
+cuckacq: 0
+cuckfet: 0
+cuckmov: 0
+cuckret: 0
+cuckmax: 0</pre>
+</div>
+</div>
+<div class="paragraph">
+<div class="title">Description</div>
+<p>Get information about the hash table counters.</p>
+</div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p>A string description of debug info or bad command error.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="flushall">flushall | remove keys</h3>
+<div class="listingblock">
+<div class="title">Usage</div>
+<div class="content">
+<pre>flushall [async]</pre>
+</div>
+</div>
+<div class="paragraph">
+<div class="title">Description</div>
+<p>Remove keys from all dbs.</p>
+</div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p><strong>OK</strong> if successful, error otherwise.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="flushdb">flushdb | remove keys from db</h3>
+<div class="listingblock">
+<div class="title">Usage</div>
+<div class="content">
+<pre>flushdb [async]</pre>
+</div>
+</div>
+<div class="paragraph">
+<div class="title">Description</div>
+<p>Remove keys from selected db</p>
+</div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p><strong>OK</strong> if successful, error otherwise.</p>
 </div>
 </div>
 <div class="sect2">
@@ -3884,6 +4058,10 @@ used_cpu_total:       1.515147</pre>
 <div class="paragraph">
 <div class="title">Description</div>
 <p>Get version info and counters.</p>
+</div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p>A text string with newlines that has the requested info.</p>
 </div>
 </div>
 <div class="sect2">
@@ -6636,9 +6814,24 @@ function.</p>
 <pre>discard</pre>
 </div>
 </div>
+<div class="listingblock">
+<div class="title">Example</div>
+<div class="content">
+<pre>&gt; multi
+'OK'
+&gt; incr x
+'QUEUED'
+&gt; discard
+'OK'</pre>
+</div>
+</div>
 <div class="paragraph">
 <div class="title">Description</div>
-<p>Discard cmds issued after multi</p>
+<p>Discards <a href="#watch">watch | start watching</a> commands and discards commands queued by <a href="#multi">multi | start trans</a>.</p>
+</div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p><strong>OK</strong> or error when no multi is started.</p>
 </div>
 </div>
 <div class="sect2">
@@ -6649,9 +6842,25 @@ function.</p>
 <pre>exec</pre>
 </div>
 </div>
+<div class="listingblock">
+<div class="title">Example</div>
+<div class="content">
+<pre>&gt; multi
+'OK'
+&gt; set x 10
+'QUEUED'
+&gt; exec
+['OK']</pre>
+</div>
+</div>
 <div class="paragraph">
 <div class="title">Description</div>
-<p>Execute all commands after multi</p>
+<p>Execute commands queued by <a href="#multi">multi | start trans</a> as an atomic unit.</p>
+</div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p>An array of results, an element for every command, or <strong>null</strong> when a <a href="#watch">watch | start watching</a>
+fails.</p>
 </div>
 </div>
 <div class="sect2">
@@ -6662,9 +6871,34 @@ function.</p>
 <pre>multi</pre>
 </div>
 </div>
+<div class="listingblock">
+<div class="title">Example</div>
+<div class="content">
+<pre>&gt; multi
+'OK'
+&gt; set x 10
+'QUEUED'
+&gt; exec
+['OK']
+&gt; multi
+'OK'
+&gt; set
+`ERR arguments format cmd: \'set\'`
+&gt; set x 10
+'QUEUED'
+&gt; exec
+`ERR transaction aborted, error cmd: \'exec\'`</pre>
+</div>
+</div>
 <div class="paragraph">
 <div class="title">Description</div>
-<p>Multi start transaction</p>
+<p>Start a transaction, commands issued after <a href="#multi">multi | start trans</a> but before <a href="#exec">exec | run trans</a> are
+queued execution.  The syntax of the command and arguments is checked before
+being queued, so a command may be <strong>QUEUED</strong> or have an syntax error result.</p>
+</div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p><strong>OK</strong>.</p>
 </div>
 </div>
 <div class="sect2">
@@ -6675,9 +6909,22 @@ function.</p>
 <pre>unwatch</pre>
 </div>
 </div>
+<div class="listingblock">
+<div class="title">Example</div>
+<div class="content">
+<pre>&gt; watch x
+'OK'
+&gt; unwatch
+'OK'</pre>
+</div>
+</div>
 <div class="paragraph">
 <div class="title">Description</div>
-<p>Forget watched keys</p>
+<p>Discard watched keys.</p>
+</div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p><strong>OK</strong>.</p>
 </div>
 </div>
 <div class="sect2">
@@ -6688,9 +6935,28 @@ function.</p>
 <pre>watch key [key ...]</pre>
 </div>
 </div>
+<div class="listingblock">
+<div class="title">Example</div>
+<div class="content">
+<pre>&gt; watch x
+'OK'
+&gt; multi
+'OK'
+&gt; set x 10
+'QUEUED'
+&gt; exec
+null</pre>
+</div>
+</div>
 <div class="paragraph">
 <div class="title">Description</div>
-<p>Watch keys to determine multi/exec blk</p>
+<p>Watch keys before a <a href="#multi">multi | start trans</a> transaction starts.  After <a href="#exec">exec | run trans</a> is issued,
+all watched keys are examined to make sure that none have been modified.  If a
+watched key was modified, then the transaction aborts and <strong>null</strong> is returned.</p>
+</div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p><strong>OK</strong>.</p>
 </div>
 </div>
 </div>
@@ -7532,7 +7798,7 @@ idle time, and a delivery count.</p>
 </div>
 <div id="footer">
 <div id="footer-text">
-Last updated 2020-02-05 04:57:24 PST
+Last updated 2020-03-21 17:22:13 PDT
 </div>
 </div>
 </body>

@@ -19,13 +19,13 @@ struct RedisCmdExtra {
 };
 
 enum RedisCmdFlags {
-  CMD_NOFLAGS       = 0,
-  CMD_ADMIN_FLAG    = 1, /* bits attached to command in RedisCmdData::flags */
-  CMD_READ_FLAG     = 2,
-  CMD_WRITE_FLAG    = 4,
-  CMD_MOVABLE_FLAG  = 8,
-  CMD_READ_MV_FLAG  = CMD_READ_FLAG | CMD_MOVABLE_FLAG,
-  CMD_WRITE_MV_FLAG = CMD_WRITE_FLAG | CMD_MOVABLE_FLAG
+  CMD_NOFLAGS         = 0,
+  CMD_ADMIN_FLAG      = 1, /* bits attached to cmd in RedisCmdData::flags */
+  CMD_READ_FLAG       = 2,
+  CMD_WRITE_FLAG      = 4,
+  CMD_MOVABLE_FLAG    = 8,
+  CMD_READ_MV_FLAG    = CMD_READ_FLAG | CMD_MOVABLE_FLAG,
+  CMD_WRITE_MV_FLAG   = CMD_WRITE_FLAG | CMD_MOVABLE_FLAG
 };
 
 static const size_t MAX_CMD_LEN  = 32, /* strlen( "MGET" ) + 1 */
