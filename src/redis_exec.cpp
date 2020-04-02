@@ -411,7 +411,7 @@ RedisExec::prepare_exec_command( void ) noexcept
 {
   const char * arg0;
   size_t       arg0len;
-
+  /* get command string, hash it, check cmd args geometry */
   arg0 = this->msg.command( arg0len, this->argc );
   /* max command len is 17 (GEORADIUSBYMEMBER) */
   if ( arg0len >= MAX_CMD_LEN )
@@ -437,7 +437,7 @@ ExecStatus
 RedisExec::exec( EvSocket *svc,  EvPrefetchQueue *q ) noexcept
 {
   ExecStatus status;
-  
+  /* determine command */
   status = this->prepare_exec_command();
   if ( status == EXEC_OK ) {
     if ( ( this->cmd_flags & CMD_MOVABLE_FLAG ) != 0 ) {
@@ -445,6 +445,7 @@ RedisExec::exec( EvSocket *svc,  EvPrefetchQueue *q ) noexcept
         status = ERR_BAD_ARGS;
     }
   }
+  /* save output state, may need to rewind */
   this->strm_start = this->strm.pending();
   /* if queueing cmds for transaction */
   if ( ( this->cmd_state & CMD_STATE_MULTI_QUEUED ) != 0 ) {
@@ -554,8 +555,8 @@ RedisExec::exec_nokeys( void ) noexcept
     case MONITOR_CMD:      return this->exec_monitor();
 #if 0
     case ROLE_CMD:         return this->exec_role();
-    case SAVE_CMD:         return this->exec_save();
 #endif
+    case SAVE_CMD:         return this->exec_save();
     case SHUTDOWN_CMD:     return this->exec_shutdown();
 #if 0
     case SLAVEOF_CMD:      return this->exec_slaveof();
@@ -589,8 +590,8 @@ RedisExec::exec_nokeys( void ) noexcept
 kv::KeyStatus
 RedisExec::exec_key_fetch( EvKeyCtx &ctx,  bool force_read ) noexcept
 {
-  /* if not executing multi transaction */
-  if ( ( this->cmd_state & CMD_STATE_EXEC_MULTI ) == 0 ) {
+  /* if not executing multi transaction or save */
+  if ( ( this->cmd_state & ( CMD_STATE_EXEC_MULTI | CMD_STATE_SAVE ) ) == 0 ) {
     this->exec_key_set( ctx );
     if ( ( this->cmd_flags & CMD_READ_FLAG ) != 0 || force_read ) {
       for (;;) {
@@ -627,7 +628,12 @@ RedisExec::exec_key_fetch( EvKeyCtx &ctx,  bool force_read ) noexcept
     }
   }
   else {
-    this->multi_key_fetch( ctx, force_read );
+    if ( ( this->cmd_state & CMD_STATE_EXEC_MULTI ) != 0 )
+      this->multi_key_fetch( ctx, force_read );
+    else { /* CMD_STATE_SAVE */
+      ctx.kstatus = KEY_OK;
+      ctx.flags  |= EKF_IS_READ_ONLY;
+    }
   }
   if ( ctx.kstatus == KEY_OK ) /* not new and is found */
     ctx.type = this->kctx.get_type();
@@ -773,8 +779,8 @@ RedisExec::exec_key_continue( EvKeyCtx &ctx ) noexcept
       case MONITOR_CMD:
 #if 0
       case ROLE_CMD:
-      case SAVE_CMD:
 #endif
+      case SAVE_CMD:
       case SHUTDOWN_CMD:
 #if 0
       case SLAVEOF_CMD:
@@ -1096,7 +1102,8 @@ RedisExec::send_status( ExecStatus stat,  KeyStatus kstat ) noexcept
     case ERR_BAD_MULTI:
     case ERR_BAD_EXEC:
     case ERR_BAD_DISCARD:
-    case ERR_ABORT_TRANS: this->send_err_string( stat, kstat ); break;
+    case ERR_ABORT_TRANS:
+    case ERR_SAVE:        this->send_err_string( stat, kstat ); break;
 
     /* ok status */
     case EXEC_QUIT:
@@ -1126,6 +1133,7 @@ RedisExec::send_err_string( ExecStatus stat,  KeyStatus kstat ) noexcept
     case ERR_BAD_EXEC:         str = "-ERR bad exec, no multi"; break;
     case ERR_BAD_DISCARD:      str = "-ERR bad discard, no multi"; break;
     case ERR_ABORT_TRANS:      str = "-ERR transaction aborted, error"; break;
+    case ERR_SAVE:             str = "-ERR save failed, file error"; break;
     default:                   str = "-ERR"; break;
   }
 

@@ -925,10 +925,7 @@ dump key
 > set k sophisticateduniverse
 'OK'
 > dump k
-"n\u0210/<\u0214\u0186\u0234JH\u0252H\u0231\u0134U\u0138\u0197"
-"\u0000\u0000\u0000\u0002\u0128\u0003\u0002\u0000k\u0000\u0000"
-"\u0000\u0000\u0000\u0000\u0000sophisticateduniverseo\u0238"
-"\u0021\u0021\u0128\u0214\u0186n\u0210/<"
+"\u0000\u0021sophisticateduniverse\t\u0000!y0\u00022ZD\u0163"
 ----
 .Description
 Serialize value at key.
@@ -1966,7 +1963,7 @@ Server
 //| <<memory>> | -2 | 0 | 0 | 0 |
 | <<monitor>> | 1 | 0 | 0 | 0 | admin
 //| <<role>> | 1 | 0 | 0 | 0 |
-//| <<save>> | 1 | 0 | 0 | 0 | admin
+| <<save>> | 1 | 0 | 0 | 0 | admin
 | <<shutdown>> | -1 | 0 | 0 | 0 | admin
 //| <<slaveof>> | 3 | 0 | 0 | 0 | admin
 //| <<slowlog>> | -2 | 0 | 0 | 0 | admin
@@ -2317,7 +2314,7 @@ role
 ----
 .Description
 What is role of the instance for replication.
-
+////
 [[save]]
 save | sync save
 ~~~~~~~~~~~~~~~~
@@ -2326,8 +2323,8 @@ save | sync save
 save 
 ----
 .Description
-Synchronously save.
-////
+Synchronously save to rdb format file.
+
 [[shutdown]]
 shutdown | shutdown server
 ~~~~~~~~~~~~~~~~~~~~~~~~~~

@@ -174,6 +174,9 @@ struct StreamBuf {
   }
   char *alloc_temp( size_t amt ) noexcept;
 
+  uint8_t *alloc_bytes( size_t amt ) {
+    return (uint8_t *) this->alloc( amt );
+  }
   char *alloc( size_t amt ) {
     if ( this->out_buf != NULL && this->sz + amt > BUFSIZE )
       this->flush();

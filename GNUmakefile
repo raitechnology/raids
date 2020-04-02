@@ -67,6 +67,7 @@ have_md_submodule  := $(shell if [ -d ./raimd ]; then echo yes; else echo no; fi
 have_dec_submodule := $(shell if [ -d ./raimd/libdecnumber ]; then echo yes; else echo no; fi )
 have_kv_submodule  := $(shell if [ -d ./raikv ]; then echo yes; else echo no; fi )
 have_h3_submodule  := $(shell if [ -d ./h3 ]; then echo yes; else echo no; fi )
+have_rdb_submodule := $(shell if [ -d ./rdbparser ]; then echo yes; else echo no; fi )
 
 lnk_lib     :=
 dlnk_lib    :=
@@ -122,14 +123,23 @@ lnk_lib     += -ldecnumber
 dlnk_lib    += -ldecnumber
 endif
 
+ifeq (yes,$(have_rdb_submodule))
+rdb_lib      := rdbparser/$(libd)/librdbparser.a
+lnk_lib     += $(rdb_lib)
+dlnk_lib    += -Lrdbparser/$(libd) -lrdbparser
+rpath6       = ,-rpath,$(pwd)/rdbparser/$(libd)
+else
+lnk_lib     += -lrdbparser
+dlnk_lib    += -lrdbparser
+endif
+
 ds_lib      := $(libd)/libraids.a
-rpath       := -Wl,-rpath,$(pwd)/$(libd)$(rpath1)$(rpath2)$(rpath3)$(rpath4)$(rpath5)
+rpath       := -Wl,-rpath,$(pwd)/$(libd)$(rpath1)$(rpath2)$(rpath3)$(rpath4)$(rpath5)$(rpath6)
 dlnk_lib    += -lpcre2-8 -lcrypto
-lnk_lib     += -lpcre2-8 -lcrypto
 malloc_lib  :=
 
 .PHONY: everything
-everything: $(kv_lib) $(h3_lib) $(dec_lib) $(md_lib) $(lc_lib) all
+everything: $(kv_lib) $(rdb_lib) $(h3_lib) $(dec_lib) $(md_lib) $(lc_lib) all
 
 # build submodules if have them
 ifeq (yes,$(have_kv_submodule))
@@ -152,6 +162,10 @@ ifeq (yes,$(have_h3_submodule))
 $(h3_lib):
 	$(MAKE) -C h3
 endif
+ifeq (yes,$(have_rdb_submodule))
+$(rdb_lib):
+	$(MAKE) -C rdbparser
+endif
 
 # copr/fedora build (with version env vars)
 # copr uses this to generate a source rpm with the srpm target
@@ -171,17 +185,18 @@ emain_defines          := -DDS_VER=$(ver_build)
 redis_server_defines   := -DDS_VER=$(ver_build) -DGIT_HEAD=$(shell git rev-parse HEAD | cut -c 1-8)
 memcached_exec_defines := -DDS_VER=$(ver_build)
 
-redis_geo_includes        = -Ih3/src/h3lib/include -I/usr/include/h3lib
-redis_sortedset_includes  = -Ih3/src/h3lib/include -I/usr/include/h3lib
+redis_geo_includes       := -Ih3/src/h3lib/include -I/usr/include/h3lib
+redis_sortedset_includes := -Ih3/src/h3lib/include -I/usr/include/h3lib
 decimal_includes         := -Iraimd/libdecnumber/include
 ev_client_includes       := -Ilinecook/include
 term_includes            := -Ilinecook/include
+redis_rdb_includes       := -Irdbparser/include
 
 libraids_files := ev_net ev_service ev_http ev_client ev_tcp ev_unix ev_udp \
   ev_nats ev_capr ev_rv shm_client stream_buf route_db redis_msg redis_cmd_db \
   redis_exec redis_keyspace redis_geo redis_hash redis_hyperloglog redis_key \
   redis_list redis_pubsub redis_script redis_set redis_sortedset redis_stream \
-  redis_string redis_transaction redis_server kv_pubsub timer_queue \
+  redis_string redis_transaction redis_rdb redis_server kv_pubsub timer_queue \
   ev_memcached memcached_exec term
 libraids_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(libraids_files)))
 libraids_dbjs  := $(addprefix $(objd)/, $(addsuffix .fpic.o, $(libraids_files)))
@@ -217,7 +232,7 @@ ds_server_files      := emain
 ds_server_objs       := $(addprefix $(objd)/, $(addsuffix .o, $(ds_server_files)))
 ds_server_deps       := $(addprefix $(dependd)/, $(addsuffix .d, $(ds_server_files)))
 ds_server_libs       := $(libd)/libraids.so
-ds_server_static_lnk := $(ds_lib) $(lnk_lib) -lpcre2-32
+ds_server_static_lnk := $(ds_lib) $(lnk_lib) -lpcre2-32 -lpcre2-8 -lcrypto -llzf 
 ds_server_lnk        := $(raids_dlnk)
 
 $(bind)/ds_server: $(ds_server_objs) $(ds_server_libs)

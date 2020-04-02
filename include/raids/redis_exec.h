@@ -54,7 +54,8 @@ enum ExecStatus {
   ERR_BAD_MULTI,        /* nested multi transaction */
   ERR_BAD_EXEC,         /* no transaction active to exec */
   ERR_BAD_DISCARD,      /* no transaction active to discard */
-  ERR_ABORT_TRANS       /* transaction aborted due to error */
+  ERR_ABORT_TRANS,      /* transaction aborted due to error */
+  ERR_SAVE              /* save failed */
 };
 
 inline static bool exec_status_success( int status ) {
@@ -89,7 +90,8 @@ enum ExecCmdState { /* cmd_state flags */
   CMD_STATE_CLIENT_REPLY_SKIP = 2, /* skip output of next cmd */
   CMD_STATE_CLIENT_REPLY_OFF  = 4, /* mute output until client reply on again */
   CMD_STATE_MULTI_QUEUED      = 8, /* MULTI started, queue cmds */
-  CMD_STATE_EXEC_MULTI        = 16 /* EXEC transaction running */
+  CMD_STATE_EXEC_MULTI        = 16,/* EXEC transaction running */
+  CMD_STATE_SAVE              = 32 /* SAVE is running */
 };
 
 struct RedisExec {
@@ -101,35 +103,36 @@ struct RedisExec {
   kv::WorkAllocT< 1024 > wrk; /* kv work buffer, reset before each key lookup */
   kv::DLinkList<RedisContinueMsg> cont_list, /* continuations ready to run */
                                   wait_list; /* these are waiting on a timer */
-  StreamBuf      & strm;      /* output buffer, result of command execution */
-  size_t           strm_start;/* output offset before command starts */
-  RedisMsg         msg;       /* current command msg */
-  EvKeyCtx       * key,       /* currently executing key */
-                ** keys;      /* all of the keys in command */
-  uint32_t         key_cnt,   /* total keys[] size */
-                   key_done;  /* number of keys processed */
-  RedisMultiExec * multi;     /* MULTI .. EXEC block */
-  RedisCmd         cmd;       /* current command (GET_CMD) */
-  RedisCatg        catg;      /* current command (GET_CMD) */
-  RedisMsgStatus   mstatus;   /* command message parse status */
-  uint8_t          blk_state, /* if blocking cmd timed out (RBLK_CMD_TIMEOUT) */
-                   cmd_state; /* if monitor is active or skipping */
-  uint16_t         cmd_flags, /* command flags (CMD_READ_FLAG) */
-                   key_flags; /* EvKeyFlags, if a key has a keyspace event */
-  int16_t          arity,     /* number of command args */
-                   first,     /* first key in args */
-                   last,      /* last key in args */
-                   step;      /* incr between keys */
-  uint64_t         step_mask; /* step key mask */
-  size_t           argc;      /* count of args in cmd msg */
-  RedisSubMap      sub_tab;   /* pub/sub subscription table */
-  RedisPatternMap  pat_tab;   /* pub/sub pattern sub table */
-  RedisContinueMap continue_tab; /* blocked continuations */
-  RouteDB        & sub_route; /* map subject to sub_id */
-  PeerData       & peer;      /* name and address of this peer */
-  uint32_t         sub_id,    /* fd, set this after accept() */
-                   next_event_id; /* next event id for timers */
-  uint64_t         timer_id;  /* timer id of this service */
+  StreamBuf       & strm;      /* output buffer, result of command execution */
+  size_t            strm_start;/* output offset before command starts */
+  RedisMsg          msg;       /* current command msg */
+  EvKeyCtx        * key,       /* currently executing key */
+                 ** keys;      /* all of the keys in command */
+  uint32_t          key_cnt,   /* total keys[] size */
+                    key_done;  /* number of keys processed */
+  RedisMultiExec  * multi;     /* MULTI .. EXEC block */
+  RedisCmd          cmd;       /* current command (GET_CMD) */
+  RedisCatg         catg;      /* current command (GET_CMD) */
+  RedisMsgStatus    mstatus;   /* command message parse status */
+  uint8_t           blk_state, /* if blocking cmd timed out (RBLK_CMD_TIMEOUT)*/
+                    cmd_state; /* if monitor is active or skipping */
+  uint16_t          cmd_flags, /* command flags (CMD_READ_FLAG) */
+                    key_flags; /* EvKeyFlags, if a key has a keyspace event */
+  int16_t           arity,     /* number of command args */
+                    first,     /* first key in args */
+                    last,      /* last key in args */
+                    step;      /* incr between keys */
+  uint64_t          step_mask; /* step key mask */
+  size_t            argc;      /* count of args in cmd msg */
+  RedisSubMap       sub_tab;   /* pub/sub subscription table */
+  RedisPatternMap   pat_tab;   /* pub/sub pattern sub table */
+  RedisContinueMap  continue_tab; /* blocked continuations */
+  RouteDB         & sub_route; /* map subject to sub_id */
+  PeerData        & peer;      /* name and address of this peer */
+  uint32_t          sub_id,    /* fd, set this after accept() */
+                    next_event_id; /* next event id for timers */
+  uint64_t          timer_id;  /* timer id of this service */
+  kv::KeyFragment * save_key;  /* if key is being saved */
 
   RedisExec( kv::HashTab &map,  uint32_t ,  uint32_t dbx_id,
              StreamBuf &s,  RouteDB &rdb,  PeerData &pd ) :
@@ -138,7 +141,7 @@ struct RedisExec {
       cmd( NO_CMD ), catg( NO_CATG ), blk_state( 0 ), cmd_state( 0 ),
       key_flags( 0 ),
       sub_route( rdb ), peer( pd ), sub_id( ~0U ), next_event_id( 0 ),
-      timer_id( 0 ) {
+      timer_id( 0 ), save_key( 0 ) {
     this->kctx.ht.hdr.get_hash_seed( this->kctx.db_num, this->hs );
     this->kctx.set( kv::KEYCTX_NO_COPY_ON_READ );
   }
@@ -270,6 +273,14 @@ struct RedisExec {
   /* KEY */
   ExecStatus exec_del( EvKeyCtx &ctx ) noexcept;
   ExecStatus exec_dump( EvKeyCtx &ctx ) noexcept;
+  ExecStatus dump_string( EvKeyCtx &ctx ) noexcept;
+  ExecStatus dump_list( EvKeyCtx &ctx ) noexcept;
+  ExecStatus dump_hash( EvKeyCtx &ctx ) noexcept;
+  ExecStatus dump_set( EvKeyCtx &ctx ) noexcept;
+  ExecStatus dump_zset( EvKeyCtx &ctx ) noexcept;
+  ExecStatus dump_geo( EvKeyCtx &ctx ) noexcept;
+  ExecStatus dump_hll( EvKeyCtx &ctx ) noexcept;
+  ExecStatus dump_stream( EvKeyCtx &ctx ) noexcept;
   ExecStatus exec_exists( EvKeyCtx &ctx ) noexcept;
   ExecStatus exec_expire( EvKeyCtx &ctx ) noexcept;
   ExecStatus exec_expireat( EvKeyCtx &ctx ) noexcept;

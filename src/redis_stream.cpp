@@ -4,7 +4,6 @@
 #include <stdint.h>
 #include <raikv/util.h>
 #include <raids/redis_exec.h>
-#include <raimd/md_stream.h>
 #include <raids/exec_stream_ctx.h>
 
 using namespace rai;

@@ -1167,12 +1167,6 @@ RedisExec::exec_role( void ) noexcept
 }
 
 ExecStatus
-RedisExec::exec_save( void ) noexcept
-{
-  return ERR_BAD_CMD;
-}
-
-ExecStatus
 RedisExec::exec_shutdown( void ) noexcept
 {
   return EXEC_QUIT;

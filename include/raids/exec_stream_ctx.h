@@ -1,5 +1,7 @@
-#ifndef __rai_raids__exec_list_ctx_h__
-#define __rai_raids__exec_list_ctx_h__
+#ifndef __rai_raids__exec_stream_ctx_h__
+#define __rai_raids__exec_stream_ctx_h__
+
+#include <raimd/md_stream.h>
 
 namespace rai {
 namespace ds {

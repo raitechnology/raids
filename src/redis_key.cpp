@@ -30,54 +30,6 @@ RedisExec::exec_del( EvKeyCtx &ctx ) noexcept
 }
 
 ExecStatus
-RedisExec::exec_dump( EvKeyCtx &ctx ) noexcept
-{
-  /* DUMP key (serialize key) */
-  switch ( this->exec_key_fetch( ctx ) ) {
-    case KEY_OK: {
-      uint64_t off,
-               size,
-               msg_size,
-               digs;
-      char   * buf;
-      void   * data;
-      ctx.kstatus = this->kctx.value( &data, size );
-      if ( ctx.kstatus == KEY_OK ) {
-        size = this->kctx.hash_entry_size;
-        if ( this->kctx.entry->test( FL_SEGMENT_VALUE ) )
-          msg_size = this->kctx.msg->size;
-        else
-          msg_size = 0;
-        digs = uint_digits( size + msg_size );
-        buf = (char *) this->strm.alloc( size + msg_size +
-                                        /* $ nnn \r\n size + msg_size \r\n */
-                                        1 + digs + 2 + 2 );
-        if ( buf == NULL )
-          return ERR_ALLOC_FAIL;
-        buf[ 0 ] = '$';
-        off = 1 + uint_to_str( size + msg_size, &buf[ 1 ], digs );
-        off = crlf( buf, off );
-        ::memcpy( &buf[ off ], this->kctx.entry, size );
-        off += size;
-        if ( msg_size != 0 )
-          ::memcpy( &buf[ off ], this->kctx.msg, msg_size );
-        off = crlf( buf, off + msg_size );
-        ctx.kstatus = this->kctx.validate_value();
-        if ( ctx.kstatus == KEY_OK ) {
-          this->strm.sz += off;
-          /*MDOutput out;
-          out.print_hex( buf, off );*/
-          return EXEC_OK;
-        }
-      }
-    }
-    /* FALLTHRU */
-    default:            return ERR_KV_STATUS;
-    case KEY_NOT_FOUND: return EXEC_SEND_NIL;
-  }
-}
-
-ExecStatus
 RedisExec::exec_exists( EvKeyCtx &ctx ) noexcept
 {
   /* EXISTS key1 [key2 ...] */

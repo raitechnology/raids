@@ -91,6 +91,11 @@ struct EvKeyCtx {
     this->copy_key( ctx.kbuf.u.buf, ctx.kbuf.keylen - 1 );
   }
 
+  EvKeyCtx( kv::HashTab &h )
+     : ht( h ), owner( 0 ), hash1( 0 ), hash2( 0 ), ival( 0 ), part( 0 ),
+       argn( 0 ), status( 0 ), kstatus( KEY_OK ), flags( EKF_IS_READ_ONLY ),
+       dep( 0 ), type( 0 ), key_idx( 0 ) {}
+
   void copy_key( const void *key,  size_t keystrlen ) {
     uint16_t       * p = (uint16_t *) (void *) this->kbuf.u.buf;
     const uint16_t * k = (const uint16_t *) key,
