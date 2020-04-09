@@ -374,13 +374,6 @@ RedisExec::exec_renamenx( EvKeyCtx &ctx ) noexcept
 }
 
 ExecStatus
-RedisExec::exec_restore( EvKeyCtx &/*ctx*/ ) noexcept
-{
-  /* RESTORE key ttl value */
-  return ERR_BAD_CMD;
-}
-
-ExecStatus
 RedisExec::exec_sort( EvKeyCtx &/*ctx*/ ) noexcept
 {
   /* SORT key [BY pat] [LIMIT off cnt] [GET pat] [ASC|DESC] 

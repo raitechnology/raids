@@ -76,172 +76,173 @@ enum RedisCmd {
   RANDOMKEY_CMD          =  41,
   RENAME_CMD             =  42,
   RENAMENX_CMD           =  43,
-  TOUCH_CMD              =  44,
-  TTL_CMD                =  45,
-  TYPE_CMD               =  46,
-  UNLINK_CMD             =  47,
-  SCAN_CMD               =  48,
+  RESTORE_CMD            =  44,
+  TOUCH_CMD              =  45,
+  TTL_CMD                =  46,
+  TYPE_CMD               =  47,
+  UNLINK_CMD             =  48,
+  SCAN_CMD               =  49,
   /* List */
-  BLPOP_CMD              =  49,
-  BRPOP_CMD              =  50,
-  BRPOPLPUSH_CMD         =  51,
-  LINDEX_CMD             =  52,
-  LINSERT_CMD            =  53,
-  LLEN_CMD               =  54,
-  LPOP_CMD               =  55,
-  LPUSH_CMD              =  56,
-  LPUSHX_CMD             =  57,
-  LRANGE_CMD             =  58,
-  LREM_CMD               =  59,
-  LSET_CMD               =  60,
-  LTRIM_CMD              =  61,
-  RPOP_CMD               =  62,
-  RPOPLPUSH_CMD          =  63,
-  RPUSH_CMD              =  64,
-  RPUSHX_CMD             =  65,
+  BLPOP_CMD              =  50,
+  BRPOP_CMD              =  51,
+  BRPOPLPUSH_CMD         =  52,
+  LINDEX_CMD             =  53,
+  LINSERT_CMD            =  54,
+  LLEN_CMD               =  55,
+  LPOP_CMD               =  56,
+  LPUSH_CMD              =  57,
+  LPUSHX_CMD             =  58,
+  LRANGE_CMD             =  59,
+  LREM_CMD               =  60,
+  LSET_CMD               =  61,
+  LTRIM_CMD              =  62,
+  RPOP_CMD               =  63,
+  RPOPLPUSH_CMD          =  64,
+  RPUSH_CMD              =  65,
+  RPUSHX_CMD             =  66,
   /* Pubsub */
-  PSUBSCRIBE_CMD         =  66,
-  PUBSUB_CMD             =  67,
-  PUBLISH_CMD            =  68,
-  PUNSUBSCRIBE_CMD       =  69,
-  SUBSCRIBE_CMD          =  70,
-  UNSUBSCRIBE_CMD        =  71,
+  PSUBSCRIBE_CMD         =  67,
+  PUBSUB_CMD             =  68,
+  PUBLISH_CMD            =  69,
+  PUNSUBSCRIBE_CMD       =  70,
+  SUBSCRIBE_CMD          =  71,
+  UNSUBSCRIBE_CMD        =  72,
   /* Server */
-  CLIENT_CMD             =  72,
-  COMMAND_CMD            =  73,
-  CONFIG_CMD             =  74,
-  DBSIZE_CMD             =  75,
-  DEBUG_CMD              =  76,
-  FLUSHALL_CMD           =  77,
-  FLUSHDB_CMD            =  78,
-  INFO_CMD               =  79,
-  MONITOR_CMD            =  80,
-  SAVE_CMD               =  81,
-  SHUTDOWN_CMD           =  82,
-  TIME_CMD               =  83,
+  CLIENT_CMD             =  73,
+  COMMAND_CMD            =  74,
+  CONFIG_CMD             =  75,
+  DBSIZE_CMD             =  76,
+  DEBUG_CMD              =  77,
+  FLUSHALL_CMD           =  78,
+  FLUSHDB_CMD            =  79,
+  INFO_CMD               =  80,
+  MONITOR_CMD            =  81,
+  SAVE_CMD               =  82,
+  SHUTDOWN_CMD           =  83,
+  TIME_CMD               =  84,
   /* Set */
-  SADD_CMD               =  84,
-  SCARD_CMD              =  85,
-  SDIFF_CMD              =  86,
-  SDIFFSTORE_CMD         =  87,
-  SINTER_CMD             =  88,
-  SINTERSTORE_CMD        =  89,
-  SISMEMBER_CMD          =  90,
-  SMEMBERS_CMD           =  91,
-  SMOVE_CMD              =  92,
-  SPOP_CMD               =  93,
-  SRANDMEMBER_CMD        =  94,
-  SREM_CMD               =  95,
-  SUNION_CMD             =  96,
-  SUNIONSTORE_CMD        =  97,
-  SSCAN_CMD              =  98,
+  SADD_CMD               =  85,
+  SCARD_CMD              =  86,
+  SDIFF_CMD              =  87,
+  SDIFFSTORE_CMD         =  88,
+  SINTER_CMD             =  89,
+  SINTERSTORE_CMD        =  90,
+  SISMEMBER_CMD          =  91,
+  SMEMBERS_CMD           =  92,
+  SMOVE_CMD              =  93,
+  SPOP_CMD               =  94,
+  SRANDMEMBER_CMD        =  95,
+  SREM_CMD               =  96,
+  SUNION_CMD             =  97,
+  SUNIONSTORE_CMD        =  98,
+  SSCAN_CMD              =  99,
   /* Sorted Set */
-  ZADD_CMD               =  99,
-  ZCARD_CMD              = 100,
-  ZCOUNT_CMD             = 101,
-  ZINCRBY_CMD            = 102,
-  ZINTERSTORE_CMD        = 103,
-  ZLEXCOUNT_CMD          = 104,
-  ZRANGE_CMD             = 105,
-  ZRANGEBYLEX_CMD        = 106,
-  ZREVRANGEBYLEX_CMD     = 107,
-  ZRANGEBYSCORE_CMD      = 108,
-  ZRANK_CMD              = 109,
-  ZREM_CMD               = 110,
-  ZREMRANGEBYLEX_CMD     = 111,
-  ZREMRANGEBYRANK_CMD    = 112,
-  ZREMRANGEBYSCORE_CMD   = 113,
-  ZREVRANGE_CMD          = 114,
-  ZREVRANGEBYSCORE_CMD   = 115,
-  ZREVRANK_CMD           = 116,
-  ZSCORE_CMD             = 117,
-  ZUNIONSTORE_CMD        = 118,
-  ZSCAN_CMD              = 119,
-  ZPOPMIN_CMD            = 120,
-  ZPOPMAX_CMD            = 121,
-  BZPOPMIN_CMD           = 122,
-  BZPOPMAX_CMD           = 123,
+  ZADD_CMD               = 100,
+  ZCARD_CMD              = 101,
+  ZCOUNT_CMD             = 102,
+  ZINCRBY_CMD            = 103,
+  ZINTERSTORE_CMD        = 104,
+  ZLEXCOUNT_CMD          = 105,
+  ZRANGE_CMD             = 106,
+  ZRANGEBYLEX_CMD        = 107,
+  ZREVRANGEBYLEX_CMD     = 108,
+  ZRANGEBYSCORE_CMD      = 109,
+  ZRANK_CMD              = 110,
+  ZREM_CMD               = 111,
+  ZREMRANGEBYLEX_CMD     = 112,
+  ZREMRANGEBYRANK_CMD    = 113,
+  ZREMRANGEBYSCORE_CMD   = 114,
+  ZREVRANGE_CMD          = 115,
+  ZREVRANGEBYSCORE_CMD   = 116,
+  ZREVRANK_CMD           = 117,
+  ZSCORE_CMD             = 118,
+  ZUNIONSTORE_CMD        = 119,
+  ZSCAN_CMD              = 120,
+  ZPOPMIN_CMD            = 121,
+  ZPOPMAX_CMD            = 122,
+  BZPOPMIN_CMD           = 123,
+  BZPOPMAX_CMD           = 124,
   /* String */
-  APPEND_CMD             = 124,
-  BITCOUNT_CMD           = 125,
-  BITFIELD_CMD           = 126,
-  BITOP_CMD              = 127,
-  BITPOS_CMD             = 128,
-  DECR_CMD               = 129,
-  DECRBY_CMD             = 130,
-  GET_CMD                = 131,
-  GETBIT_CMD             = 132,
-  GETRANGE_CMD           = 133,
-  GETSET_CMD             = 134,
-  INCR_CMD               = 135,
-  INCRBY_CMD             = 136,
-  INCRBYFLOAT_CMD        = 137,
-  MGET_CMD               = 138,
-  MSET_CMD               = 139,
-  MSETNX_CMD             = 140,
-  PSETEX_CMD             = 141,
-  SET_CMD                = 142,
-  SETBIT_CMD             = 143,
-  SETEX_CMD              = 144,
-  SETNX_CMD              = 145,
-  SETRANGE_CMD           = 146,
-  STRLEN_CMD             = 147,
+  APPEND_CMD             = 125,
+  BITCOUNT_CMD           = 126,
+  BITFIELD_CMD           = 127,
+  BITOP_CMD              = 128,
+  BITPOS_CMD             = 129,
+  DECR_CMD               = 130,
+  DECRBY_CMD             = 131,
+  GET_CMD                = 132,
+  GETBIT_CMD             = 133,
+  GETRANGE_CMD           = 134,
+  GETSET_CMD             = 135,
+  INCR_CMD               = 136,
+  INCRBY_CMD             = 137,
+  INCRBYFLOAT_CMD        = 138,
+  MGET_CMD               = 139,
+  MSET_CMD               = 140,
+  MSETNX_CMD             = 141,
+  PSETEX_CMD             = 142,
+  SET_CMD                = 143,
+  SETBIT_CMD             = 144,
+  SETEX_CMD              = 145,
+  SETNX_CMD              = 146,
+  SETRANGE_CMD           = 147,
+  STRLEN_CMD             = 148,
   /* Transaction */
-  DISCARD_CMD            = 148,
-  EXEC_CMD               = 149,
-  MULTI_CMD              = 150,
-  UNWATCH_CMD            = 151,
-  WATCH_CMD              = 152,
+  DISCARD_CMD            = 149,
+  EXEC_CMD               = 150,
+  MULTI_CMD              = 151,
+  UNWATCH_CMD            = 152,
+  WATCH_CMD              = 153,
   /* Stream */
-  XINFO_CMD              = 153,
-  XADD_CMD               = 154,
-  XTRIM_CMD              = 155,
-  XDEL_CMD               = 156,
-  XRANGE_CMD             = 157,
-  XREVRANGE_CMD          = 158,
-  XLEN_CMD               = 159,
-  XREAD_CMD              = 160,
-  XGROUP_CMD             = 161,
-  XREADGROUP_CMD         = 162,
-  XACK_CMD               = 163,
-  XCLAIM_CMD             = 164,
-  XPENDING_CMD           = 165,
-  XSETID_CMD             = 166
+  XINFO_CMD              = 154,
+  XADD_CMD               = 155,
+  XTRIM_CMD              = 156,
+  XDEL_CMD               = 157,
+  XRANGE_CMD             = 158,
+  XREVRANGE_CMD          = 159,
+  XLEN_CMD               = 160,
+  XREAD_CMD              = 161,
+  XGROUP_CMD             = 162,
+  XREADGROUP_CMD         = 163,
+  XACK_CMD               = 164,
+  XCLAIM_CMD             = 165,
+  XPENDING_CMD           = 166,
+  XSETID_CMD             = 167
 };
 
 static const uint8_t cmd_hash_ht[ 1024 ] = {
-0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,86,0,0,0,164,0,0,0,0,0,0,0,0,0,28,
-0,0,0,0,0,138,0,15,0,0,20,0,0,0,0,0,0,0,0,143,0,0,0,0,0,0,0,136,0,70,0,0,
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,87,0,0,0,165,0,0,0,0,0,0,0,0,0,28,
+0,0,0,0,0,139,0,15,0,0,20,0,0,0,0,0,0,0,0,144,0,0,0,0,0,0,0,137,0,71,0,0,
 0,0,0,10,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-0,0,0,0,0,0,0,0,0,96,0,128,0,0,0,0,0,0,145,0,122,0,0,0,0,0,0,0,153,0,0,0,
-0,56,0,0,0,0,0,0,0,106,0,0,72,0,87,0,0,0,0,0,117,0,0,0,0,119,0,0,0,0,0,0,
-127,0,0,34,98,91,0,0,0,0,0,0,0,0,0,0,0,0,0,155,0,0,0,0,0,0,166,0,0,12,0,0,
-0,82,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,158,0,0,0,99,0,13,
-0,0,0,0,0,0,0,0,0,0,0,80,0,0,0,0,0,51,103,0,0,0,0,0,0,0,24,0,0,0,0,0,
-0,0,0,0,0,0,148,0,0,0,0,0,0,0,65,0,140,0,0,0,0,0,68,0,0,0,0,0,0,0,16,74,
-0,0,0,0,0,0,93,45,0,0,0,0,0,92,0,0,0,0,0,0,0,0,0,0,0,0,77,120,0,0,0,0,
-71,0,0,53,0,0,0,0,0,0,0,90,0,0,0,0,0,0,0,44,0,0,0,0,46,0,0,30,0,0,0,0,
-0,0,0,0,112,0,0,58,0,0,0,0,0,0,33,0,0,0,0,0,0,0,0,0,0,0,41,0,0,0,23,0,
-156,0,0,84,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,76,0,0,0,5,0,101,0,0,0,0,1,0,
-79,0,0,94,0,0,0,0,0,0,0,0,129,0,0,0,0,0,0,0,0,139,0,0,27,0,21,0,0,0,0,0,
-0,0,0,0,0,0,0,43,0,0,0,29,0,0,0,0,59,0,107,0,0,0,118,4,0,0,0,0,0,0,0,147,
-66,0,0,67,0,0,0,0,0,0,0,0,75,0,0,0,116,0,0,0,0,146,0,0,0,0,32,0,0,0,0,0,
-0,0,0,0,121,0,0,0,0,0,0,0,0,0,0,0,0,0,26,0,0,0,0,0,0,0,40,0,0,48,0,0,
-0,0,0,0,0,0,0,0,102,0,0,0,133,0,157,0,0,0,0,0,0,0,165,0,0,0,0,0,0,163,0,0,
-0,0,0,0,0,0,0,0,0,0,0,0,0,152,0,0,0,0,0,137,0,37,0,0,0,88,0,31,0,0,0,0,
-0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,141,0,
-0,47,0,0,0,0,0,161,131,100,0,63,0,0,0,19,125,0,0,0,11,0,0,0,0,0,0,57,0,0,0,110,
-0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,85,0,0,36,114,0,0,0,6,0,0,0,
-0,0,0,0,0,0,7,0,0,0,0,0,0,109,0,0,0,0,0,8,0,0,0,0,0,0,0,0,0,2,0,0,
-0,0,0,0,0,0,0,0,0,0,134,0,0,105,3,0,0,108,0,0,0,0,0,0,0,0,0,25,39,0,22,89,
-0,0,0,0,0,0,0,0,0,0,0,0,0,60,0,0,0,150,0,0,0,0,0,0,142,0,0,0,0,0,0,0,
-0,0,0,0,0,0,0,0,0,0,104,64,0,0,0,130,0,0,0,0,0,0,69,55,0,0,0,0,151,0,0,0,
-83,0,0,0,0,0,0,17,0,0,0,123,0,0,0,0,0,0,0,144,35,0,160,0,50,0,0,18,154,0,0,0,
-0,149,9,0,0,0,0,52,0,0,0,0,0,0,14,0,0,0,0,0,0,0,0,0,0,0,132,0,54,0,0,0,
-0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,113,0,0,0,0,62,0,
-0,0,0,0,0,0,0,0,0,0,0,0,115,0,0,0,0,124,159,42,0,0,0,135,0,0,0,0,0,0,38,0,
-0,95,0,0,0,111,0,0,0,162,0,0,0,78,0,0,61,0,0,0,0,0,0,0,0,0,0,97,0,0,0,0,
-73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,81,0,49,0,0,0,126,0,0,0,0,0,0,0,0,0,0};
+0,0,0,0,0,0,0,0,0,97,0,129,0,0,0,0,0,0,146,0,123,0,0,0,0,0,0,0,154,0,0,0,
+0,57,0,0,0,0,0,0,0,107,0,0,73,0,88,0,0,0,0,0,118,0,0,0,0,120,0,0,0,0,0,0,
+128,0,0,34,99,92,0,0,0,0,0,0,0,0,0,0,0,0,0,156,0,0,0,0,0,0,167,0,0,12,0,0,
+0,83,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,159,0,0,0,100,0,13,
+0,0,0,0,0,0,0,0,0,0,0,81,0,0,0,0,0,52,104,0,0,0,0,0,0,0,24,0,0,0,0,0,
+0,0,0,0,0,0,149,0,0,0,0,0,0,0,66,0,141,0,0,0,0,0,69,0,0,0,0,0,0,0,16,75,
+0,0,0,0,0,0,94,46,0,0,0,0,0,93,0,0,0,0,0,0,0,0,0,0,0,0,78,121,0,0,0,0,
+72,0,0,54,0,0,0,0,0,0,0,91,0,0,0,0,0,0,0,45,0,0,0,0,47,0,0,30,0,0,0,0,
+0,0,0,0,113,0,0,59,0,0,0,0,0,0,33,0,0,0,0,0,0,0,0,0,0,0,41,0,0,0,23,0,
+157,0,0,85,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,77,0,0,0,5,0,102,0,0,0,0,1,0,
+80,0,0,95,0,0,0,0,0,0,0,0,130,0,0,0,0,0,0,0,0,140,0,0,27,0,21,0,0,0,0,0,
+0,0,0,0,0,0,0,43,0,0,0,29,0,0,0,0,60,0,108,0,0,0,119,4,0,0,0,0,0,0,0,148,
+67,0,0,68,0,0,0,0,0,0,0,0,76,0,0,0,117,0,0,0,0,147,0,0,0,0,32,0,0,0,0,0,
+0,0,0,0,122,0,0,0,0,0,0,0,0,0,0,0,0,0,26,0,0,0,0,0,0,0,40,0,0,49,0,0,
+0,0,0,0,0,0,0,0,103,0,0,0,134,0,158,0,0,0,0,0,0,0,166,0,0,0,0,0,0,164,0,0,
+0,0,0,0,0,0,0,0,0,0,0,0,0,153,0,0,0,0,0,138,0,37,0,0,0,89,0,31,0,0,0,0,
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,142,0,
+0,48,0,0,0,0,0,162,132,101,0,64,0,0,0,19,126,0,0,0,11,0,0,0,0,0,0,58,0,0,0,111,
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,44,0,0,0,0,86,0,0,36,115,0,0,0,6,0,0,0,
+0,0,0,0,0,0,7,0,0,0,0,0,0,110,0,0,0,0,0,8,0,0,0,0,0,0,0,0,0,2,0,0,
+0,0,0,0,0,0,0,0,0,0,135,0,0,106,3,0,0,109,0,0,0,0,0,0,0,0,0,25,39,0,22,90,
+0,0,0,0,0,0,0,0,0,0,0,0,0,61,0,0,0,151,0,0,0,0,0,0,143,0,0,0,0,0,0,0,
+0,0,0,0,0,0,0,0,0,0,105,65,0,0,0,131,0,0,0,0,0,0,70,56,0,0,0,0,152,0,0,0,
+84,0,0,0,0,0,0,17,0,0,0,124,0,0,0,0,0,0,0,145,35,0,161,0,51,0,0,18,155,0,0,0,
+0,150,9,0,0,0,0,53,0,0,0,0,0,0,14,0,0,0,0,0,0,0,0,0,0,0,133,0,55,0,0,0,
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,114,0,0,0,0,63,0,
+0,0,0,0,0,0,0,0,0,0,0,0,116,0,0,0,0,125,160,42,0,0,0,136,0,0,0,0,0,0,38,0,
+0,96,0,0,0,112,0,0,0,163,0,0,0,79,0,0,62,0,0,0,0,0,0,0,0,0,0,98,0,0,0,0,
+74,0,0,0,0,0,0,0,0,0,0,0,0,0,0,82,0,50,0,0,0,127,0,0,0,0,0,0,0,0,0,0};
 
 static inline uint32_t
 get_redis_cmd_hash( const void *cmd,  size_t len ) {
@@ -256,9 +257,9 @@ get_redis_cmd( uint32_t h ) {
   return (RedisCmd) cmd_hash_ht[ h % 1024 ];
 }
 
-extern const RedisCmdExtra xtra[ 847 ];
+extern const RedisCmdExtra xtra[ 851 ];
 
-static const size_t REDIS_CMD_DB_SIZE = 167;
+static const size_t REDIS_CMD_DB_SIZE = 168;
 static const RedisCmdData
 cmd_db[ REDIS_CMD_DB_SIZE ] = {
 { "none",NULL,0,NO_CMD,CMD_NOFLAGS,4,NO_CATG,0,0,0,0 },
@@ -305,133 +306,134 @@ cmd_db[ REDIS_CMD_DB_SIZE ] = {
 { "randomkey",&xtra[193],0x97057a,RANDOMKEY_CMD,CMD_READ_FLAG,9,KEY_CATG,1,0,0,0 },
 { "rename",&xtra[198],0x85e9d3b3,RENAME_CMD,CMD_WRITE_FLAG,6,KEY_CATG,3,1,2,1 },
 { "renamenx",&xtra[203],0x9fd901c7,RENAMENX_CMD,CMD_WRITE_FLAG,8,KEY_CATG,3,1,2,1 },
-{ "touch",&xtra[208],0x6f400d53,TOUCH_CMD,CMD_WRITE_FLAG,5,KEY_CATG,-2,1,1,1 },
-{ "ttl",&xtra[213],0x669d8927,TTL_CMD,CMD_READ_FLAG,3,KEY_CATG,2,1,1,1 },
-{ "type",&xtra[218],0x6f0e2558,TYPE_CMD,CMD_READ_FLAG,4,KEY_CATG,2,1,1,1 },
-{ "unlink",&xtra[223],0x915d9e81,UNLINK_CMD,CMD_WRITE_FLAG,6,KEY_CATG,-2,1,-1,1 },
-{ "scan",&xtra[228],0xc47c4e1d,SCAN_CMD,CMD_READ_FLAG,4,KEY_CATG,-2,0,0,0 },
-{ "blpop",&xtra[233],0x60a18ff1,BLPOP_CMD,CMD_WRITE_FLAG,5,LIST_CATG,-3,1,-2,1 },
-{ "brpop",&xtra[238],0xbbc44f58,BRPOP_CMD,CMD_WRITE_FLAG,5,LIST_CATG,-3,1,-2,1 },
-{ "brpoplpush",&xtra[243],0x1a6a74f1,BRPOPLPUSH_CMD,CMD_WRITE_FLAG,10,LIST_CATG,4,1,2,1 },
-{ "lindex",&xtra[248],0x6045a767,LINDEX_CMD,CMD_READ_FLAG,6,LIST_CATG,3,1,1,1 },
-{ "linsert",&xtra[253],0x69e60543,LINSERT_CMD,CMD_WRITE_FLAG,7,LIST_CATG,5,1,1,1 },
-{ "llen",&xtra[258],0xc0771f7c,LLEN_CMD,CMD_READ_FLAG,4,LIST_CATG,2,1,1,1 },
-{ "lpop",&xtra[263],0x102d7337,LPOP_CMD,CMD_WRITE_FLAG,4,LIST_CATG,2,1,1,1 },
-{ "lpush",&xtra[268],0x1ce0fc81,LPUSH_CMD,CMD_WRITE_FLAG,5,LIST_CATG,-3,1,1,1 },
-{ "lpushx",&xtra[273],0xab7dda9b,LPUSHX_CMD,CMD_WRITE_FLAG,6,LIST_CATG,-3,1,1,1 },
-{ "lrange",&xtra[278],0x727a7167,LRANGE_CMD,CMD_READ_FLAG,6,LIST_CATG,4,1,1,1 },
-{ "lrem",&xtra[283],0x4a6559d0,LREM_CMD,CMD_WRITE_FLAG,4,LIST_CATG,4,1,1,1 },
-{ "lset",&xtra[288],0x87c8d70d,LSET_CMD,CMD_WRITE_FLAG,4,LIST_CATG,4,1,1,1 },
-{ "ltrim",&xtra[293],0xa357bfd0,LTRIM_CMD,CMD_WRITE_FLAG,5,LIST_CATG,4,1,1,1 },
-{ "rpop",&xtra[298],0xcb48b39e,RPOP_CMD,CMD_WRITE_FLAG,4,LIST_CATG,2,1,1,1 },
-{ "rpoplpush",&xtra[303],0xb2ef28b,RPOPLPUSH_CMD,CMD_WRITE_FLAG,9,LIST_CATG,3,1,2,1 },
-{ "rpush",&xtra[308],0xc6c2f72b,RPUSH_CMD,CMD_WRITE_FLAG,5,LIST_CATG,-3,1,1,1 },
-{ "rpushx",&xtra[313],0x620e650e,RPUSHX_CMD,CMD_WRITE_FLAG,6,LIST_CATG,-3,1,1,1 },
-{ "psubscribe",&xtra[318],0xb8e631e0,PSUBSCRIBE_CMD,CMD_NOFLAGS,10,PUBSUB_CATG,-2,0,0,0 },
-{ "pubsub",&xtra[323],0x15f739e3,PUBSUB_CMD,CMD_NOFLAGS,6,PUBSUB_CATG,-2,0,0,0 },
-{ "publish",&xtra[331],0xc7bd0d16,PUBLISH_CMD,CMD_NOFLAGS,7,PUBSUB_CATG,3,0,0,0 },
-{ "punsubscribe",&xtra[336],0xb4abbb36,PUNSUBSCRIBE_CMD,CMD_NOFLAGS,12,PUBSUB_CATG,-1,0,0,0 },
-{ "subscribe",&xtra[341],0xb757e03d,SUBSCRIBE_CMD,CMD_NOFLAGS,9,PUBSUB_CATG,-2,0,0,0 },
-{ "unsubscribe",&xtra[346],0x6e3e2140,UNSUBSCRIBE_CMD,CMD_NOFLAGS,11,PUBSUB_CATG,-1,0,0,0 },
-{ "client",&xtra[351],0x6af1c8c,CLIENT_CMD,CMD_ADMIN_FLAG,6,SERVER_CATG,-2,0,0,0 },
-{ "command",&xtra[365],0xa2da9fe0,COMMAND_CMD,CMD_NOFLAGS,7,SERVER_CATG,-1,0,0,0 },
-{ "config",&xtra[370],0xc4d1291f,CONFIG_CMD,CMD_ADMIN_FLAG,6,SERVER_CATG,-2,0,0,0 },
-{ "dbsize",&xtra[374],0x405435ec,DBSIZE_CMD,CMD_NOFLAGS,6,SERVER_CATG,1,0,0,0 },
-{ "debug",&xtra[379],0xa50aa993,DEBUG_CMD,CMD_ADMIN_FLAG,5,SERVER_CATG,-1,0,0,0 },
-{ "flushall",&xtra[386],0xbf12593a,FLUSHALL_CMD,CMD_ADMIN_FLAG,8,SERVER_CATG,-1,0,0,0 },
-{ "flushdb",&xtra[390],0xcb45afcd,FLUSHDB_CMD,CMD_ADMIN_FLAG,7,SERVER_CATG,-1,0,0,0 },
-{ "info",&xtra[394],0xeff3fda0,INFO_CMD,CMD_NOFLAGS,4,SERVER_CATG,-1,0,0,0 },
-{ "monitor",&xtra[399],0xc4608ceb,MONITOR_CMD,CMD_ADMIN_FLAG,7,SERVER_CATG,1,0,0,0 },
-{ "save",&xtra[404],0x57328fef,SAVE_CMD,CMD_ADMIN_FLAG,4,SERVER_CATG,1,0,0,0 },
-{ "shutdown",&xtra[407],0x4d5814c1,SHUTDOWN_CMD,CMD_ADMIN_FLAG,8,SERVER_CATG,-1,0,0,0 },
-{ "time",&xtra[410],0xe0559340,TIME_CMD,CMD_NOFLAGS,4,SERVER_CATG,1,0,0,0 },
-{ "sadd",&xtra[415],0xbdd9cd83,SADD_CMD,CMD_WRITE_FLAG,4,SET_CATG,-3,1,1,1 },
-{ "scard",&xtra[420],0xc5082eb4,SCARD_CMD,CMD_READ_FLAG,5,SET_CATG,2,1,1,1 },
-{ "sdiff",&xtra[425],0x742d4811,SDIFF_CMD,CMD_READ_FLAG,5,SET_CATG,-2,1,-1,1 },
-{ "sdiffstore",&xtra[430],0x28f1c48e,SDIFFSTORE_CMD,CMD_WRITE_FLAG,10,SET_CATG,-3,1,-1,1 },
-{ "sinter",&xtra[435],0x5d462659,SINTER_CMD,CMD_READ_FLAG,6,SET_CATG,-2,1,-1,1 },
-{ "sinterstore",&xtra[440],0x9126a2ff,SINTERSTORE_CMD,CMD_WRITE_FLAG,11,SET_CATG,-3,1,-1,1 },
-{ "sismember",&xtra[445],0x97ed994b,SISMEMBER_CMD,CMD_READ_FLAG,9,SET_CATG,3,1,1,1 },
-{ "smembers",&xtra[450],0x73c6c4a5,SMEMBERS_CMD,CMD_READ_FLAG,8,SET_CATG,2,1,1,1 },
-{ "smove",&xtra[455],0xa208752d,SMOVE_CMD,CMD_WRITE_FLAG,5,SET_CATG,4,1,2,1 },
-{ "spop",&xtra[460],0x160d1926,SPOP_CMD,CMD_WRITE_FLAG,4,SET_CATG,-2,1,1,1 },
-{ "srandmember",&xtra[465],0x38ebbda3,SRANDMEMBER_CMD,CMD_READ_FLAG,11,SET_CATG,-2,1,1,1 },
-{ "srem",&xtra[470],0x4c4533c1,SREM_CMD,CMD_WRITE_FLAG,4,SET_CATG,-3,1,1,1 },
-{ "sunion",&xtra[475],0x63667c69,SUNION_CMD,CMD_READ_FLAG,6,SET_CATG,-2,1,-1,1 },
-{ "sunionstore",&xtra[480],0x5b9ca3db,SUNIONSTORE_CMD,CMD_WRITE_FLAG,11,SET_CATG,-3,1,-1,1 },
-{ "sscan",&xtra[485],0x3c3bca4,SSCAN_CMD,CMD_READ_FLAG,5,SET_CATG,-3,1,1,1 },
-{ "zadd",&xtra[490],0x96d804dd,ZADD_CMD,CMD_WRITE_FLAG,4,SORTED_SET_CATG,-4,1,1,1 },
-{ "zcard",&xtra[495],0x387e4a89,ZCARD_CMD,CMD_READ_FLAG,5,SORTED_SET_CATG,2,1,1,1 },
-{ "zcount",&xtra[500],0x90633599,ZCOUNT_CMD,CMD_READ_FLAG,6,SORTED_SET_CATG,4,1,1,1 },
-{ "zincrby",&xtra[505],0xed807628,ZINCRBY_CMD,CMD_WRITE_FLAG,7,SORTED_SET_CATG,4,1,1,1 },
-{ "zinterstore",&xtra[510],0xaa6930f2,ZINTERSTORE_CMD,CMD_WRITE_MV_FLAG,11,SORTED_SET_CATG,-4,1,1,1 },
-{ "zlexcount",&xtra[515],0x63f59f2a,ZLEXCOUNT_CMD,CMD_READ_FLAG,9,SORTED_SET_CATG,4,1,1,1 },
-{ "zrange",&xtra[520],0xdb0fd6ed,ZRANGE_CMD,CMD_READ_FLAG,6,SORTED_SET_CATG,-4,1,1,1 },
-{ "zrangebylex",&xtra[525],0x63952c89,ZRANGEBYLEX_CMD,CMD_READ_FLAG,11,SORTED_SET_CATG,-4,1,1,1 },
-{ "zrevrangebylex",&xtra[530],0xb4c98dd2,ZREVRANGEBYLEX_CMD,CMD_READ_FLAG,14,SORTED_SET_CATG,-4,1,1,1 },
-{ "zrangebyscore",&xtra[535],0xa9b2e2f1,ZRANGEBYSCORE_CMD,CMD_READ_FLAG,13,SORTED_SET_CATG,-4,1,1,1 },
-{ "zrank",&xtra[540],0xbe173ecd,ZRANK_CMD,CMD_READ_FLAG,5,SORTED_SET_CATG,3,1,1,1 },
-{ "zrem",&xtra[545],0x6744fa9f,ZREM_CMD,CMD_WRITE_FLAG,4,SORTED_SET_CATG,-3,1,1,1 },
-{ "zremrangebylex",&xtra[550],0xf9193bc5,ZREMRANGEBYLEX_CMD,CMD_WRITE_FLAG,14,SORTED_SET_CATG,4,1,1,1 },
-{ "zremrangebyrank",&xtra[555],0x3dc65964,ZREMRANGEBYRANK_CMD,CMD_WRITE_FLAG,15,SORTED_SET_CATG,4,1,1,1 },
-{ "zremrangebyscore",&xtra[560],0x41afbf99,ZREMRANGEBYSCORE_CMD,CMD_WRITE_FLAG,16,SORTED_SET_CATG,4,1,1,1 },
-{ "zrevrange",&xtra[565],0x54ce86b8,ZREVRANGE_CMD,CMD_READ_FLAG,9,SORTED_SET_CATG,-4,1,1,1 },
-{ "zrevrangebyscore",&xtra[570],0x90b35fac,ZREVRANGEBYSCORE_CMD,CMD_READ_FLAG,16,SORTED_SET_CATG,-4,1,1,1 },
-{ "zrevrank",&xtra[575],0xb44209f0,ZREVRANK_CMD,CMD_READ_FLAG,8,SORTED_SET_CATG,3,1,1,1 },
-{ "zscore",&xtra[580],0x9bd50094,ZSCORE_CMD,CMD_READ_FLAG,6,SORTED_SET_CATG,3,1,1,1 },
-{ "zunionstore",&xtra[585],0x60d331d6,ZUNIONSTORE_CMD,CMD_WRITE_MV_FLAG,11,SORTED_SET_CATG,-4,1,1,1 },
-{ "zscan",&xtra[590],0xfeb5d899,ZSCAN_CMD,CMD_READ_FLAG,5,SORTED_SET_CATG,-3,1,1,1 },
-{ "zpopmin",&xtra[595],0x40898d3b,ZPOPMIN_CMD,CMD_WRITE_FLAG,7,SORTED_SET_CATG,-2,1,1,1 },
-{ "zpopmax",&xtra[600],0xeb626e04,ZPOPMAX_CMD,CMD_WRITE_FLAG,7,SORTED_SET_CATG,-2,1,1,1 },
-{ "bzpopmin",&xtra[605],0x85cbf474,BZPOPMIN_CMD,CMD_WRITE_FLAG,8,SORTED_SET_CATG,-3,1,-2,1 },
-{ "bzpopmax",&xtra[610],0x2e20174b,BZPOPMAX_CMD,CMD_WRITE_FLAG,8,SORTED_SET_CATG,-3,1,-2,1 },
-{ "append",&xtra[615],0xa518d7b1,APPEND_CMD,CMD_WRITE_FLAG,6,STRING_CATG,3,1,1,1 },
-{ "bitcount",&xtra[620],0x7940f690,BITCOUNT_CMD,CMD_READ_FLAG,8,STRING_CATG,-2,1,1,1 },
-{ "bitfield",&xtra[625],0x22e8bff5,BITFIELD_CMD,CMD_WRITE_FLAG,8,STRING_CATG,-2,1,1,1 },
-{ "bitop",&xtra[636],0x5818b0a0,BITOP_CMD,CMD_WRITE_FLAG,5,STRING_CATG,-4,2,-1,1 },
-{ "bitpos",&xtra[641],0x4d9586b,BITPOS_CMD,CMD_READ_FLAG,6,STRING_CATG,-3,1,1,1 },
-{ "decr",&xtra[646],0x9ff189ac,DECR_CMD,CMD_WRITE_FLAG,4,STRING_CATG,2,1,1,1 },
-{ "decrby",&xtra[651],0x5c57332f,DECRBY_CMD,CMD_WRITE_FLAG,6,STRING_CATG,3,1,1,1 },
-{ "get",&xtra[656],0x4af1c288,GET_CMD,CMD_READ_FLAG,3,STRING_CATG,2,1,1,1 },
-{ "getbit",&xtra[661],0xfef6ab7a,GETBIT_CMD,CMD_READ_FLAG,6,STRING_CATG,3,1,1,1 },
-{ "getrange",&xtra[666],0xb1c0d22c,GETRANGE_CMD,CMD_READ_FLAG,8,STRING_CATG,4,1,1,1 },
-{ "getset",&xtra[671],0xf88be6ea,GETSET_CMD,CMD_WRITE_FLAG,6,STRING_CATG,3,1,1,1 },
-{ "incr",&xtra[676],0x1dad8fb7,INCR_CMD,CMD_WRITE_FLAG,4,STRING_CATG,2,1,1,1 },
-{ "incrby",&xtra[681],0xecc0cc3b,INCRBY_CMD,CMD_WRITE_FLAG,6,STRING_CATG,3,1,1,1 },
-{ "incrbyfloat",&xtra[686],0xf905ee53,INCRBYFLOAT_CMD,CMD_WRITE_FLAG,11,STRING_CATG,3,1,1,1 },
-{ "mget",&xtra[691],0xb4f1a425,MGET_CMD,CMD_READ_FLAG,4,STRING_CATG,-2,1,-1,1 },
-{ "mset",&xtra[696],0x5a8d7db5,MSET_CMD,CMD_WRITE_FLAG,4,STRING_CATG,-3,1,-1,2 },
-{ "msetnx",&xtra[701],0xf8258510,MSETNX_CMD,CMD_WRITE_FLAG,6,STRING_CATG,-3,1,-1,2 },
-{ "psetex",&xtra[706],0xac199a7e,PSETEX_CMD,CMD_WRITE_FLAG,6,STRING_CATG,4,1,1,1 },
-{ "set",&xtra[711],0xa48d1b18,SET_CMD,CMD_WRITE_FLAG,3,STRING_CATG,-3,1,1,1 },
-{ "setbit",&xtra[716],0x8c0fac33,SETBIT_CMD,CMD_WRITE_FLAG,6,STRING_CATG,4,1,1,1 },
-{ "setex",&xtra[721],0x52c54753,SETEX_CMD,CMD_WRITE_FLAG,5,STRING_CATG,4,1,1,1 },
-{ "setnx",&xtra[726],0xfb362c72,SETNX_CMD,CMD_WRITE_FLAG,5,STRING_CATG,3,1,1,1 },
-{ "setrange",&xtra[731],0x14ab59f5,SETRANGE_CMD,CMD_WRITE_FLAG,8,STRING_CATG,4,1,1,1 },
-{ "strlen",&xtra[736],0xbebb35df,STRLEN_CMD,CMD_READ_FLAG,6,STRING_CATG,2,1,1,1 },
-{ "discard",&xtra[741],0xd23e9106,DISCARD_CMD,CMD_NOFLAGS,7,TRANSACTION_CATG,1,0,0,0 },
-{ "exec",&xtra[746],0xba224361,EXEC_CMD,CMD_NOFLAGS,4,TRANSACTION_CATG,1,0,0,0 },
-{ "multi",&xtra[751],0xe7229311,MULTI_CMD,CMD_NOFLAGS,5,TRANSACTION_CATG,1,0,0,0 },
-{ "unwatch",&xtra[756],0xd514cb3c,UNWATCH_CMD,CMD_NOFLAGS,7,TRANSACTION_CATG,1,0,0,0 },
-{ "watch",&xtra[761],0xb0335e4d,WATCH_CMD,CMD_READ_FLAG,5,TRANSACTION_CATG,-2,1,-1,1 },
-{ "xinfo",&xtra[766],0xa518b47c,XINFO_CMD,CMD_READ_FLAG,5,STREAM_CATG,-2,2,2,1 },
-{ "xadd",&xtra[776],0x29bf275c,XADD_CMD,CMD_WRITE_FLAG,4,STREAM_CATG,-5,1,1,1 },
-{ "xtrim",&xtra[781],0xcc3060b3,XTRIM_CMD,CMD_WRITE_FLAG,5,STREAM_CATG,-2,1,1,1 },
-{ "xdel",&xtra[786],0x8b5bd180,XDEL_CMD,CMD_WRITE_FLAG,4,STREAM_CATG,-2,1,1,1 },
-{ "xrange",&xtra[791],0x83762e,XRANGE_CMD,CMD_READ_FLAG,6,STREAM_CATG,-4,1,1,1 },
-{ "xrevrange",&xtra[796],0xb95f5cd9,XREVRANGE_CMD,CMD_READ_FLAG,9,STREAM_CATG,-4,1,1,1 },
-{ "xlen",&xtra[801],0x52319fb2,XLEN_CMD,CMD_READ_FLAG,4,STREAM_CATG,2,1,1,1 },
-{ "xread",&xtra[806],0xe9817356,XREAD_CMD,CMD_READ_MV_FLAG,5,STREAM_CATG,-3,1,1,1 },
-{ "xgroup",&xtra[811],0x44dd7e87,XGROUP_CMD,CMD_WRITE_FLAG,6,STREAM_CATG,-2,2,2,1 },
-{ "xreadgroup",&xtra[822],0x21c71fc9,XREADGROUP_CMD,CMD_WRITE_MV_FLAG,10,STREAM_CATG,-3,1,1,1 },
-{ "xack",&xtra[827],0xdc1d23d,XACK_CMD,CMD_WRITE_FLAG,4,STREAM_CATG,-4,1,1,1 },
-{ "xclaim",&xtra[832],0xd5301015,XCLAIM_CMD,CMD_WRITE_FLAG,6,STREAM_CATG,-5,1,1,1 },
-{ "xpending",&xtra[837],0xe44a9236,XPENDING_CMD,CMD_READ_FLAG,8,STREAM_CATG,-3,1,1,1 },
-{ "xsetid",&xtra[842],0x429c28ba,XSETID_CMD,CMD_WRITE_FLAG,6,STREAM_CATG,4,1,1,1 }
+{ "restore",&xtra[208],0x29f9aaf,RESTORE_CMD,CMD_WRITE_FLAG,7,KEY_CATG,-4,1,1,1 },
+{ "touch",&xtra[212],0x6f400d53,TOUCH_CMD,CMD_WRITE_FLAG,5,KEY_CATG,-2,1,1,1 },
+{ "ttl",&xtra[217],0x669d8927,TTL_CMD,CMD_READ_FLAG,3,KEY_CATG,2,1,1,1 },
+{ "type",&xtra[222],0x6f0e2558,TYPE_CMD,CMD_READ_FLAG,4,KEY_CATG,2,1,1,1 },
+{ "unlink",&xtra[227],0x915d9e81,UNLINK_CMD,CMD_WRITE_FLAG,6,KEY_CATG,-2,1,-1,1 },
+{ "scan",&xtra[232],0xc47c4e1d,SCAN_CMD,CMD_READ_FLAG,4,KEY_CATG,-2,0,0,0 },
+{ "blpop",&xtra[237],0x60a18ff1,BLPOP_CMD,CMD_WRITE_FLAG,5,LIST_CATG,-3,1,-2,1 },
+{ "brpop",&xtra[242],0xbbc44f58,BRPOP_CMD,CMD_WRITE_FLAG,5,LIST_CATG,-3,1,-2,1 },
+{ "brpoplpush",&xtra[247],0x1a6a74f1,BRPOPLPUSH_CMD,CMD_WRITE_FLAG,10,LIST_CATG,4,1,2,1 },
+{ "lindex",&xtra[252],0x6045a767,LINDEX_CMD,CMD_READ_FLAG,6,LIST_CATG,3,1,1,1 },
+{ "linsert",&xtra[257],0x69e60543,LINSERT_CMD,CMD_WRITE_FLAG,7,LIST_CATG,5,1,1,1 },
+{ "llen",&xtra[262],0xc0771f7c,LLEN_CMD,CMD_READ_FLAG,4,LIST_CATG,2,1,1,1 },
+{ "lpop",&xtra[267],0x102d7337,LPOP_CMD,CMD_WRITE_FLAG,4,LIST_CATG,2,1,1,1 },
+{ "lpush",&xtra[272],0x1ce0fc81,LPUSH_CMD,CMD_WRITE_FLAG,5,LIST_CATG,-3,1,1,1 },
+{ "lpushx",&xtra[277],0xab7dda9b,LPUSHX_CMD,CMD_WRITE_FLAG,6,LIST_CATG,-3,1,1,1 },
+{ "lrange",&xtra[282],0x727a7167,LRANGE_CMD,CMD_READ_FLAG,6,LIST_CATG,4,1,1,1 },
+{ "lrem",&xtra[287],0x4a6559d0,LREM_CMD,CMD_WRITE_FLAG,4,LIST_CATG,4,1,1,1 },
+{ "lset",&xtra[292],0x87c8d70d,LSET_CMD,CMD_WRITE_FLAG,4,LIST_CATG,4,1,1,1 },
+{ "ltrim",&xtra[297],0xa357bfd0,LTRIM_CMD,CMD_WRITE_FLAG,5,LIST_CATG,4,1,1,1 },
+{ "rpop",&xtra[302],0xcb48b39e,RPOP_CMD,CMD_WRITE_FLAG,4,LIST_CATG,2,1,1,1 },
+{ "rpoplpush",&xtra[307],0xb2ef28b,RPOPLPUSH_CMD,CMD_WRITE_FLAG,9,LIST_CATG,3,1,2,1 },
+{ "rpush",&xtra[312],0xc6c2f72b,RPUSH_CMD,CMD_WRITE_FLAG,5,LIST_CATG,-3,1,1,1 },
+{ "rpushx",&xtra[317],0x620e650e,RPUSHX_CMD,CMD_WRITE_FLAG,6,LIST_CATG,-3,1,1,1 },
+{ "psubscribe",&xtra[322],0xb8e631e0,PSUBSCRIBE_CMD,CMD_NOFLAGS,10,PUBSUB_CATG,-2,0,0,0 },
+{ "pubsub",&xtra[327],0x15f739e3,PUBSUB_CMD,CMD_NOFLAGS,6,PUBSUB_CATG,-2,0,0,0 },
+{ "publish",&xtra[335],0xc7bd0d16,PUBLISH_CMD,CMD_NOFLAGS,7,PUBSUB_CATG,3,0,0,0 },
+{ "punsubscribe",&xtra[340],0xb4abbb36,PUNSUBSCRIBE_CMD,CMD_NOFLAGS,12,PUBSUB_CATG,-1,0,0,0 },
+{ "subscribe",&xtra[345],0xb757e03d,SUBSCRIBE_CMD,CMD_NOFLAGS,9,PUBSUB_CATG,-2,0,0,0 },
+{ "unsubscribe",&xtra[350],0x6e3e2140,UNSUBSCRIBE_CMD,CMD_NOFLAGS,11,PUBSUB_CATG,-1,0,0,0 },
+{ "client",&xtra[355],0x6af1c8c,CLIENT_CMD,CMD_ADMIN_FLAG,6,SERVER_CATG,-2,0,0,0 },
+{ "command",&xtra[369],0xa2da9fe0,COMMAND_CMD,CMD_NOFLAGS,7,SERVER_CATG,-1,0,0,0 },
+{ "config",&xtra[374],0xc4d1291f,CONFIG_CMD,CMD_ADMIN_FLAG,6,SERVER_CATG,-2,0,0,0 },
+{ "dbsize",&xtra[378],0x405435ec,DBSIZE_CMD,CMD_NOFLAGS,6,SERVER_CATG,1,0,0,0 },
+{ "debug",&xtra[383],0xa50aa993,DEBUG_CMD,CMD_ADMIN_FLAG,5,SERVER_CATG,-1,0,0,0 },
+{ "flushall",&xtra[390],0xbf12593a,FLUSHALL_CMD,CMD_ADMIN_FLAG,8,SERVER_CATG,-1,0,0,0 },
+{ "flushdb",&xtra[394],0xcb45afcd,FLUSHDB_CMD,CMD_ADMIN_FLAG,7,SERVER_CATG,-1,0,0,0 },
+{ "info",&xtra[398],0xeff3fda0,INFO_CMD,CMD_NOFLAGS,4,SERVER_CATG,-1,0,0,0 },
+{ "monitor",&xtra[403],0xc4608ceb,MONITOR_CMD,CMD_ADMIN_FLAG,7,SERVER_CATG,1,0,0,0 },
+{ "save",&xtra[408],0x57328fef,SAVE_CMD,CMD_ADMIN_FLAG,4,SERVER_CATG,1,0,0,0 },
+{ "shutdown",&xtra[411],0x4d5814c1,SHUTDOWN_CMD,CMD_ADMIN_FLAG,8,SERVER_CATG,-1,0,0,0 },
+{ "time",&xtra[414],0xe0559340,TIME_CMD,CMD_NOFLAGS,4,SERVER_CATG,1,0,0,0 },
+{ "sadd",&xtra[419],0xbdd9cd83,SADD_CMD,CMD_WRITE_FLAG,4,SET_CATG,-3,1,1,1 },
+{ "scard",&xtra[424],0xc5082eb4,SCARD_CMD,CMD_READ_FLAG,5,SET_CATG,2,1,1,1 },
+{ "sdiff",&xtra[429],0x742d4811,SDIFF_CMD,CMD_READ_FLAG,5,SET_CATG,-2,1,-1,1 },
+{ "sdiffstore",&xtra[434],0x28f1c48e,SDIFFSTORE_CMD,CMD_WRITE_FLAG,10,SET_CATG,-3,1,-1,1 },
+{ "sinter",&xtra[439],0x5d462659,SINTER_CMD,CMD_READ_FLAG,6,SET_CATG,-2,1,-1,1 },
+{ "sinterstore",&xtra[444],0x9126a2ff,SINTERSTORE_CMD,CMD_WRITE_FLAG,11,SET_CATG,-3,1,-1,1 },
+{ "sismember",&xtra[449],0x97ed994b,SISMEMBER_CMD,CMD_READ_FLAG,9,SET_CATG,3,1,1,1 },
+{ "smembers",&xtra[454],0x73c6c4a5,SMEMBERS_CMD,CMD_READ_FLAG,8,SET_CATG,2,1,1,1 },
+{ "smove",&xtra[459],0xa208752d,SMOVE_CMD,CMD_WRITE_FLAG,5,SET_CATG,4,1,2,1 },
+{ "spop",&xtra[464],0x160d1926,SPOP_CMD,CMD_WRITE_FLAG,4,SET_CATG,-2,1,1,1 },
+{ "srandmember",&xtra[469],0x38ebbda3,SRANDMEMBER_CMD,CMD_READ_FLAG,11,SET_CATG,-2,1,1,1 },
+{ "srem",&xtra[474],0x4c4533c1,SREM_CMD,CMD_WRITE_FLAG,4,SET_CATG,-3,1,1,1 },
+{ "sunion",&xtra[479],0x63667c69,SUNION_CMD,CMD_READ_FLAG,6,SET_CATG,-2,1,-1,1 },
+{ "sunionstore",&xtra[484],0x5b9ca3db,SUNIONSTORE_CMD,CMD_WRITE_FLAG,11,SET_CATG,-3,1,-1,1 },
+{ "sscan",&xtra[489],0x3c3bca4,SSCAN_CMD,CMD_READ_FLAG,5,SET_CATG,-3,1,1,1 },
+{ "zadd",&xtra[494],0x96d804dd,ZADD_CMD,CMD_WRITE_FLAG,4,SORTED_SET_CATG,-4,1,1,1 },
+{ "zcard",&xtra[499],0x387e4a89,ZCARD_CMD,CMD_READ_FLAG,5,SORTED_SET_CATG,2,1,1,1 },
+{ "zcount",&xtra[504],0x90633599,ZCOUNT_CMD,CMD_READ_FLAG,6,SORTED_SET_CATG,4,1,1,1 },
+{ "zincrby",&xtra[509],0xed807628,ZINCRBY_CMD,CMD_WRITE_FLAG,7,SORTED_SET_CATG,4,1,1,1 },
+{ "zinterstore",&xtra[514],0xaa6930f2,ZINTERSTORE_CMD,CMD_WRITE_MV_FLAG,11,SORTED_SET_CATG,-4,1,1,1 },
+{ "zlexcount",&xtra[519],0x63f59f2a,ZLEXCOUNT_CMD,CMD_READ_FLAG,9,SORTED_SET_CATG,4,1,1,1 },
+{ "zrange",&xtra[524],0xdb0fd6ed,ZRANGE_CMD,CMD_READ_FLAG,6,SORTED_SET_CATG,-4,1,1,1 },
+{ "zrangebylex",&xtra[529],0x63952c89,ZRANGEBYLEX_CMD,CMD_READ_FLAG,11,SORTED_SET_CATG,-4,1,1,1 },
+{ "zrevrangebylex",&xtra[534],0xb4c98dd2,ZREVRANGEBYLEX_CMD,CMD_READ_FLAG,14,SORTED_SET_CATG,-4,1,1,1 },
+{ "zrangebyscore",&xtra[539],0xa9b2e2f1,ZRANGEBYSCORE_CMD,CMD_READ_FLAG,13,SORTED_SET_CATG,-4,1,1,1 },
+{ "zrank",&xtra[544],0xbe173ecd,ZRANK_CMD,CMD_READ_FLAG,5,SORTED_SET_CATG,3,1,1,1 },
+{ "zrem",&xtra[549],0x6744fa9f,ZREM_CMD,CMD_WRITE_FLAG,4,SORTED_SET_CATG,-3,1,1,1 },
+{ "zremrangebylex",&xtra[554],0xf9193bc5,ZREMRANGEBYLEX_CMD,CMD_WRITE_FLAG,14,SORTED_SET_CATG,4,1,1,1 },
+{ "zremrangebyrank",&xtra[559],0x3dc65964,ZREMRANGEBYRANK_CMD,CMD_WRITE_FLAG,15,SORTED_SET_CATG,4,1,1,1 },
+{ "zremrangebyscore",&xtra[564],0x41afbf99,ZREMRANGEBYSCORE_CMD,CMD_WRITE_FLAG,16,SORTED_SET_CATG,4,1,1,1 },
+{ "zrevrange",&xtra[569],0x54ce86b8,ZREVRANGE_CMD,CMD_READ_FLAG,9,SORTED_SET_CATG,-4,1,1,1 },
+{ "zrevrangebyscore",&xtra[574],0x90b35fac,ZREVRANGEBYSCORE_CMD,CMD_READ_FLAG,16,SORTED_SET_CATG,-4,1,1,1 },
+{ "zrevrank",&xtra[579],0xb44209f0,ZREVRANK_CMD,CMD_READ_FLAG,8,SORTED_SET_CATG,3,1,1,1 },
+{ "zscore",&xtra[584],0x9bd50094,ZSCORE_CMD,CMD_READ_FLAG,6,SORTED_SET_CATG,3,1,1,1 },
+{ "zunionstore",&xtra[589],0x60d331d6,ZUNIONSTORE_CMD,CMD_WRITE_MV_FLAG,11,SORTED_SET_CATG,-4,1,1,1 },
+{ "zscan",&xtra[594],0xfeb5d899,ZSCAN_CMD,CMD_READ_FLAG,5,SORTED_SET_CATG,-3,1,1,1 },
+{ "zpopmin",&xtra[599],0x40898d3b,ZPOPMIN_CMD,CMD_WRITE_FLAG,7,SORTED_SET_CATG,-2,1,1,1 },
+{ "zpopmax",&xtra[604],0xeb626e04,ZPOPMAX_CMD,CMD_WRITE_FLAG,7,SORTED_SET_CATG,-2,1,1,1 },
+{ "bzpopmin",&xtra[609],0x85cbf474,BZPOPMIN_CMD,CMD_WRITE_FLAG,8,SORTED_SET_CATG,-3,1,-2,1 },
+{ "bzpopmax",&xtra[614],0x2e20174b,BZPOPMAX_CMD,CMD_WRITE_FLAG,8,SORTED_SET_CATG,-3,1,-2,1 },
+{ "append",&xtra[619],0xa518d7b1,APPEND_CMD,CMD_WRITE_FLAG,6,STRING_CATG,3,1,1,1 },
+{ "bitcount",&xtra[624],0x7940f690,BITCOUNT_CMD,CMD_READ_FLAG,8,STRING_CATG,-2,1,1,1 },
+{ "bitfield",&xtra[629],0x22e8bff5,BITFIELD_CMD,CMD_WRITE_FLAG,8,STRING_CATG,-2,1,1,1 },
+{ "bitop",&xtra[640],0x5818b0a0,BITOP_CMD,CMD_WRITE_FLAG,5,STRING_CATG,-4,2,-1,1 },
+{ "bitpos",&xtra[645],0x4d9586b,BITPOS_CMD,CMD_READ_FLAG,6,STRING_CATG,-3,1,1,1 },
+{ "decr",&xtra[650],0x9ff189ac,DECR_CMD,CMD_WRITE_FLAG,4,STRING_CATG,2,1,1,1 },
+{ "decrby",&xtra[655],0x5c57332f,DECRBY_CMD,CMD_WRITE_FLAG,6,STRING_CATG,3,1,1,1 },
+{ "get",&xtra[660],0x4af1c288,GET_CMD,CMD_READ_FLAG,3,STRING_CATG,2,1,1,1 },
+{ "getbit",&xtra[665],0xfef6ab7a,GETBIT_CMD,CMD_READ_FLAG,6,STRING_CATG,3,1,1,1 },
+{ "getrange",&xtra[670],0xb1c0d22c,GETRANGE_CMD,CMD_READ_FLAG,8,STRING_CATG,4,1,1,1 },
+{ "getset",&xtra[675],0xf88be6ea,GETSET_CMD,CMD_WRITE_FLAG,6,STRING_CATG,3,1,1,1 },
+{ "incr",&xtra[680],0x1dad8fb7,INCR_CMD,CMD_WRITE_FLAG,4,STRING_CATG,2,1,1,1 },
+{ "incrby",&xtra[685],0xecc0cc3b,INCRBY_CMD,CMD_WRITE_FLAG,6,STRING_CATG,3,1,1,1 },
+{ "incrbyfloat",&xtra[690],0xf905ee53,INCRBYFLOAT_CMD,CMD_WRITE_FLAG,11,STRING_CATG,3,1,1,1 },
+{ "mget",&xtra[695],0xb4f1a425,MGET_CMD,CMD_READ_FLAG,4,STRING_CATG,-2,1,-1,1 },
+{ "mset",&xtra[700],0x5a8d7db5,MSET_CMD,CMD_WRITE_FLAG,4,STRING_CATG,-3,1,-1,2 },
+{ "msetnx",&xtra[705],0xf8258510,MSETNX_CMD,CMD_WRITE_FLAG,6,STRING_CATG,-3,1,-1,2 },
+{ "psetex",&xtra[710],0xac199a7e,PSETEX_CMD,CMD_WRITE_FLAG,6,STRING_CATG,4,1,1,1 },
+{ "set",&xtra[715],0xa48d1b18,SET_CMD,CMD_WRITE_FLAG,3,STRING_CATG,-3,1,1,1 },
+{ "setbit",&xtra[720],0x8c0fac33,SETBIT_CMD,CMD_WRITE_FLAG,6,STRING_CATG,4,1,1,1 },
+{ "setex",&xtra[725],0x52c54753,SETEX_CMD,CMD_WRITE_FLAG,5,STRING_CATG,4,1,1,1 },
+{ "setnx",&xtra[730],0xfb362c72,SETNX_CMD,CMD_WRITE_FLAG,5,STRING_CATG,3,1,1,1 },
+{ "setrange",&xtra[735],0x14ab59f5,SETRANGE_CMD,CMD_WRITE_FLAG,8,STRING_CATG,4,1,1,1 },
+{ "strlen",&xtra[740],0xbebb35df,STRLEN_CMD,CMD_READ_FLAG,6,STRING_CATG,2,1,1,1 },
+{ "discard",&xtra[745],0xd23e9106,DISCARD_CMD,CMD_NOFLAGS,7,TRANSACTION_CATG,1,0,0,0 },
+{ "exec",&xtra[750],0xba224361,EXEC_CMD,CMD_NOFLAGS,4,TRANSACTION_CATG,1,0,0,0 },
+{ "multi",&xtra[755],0xe7229311,MULTI_CMD,CMD_NOFLAGS,5,TRANSACTION_CATG,1,0,0,0 },
+{ "unwatch",&xtra[760],0xd514cb3c,UNWATCH_CMD,CMD_NOFLAGS,7,TRANSACTION_CATG,1,0,0,0 },
+{ "watch",&xtra[765],0xb0335e4d,WATCH_CMD,CMD_READ_FLAG,5,TRANSACTION_CATG,-2,1,-1,1 },
+{ "xinfo",&xtra[770],0xa518b47c,XINFO_CMD,CMD_READ_FLAG,5,STREAM_CATG,-2,2,2,1 },
+{ "xadd",&xtra[780],0x29bf275c,XADD_CMD,CMD_WRITE_FLAG,4,STREAM_CATG,-5,1,1,1 },
+{ "xtrim",&xtra[785],0xcc3060b3,XTRIM_CMD,CMD_WRITE_FLAG,5,STREAM_CATG,-2,1,1,1 },
+{ "xdel",&xtra[790],0x8b5bd180,XDEL_CMD,CMD_WRITE_FLAG,4,STREAM_CATG,-2,1,1,1 },
+{ "xrange",&xtra[795],0x83762e,XRANGE_CMD,CMD_READ_FLAG,6,STREAM_CATG,-4,1,1,1 },
+{ "xrevrange",&xtra[800],0xb95f5cd9,XREVRANGE_CMD,CMD_READ_FLAG,9,STREAM_CATG,-4,1,1,1 },
+{ "xlen",&xtra[805],0x52319fb2,XLEN_CMD,CMD_READ_FLAG,4,STREAM_CATG,2,1,1,1 },
+{ "xread",&xtra[810],0xe9817356,XREAD_CMD,CMD_READ_MV_FLAG,5,STREAM_CATG,-3,1,1,1 },
+{ "xgroup",&xtra[815],0x44dd7e87,XGROUP_CMD,CMD_WRITE_FLAG,6,STREAM_CATG,-2,2,2,1 },
+{ "xreadgroup",&xtra[826],0x21c71fc9,XREADGROUP_CMD,CMD_WRITE_MV_FLAG,10,STREAM_CATG,-3,1,1,1 },
+{ "xack",&xtra[831],0xdc1d23d,XACK_CMD,CMD_WRITE_FLAG,4,STREAM_CATG,-4,1,1,1 },
+{ "xclaim",&xtra[836],0xd5301015,XCLAIM_CMD,CMD_WRITE_FLAG,6,STREAM_CATG,-5,1,1,1 },
+{ "xpending",&xtra[841],0xe44a9236,XPENDING_CMD,CMD_READ_FLAG,8,STREAM_CATG,-3,1,1,1 },
+{ "xsetid",&xtra[846],0x429c28ba,XSETID_CMD,CMD_WRITE_FLAG,6,STREAM_CATG,4,1,1,1 }
 };
 
 #ifdef REDIS_XTRA
-const RedisCmdExtra xtra[ 847 ] = {
+const RedisCmdExtra xtra[ 851 ] = {
 { &xtra[1], XTRA_SHORT, "echo string"},
 { &xtra[2], XTRA_USAGE, "echo string\n"},
 { &xtra[3], XTRA_EXAMPLE, "> echo hello\n"
@@ -809,17 +811,30 @@ const RedisCmdExtra xtra[ 847 ] = {
 "object [refcount key | encoding key | idletime key | freq key | help]\n"},
 { &xtra[171], XTRA_EXAMPLE,
 "> object freq k\n"
-"1\n"
-"> set k value2\n"
+"nil\n"
+"> set k hello\n"
 "'OK'\n"
 "> object freq k\n"
-"2\n"},
-{ &xtra[172], XTRA_DESCR, "Inspect key value attributes.\n"},
+"0\n"
+"> set k world\n"
+"'OK'\n"
+"> object freq k\n"
+"1\n"
+"> object idletime k\n"
+"6\n"
+"> object encoding k\n"
+"\"string\"\n"},
+{ &xtra[172], XTRA_DESCR,
+"Inspect key value attributes maintained and stored with the data.\n"},
 { NULL, XTRA_RETURN,
-"- refcount, always *1*.\n"
+"If key does not exist, then *nil*.  Otherwise an integer value indicating\n"
+"one of the following based on the command:\n"
+"\n"
+"- refcount, valid values are always *1*.\n"
 "- encoding, the type of data.\n"
-"- idletime, always *0*.\n"
-"- freq, the number of time key was updated.\n"},
+"- idletime, the number seconds since the value was updated.\n"
+"- freq, the number of times key was updated.  The inital value resets this to\n"
+"  zero, and every subsequent update increments.\n"},
 { &xtra[174], XTRA_SHORT, "clear expire stamp"},
 { &xtra[175], XTRA_USAGE, "persist key\n"},
 { &xtra[176], XTRA_EXAMPLE, "> persist k\n"
@@ -883,53 +898,61 @@ const RedisCmdExtra xtra[ 847 ] = {
 { &xtra[207], XTRA_DESCR, "Rename key if new key doesn't exists.\n"},
 { NULL, XTRA_RETURN,
 "An integer *1* if success, *0* if not, error if key doesn't exist.\n"},
-{ &xtra[209], XTRA_SHORT, "set last access time"},
-{ &xtra[210], XTRA_USAGE, "touch key [key ...]\n"},
-{ &xtra[211], XTRA_EXAMPLE, "> touch j\n"
+{ &xtra[209], XTRA_SHORT, "restore key from dump"},
+{ &xtra[210], XTRA_USAGE,
+"restore key ttl value [replace] [absttl] [idletime idle] [freq lfu]\n"},
+{ &xtra[211], XTRA_DESCR,
+"Restore key using dump format.  The value argument is in a specific binary\n"
+"format that is constructed by the dump command, which has a version and a crc\n"
+"checksum attached (not easily constructed without a program).\n"},
+{ NULL, XTRA_RETURN, "*OK* when successful, error otherwise.\n"},
+{ &xtra[213], XTRA_SHORT, "set last access time"},
+{ &xtra[214], XTRA_USAGE, "touch key [key ...]\n"},
+{ &xtra[215], XTRA_EXAMPLE, "> touch j\n"
 "1\n"
 "> object idletime j\n"
 "4\n"},
-{ &xtra[212], XTRA_DESCR, "Set update time of key.\n"},
+{ &xtra[216], XTRA_DESCR, "Set update time of key.\n"},
 { NULL, XTRA_RETURN, "An integer *1* if success, *0* if not.\n"},
-{ &xtra[214], XTRA_SHORT, "get ttl secs"},
-{ &xtra[215], XTRA_USAGE, "ttl key\n"},
-{ &xtra[216], XTRA_EXAMPLE, "> ttl j\n"
+{ &xtra[218], XTRA_SHORT, "get ttl secs"},
+{ &xtra[219], XTRA_USAGE, "ttl key\n"},
+{ &xtra[220], XTRA_EXAMPLE, "> ttl j\n"
 "-1\n"
 "> expire j 100\n"
 "1\n"
 "> ttl j\n"
 "98\n"},
-{ &xtra[217], XTRA_DESCR, "Get expire time in seconds.\n"},
+{ &xtra[221], XTRA_DESCR, "Get expire time in seconds.\n"},
 { NULL, XTRA_RETURN,
 "The amount of seconds left or *-1* when key doesn't expire, and *-2*\n"
 "when key doesn't exist.\n"},
-{ &xtra[219], XTRA_SHORT, "get type of key"},
-{ &xtra[220], XTRA_USAGE, "type key\n"},
-{ &xtra[221], XTRA_EXAMPLE,
+{ &xtra[223], XTRA_SHORT, "get type of key"},
+{ &xtra[224], XTRA_USAGE, "type key\n"},
+{ &xtra[225], XTRA_EXAMPLE,
 "> pfadd hl 1 2 3 4 5 6 10\n"
 "1\n"
 "> type hl\n"
 "'hyperloglog'\n"},
-{ &xtra[222], XTRA_DESCR, "Get the type of a key.\n"},
+{ &xtra[226], XTRA_DESCR, "Get the type of a key.\n"},
 { NULL, XTRA_RETURN,
 "The type of key in a string or the string none.\n"},
-{ &xtra[224], XTRA_SHORT, "delete key"},
-{ &xtra[225], XTRA_USAGE, "unlink key [key ...]\n"},
-{ &xtra[226], XTRA_EXAMPLE, "> unlink j k l m\n"
+{ &xtra[228], XTRA_SHORT, "delete key"},
+{ &xtra[229], XTRA_USAGE, "unlink key [key ...]\n"},
+{ &xtra[230], XTRA_EXAMPLE, "> unlink j k l m\n"
 "2\n"},
-{ &xtra[227], XTRA_DESCR, "Non-blocking delete, mark deleted.\n"},
+{ &xtra[231], XTRA_DESCR, "Non-blocking delete, mark deleted.\n"},
 { NULL, XTRA_RETURN,
 "An integer count of the number of keys deleted is returned.\n"},
-{ &xtra[229], XTRA_SHORT, "scan matching keys"},
-{ &xtra[230], XTRA_USAGE, "scan curs [match pat] [count int]\n"},
-{ &xtra[231], XTRA_EXAMPLE,
+{ &xtra[233], XTRA_SHORT, "scan matching keys"},
+{ &xtra[234], XTRA_USAGE, "scan curs [match pat] [count int]\n"},
+{ &xtra[235], XTRA_EXAMPLE,
 "> scan 0 match j* count 1\n"
 "[\"18521679\",[\"jjj\"]]\n"
 "> scan 18521679 match j* count 1\n"
 "[\"25519714\",[\"j\"]]\n"
 "> scan 25519714 match j* count 1\n"
 "[\"0\",[]]\n"},
-{ &xtra[232], XTRA_DESCR,
+{ &xtra[236], XTRA_DESCR,
 "Get the keys which match a pattern.  The cursor is the offset into the\n"
 "scan where the results will start.  If the cursor is equal to 18521679\n"
 "from the example, then the match will start at the 18521679th element\n"
@@ -937,31 +960,31 @@ const RedisCmdExtra xtra[ 847 ] = {
 { NULL, XTRA_RETURN,
 "An array within an array.  The outer array is the cursor counter, the\n"
 "inner array is the keys matched.\n"},
-{ &xtra[234], XTRA_SHORT, "block and lpop list"},
-{ &xtra[235], XTRA_USAGE, "blpop key [key ...] timeout\n"},
-{ &xtra[236], XTRA_EXAMPLE, "> brpop l m 0\n"
+{ &xtra[238], XTRA_SHORT, "block and lpop list"},
+{ &xtra[239], XTRA_USAGE, "blpop key [key ...] timeout\n"},
+{ &xtra[240], XTRA_EXAMPLE, "> brpop l m 0\n"
 "[\"l\",\"one\"]\n"},
-{ &xtra[237], XTRA_DESCR,
+{ &xtra[241], XTRA_DESCR,
 "Left pop the list and return the pair of list name and value.  If the\n"
 "list is empty, block and wait for timeout seconds.  When the timeout\n"
 "is zero, the command blocks indefinitely.\n"},
 { NULL, XTRA_RETURN,
 "An array with the name of the list follwed by the left most item\n"
 "popped from the list.  If timeout expires, *null* is returned.\n"},
-{ &xtra[239], XTRA_SHORT, "block and rpop list"},
-{ &xtra[240], XTRA_USAGE, "brpop key [key ...] timeout\n"},
-{ &xtra[241], XTRA_EXAMPLE, "> brpop l m 0\n"
+{ &xtra[243], XTRA_SHORT, "block and rpop list"},
+{ &xtra[244], XTRA_USAGE, "brpop key [key ...] timeout\n"},
+{ &xtra[245], XTRA_EXAMPLE, "> brpop l m 0\n"
 "[\"l\",\"three\"]\n"},
-{ &xtra[242], XTRA_DESCR,
+{ &xtra[246], XTRA_DESCR,
 "Right pop the list and return the pair of list name and value.  If the\n"
 "list is empty, block and wait for timeout seconds.  When the timeout\n"
 "is zero, the command blocks indefinitely.\n"},
 { NULL, XTRA_RETURN,
 "An array with the name of the list follwed by the right most item\n"
 "popped from the list.  If timeout expires, *null* is returned.\n"},
-{ &xtra[244], XTRA_SHORT, "block rpop then lpush"},
-{ &xtra[245], XTRA_USAGE, "brpoplpush src dest timeout\n"},
-{ &xtra[246], XTRA_EXAMPLE,
+{ &xtra[248], XTRA_SHORT, "block rpop then lpush"},
+{ &xtra[249], XTRA_USAGE, "brpoplpush src dest timeout\n"},
+{ &xtra[250], XTRA_EXAMPLE,
 "> lpush l one\n"
 "1\n"
 "> brpoplpush l m 0\n"
@@ -970,47 +993,47 @@ const RedisCmdExtra xtra[ 847 ] = {
 "[]\n"
 "> lrange m 0 -1\n"
 "[\"one\"]\n"},
-{ &xtra[247], XTRA_DESCR,
+{ &xtra[251], XTRA_DESCR,
 "Right pop the source list and left push the destination list.  If\n"
 "source is empty, block and wait for an element.  The timeout is in\n"
 "seconds and when it is zero, the command blocks indefinitely.\n"},
 { NULL, XTRA_RETURN,
 "A string of the element transferred or *null* when timeout expires.\n"},
-{ &xtra[249], XTRA_SHORT, "get list elem at index"},
-{ &xtra[250], XTRA_USAGE, "lindex key idx\n"},
-{ &xtra[251], XTRA_EXAMPLE, "> lindex m 0\n"
+{ &xtra[253], XTRA_SHORT, "get list elem at index"},
+{ &xtra[254], XTRA_USAGE, "lindex key idx\n"},
+{ &xtra[255], XTRA_EXAMPLE, "> lindex m 0\n"
 "\"one\"\n"
 "> lindex m 10\n"
 "nil\n"},
-{ &xtra[252], XTRA_DESCR,
+{ &xtra[256], XTRA_DESCR,
 "Get list element at index.  Index starts at zero and ends at list\n"
 "length - 1.\n"},
 { NULL, XTRA_RETURN,
 "A string of the element at index or *nil* when index is out of range.\n"},
-{ &xtra[254], XTRA_SHORT, "insert list elem"},
-{ &xtra[255], XTRA_USAGE, "linsert key before | after piv val\n"},
-{ &xtra[256], XTRA_EXAMPLE,
+{ &xtra[258], XTRA_SHORT, "insert list elem"},
+{ &xtra[259], XTRA_USAGE, "linsert key before | after piv val\n"},
+{ &xtra[260], XTRA_EXAMPLE,
 "> linsert m after two three\n"
 "3\n"
 "> linsert m after four five\n"
 "-1\n"
 "> lrange m 0 -1\n"
 "[\"one\",\"two\",\"three\"]\n"},
-{ &xtra[257], XTRA_DESCR,
+{ &xtra[261], XTRA_DESCR,
 "Insert into list an value before or after the element named by piv.\n"},
 { NULL, XTRA_RETURN,
 "The count of elements in the list after inserting the new element, or\n"
 "*-1* when the piv is not found.\n"},
-{ &xtra[259], XTRA_SHORT, "get list length"},
-{ &xtra[260], XTRA_USAGE, "llen key\n"},
-{ &xtra[261], XTRA_EXAMPLE, "> llen m\n"
+{ &xtra[263], XTRA_SHORT, "get list length"},
+{ &xtra[264], XTRA_USAGE, "llen key\n"},
+{ &xtra[265], XTRA_EXAMPLE, "> llen m\n"
 "3\n"},
-{ &xtra[262], XTRA_DESCR, "Get list length.\n"},
+{ &xtra[266], XTRA_DESCR, "Get list length.\n"},
 { NULL, XTRA_RETURN,
 "The count of elements in list, *0* if list doesn't exist.\n"},
-{ &xtra[264], XTRA_SHORT, "left pop list elem"},
-{ &xtra[265], XTRA_USAGE, "lpop key\n"},
-{ &xtra[266], XTRA_EXAMPLE,
+{ &xtra[268], XTRA_SHORT, "left pop list elem"},
+{ &xtra[269], XTRA_USAGE, "lpop key\n"},
+{ &xtra[270], XTRA_EXAMPLE,
 "> lpush x one\n"
 "1\n"
 "> lpop x\n"
@@ -1019,48 +1042,48 @@ const RedisCmdExtra xtra[ 847 ] = {
 "nil\n"
 "> type x\n"
 "'none'\n"},
-{ &xtra[267], XTRA_DESCR,
+{ &xtra[271], XTRA_DESCR,
 "Left pop the element from the list.  The list key is removed when\n"
 "there are zero elements left.\n"},
 { NULL, XTRA_RETURN,
 "The string value of the element or *nil* if list doesn't exist.\n"},
-{ &xtra[269], XTRA_SHORT, "left push list elem"},
-{ &xtra[270], XTRA_USAGE, "lpush key val [val ..]\n"},
-{ &xtra[271], XTRA_EXAMPLE, "> lpush x one two three\n"
+{ &xtra[273], XTRA_SHORT, "left push list elem"},
+{ &xtra[274], XTRA_USAGE, "lpush key val [val ..]\n"},
+{ &xtra[275], XTRA_EXAMPLE, "> lpush x one two three\n"
 "3\n"},
-{ &xtra[272], XTRA_DESCR, "Left push elements to the list.\n"},
+{ &xtra[276], XTRA_DESCR, "Left push elements to the list.\n"},
 { NULL, XTRA_RETURN,
 "The length of the list after elements are added.\n"},
-{ &xtra[274], XTRA_SHORT, "left push if exists"},
-{ &xtra[275], XTRA_USAGE, "lpushx key val [val ..]\n"},
-{ &xtra[276], XTRA_EXAMPLE,
+{ &xtra[278], XTRA_SHORT, "left push if exists"},
+{ &xtra[279], XTRA_USAGE, "lpushx key val [val ..]\n"},
+{ &xtra[280], XTRA_EXAMPLE,
 "> lpushx y one two three\n"
 "0\n"
 "> type y\n"
 "'none'\n"
 "> lpushx x one two three\n"
 "6\n"},
-{ &xtra[277], XTRA_DESCR,
+{ &xtra[281], XTRA_DESCR,
 "Left push elements to the list only if it exists.\n"},
 { NULL, XTRA_RETURN,
 "The length of the list after elements are added.\n"},
-{ &xtra[279], XTRA_SHORT, "get range of elems"},
-{ &xtra[280], XTRA_USAGE, "lrange key start stop\n"},
-{ &xtra[281], XTRA_EXAMPLE,
+{ &xtra[283], XTRA_SHORT, "get range of elems"},
+{ &xtra[284], XTRA_USAGE, "lrange key start stop\n"},
+{ &xtra[285], XTRA_EXAMPLE,
 "> lrange x 0 -1\n"
 "[\"three\",\"two\",\"one\",\"three\",\"two\",\"one\"]\n"
 "> lrange x 6 10\n"
 "[]\n"},
-{ &xtra[282], XTRA_DESCR,
+{ &xtra[286], XTRA_DESCR,
 "Get a range of elements from the list.  If list doesn't exist or range\n"
 "has zero elements, an empty array is returned.  A negative index\n"
 "starts from the end of the list:  *-1* is the last element, *-2* is\n"
 "the second last element.\n"},
 { NULL, XTRA_RETURN,
 "An array of elements between the start and stop indexes, inclusive.\n"},
-{ &xtra[284], XTRA_SHORT, "remove count elems"},
-{ &xtra[285], XTRA_USAGE, "lrem key count value\n"},
-{ &xtra[286], XTRA_EXAMPLE,
+{ &xtra[288], XTRA_SHORT, "remove count elems"},
+{ &xtra[289], XTRA_USAGE, "lrem key count value\n"},
+{ &xtra[290], XTRA_EXAMPLE,
 "> lrange x 0 -1\n"
 "[\"three\",\"two\",\"one\",\"three\",\"two\",\"one\"]\n"
 "> lrem x 1 one\n"
@@ -1071,39 +1094,39 @@ const RedisCmdExtra xtra[ 847 ] = {
 "0\n"
 "> lrange x 0 -1\n"
 "[\"three\",\"two\",\"three\",\"two\"]\n"},
-{ &xtra[287], XTRA_DESCR,
+{ &xtra[291], XTRA_DESCR,
 "Remove count list elements which match the value.\n"},
 { NULL, XTRA_RETURN, "An integer count of elements removed.\n"},
-{ &xtra[289], XTRA_SHORT, "set list elem at index"},
-{ &xtra[290], XTRA_USAGE, "lset key idx value\n"},
-{ &xtra[291], XTRA_EXAMPLE,
+{ &xtra[293], XTRA_SHORT, "set list elem at index"},
+{ &xtra[294], XTRA_USAGE, "lset key idx value\n"},
+{ &xtra[295], XTRA_EXAMPLE,
 "> lpush l one two three\n"
 "3\n"
 "> lset l 1 TWO\n"
 "'OK'\n"
 "> lrange l 0 -1\n"
 "[\"three\",\"TWO\",\"one\"]\n"},
-{ &xtra[292], XTRA_DESCR,
+{ &xtra[296], XTRA_DESCR,
 "Set the list element at index.  Index is zero based.\n"},
 { NULL, XTRA_RETURN,
 "*OK* if success, error if out of range or not found.\n"},
-{ &xtra[294], XTRA_SHORT, "trim list elems"},
-{ &xtra[295], XTRA_USAGE, "ltrim key start stop\n"},
-{ &xtra[296], XTRA_EXAMPLE,
+{ &xtra[298], XTRA_SHORT, "trim list elems"},
+{ &xtra[299], XTRA_USAGE, "ltrim key start stop\n"},
+{ &xtra[300], XTRA_EXAMPLE,
 "> lpush x one two three one two three\n"
 "6\n"
 "> ltrim x 4 10\n"
 "'OK'\n"
 "> lrange x 0 -1\n"
 "[\"two\",\"one\"]\n"},
-{ &xtra[297], XTRA_DESCR,
+{ &xtra[301], XTRA_DESCR,
 "Trim list to range.  If start is beyond the end of the list, then all\n"
 "elements are removed.\n"},
 { NULL, XTRA_RETURN, "*OK*.\n"
 "\n"},
-{ &xtra[299], XTRA_SHORT, "right pop list elem"},
-{ &xtra[300], XTRA_USAGE, "rpop key\n"},
-{ &xtra[301], XTRA_EXAMPLE,
+{ &xtra[303], XTRA_SHORT, "right pop list elem"},
+{ &xtra[304], XTRA_USAGE, "rpop key\n"},
+{ &xtra[305], XTRA_EXAMPLE,
 "> rpush x two three\n"
 "2\n"
 "> rpop x\n"
@@ -1114,14 +1137,14 @@ const RedisCmdExtra xtra[ 847 ] = {
 "nil\n"
 "> type x\n"
 "'none'\n"},
-{ &xtra[302], XTRA_DESCR,
+{ &xtra[306], XTRA_DESCR,
 "Right pop the element from the list.  The list key is removed when\n"
 "there are zero elements left.\n"},
 { NULL, XTRA_RETURN,
 "The string value of the element or *nil* if list doesn't exist.\n"},
-{ &xtra[304], XTRA_SHORT, "right pop left push"},
-{ &xtra[305], XTRA_USAGE, "rpoplpush src dest\n"},
-{ &xtra[306], XTRA_EXAMPLE,
+{ &xtra[308], XTRA_SHORT, "right pop left push"},
+{ &xtra[309], XTRA_USAGE, "rpoplpush src dest\n"},
+{ &xtra[310], XTRA_EXAMPLE,
 "> rpush x two three\n"
 "2\n"
 "> rpoplpush x y\n"
@@ -1130,21 +1153,21 @@ const RedisCmdExtra xtra[ 847 ] = {
 "\"two\"\n"
 "> rpoplpush x y\n"
 "nil\n"},
-{ &xtra[307], XTRA_DESCR,
+{ &xtra[311], XTRA_DESCR,
 "Right pop the source list and left push the destination list.  If\n"
 "source is empty, return *nil*.\n"},
 { NULL, XTRA_RETURN,
 "A string of the element transferred or *nil*.\n"},
-{ &xtra[309], XTRA_SHORT, "right push elem"},
-{ &xtra[310], XTRA_USAGE, "rpush key [val ...]\n"},
-{ &xtra[311], XTRA_EXAMPLE, "> rpush x one two three\n"
+{ &xtra[313], XTRA_SHORT, "right push elem"},
+{ &xtra[314], XTRA_USAGE, "rpush key [val ...]\n"},
+{ &xtra[315], XTRA_EXAMPLE, "> rpush x one two three\n"
 "3\n"},
-{ &xtra[312], XTRA_DESCR, "Right push elements to the list.\n"},
+{ &xtra[316], XTRA_DESCR, "Right push elements to the list.\n"},
 { NULL, XTRA_RETURN,
 "The length of the list after elements are added.\n"},
-{ &xtra[314], XTRA_SHORT, "right push if exist"},
-{ &xtra[315], XTRA_USAGE, "rpushx key [val ...]\n"},
-{ &xtra[316], XTRA_EXAMPLE,
+{ &xtra[318], XTRA_SHORT, "right push if exist"},
+{ &xtra[319], XTRA_USAGE, "rpushx key [val ...]\n"},
+{ &xtra[320], XTRA_EXAMPLE,
 "> rpushx y one two three\n"
 "0\n"
 "> type y\n"
@@ -1153,20 +1176,20 @@ const RedisCmdExtra xtra[ 847 ] = {
 "3\n"
 "> rpushx x one two three\n"
 "6\n"},
-{ &xtra[317], XTRA_DESCR,
+{ &xtra[321], XTRA_DESCR,
 "Right push elements to the list only if it exists.\n"},
 { NULL, XTRA_RETURN,
 "The length of the list after elements are added.\n"},
-{ &xtra[319], XTRA_SHORT, "pattern subscribe"},
-{ &xtra[320], XTRA_USAGE, "psubscribe pat [pat ...]\n"},
-{ &xtra[321], XTRA_EXAMPLE,
+{ &xtra[323], XTRA_SHORT, "pattern subscribe"},
+{ &xtra[324], XTRA_USAGE, "psubscribe pat [pat ...]\n"},
+{ &xtra[325], XTRA_EXAMPLE,
 "> psubscribe p* q*\n"
 "executing: [\"psubscribe\",\"p*\",\"q*\"]\n"
 "[\"psubscribe\",\"p*\",1]\n"
 "[\"psubscribe\",\"q*\",2]\n"
 "[\"pmessage\",\"p*\",\"publius\",\"friend\"]\n"
 "[\"pmessage\",\"q*\",\"qQq\",\"OoO\"]\n"},
-{ &xtra[322], XTRA_DESCR,
+{ &xtra[326], XTRA_DESCR,
 "Subscribe to patterns.  The messages published to channels which match\n"
 "the pattern will be forwarded to the client.  A message may be\n"
 "forwarded to the same client more than once if its channel matches\n"
@@ -1175,86 +1198,86 @@ const RedisCmdExtra xtra[ 847 ] = {
 { NULL, XTRA_RETURN,
 "An array with the subscription and an integer which is a count of the\n"
 "subscriptions open.\n"},
-{ &xtra[324], XTRA_SHORT, "query pubsub info"},
-{ &xtra[325], XTRA_USAGE,
+{ &xtra[328], XTRA_SHORT, "query pubsub info"},
+{ &xtra[329], XTRA_USAGE,
 "pubsub [channels [pattern] | numsub channel | numpat]\n"},
-{ &xtra[326], XTRA_EXAMPLE,
+{ &xtra[330], XTRA_EXAMPLE,
 "> pubsub channels\n"
 "[\"two\",\"five\",\"seven\",\"six\",\"one\",\"three\",\"four\"]\n"
 "> pubsub channels t*\n"
 "[\"two\",\"three\"]\n"
 "> pubsub channels x*\n"
 "[]\n"},
-{ &xtra[327], XTRA_DESCR,
+{ &xtra[331], XTRA_DESCR,
 "Get the channels that are in use which match a pattern.\n"},
-{ &xtra[328], XTRA_EXAMPLE,
+{ &xtra[332], XTRA_EXAMPLE,
 "> pubsub numsub one two three\n"
 "[\"one\",1,\"two\",1,\"three\",1]\n"},
-{ &xtra[329], XTRA_DESCR,
+{ &xtra[333], XTRA_DESCR,
 "Get the number of subscription on each channel.\n"},
-{ &xtra[330], XTRA_EXAMPLE, "> pubsub numpat\n"
+{ &xtra[334], XTRA_EXAMPLE, "> pubsub numpat\n"
 "3\n"},
 { NULL, XTRA_DESCR,
 "Display the number of pattern subscriptions open.\n"},
-{ &xtra[332], XTRA_SHORT, "publish msg to channel"},
-{ &xtra[333], XTRA_USAGE, "publish channel msg\n"},
-{ &xtra[334], XTRA_EXAMPLE, "> publish one two\n"
+{ &xtra[336], XTRA_SHORT, "publish msg to channel"},
+{ &xtra[337], XTRA_USAGE, "publish channel msg\n"},
+{ &xtra[338], XTRA_EXAMPLE, "> publish one two\n"
 "1\n"},
-{ &xtra[335], XTRA_DESCR, "Publish msg to channel.\n"},
+{ &xtra[339], XTRA_DESCR, "Publish msg to channel.\n"},
 { NULL, XTRA_RETURN,
 "A count of the times the message is forwarded to a client.\n"},
-{ &xtra[337], XTRA_SHORT, "pattern unsubscribe"},
-{ &xtra[338], XTRA_USAGE, "punsubscribe [pat ...]\n"},
-{ &xtra[339], XTRA_EXAMPLE,
+{ &xtra[341], XTRA_SHORT, "pattern unsubscribe"},
+{ &xtra[342], XTRA_USAGE, "punsubscribe [pat ...]\n"},
+{ &xtra[343], XTRA_EXAMPLE,
 "> psubscribe x*\n"
 "[\"psubscribe\",\"x*\",1]\n"
 "> punsubscribe x*\n"
 "[\"punsubscribe\",\"x*\",0]\n"},
-{ &xtra[340], XTRA_DESCR,
+{ &xtra[344], XTRA_DESCR,
 "Unsubscribe patterns.  This cancels interest in the patterns\n"
 "previously subscribed.  If no patterns are named, all patterns are\n"
 "unsubscribed.\n"},
 { NULL, XTRA_RETURN,
 "An array with the punsubscribe and an integer count of the number of\n"
 "subscriptions that the client has open.\n"},
-{ &xtra[342], XTRA_SHORT, "subscribe channel"},
-{ &xtra[343], XTRA_USAGE, "subscribe chan [chan ...]\n"},
-{ &xtra[344], XTRA_EXAMPLE, "> subscribe x\n"
+{ &xtra[346], XTRA_SHORT, "subscribe channel"},
+{ &xtra[347], XTRA_USAGE, "subscribe chan [chan ...]\n"},
+{ &xtra[348], XTRA_EXAMPLE, "> subscribe x\n"
 "[\"subscribe\",\"x\",1]\n"},
-{ &xtra[345], XTRA_DESCR,
+{ &xtra[349], XTRA_DESCR,
 "Subscribe to channels.  The messages published to the channels that\n"
 "are subscribed will be forwarded to the client.\n"},
 { NULL, XTRA_RETURN,
 "An array with the subscription and an integer which is a count of the\n"
 "subscriptions open.\n"},
-{ &xtra[347], XTRA_SHORT, "unsubscribe channel"},
-{ &xtra[348], XTRA_USAGE, "unsubscribe [chan ...]\n"},
-{ &xtra[349], XTRA_EXAMPLE,
+{ &xtra[351], XTRA_SHORT, "unsubscribe channel"},
+{ &xtra[352], XTRA_USAGE, "unsubscribe [chan ...]\n"},
+{ &xtra[353], XTRA_EXAMPLE,
 "> subscribe x\n"
 "[\"subscribe\",\"x\",1]\n"
 "> unsubscribe x\n"
 "[\"unsubscribe\",\"x\",0]\n"},
-{ &xtra[350], XTRA_DESCR,
+{ &xtra[354], XTRA_DESCR,
 "Unsubscribe channels.  This cancels interest in the channels\n"
 "previously subscribed.  If no channels are named, all channels are\n"
 "unsubscribed.\n"},
 { NULL, XTRA_RETURN,
 "An array with the unsubscribe and an integer count of the number of\n"
 "subscriptions that the client has open.\n"},
-{ &xtra[352], XTRA_SHORT, "query connected clients"},
-{ &xtra[353], XTRA_USAGE,
+{ &xtra[356], XTRA_SHORT, "query connected clients"},
+{ &xtra[357], XTRA_USAGE,
 "client [setname name | getname | id | kill match | list match |\n"
 "        reply state]\n"},
-{ &xtra[354], XTRA_EXAMPLE, "> client setname AAA\n"
+{ &xtra[358], XTRA_EXAMPLE, "> client setname AAA\n"
 "'OK'\n"},
-{ &xtra[355], XTRA_DESCR, "Set the current connection name.\n"},
-{ &xtra[356], XTRA_EXAMPLE, "> client getname\n"
+{ &xtra[359], XTRA_DESCR, "Set the current connection name.\n"},
+{ &xtra[360], XTRA_EXAMPLE, "> client getname\n"
 "\"AAA\"\n"},
-{ &xtra[357], XTRA_DESCR, "Get the current connection name.\n"},
-{ &xtra[358], XTRA_EXAMPLE, "> client id\n"
+{ &xtra[361], XTRA_DESCR, "Get the current connection name.\n"},
+{ &xtra[362], XTRA_EXAMPLE, "> client id\n"
 "12\n"},
-{ &xtra[359], XTRA_DESCR, "Get the current connection id.\n"},
-{ &xtra[360], XTRA_EXAMPLE,
+{ &xtra[363], XTRA_DESCR, "Get the current connection id.\n"},
+{ &xtra[364], XTRA_EXAMPLE,
 "> client list type tcp\n"
 "id=12 addr=[::1]:58806 fd=14 name=AAA kind=redis age=150 idle=0 rbuf=0 \n"
 "  rsz=16384 imsg=7 br=257 wbuf=0 wsz=5120 omsg=6 bs=1082 flags=N db=0 \n"
@@ -1262,7 +1285,7 @@ const RedisCmdExtra xtra[ 847 ] = {
 "id=13 addr=[::1]:58808 fd=15 name= kind=redis age=74 idle=74 rbuf=0 \n"
 "  rsz=16384 imsg=0 br=0 wbuf=0 wsz=5120 omsg=0 bs=0 flags=N db=0 \n"
 "  sub=0 psub=0 multi=-1 cmd=none\n"},
-{ &xtra[361], XTRA_DESCR,
+{ &xtra[365], XTRA_DESCR,
 "List the clients.  The filters that match the clients which are listed\n"
 "are:\n"
 "\n"
@@ -1271,15 +1294,15 @@ const RedisCmdExtra xtra[ 847 ] = {
 "- id N -- filter by id number\n"
 "- addr IP -- filter by IP address\n"
 "- skipme -- skip the current connection\n"},
-{ &xtra[362], XTRA_EXAMPLE,
+{ &xtra[366], XTRA_EXAMPLE,
 "> client kill id 13\n"
 "1\n"
 "> client kill type redis skipme\n"
 "0\n"},
-{ &xtra[363], XTRA_DESCR,
+{ &xtra[367], XTRA_DESCR,
 "Kill clients.  The filters that match the clients which are listed the\n"
 "same as the filters that list.\n"},
-{ &xtra[364], XTRA_EXAMPLE,
+{ &xtra[368], XTRA_EXAMPLE,
 "> client reply skip\n"
 "> ping\n"
 "> ping\n"
@@ -1293,34 +1316,34 @@ const RedisCmdExtra xtra[ 847 ] = {
 { NULL, XTRA_DESCR,
 "Alter the reply behavior of the connection.  If skipped or off, output\n"
 "will be muted.\n"},
-{ &xtra[366], XTRA_SHORT, "query command info"},
-{ &xtra[367], XTRA_USAGE,
+{ &xtra[370], XTRA_SHORT, "query command info"},
+{ &xtra[371], XTRA_USAGE,
 "command [count | getkeys <cmd-full> | info [cmd] | help]\n"},
-{ &xtra[368], XTRA_EXAMPLE,
+{ &xtra[372], XTRA_EXAMPLE,
 "> command info get\n"
 "[[\"get\",2,['readonly','fast'],1,1,1]]\n"
 "> command count\n"
 "193\n"
 "> command help get\n"
 "['GET','key ; Get value']\n"},
-{ &xtra[369], XTRA_DESCR, "Get command details and help.\n"},
+{ &xtra[373], XTRA_DESCR, "Get command details and help.\n"},
 { NULL, XTRA_RETURN, "Array of strings, command info.\n"},
-{ &xtra[371], XTRA_SHORT, "query config"},
-{ &xtra[372], XTRA_USAGE,
+{ &xtra[375], XTRA_SHORT, "query config"},
+{ &xtra[376], XTRA_USAGE,
 "config [get <param> | rewrite | set <param> <value> | resetstat]\n"},
-{ &xtra[373], XTRA_DESCR,
+{ &xtra[377], XTRA_DESCR,
 "Get, set config parameters.  There is no configuration, so these\n"
 "are not functional except get, which returns sane values.\n"},
 { NULL, XTRA_RETURN, "Array of config key values.\n"},
-{ &xtra[375], XTRA_SHORT, "get number of keys"},
-{ &xtra[376], XTRA_USAGE, "dbsize \n"},
-{ &xtra[377], XTRA_EXAMPLE, "> dbsize\n"
+{ &xtra[379], XTRA_SHORT, "get number of keys"},
+{ &xtra[380], XTRA_USAGE, "dbsize \n"},
+{ &xtra[381], XTRA_EXAMPLE, "> dbsize\n"
 "299999\n"},
-{ &xtra[378], XTRA_DESCR, "Get number of keys in db.\n"},
+{ &xtra[382], XTRA_DESCR, "Get number of keys in db.\n"},
 { NULL, XTRA_RETURN, "An integer number of keys.\n"},
-{ &xtra[380], XTRA_SHORT, "run debug"},
-{ &xtra[381], XTRA_USAGE, "debug [object key | htstats]\n"},
-{ &xtra[382], XTRA_EXAMPLE,
+{ &xtra[384], XTRA_SHORT, "run debug"},
+{ &xtra[385], XTRA_USAGE, "debug [object key | htstats]\n"},
+{ &xtra[386], XTRA_EXAMPLE,
 "> set hello world\n"
 "'OK'\n"
 "> debug object hello\n"
@@ -1333,8 +1356,8 @@ const RedisCmdExtra xtra[ 847 ] = {
 "val:         0\n"
 "seqno:       3\n"
 "size:        5\n"},
-{ &xtra[383], XTRA_DESCR, "Get debug info about key.\n"},
-{ &xtra[384], XTRA_EXAMPLE,
+{ &xtra[387], XTRA_DESCR, "Get debug info about key.\n"},
+{ &xtra[388], XTRA_EXAMPLE,
 "> debug htstats\n"
 "db_num:  0\n"
 "\n"
@@ -1373,23 +1396,23 @@ const RedisCmdExtra xtra[ 847 ] = {
 "cuckmov: 0\n"
 "cuckret: 0\n"
 "cuckmax: 0\n"},
-{ &xtra[385], XTRA_DESCR,
+{ &xtra[389], XTRA_DESCR,
 "Get information about the hash table counters.\n"},
 { NULL, XTRA_RETURN,
 "A string description of debug info or bad command error.\n"},
-{ &xtra[387], XTRA_SHORT, "remove keys"},
-{ &xtra[388], XTRA_USAGE, "flushall [async]\n"},
-{ &xtra[389], XTRA_DESCR, "Remove keys from all dbs.\n"},
+{ &xtra[391], XTRA_SHORT, "remove keys"},
+{ &xtra[392], XTRA_USAGE, "flushall [async]\n"},
+{ &xtra[393], XTRA_DESCR, "Remove keys from all dbs.\n"},
 { NULL, XTRA_RETURN, "*OK* if successful, error otherwise.\n"},
-{ &xtra[391], XTRA_SHORT, "remove keys from db"},
-{ &xtra[392], XTRA_USAGE, "flushdb [async]\n"},
-{ &xtra[393], XTRA_DESCR, "Remove keys from selected db\n"},
+{ &xtra[395], XTRA_SHORT, "remove keys from db"},
+{ &xtra[396], XTRA_USAGE, "flushdb [async]\n"},
+{ &xtra[397], XTRA_DESCR, "Remove keys from selected db\n"},
 { NULL, XTRA_RETURN, "*OK* if successful, error otherwise.\n"},
-{ &xtra[395], XTRA_SHORT, "query server stats"},
-{ &xtra[396], XTRA_USAGE,
+{ &xtra[399], XTRA_SHORT, "query server stats"},
+{ &xtra[400], XTRA_USAGE,
 "info [server | clients | memory | persistence | stats |\n"
 "      replication | cpu | commandstats | cluster | keyspace]\n"},
-{ &xtra[397], XTRA_EXAMPLE,
+{ &xtra[401], XTRA_EXAMPLE,
 "> info server\n"
 "raids_version:        1.0.0-11\n"
 "raids_git:            fee49cdd\n"
@@ -1410,16 +1433,16 @@ const RedisCmdExtra xtra[ 847 ] = {
 "used_cpu_sys:         0.069951\n"
 "used_cpu_user:        1.445196\n"
 "used_cpu_total:       1.515147\n"},
-{ &xtra[398], XTRA_DESCR, "Get version info and counters.\n"},
+{ &xtra[402], XTRA_DESCR, "Get version info and counters.\n"},
 { NULL, XTRA_RETURN,
 "A text string with newlines that has the requested info.\n"},
-{ &xtra[400], XTRA_SHORT, "monitor commands"},
-{ &xtra[401], XTRA_USAGE, "monitor \n"},
-{ &xtra[402], XTRA_EXAMPLE,
+{ &xtra[404], XTRA_SHORT, "monitor commands"},
+{ &xtra[405], XTRA_USAGE, "monitor \n"},
+{ &xtra[406], XTRA_EXAMPLE,
 "> monitor\n"
 "[\"pmessage\",\"__monitor_@*\",\"__monitor_@0__:127.0.0.1:60646\",\n"
 "[[\"get\",\"k\"],\"value\",\"1580125101.975300\"]]\n"},
-{ &xtra[403], XTRA_DESCR,
+{ &xtra[407], XTRA_DESCR,
 "Monitor commands executed by server from all clients.  This is an\n"
 "alias for `psubscribe _monitor_@*`.  Running once enables, running\n"
 "twice disables the monitor.  In order to monitor just one client, or\n"
@@ -1429,39 +1452,39 @@ const RedisCmdExtra xtra[ 847 ] = {
 "An array which indicates the db number and client connected address\n"
 "(`\"__monitor_@0__:127.0.0.1:60646\"`), the command executed\n"
 "(`[\"get\",\"k\"]`), and the result of executing the command (`\"value\"`).\n"},
-{ &xtra[405], XTRA_SHORT, "sync save"},
-{ &xtra[406], XTRA_USAGE, "save \n"},
+{ &xtra[409], XTRA_SHORT, "sync save"},
+{ &xtra[410], XTRA_USAGE, "save \n"},
 { NULL, XTRA_DESCR, "Synchronously save to rdb format file.\n"},
-{ &xtra[408], XTRA_SHORT, "shutdown server"},
-{ &xtra[409], XTRA_USAGE, "shutdown\n"},
+{ &xtra[412], XTRA_SHORT, "shutdown server"},
+{ &xtra[413], XTRA_USAGE, "shutdown\n"},
 { NULL, XTRA_DESCR,
 "Shutdown server.  This will cause the connected instance to quit.\n"},
-{ &xtra[411], XTRA_SHORT, "get server time"},
-{ &xtra[412], XTRA_USAGE, "time \n"},
-{ &xtra[413], XTRA_EXAMPLE, "> time\n"
+{ &xtra[415], XTRA_SHORT, "get server time"},
+{ &xtra[416], XTRA_USAGE, "time \n"},
+{ &xtra[417], XTRA_EXAMPLE, "> time\n"
 "[\"1580125969\",\"562228\"]\n"},
-{ &xtra[414], XTRA_DESCR, "Get server time.\n"},
+{ &xtra[418], XTRA_DESCR, "Get server time.\n"},
 { NULL, XTRA_RETURN,
 "An array, UTC seconds and microseconds (1 usec = 1/1000000 second).\n"},
-{ &xtra[416], XTRA_SHORT, "add to set"},
-{ &xtra[417], XTRA_USAGE, "sadd key mem [mem ...]\n"},
-{ &xtra[418], XTRA_EXAMPLE, "> sadd s x y z\n"
+{ &xtra[420], XTRA_SHORT, "add to set"},
+{ &xtra[421], XTRA_USAGE, "sadd key mem [mem ...]\n"},
+{ &xtra[422], XTRA_EXAMPLE, "> sadd s x y z\n"
 "3\n"
 "> sadd s z a b\n"
 "2\n"},
-{ &xtra[419], XTRA_DESCR, "Add one or more members to a set.\n"},
+{ &xtra[423], XTRA_DESCR, "Add one or more members to a set.\n"},
 { NULL, XTRA_RETURN, "An integer count of unique members added.\n"},
-{ &xtra[421], XTRA_SHORT, "get member count"},
-{ &xtra[422], XTRA_USAGE, "scard key\n"},
-{ &xtra[423], XTRA_EXAMPLE, "> sadd s x y z\n"
+{ &xtra[425], XTRA_SHORT, "get member count"},
+{ &xtra[426], XTRA_USAGE, "scard key\n"},
+{ &xtra[427], XTRA_EXAMPLE, "> sadd s x y z\n"
 "3\n"
 "> scard s\n"
 "3\n"},
-{ &xtra[424], XTRA_DESCR, "Get the count of set members.\n"},
+{ &xtra[428], XTRA_DESCR, "Get the count of set members.\n"},
 { NULL, XTRA_RETURN, "An integer count of members.\n"},
-{ &xtra[426], XTRA_SHORT, "subtract sets"},
-{ &xtra[427], XTRA_USAGE, "sdiff key [key ...]\n"},
-{ &xtra[428], XTRA_EXAMPLE,
+{ &xtra[430], XTRA_SHORT, "subtract sets"},
+{ &xtra[431], XTRA_USAGE, "sdiff key [key ...]\n"},
+{ &xtra[432], XTRA_EXAMPLE,
 "> sadd s x y z\n"
 "3\n"
 "> sadd t x Y z\n"
@@ -1470,13 +1493,13 @@ const RedisCmdExtra xtra[ 847 ] = {
 "[\"y\"]\n"
 "> sdiff t s\n"
 "[\"Y\"]\n"},
-{ &xtra[429], XTRA_DESCR,
+{ &xtra[433], XTRA_DESCR,
 "Subtract sets.  Remove members of the first set using the members of\n"
 "the the other sets.\n"},
 { NULL, XTRA_RETURN, "An array of members.\n"},
-{ &xtra[431], XTRA_SHORT, "subtract and store"},
-{ &xtra[432], XTRA_USAGE, "sdiffstore dest key [key ...]\n"},
-{ &xtra[433], XTRA_EXAMPLE,
+{ &xtra[435], XTRA_SHORT, "subtract and store"},
+{ &xtra[436], XTRA_USAGE, "sdiffstore dest key [key ...]\n"},
+{ &xtra[437], XTRA_EXAMPLE,
 "> sadd s x y z\n"
 "3\n"
 "> sadd t x Y z\n"
@@ -1489,26 +1512,26 @@ const RedisCmdExtra xtra[ 847 ] = {
 "1\n"
 "> smembers td\n"
 "[\"Y\"]\n"},
-{ &xtra[434], XTRA_DESCR,
+{ &xtra[438], XTRA_DESCR,
 "Remove members of the first set using the members of the the other\n"
 "sets.  Store the result in the dest key.\n"},
 { NULL, XTRA_RETURN,
 "A count of members stored in the set at the dest key.\n"},
-{ &xtra[436], XTRA_SHORT, "intersect sets"},
-{ &xtra[437], XTRA_USAGE, "sinter key [key ...]\n"},
-{ &xtra[438], XTRA_EXAMPLE,
+{ &xtra[440], XTRA_SHORT, "intersect sets"},
+{ &xtra[441], XTRA_USAGE, "sinter key [key ...]\n"},
+{ &xtra[442], XTRA_EXAMPLE,
 "> sadd s x y z\n"
 "3\n"
 "> sadd t x Y z\n"
 "3\n"
 "> sinter s t\n"
 "[\"x\", \"z\"]\n"},
-{ &xtra[439], XTRA_DESCR,
+{ &xtra[443], XTRA_DESCR,
 "Intersect all the sets, only keep a member if it is in all sets.\n"},
 { NULL, XTRA_RETURN, "An array of members.\n"},
-{ &xtra[441], XTRA_SHORT, "intersect and store"},
-{ &xtra[442], XTRA_USAGE, "sinterstore key [key ...]\n"},
-{ &xtra[443], XTRA_EXAMPLE,
+{ &xtra[445], XTRA_SHORT, "intersect and store"},
+{ &xtra[446], XTRA_USAGE, "sinterstore key [key ...]\n"},
+{ &xtra[447], XTRA_EXAMPLE,
 "> sadd s x y z\n"
 "3\n"
 "> sadd t x Y z\n"
@@ -1517,35 +1540,35 @@ const RedisCmdExtra xtra[ 847 ] = {
 "2\n"
 "> smembers si\n"
 "[\"x\", \"z\"]\n"},
-{ &xtra[444], XTRA_DESCR,
+{ &xtra[448], XTRA_DESCR,
 "Intersect all the sets and store the result in the dest key.\n"},
 { NULL, XTRA_RETURN,
 "A count of members stored in the set at the dest key.\n"},
-{ &xtra[446], XTRA_SHORT, "test membership"},
-{ &xtra[447], XTRA_USAGE, "sismember key mem\n"},
-{ &xtra[448], XTRA_EXAMPLE,
+{ &xtra[450], XTRA_SHORT, "test membership"},
+{ &xtra[451], XTRA_USAGE, "sismember key mem\n"},
+{ &xtra[452], XTRA_EXAMPLE,
 "> sadd s x y z\n"
 "3\n"
 "> sismember s x\n"
 "1\n"
 "> sismember s Y\n"
 "0\n"},
-{ &xtra[449], XTRA_DESCR, "Test whether member is present in a set.\n"},
+{ &xtra[453], XTRA_DESCR, "Test whether member is present in a set.\n"},
 { NULL, XTRA_RETURN,
 "A *1* is returned if it is a member, a *0* if not.\n"},
-{ &xtra[451], XTRA_SHORT, "get all members"},
-{ &xtra[452], XTRA_USAGE, "smembers key\n"},
-{ &xtra[453], XTRA_EXAMPLE, "> sadd s x y z\n"
+{ &xtra[455], XTRA_SHORT, "get all members"},
+{ &xtra[456], XTRA_USAGE, "smembers key\n"},
+{ &xtra[457], XTRA_EXAMPLE, "> sadd s x y z\n"
 "3\n"
 "> smembers s\n"
 "[\"x\",\"y\",\"z\"]\n"},
-{ &xtra[454], XTRA_DESCR, "Get all the members in a set.\n"},
+{ &xtra[458], XTRA_DESCR, "Get all the members in a set.\n"},
 { NULL, XTRA_RETURN,
 "An array of set members, which could be empty if the key doesn't\n"
 "exist.\n"},
-{ &xtra[456], XTRA_SHORT, "move member to set"},
-{ &xtra[457], XTRA_USAGE, "smove src dest mem\n"},
-{ &xtra[458], XTRA_EXAMPLE,
+{ &xtra[460], XTRA_SHORT, "move member to set"},
+{ &xtra[461], XTRA_USAGE, "smove src dest mem\n"},
+{ &xtra[462], XTRA_EXAMPLE,
 "> sadd s x y z\n"
 "3\n"
 "> sadd t x Y z\n"
@@ -1562,15 +1585,15 @@ const RedisCmdExtra xtra[ 847 ] = {
 "[\"z\"]\n"
 "> smembers t\n"
 "[\"x\",\"Y\",\"z\",\"y\"]\n"},
-{ &xtra[459], XTRA_DESCR,
+{ &xtra[463], XTRA_DESCR,
 "Move a member to another set, which removes the member from the source\n"
 "and only adds it the destination if it exists in the source.\n"},
 { NULL, XTRA_RETURN,
 "A *1* is returned if the member exists in the source and is moved and\n"
 "a *0* is returned if the member does not exist in the source.\n"},
-{ &xtra[461], XTRA_SHORT, "remove rand members"},
-{ &xtra[462], XTRA_USAGE, "spop key [count]\n"},
-{ &xtra[463], XTRA_EXAMPLE,
+{ &xtra[465], XTRA_SHORT, "remove rand members"},
+{ &xtra[466], XTRA_USAGE, "spop key [count]\n"},
+{ &xtra[467], XTRA_EXAMPLE,
 "> sadd s x y z\n"
 "3\n"
 "> sadd t x Y z\n"
@@ -1585,14 +1608,14 @@ const RedisCmdExtra xtra[ 847 ] = {
 "[]\n"
 "> spop t\n"
 "[]\n"},
-{ &xtra[464], XTRA_DESCR,
+{ &xtra[468], XTRA_DESCR,
 "Remove count random members from the set and return them.\n"},
 { NULL, XTRA_RETURN,
 "An array of members removed, which may be less than count if there are\n"
 "not enough in the set to fulfill the total.\n"},
-{ &xtra[466], XTRA_SHORT, "get rand members"},
-{ &xtra[467], XTRA_USAGE, "srandmember key [count]\n"},
-{ &xtra[468], XTRA_EXAMPLE,
+{ &xtra[470], XTRA_SHORT, "get rand members"},
+{ &xtra[471], XTRA_USAGE, "srandmember key [count]\n"},
+{ &xtra[472], XTRA_EXAMPLE,
 "> sadd s x y z\n"
 "3\n"
 "> sadd t x Y z\n"
@@ -1601,33 +1624,33 @@ const RedisCmdExtra xtra[ 847 ] = {
 "[\"y\"]\n"
 "> srandmember t 300\n"
 "[\"x\",\"Y\",\"z\"]\n"},
-{ &xtra[469], XTRA_DESCR,
+{ &xtra[473], XTRA_DESCR,
 "Get count random members from the set and return them.\n"},
 { NULL, XTRA_RETURN,
 "An array of members removed, which may be less than count if there are\n"
 "not enough in the set to fulfill the total.\n"},
-{ &xtra[471], XTRA_SHORT, "remove members"},
-{ &xtra[472], XTRA_USAGE, "srem key mem [mem ...]\n"},
-{ &xtra[473], XTRA_EXAMPLE, "> sadd s x y z\n"
+{ &xtra[475], XTRA_SHORT, "remove members"},
+{ &xtra[476], XTRA_USAGE, "srem key mem [mem ...]\n"},
+{ &xtra[477], XTRA_EXAMPLE, "> sadd s x y z\n"
 "3\n"
 "> srem s y Y z\n"
 "2\n"},
-{ &xtra[474], XTRA_DESCR, "Remove one or more members from the set.\n"},
+{ &xtra[478], XTRA_DESCR, "Remove one or more members from the set.\n"},
 { NULL, XTRA_RETURN, "An integer count of members removed.\n"},
-{ &xtra[476], XTRA_SHORT, "union sets"},
-{ &xtra[477], XTRA_USAGE, "sunion key [key ...]\n"},
-{ &xtra[478], XTRA_EXAMPLE,
+{ &xtra[480], XTRA_SHORT, "union sets"},
+{ &xtra[481], XTRA_USAGE, "sunion key [key ...]\n"},
+{ &xtra[482], XTRA_EXAMPLE,
 "> sadd s x y z\n"
 "3\n"
 "> sadd t x Y z\n"
 "3\n"
 "> sunion s t\n"
 "[\"x\",\"y\",\"Y\",\"z\"]\n"},
-{ &xtra[479], XTRA_DESCR, "Union sets and return members.\n"},
+{ &xtra[483], XTRA_DESCR, "Union sets and return members.\n"},
 { NULL, XTRA_RETURN, "An array of members.\n"},
-{ &xtra[481], XTRA_SHORT, "union and store"},
-{ &xtra[482], XTRA_USAGE, "sunionstore dest key [key ...]\n"},
-{ &xtra[483], XTRA_EXAMPLE,
+{ &xtra[485], XTRA_SHORT, "union and store"},
+{ &xtra[486], XTRA_USAGE, "sunionstore dest key [key ...]\n"},
+{ &xtra[487], XTRA_EXAMPLE,
 "> sadd s x y z\n"
 "3\n"
 "> sadd t x Y z\n"
@@ -1636,13 +1659,13 @@ const RedisCmdExtra xtra[ 847 ] = {
 "4\n"
 "> smembers su\n"
 "[\"x\",\"y\",\"Y\",\"z\"]\n"},
-{ &xtra[484], XTRA_DESCR,
+{ &xtra[488], XTRA_DESCR,
 "Union all the sets and store the result in the dest key.\n"},
 { NULL, XTRA_RETURN,
 "A count of members stored in the set at the dest key.\n"},
-{ &xtra[486], XTRA_SHORT, "iterate and match"},
-{ &xtra[487], XTRA_USAGE, "sscan key curs [match pattern] [count cnt]\n"},
-{ &xtra[488], XTRA_EXAMPLE,
+{ &xtra[490], XTRA_SHORT, "iterate and match"},
+{ &xtra[491], XTRA_USAGE, "sscan key curs [match pattern] [count cnt]\n"},
+{ &xtra[492], XTRA_EXAMPLE,
 "> sadd s abc abb abd xyz zzz\n"
 "5\n"
 "> sscan s 0 match a* count 1\n"
@@ -1657,17 +1680,17 @@ const RedisCmdExtra xtra[ 847 ] = {
 "[\"0\",[\"abc\",\"abb\",\"abd\",\"xyz\",\"zzz\"]]\n"
 "> sscan s 5 match a* count 1\n"
 "[\"0\",[]]\n"},
-{ &xtra[489], XTRA_DESCR,
+{ &xtra[493], XTRA_DESCR,
 "Get the fields and values which match a pattern.  The cursor is the\n"
 "offset into the scan where the results will start.  If the cursor is\n"
 "equal to 3, then the match will start at the 3rd member of the set.\n"},
 { NULL, XTRA_RETURN,
 "An array within an array.  The outer array is the cursor counter, the\n"
 "inner array are the members matched.\n"},
-{ &xtra[491], XTRA_SHORT, "add to zset"},
-{ &xtra[492], XTRA_USAGE,
+{ &xtra[495], XTRA_SHORT, "add to zset"},
+{ &xtra[496], XTRA_USAGE,
 "zadd key [nx | xx] [ch] [incr] score mem [score mem ...]\n"},
-{ &xtra[493], XTRA_EXAMPLE,
+{ &xtra[497], XTRA_EXAMPLE,
 "> zadd z 10 a 20 b 30 c\n"
 "3\n"
 "> zrange z 0 -1 withscores\n"
@@ -1682,7 +1705,7 @@ const RedisCmdExtra xtra[ 847 ] = {
 "1\n"
 "> zrange z 0 -1 withscores\n"
 "[\"a\",\"12.1\",\"b\",\"22.2\",\"c\",\"33.3\",\"d\",\"40\"]\n"},
-{ &xtra[494], XTRA_DESCR,
+{ &xtra[498], XTRA_DESCR,
 "Add members to zset with score, optionally with a no exist (*nx*) flag\n"
 "or must exist (*xx*) flag.  The *ch* flag alters the count to the\n"
 "number members changed, otherwise it is the count of the number of\n"
@@ -1695,33 +1718,33 @@ const RedisCmdExtra xtra[ 847 ] = {
 "A count of members created, or changed when the *ch* flag is set.  If\n"
 "incr used, then the result is the new score.  A string type is used\n"
 "for scores since it is a decimal real.\n"},
-{ &xtra[496], XTRA_SHORT, "get member count"},
-{ &xtra[497], XTRA_USAGE, "zcard key\n"},
-{ &xtra[498], XTRA_EXAMPLE,
+{ &xtra[500], XTRA_SHORT, "get member count"},
+{ &xtra[501], XTRA_USAGE, "zcard key\n"},
+{ &xtra[502], XTRA_EXAMPLE,
 "> zadd z 10 a 20 b 30 c\n"
 "3\n"
 "> zrange z 0 -1\n"
 "[\"a\",\"b\",\"c\"]\n"
 "> zcard z\n"
 "3\n"},
-{ &xtra[499], XTRA_DESCR, "Get a count of the number members.\n"},
+{ &xtra[503], XTRA_DESCR, "Get a count of the number members.\n"},
 { NULL, XTRA_RETURN,
 "An integer count, *0* if the key doesn't exist.\n"},
-{ &xtra[501], XTRA_SHORT, "count within bounds"},
-{ &xtra[502], XTRA_USAGE, "zcount key min max\n"},
-{ &xtra[503], XTRA_EXAMPLE,
+{ &xtra[505], XTRA_SHORT, "count within bounds"},
+{ &xtra[506], XTRA_USAGE, "zcount key min max\n"},
+{ &xtra[507], XTRA_EXAMPLE,
 "> zadd z 10 a 20 b 30 c\n"
 "3\n"
 "> zcount z 10 30\n"
 "3\n"
 "> zcount z 15 30\n"
 "2\n"},
-{ &xtra[504], XTRA_DESCR, "Get number of members within a bounds.\n"},
+{ &xtra[508], XTRA_DESCR, "Get number of members within a bounds.\n"},
 { NULL, XTRA_RETURN,
 "An integer count, *0* if the key doesn't exist.\n"},
-{ &xtra[506], XTRA_SHORT, "incr score"},
-{ &xtra[507], XTRA_USAGE, "zincrby key incr mem\n"},
-{ &xtra[508], XTRA_EXAMPLE,
+{ &xtra[510], XTRA_SHORT, "incr score"},
+{ &xtra[511], XTRA_USAGE, "zincrby key incr mem\n"},
+{ &xtra[512], XTRA_EXAMPLE,
 "> zadd z 10 a 20 b 30 c\n"
 "3\n"
 "> zincrby z 1.5 a\n"
@@ -1732,14 +1755,14 @@ const RedisCmdExtra xtra[ 847 ] = {
 "\"1.5\"\n"
 "> zrange z 0 -1 withscores\n"
 "[\"A\",\"1.5\",\"b\",\"20\",\"a\",\"21.5\",\"c\",\"30\"]\n"},
-{ &xtra[509], XTRA_DESCR,
+{ &xtra[513], XTRA_DESCR,
 "Add a score to member, if member doesn't exists, create it.\n"},
 { NULL, XTRA_RETURN, "The score after incrementing it.\n"},
-{ &xtra[511], XTRA_SHORT, "intersect and store"},
-{ &xtra[512], XTRA_USAGE,
+{ &xtra[515], XTRA_SHORT, "intersect and store"},
+{ &xtra[516], XTRA_USAGE,
 "zinterstore dest num key [key ...] [weights w [w ...]]\n"
 " [aggregate sum|min|max]\n"},
-{ &xtra[513], XTRA_EXAMPLE,
+{ &xtra[517], XTRA_EXAMPLE,
 "> zadd z1 10 a 20 b 30 c\n"
 "3\n"
 "> zadd z2 40 d 30 c 10 b\n"
@@ -1748,7 +1771,7 @@ const RedisCmdExtra xtra[ 847 ] = {
 "2\n"
 "> zrange z3 0 -1 withscores\n"
 "[\"b\",\"30\",\"c\",\"60\"]\n"},
-{ &xtra[514], XTRA_DESCR,
+{ &xtra[518], XTRA_DESCR,
 "Intersect zsets and store in destination key.  The members which are\n"
 "in both sets are combined into the destination set.  The score is a\n"
 "combination of both members, depending on the weight given to each set\n"
@@ -1756,32 +1779,32 @@ const RedisCmdExtra xtra[ 847 ] = {
 "weight), and aggregating by sum.\n"},
 { NULL, XTRA_RETURN,
 "An integer count of the members in the new set.\n"},
-{ &xtra[516], XTRA_SHORT, "count lexical bounds"},
-{ &xtra[517], XTRA_USAGE, "zlexcount key min max\n"},
-{ &xtra[518], XTRA_EXAMPLE,
+{ &xtra[520], XTRA_SHORT, "count lexical bounds"},
+{ &xtra[521], XTRA_USAGE, "zlexcount key min max\n"},
+{ &xtra[522], XTRA_EXAMPLE,
 "> zadd z 10 a 10 b 10 c 10 d\n"
 "4\n"
 "> zlexcount z a d\n"
 "4\n"
 "> zcount z 10 10\n"
 "4\n"},
-{ &xtra[519], XTRA_DESCR,
+{ &xtra[523], XTRA_DESCR,
 "Count members in a zset within a lexical bounds, when all elements\n"
 "have the same score (and this only works when all members have the\n"
 "same score).\n"},
 { NULL, XTRA_RETURN,
 "An integer count of the number of members between an inclusive lexical\n"
 "bounds.\n"},
-{ &xtra[521], XTRA_SHORT, "get members with range"},
-{ &xtra[522], XTRA_USAGE, "zrange key start stop [withscores]\n"},
-{ &xtra[523], XTRA_EXAMPLE,
+{ &xtra[525], XTRA_SHORT, "get members with range"},
+{ &xtra[526], XTRA_USAGE, "zrange key start stop [withscores]\n"},
+{ &xtra[527], XTRA_EXAMPLE,
 "> zadd z 10 a 20 b 30 c 40 d\n"
 "4\n"
 "> zrange z 2 3 withscores\n"
 "[\"c\",\"30\",\"d\",\"40\"]\n"
 "> zrange z 0 -1\n"
 "[\"a\",\"b\",\"c\",\"d\"]\n"},
-{ &xtra[524], XTRA_DESCR,
+{ &xtra[528], XTRA_DESCR,
 "Get range of members between ranked indices.  The elements are sorted\n"
 "by score, low to high, so the 0th indexed element is the lowest score\n"
 "and ranked lowest.  The start and stop can be negative, which would\n"
@@ -1789,9 +1812,9 @@ const RedisCmdExtra xtra[ 847 ] = {
 "score and ranked highest.\n"},
 { NULL, XTRA_RETURN,
 "An array of members with scores if requested.\n"},
-{ &xtra[526], XTRA_SHORT, "get with lex range"},
-{ &xtra[527], XTRA_USAGE, "zrangebylex key min max [limit off cnt]\n"},
-{ &xtra[528], XTRA_EXAMPLE,
+{ &xtra[530], XTRA_SHORT, "get with lex range"},
+{ &xtra[531], XTRA_USAGE, "zrangebylex key min max [limit off cnt]\n"},
+{ &xtra[532], XTRA_EXAMPLE,
 "> zadd z 10 a 10 b 10 c 10 d\n"
 "4\n"
 "> zrangebylex z [a [b\n"
@@ -1802,14 +1825,14 @@ const RedisCmdExtra xtra[ 847 ] = {
 "[\"a\"]\n"
 "> zrangebylex z - + limit 1 1\n"
 "[\"b\"]\n"},
-{ &xtra[529], XTRA_DESCR,
+{ &xtra[533], XTRA_DESCR,
 "Get members in a zset within a lexical bounds, when all elements have\n"
 "the same score (and this only works when all members have the same\n"
 "score).\n"},
 { NULL, XTRA_RETURN, "An array of members.\n"},
-{ &xtra[531], XTRA_SHORT, "get rev lex range"},
-{ &xtra[532], XTRA_USAGE, "zrevrangebylex key min max [limit off cnt]\n"},
-{ &xtra[533], XTRA_EXAMPLE,
+{ &xtra[535], XTRA_SHORT, "get rev lex range"},
+{ &xtra[536], XTRA_USAGE, "zrevrangebylex key min max [limit off cnt]\n"},
+{ &xtra[537], XTRA_EXAMPLE,
 "> zadd z 10 a 10 b 10 c 10 d\n"
 "4\n"
 "> zrevrangebylex z [c [a\n"
@@ -1820,29 +1843,29 @@ const RedisCmdExtra xtra[ 847 ] = {
 "[\"d\"]\n"
 "> zrevrangebylex z + - limit 1 1\n"
 "[\"c\"]\n"},
-{ &xtra[534], XTRA_DESCR,
+{ &xtra[538], XTRA_DESCR,
 "Get members in a zset within a lexical bounds high to low, in reverse,\n"
 "when all elements have the same score (and this only works when all\n"
 "members have the same score).\n"},
 { NULL, XTRA_RETURN, "An array of members.\n"},
-{ &xtra[536], XTRA_SHORT, "get range by score"},
-{ &xtra[537], XTRA_USAGE, "zrangebyscore key min max [withscores]\n"},
-{ &xtra[538], XTRA_EXAMPLE,
+{ &xtra[540], XTRA_SHORT, "get range by score"},
+{ &xtra[541], XTRA_USAGE, "zrangebyscore key min max [withscores]\n"},
+{ &xtra[542], XTRA_EXAMPLE,
 "> zadd z 10 a 20 b 30 c 40 d\n"
 "4\n"
 "> zrangebyscore z 10 30\n"
 "[\"a\",\"b\",\"c\"]\n"
 "> zrangebyscore z (1 [2 withscores\n"
 "[\"b\",\"20\"]\n"},
-{ &xtra[539], XTRA_DESCR,
+{ &xtra[543], XTRA_DESCR,
 "Get range of members between scores.  The start is the lowest score\n"
 "and the stop is the highest score.  The members are returned from the\n"
 "lowest to the highest, in score order.\n"},
 { NULL, XTRA_RETURN,
 "An array of members, with scores if requested.\n"},
-{ &xtra[541], XTRA_SHORT, "get rank of member"},
-{ &xtra[542], XTRA_USAGE, "zrank key mem\n"},
-{ &xtra[543], XTRA_EXAMPLE,
+{ &xtra[545], XTRA_SHORT, "get rank of member"},
+{ &xtra[546], XTRA_USAGE, "zrank key mem\n"},
+{ &xtra[547], XTRA_EXAMPLE,
 "> zadd z 10 a 20 b 30 c 40 d\n"
 "4\n"
 "> zrank z b\n"
@@ -1851,82 +1874,82 @@ const RedisCmdExtra xtra[ 847 ] = {
 "2\n"
 "> zrank z f\n"
 "nil\n"},
-{ &xtra[544], XTRA_DESCR,
+{ &xtra[548], XTRA_DESCR,
 "Get index of member, it's rank, where it is ordered by score.\n"},
 { NULL, XTRA_RETURN,
 "An integer indicating rank of member, *nil* if member not found.\n"},
-{ &xtra[546], XTRA_SHORT, "remove members"},
-{ &xtra[547], XTRA_USAGE, "zrem key mem [mem ...]\n"},
-{ &xtra[548], XTRA_EXAMPLE,
+{ &xtra[550], XTRA_SHORT, "remove members"},
+{ &xtra[551], XTRA_USAGE, "zrem key mem [mem ...]\n"},
+{ &xtra[552], XTRA_EXAMPLE,
 "> zadd z 10 a 20 b 30 c 40 d\n"
 "4\n"
 "> zrem z b c f\n"
 "2\n"
 "> zrange z 0 -1 withscores\n"
 "[\"a\",\"10\",\"d\",\"40\"]\n"},
-{ &xtra[549], XTRA_DESCR, "Remove members by name.\n"},
+{ &xtra[553], XTRA_DESCR, "Remove members by name.\n"},
 { NULL, XTRA_RETURN,
 "The integer *1* if removed, *0* if not removed.\n"},
-{ &xtra[551], XTRA_SHORT, "remove by lex"},
-{ &xtra[552], XTRA_USAGE, "zremrangebylex key min max\n"},
-{ &xtra[553], XTRA_EXAMPLE,
+{ &xtra[555], XTRA_SHORT, "remove by lex"},
+{ &xtra[556], XTRA_USAGE, "zremrangebylex key min max\n"},
+{ &xtra[557], XTRA_EXAMPLE,
 "> zadd z 10 a 10 b 10 c 10 d\n"
 "4\n"
 "> zremrangebylex z [a [c\n"
 "3\n"
 "> zrange z 0 -1 withscores\n"
 "[\"d\",\"10\"]\n"},
-{ &xtra[554], XTRA_DESCR,
+{ &xtra[558], XTRA_DESCR,
 "Remove members from a zset within a lexical bounds high to low, in\n"
 "reverse, when all elements have the same score (and this only works\n"
 "when all members have the same score).\n"},
 { NULL, XTRA_RETURN,
 "An integer count of the number of members removed.\n"},
-{ &xtra[556], XTRA_SHORT, "remove by rank"},
-{ &xtra[557], XTRA_USAGE, "zremrangebyrank key start stop\n"},
-{ &xtra[558], XTRA_EXAMPLE,
+{ &xtra[560], XTRA_SHORT, "remove by rank"},
+{ &xtra[561], XTRA_USAGE, "zremrangebyrank key start stop\n"},
+{ &xtra[562], XTRA_EXAMPLE,
 "> zadd z 10 a 20 b 30 c 40 d\n"
 "4\n"
 "> zremrangebyrank z 1 2\n"
 "2\n"
 "> zrange z 0 -1 withscores\n"
 "[\"a\",\"10\",\"d\",\"40\"]\n"},
-{ &xtra[559], XTRA_DESCR,
+{ &xtra[563], XTRA_DESCR,
 "Remove members from a zset by rank, which is the index of order that\n"
 "they are sorted.\n"},
 { NULL, XTRA_RETURN,
 "An integer count of the number of members removed.\n"},
-{ &xtra[561], XTRA_SHORT, "remove by score"},
-{ &xtra[562], XTRA_USAGE, "zremrangebyscore key start stop\n"},
-{ &xtra[563], XTRA_EXAMPLE,
+{ &xtra[565], XTRA_SHORT, "remove by score"},
+{ &xtra[566], XTRA_USAGE, "zremrangebyscore key start stop\n"},
+{ &xtra[567], XTRA_EXAMPLE,
 "> zadd z 10 a 20 b 30 c 40 d\n"
 "4\n"
 "> zremrangebyscore z 10 20\n"
 "2\n"
 "> zrange z 0 -1 withscores\n"
 "[\"c\",\"30\",\"d\",\"40\"]\n"},
-{ &xtra[564], XTRA_DESCR, "Remove members from a zset by score.\n"},
+{ &xtra[568], XTRA_DESCR, "Remove members from a zset by score.\n"},
 { NULL, XTRA_RETURN,
 "An integer count of the number of members removed.\n"},
-{ &xtra[566], XTRA_SHORT, "get reverse range"},
-{ &xtra[567], XTRA_USAGE, "zrevrange key start stop [withscores]\n"},
-{ &xtra[568], XTRA_EXAMPLE,
+{ &xtra[570], XTRA_SHORT, "get reverse range"},
+{ &xtra[571], XTRA_USAGE, "zrevrange key start stop [withscores]\n"},
+{ &xtra[572], XTRA_EXAMPLE,
 "> zadd z 10 a 20 b 30 c 40 d\n"
 "4\n"
 "> zrevrange z 2 3 withscores\n"
 "[\"b\",\"20\",\"a\",\"10\"]\n"
 "> zrevrange z 0 -1\n"
 "[\"d\",\"c\",\"b\",\"a\"]\n"},
-{ &xtra[569], XTRA_DESCR,
+{ &xtra[573], XTRA_DESCR,
 "Get range of members between ranks.  The start is the lowest index of\n"
 "the reverse ordered zset, the stop is the highest.  The members are\n"
 "returned from low to high using a reverse ordered zset.\n"},
 { NULL, XTRA_RETURN,
 "An array of members with scores if requested.\n"},
-{ &xtra[571], XTRA_SHORT, "get reverse score"},
-{ &xtra[572], XTRA_USAGE,
+{ &xtra[575], XTRA_SHORT, "get reverse score"},
+{ &xtra[576], XTRA_USAGE,
 "zrevrangebyscore key start stop [withscores] [limit off cnt]\n"},
-{ &xtra[573], XTRA_EXAMPLE,
+{ &xtra[577], XTRA_EXAMPLE,
 "> zadd z 10 a 20 b 30 c 40 d\n"
 "4\n"
 "> zrevrangebyscore z +inf -inf withscores\n"
@@ -1935,15 +1958,15 @@ const RedisCmdExtra xtra[ 847 ] = {
 "[\"b\",\"20\",\"a\",\"10\"]\n"
 "> zrevrangebyscore z (20 [10 withscores\n"
 "[\"a\",\"10\"]\n"},
-{ &xtra[574], XTRA_DESCR,
+{ &xtra[578], XTRA_DESCR,
 "Get reverse range of members between scores.  The start is the highest\n"
 "score and the stop is the lowest score.  The members are returned from\n"
 "the highest to the lowest, in reverse score order.\n"},
 { NULL, XTRA_RETURN,
 "An array of members with scores if requested.\n"},
-{ &xtra[576], XTRA_SHORT, "get reverse rank"},
-{ &xtra[577], XTRA_USAGE, "zrevrank key mem\n"},
-{ &xtra[578], XTRA_EXAMPLE,
+{ &xtra[580], XTRA_SHORT, "get reverse rank"},
+{ &xtra[581], XTRA_USAGE, "zrevrank key mem\n"},
+{ &xtra[582], XTRA_EXAMPLE,
 "> zadd z 10 a 20 b 30 c 40 d\n"
 "40\n"
 "> zrevrank z b\n"
@@ -1952,28 +1975,28 @@ const RedisCmdExtra xtra[ 847 ] = {
 "10\n"
 "> zrevrank z f\n"
 "nil\n"},
-{ &xtra[579], XTRA_DESCR,
+{ &xtra[583], XTRA_DESCR,
 "Get inverse rank index of member by name.  If the order of the zset is\n"
 "reversed, then this is the index of the member.\n"},
 { NULL, XTRA_RETURN,
 "An integer indicating rank of member, *nil* if member is not found.\n"},
-{ &xtra[581], XTRA_SHORT, "get score of member"},
-{ &xtra[582], XTRA_USAGE, "zscore key mem\n"},
-{ &xtra[583], XTRA_EXAMPLE,
+{ &xtra[585], XTRA_SHORT, "get score of member"},
+{ &xtra[586], XTRA_USAGE, "zscore key mem\n"},
+{ &xtra[587], XTRA_EXAMPLE,
 "> zadd z 10 a 20 b 30 c 40 d\n"
 "4\n"
 "> zscore z a\n"
 "\"10\"\n"
 "> zscore z d\n"
 "\"40\"\n"},
-{ &xtra[584], XTRA_DESCR, "Get score of a member.\n"},
+{ &xtra[588], XTRA_DESCR, "Get score of a member.\n"},
 { NULL, XTRA_RETURN,
 "A string which contains a decimal value for the score.\n"},
-{ &xtra[586], XTRA_SHORT, "store a union"},
-{ &xtra[587], XTRA_USAGE,
+{ &xtra[590], XTRA_SHORT, "store a union"},
+{ &xtra[591], XTRA_USAGE,
 "zunionstore dest num key [key ...] [weights w [w ...]]\n"
 " [aggregate sum|min|max]\n"},
-{ &xtra[588], XTRA_EXAMPLE,
+{ &xtra[592], XTRA_EXAMPLE,
 "> zadd z1 10 a 20 b 30 c\n"
 "3\n"
 "> zadd z2 40 d 30 c 10 b\n"
@@ -1982,7 +2005,7 @@ const RedisCmdExtra xtra[ 847 ] = {
 "4\n"
 "> zrange z3 0 -1 withscores\n"
 "[\"a\",\"10\",\"b\",\"30\",\"d\",\"40\",\"c\",\"60\"]\n"},
-{ &xtra[589], XTRA_DESCR,
+{ &xtra[593], XTRA_DESCR,
 "Union zsets and store in destination key.  The members which are in\n"
 "both sets are combined into the destination set.  The score is a\n"
 "combination of both members, depending on the weight given to each set\n"
@@ -1990,9 +2013,9 @@ const RedisCmdExtra xtra[ 847 ] = {
 "weight), and aggregating by sum.\n"},
 { NULL, XTRA_RETURN,
 "An integer count of the members in the new set.\n"},
-{ &xtra[591], XTRA_SHORT, "iterate a zset"},
-{ &xtra[592], XTRA_USAGE, "zscan key curs [match pattern] [count cnt]\n"},
-{ &xtra[593], XTRA_EXAMPLE,
+{ &xtra[595], XTRA_SHORT, "iterate a zset"},
+{ &xtra[596], XTRA_USAGE, "zscan key curs [match pattern] [count cnt]\n"},
+{ &xtra[597], XTRA_EXAMPLE,
 "> zadd z 50 abc 40 abb 30 abd 20 xyz 10 zzz\n"
 "5\n"
 "> zscan z 0 match a* count 1\n"
@@ -2007,16 +2030,16 @@ const RedisCmdExtra xtra[ 847 ] = {
 "[\"0\",[\"zzz\",\"10\",\"xyz\",\"20\",\"abd\",\"30\",\"abb\",\"40\",\"abc\",\"50\"]]\n"
 "> zscan z 5 match a* count 1\n"
 "[\"0\",[]]\n"},
-{ &xtra[594], XTRA_DESCR,
+{ &xtra[598], XTRA_DESCR,
 "Get the fields and values which match a pattern.  The cursor is the\n"
 "offset into the scan where the results will start.  If the cursor is\n"
 "equal to 3, then the match will start at the 3rd member of the zset.\n"},
 { NULL, XTRA_RETURN,
 "An array within an array.  The outer array is the cursor counter, the\n"
 "inner array are the members matched with their scores.\n"},
-{ &xtra[596], XTRA_SHORT, "remove minimum score"},
-{ &xtra[597], XTRA_USAGE, "zpopmin key [count]\n"},
-{ &xtra[598], XTRA_EXAMPLE,
+{ &xtra[600], XTRA_SHORT, "remove minimum score"},
+{ &xtra[601], XTRA_USAGE, "zpopmin key [count]\n"},
+{ &xtra[602], XTRA_EXAMPLE,
 "> zadd z 10 a 20 b 30 c 40 d\n"
 "4\n"
 "> zpopmin z 2\n"
@@ -2025,16 +2048,16 @@ const RedisCmdExtra xtra[ 847 ] = {
 "[\"c\",\"30\",\"d\",\"40\"]\n"
 "> zpopmin z 20\n"
 "[]\n"},
-{ &xtra[599], XTRA_DESCR,
+{ &xtra[603], XTRA_DESCR,
 "Remove up to count members the lowest scores of the zset.  If not\n"
 "enough members are currently in the set, truncate count to the number\n"
 "of members in the set.\n"},
 { NULL, XTRA_RETURN,
 "An array with the set of members and the scores, in the order they\n"
 "were popped, an empty array is returned when the key doesn't exist.\n"},
-{ &xtra[601], XTRA_SHORT, "remove maximum score"},
-{ &xtra[602], XTRA_USAGE, "zpopmax key [count]\n"},
-{ &xtra[603], XTRA_EXAMPLE,
+{ &xtra[605], XTRA_SHORT, "remove maximum score"},
+{ &xtra[606], XTRA_USAGE, "zpopmax key [count]\n"},
+{ &xtra[607], XTRA_EXAMPLE,
 "> zadd z 10 a 20 b 30 c 40 d\n"
 "4\n"
 "> zpopmax z 2\n"
@@ -2043,58 +2066,58 @@ const RedisCmdExtra xtra[ 847 ] = {
 "[\"b\",\"20\",\"a\",\"10\"]\n"
 "> zpopmax z 20\n"
 "[]\n"},
-{ &xtra[604], XTRA_DESCR,
+{ &xtra[608], XTRA_DESCR,
 "Remove up to count members the highest scores of the zset.  If not\n"
 "enough members are currently in the set, truncate count to the number\n"
 "of members in the set.\n"},
 { NULL, XTRA_RETURN,
 "An array with the set of members and the scores, in the order they\n"
 "were popped, an empty array is returned when the key doesn't exist.\n"},
-{ &xtra[606], XTRA_SHORT, "block pop min score"},
-{ &xtra[607], XTRA_USAGE, "bzpopmin key [key ...] timeout\n"},
-{ &xtra[608], XTRA_EXAMPLE,
+{ &xtra[610], XTRA_SHORT, "block pop min score"},
+{ &xtra[611], XTRA_USAGE, "bzpopmin key [key ...] timeout\n"},
+{ &xtra[612], XTRA_EXAMPLE,
 "> bzpopmin z x 2\n"
 "null\n"
 "> bzpopmin z x 0\n"
 "[\"z\",\"a\",\"10\"]\n"
 "> bzpopmin z x 0\n"},
-{ &xtra[609], XTRA_DESCR,
+{ &xtra[613], XTRA_DESCR,
 "Remove lowest score member of the zset.  If no members are currently\n"
 "in the zset, block and wait timeout seconds for a publisher to add\n"
 "them.  Wait indefinitely when timeout is zero.\n"},
 { NULL, XTRA_RETURN,
 "An array with the zset name and the member with scores.  If timeout\n"
 "occurs, then null is returned.\n"},
-{ &xtra[611], XTRA_SHORT, "block pop max score"},
-{ &xtra[612], XTRA_USAGE, "bzpopmax key [key ...] timeout\n"},
-{ &xtra[613], XTRA_EXAMPLE,
+{ &xtra[615], XTRA_SHORT, "block pop max score"},
+{ &xtra[616], XTRA_USAGE, "bzpopmax key [key ...] timeout\n"},
+{ &xtra[617], XTRA_EXAMPLE,
 "> bzpopmax z x 2\n"
 "null\n"
 "> bzpopmax z x 0\n"
 "[\"z\",\"d\",\"40\"]\n"
 "> bzpopmax z x 0\n"},
-{ &xtra[614], XTRA_DESCR,
+{ &xtra[618], XTRA_DESCR,
 "Remove hightest score member of the zset.  If no members are currently\n"
 "in the zset, block and wait timeout seconds for a publisher to add\n"
 "them.  Wait indefinitely when timeout is zero.\n"},
 { NULL, XTRA_RETURN,
 "An array with the zset name and the member with scores.  If timeout\n"
 "occurs, then null is returned.\n"},
-{ &xtra[616], XTRA_SHORT, "append to value"},
-{ &xtra[617], XTRA_USAGE, "append key value\n"},
-{ &xtra[618], XTRA_EXAMPLE,
+{ &xtra[620], XTRA_SHORT, "append to value"},
+{ &xtra[621], XTRA_USAGE, "append key value\n"},
+{ &xtra[622], XTRA_EXAMPLE,
 "> append s string\n"
 "5\n"
 "> append s value\n"
 "9\n"
 "> get s\n"
 "\"stringvalue\"\n"},
-{ &xtra[619], XTRA_DESCR, "Append value to key.\n"},
+{ &xtra[623], XTRA_DESCR, "Append value to key.\n"},
 { NULL, XTRA_RETURN,
 "The integer strlen of the key after value appended.\n"},
-{ &xtra[621], XTRA_SHORT, "count bits"},
-{ &xtra[622], XTRA_USAGE, "bitcount key [start end]\n"},
-{ &xtra[623], XTRA_EXAMPLE,
+{ &xtra[625], XTRA_SHORT, "count bits"},
+{ &xtra[626], XTRA_USAGE, "bitcount key [start end]\n"},
+{ &xtra[627], XTRA_EXAMPLE,
 "> set s string\n"
 "'OK'\n"
 "> bitcount s 0 0\n"
@@ -2103,30 +2126,30 @@ const RedisCmdExtra xtra[ 847 ] = {
 "115\n"
 "> getrange s 0 0\n"
 "\"s\"\n"},
-{ &xtra[624], XTRA_DESCR,
+{ &xtra[628], XTRA_DESCR,
 "Count the bits in string from byte offset start to offset end,\n"
 "inclusive.\n"},
 { NULL, XTRA_RETURN,
 "An integer count of bits set in the byte range.\n"},
-{ &xtra[626], XTRA_SHORT, "manipulate bits"},
-{ &xtra[627], XTRA_USAGE,
+{ &xtra[630], XTRA_SHORT, "manipulate bits"},
+{ &xtra[631], XTRA_USAGE,
 "bitfield key [get type off] [set type off value]\n"
 " [incrby type off incr] [overflow wrap | sat | fail]\n"},
-{ &xtra[628], XTRA_EXAMPLE,
+{ &xtra[632], XTRA_EXAMPLE,
 "> bitfield bf set u8 0 1 set u8 8 2 set u8 16 3 set u8 24 4\n"
 "[0,0,0,0]\n"},
-{ &xtra[629], XTRA_DESCR,
+{ &xtra[633], XTRA_DESCR,
 "Set integer value at bit offset off as type, where type is signed (iN)\n"
 "or unsigned (uN) with bit size *1* through *63*, *64* for signed.\n"},
-{ &xtra[630], XTRA_RETURN,
+{ &xtra[634], XTRA_RETURN,
 "An array of the integers that existed before setting the new values.\n"},
-{ &xtra[631], XTRA_EXAMPLE,
+{ &xtra[635], XTRA_EXAMPLE,
 "> bitfield bf get u8 0 get u8 8 get u8 16 get u8 24\n"
 "[1,2,3,4]\n"},
-{ &xtra[632], XTRA_DESCR,
+{ &xtra[636], XTRA_DESCR,
 "Get integer value at bit offset, using signed or unsigned type.\n"},
-{ &xtra[633], XTRA_RETURN, "An array of integers that are requested.\n"},
-{ &xtra[634], XTRA_EXAMPLE,
+{ &xtra[637], XTRA_RETURN, "An array of integers that are requested.\n"},
+{ &xtra[638], XTRA_EXAMPLE,
 "> bitfield bf incrby u8 0 1 incrby u8 8 1 incrby u8 16 1 incrby u8 24 1\n"
 "[2,3,4,5]\n"
 "> bitfield bf incrby u8 0 255 overflow wrap\n"
@@ -2135,17 +2158,17 @@ const RedisCmdExtra xtra[ 847 ] = {
 "[255]\n"
 "> bitfield bf incrby u8 16 255 overflow fail\n"
 "[nil]\n"},
-{ &xtra[635], XTRA_DESCR,
+{ &xtra[639], XTRA_DESCR,
 "Increment integer values at bit offsets.  The overflow arument\n"
 "modifies the behavior of increment in the case that the result wraps\n"
 "around zero.  Wrap is the default, saturate (sat) caps the value at\n"
 "the highest and lowest point, fail discards the new value and uses the\n"
 "old value, returning *nil*.\n"},
 { NULL, XTRA_RETURN, "An array of the integers after incrementing.\n"},
-{ &xtra[637], XTRA_SHORT, "bitwise operator"},
-{ &xtra[638], XTRA_USAGE,
+{ &xtra[641], XTRA_SHORT, "bitwise operator"},
+{ &xtra[642], XTRA_USAGE,
 "bitop (and | or | xor | not) dest src [src src ...]\n"},
-{ &xtra[639], XTRA_EXAMPLE,
+{ &xtra[643], XTRA_EXAMPLE,
 "> bitfield i set u8 0 3\n"
 "[0]\n"
 "> bitfield j set u8 0 1\n"
@@ -2154,54 +2177,54 @@ const RedisCmdExtra xtra[ 847 ] = {
 "1\n"
 "> bitfield k get u8 0\n"
 "[2]\n"},
-{ &xtra[640], XTRA_DESCR,
+{ &xtra[644], XTRA_DESCR,
 "Bitwise store to dest from srcs by performing logical operations on\n"
 "each bit.\n"},
 { NULL, XTRA_RETURN,
 "The number of bytes stored in dest, which is the minimum size of i and\n"
 "j, since the trailing zeros are not stored.\n"},
-{ &xtra[642], XTRA_SHORT, "find a bit"},
-{ &xtra[643], XTRA_USAGE, "bitpos key bit [start end]\n"},
-{ &xtra[644], XTRA_EXAMPLE,
+{ &xtra[646], XTRA_SHORT, "find a bit"},
+{ &xtra[647], XTRA_USAGE, "bitpos key bit [start end]\n"},
+{ &xtra[648], XTRA_EXAMPLE,
 "> bitfield k set u8 0 16\n"
 "[0]\n"
 "> bitpos k 1 0 1\n"
 "4\n"
 "> bitpos k 0 0 1\n"
 "0\n"},
-{ &xtra[645], XTRA_DESCR,
+{ &xtra[649], XTRA_DESCR,
 "Find first bit set or clear between start offset and end offset.\n"},
 { NULL, XTRA_RETURN,
 "The position of the bit set or clear, or *-1* when not found.\n"},
-{ &xtra[647], XTRA_SHORT, "decr by one"},
-{ &xtra[648], XTRA_USAGE, "decr key\n"},
-{ &xtra[649], XTRA_EXAMPLE, "> set k 10\n"
+{ &xtra[651], XTRA_SHORT, "decr by one"},
+{ &xtra[652], XTRA_USAGE, "decr key\n"},
+{ &xtra[653], XTRA_EXAMPLE, "> set k 10\n"
 "'OK'\n"
 "> decr k\n"
 "9\n"
 "> decr k\n"
 "8\n"},
-{ &xtra[650], XTRA_DESCR, "Decrement integer at key by one.\n"},
+{ &xtra[654], XTRA_DESCR, "Decrement integer at key by one.\n"},
 { NULL, XTRA_RETURN,
 "The value after decrementing it.  If key is created, then it is\n"
 "initialized to *-1*.\n"},
-{ &xtra[652], XTRA_SHORT, "decr by integer"},
-{ &xtra[653], XTRA_USAGE, "decrby key int\n"},
-{ &xtra[654], XTRA_EXAMPLE,
+{ &xtra[656], XTRA_SHORT, "decr by integer"},
+{ &xtra[657], XTRA_USAGE, "decrby key int\n"},
+{ &xtra[658], XTRA_EXAMPLE,
 "> set k 10\n"
 "'OK'\n"
 "> decrby k -1\n"
 "11\n"
 "> decrby k 10\n"
 "1\n"},
-{ &xtra[655], XTRA_DESCR,
+{ &xtra[659], XTRA_DESCR,
 "Decrement integer at key by the integer argument.\n"},
 { NULL, XTRA_RETURN,
 "The value after decrementing it.  If key is created, then it is\n"
 "initialized to the negative of the integer argument.\n"},
-{ &xtra[657], XTRA_SHORT, "get key value"},
-{ &xtra[658], XTRA_USAGE, "get key\n"},
-{ &xtra[659], XTRA_EXAMPLE,
+{ &xtra[661], XTRA_SHORT, "get key value"},
+{ &xtra[662], XTRA_USAGE, "get key\n"},
+{ &xtra[663], XTRA_EXAMPLE,
 "> set k val\n"
 "'OK'\n"
 "> get k\n"
@@ -2210,11 +2233,11 @@ const RedisCmdExtra xtra[ 847 ] = {
 "1\n"
 "> get k\n"
 "nil\n"},
-{ &xtra[660], XTRA_DESCR, "Get the key value.\n"},
+{ &xtra[664], XTRA_DESCR, "Get the key value.\n"},
 { NULL, XTRA_RETURN, "The string value or *nil* when not found.\n"},
-{ &xtra[662], XTRA_SHORT, "git bit at offset"},
-{ &xtra[663], XTRA_USAGE, "getbit key off\n"},
-{ &xtra[664], XTRA_EXAMPLE,
+{ &xtra[666], XTRA_SHORT, "git bit at offset"},
+{ &xtra[667], XTRA_USAGE, "getbit key off\n"},
+{ &xtra[668], XTRA_EXAMPLE,
 "> bitfield k set u8 0 16\n"
 "[0]\n"
 "> getbit k 0\n"
@@ -2223,13 +2246,13 @@ const RedisCmdExtra xtra[ 847 ] = {
 "0\n"
 "> getbit k 4\n"
 "1\n"},
-{ &xtra[665], XTRA_DESCR,
+{ &xtra[669], XTRA_DESCR,
 "Get value at bit offset in the string stored at the key.\n"},
 { NULL, XTRA_RETURN,
 "A *1* if the bit is set, a *0* if not set or not found.\n"},
-{ &xtra[667], XTRA_SHORT, "get range in string"},
-{ &xtra[668], XTRA_USAGE, "getrange key start end\n"},
-{ &xtra[669], XTRA_EXAMPLE,
+{ &xtra[671], XTRA_SHORT, "get range in string"},
+{ &xtra[672], XTRA_USAGE, "getrange key start end\n"},
+{ &xtra[673], XTRA_EXAMPLE,
 "> set k 0123456789\n"
 "'OK'\n"
 "> getrange k 3 7\n"
@@ -2240,25 +2263,25 @@ const RedisCmdExtra xtra[ 847 ] = {
 "\"7\"\n"
 "> getrange k 0 -1\n"
 "\"0123456789\"\n"},
-{ &xtra[670], XTRA_DESCR,
+{ &xtra[674], XTRA_DESCR,
 "Get a substring of the string value at key.  Start and/or end may be\n"
 "negative to index from the end of the string.\n"},
 { NULL, XTRA_RETURN,
 "A string with the characters in the range start to end, inclusive.\n"},
-{ &xtra[672], XTRA_SHORT, "swap values"},
-{ &xtra[673], XTRA_USAGE, "getset key value\n"},
-{ &xtra[674], XTRA_EXAMPLE, "> getset k 2\n"
+{ &xtra[676], XTRA_SHORT, "swap values"},
+{ &xtra[677], XTRA_USAGE, "getset key value\n"},
+{ &xtra[678], XTRA_EXAMPLE, "> getset k 2\n"
 "nil\n"
 "> getset k 3\n"
 "\"2\"\n"},
-{ &xtra[675], XTRA_DESCR,
+{ &xtra[679], XTRA_DESCR,
 "Swap new value with current value and return it.\n"},
 { NULL, XTRA_RETURN,
 "The value currently stored with the key, or *nil* if the key is\n"
 "created.\n"},
-{ &xtra[677], XTRA_SHORT, "incr by one"},
-{ &xtra[678], XTRA_USAGE, "incr key\n"},
-{ &xtra[679], XTRA_EXAMPLE, "> incr k\n"
+{ &xtra[681], XTRA_SHORT, "incr by one"},
+{ &xtra[682], XTRA_USAGE, "incr key\n"},
+{ &xtra[683], XTRA_EXAMPLE, "> incr k\n"
 "4\n"
 "> incr k\n"
 "5\n"
@@ -2266,75 +2289,75 @@ const RedisCmdExtra xtra[ 847 ] = {
 "1\n"
 "> incr k\n"
 "1\n"},
-{ &xtra[680], XTRA_DESCR, "Increment integer at key by one.\n"},
+{ &xtra[684], XTRA_DESCR, "Increment integer at key by one.\n"},
 { NULL, XTRA_RETURN,
 "The value after it is incremented.  If key is created, then it is\n"
 "initialized to *1*.\n"},
-{ &xtra[682], XTRA_SHORT, "incr by integer"},
-{ &xtra[683], XTRA_USAGE, "incrby key int\n"},
-{ &xtra[684], XTRA_EXAMPLE,
+{ &xtra[686], XTRA_SHORT, "incr by integer"},
+{ &xtra[687], XTRA_USAGE, "incrby key int\n"},
+{ &xtra[688], XTRA_EXAMPLE,
 "> del k\n"
 "1\n"
 "> incrby k 100\n"
 "100\n"
 "> incrby k 100\n"
 "200\n"},
-{ &xtra[685], XTRA_DESCR,
+{ &xtra[689], XTRA_DESCR,
 "Increment integer at key by the integer argument.\n"},
 { NULL, XTRA_RETURN,
 "The value after it is incremented.  If key is created, then it is\n"
 "initialized to the integer argument.\n"},
-{ &xtra[687], XTRA_SHORT, "incr by decimal"},
-{ &xtra[688], XTRA_USAGE, "incrbyfloat key decimal\n"},
-{ &xtra[689], XTRA_EXAMPLE,
+{ &xtra[691], XTRA_SHORT, "incr by decimal"},
+{ &xtra[692], XTRA_USAGE, "incrbyfloat key decimal\n"},
+{ &xtra[693], XTRA_EXAMPLE,
 "> incrbyfloat n 1.1\n"
 "\"1.1\"\n"
 "> incrbyfloat n 1.1\n"
 "\"2.2\"\n"
 "> incrbyfloat n 1.1\n"
 "\"3.3\"\n"},
-{ &xtra[690], XTRA_DESCR,
+{ &xtra[694], XTRA_DESCR,
 "Increment number at key by decimal value.  This uses 128 bit decimal\n"
 "arithmetic which has a 34 digit range and an exponent from -6143 to\n"
 "+6144.  https://en.wikipedia.org/wiki/Decimal128_floating-point_format\n"},
 { NULL, XTRA_RETURN,
 "The number after it is incremented.  If key is created, then it is\n"
 "initialized to the decimal argument.\n"},
-{ &xtra[692], XTRA_SHORT, "get multiple values"},
-{ &xtra[693], XTRA_USAGE, "mget key [key ...]\n"},
-{ &xtra[694], XTRA_EXAMPLE,
+{ &xtra[696], XTRA_SHORT, "get multiple values"},
+{ &xtra[697], XTRA_USAGE, "mget key [key ...]\n"},
+{ &xtra[698], XTRA_EXAMPLE,
 "> mset j 1 k 2 l 3 m 4\n"
 "'OK'\n"
 "> mget j k l m mm\n"
 "[\"1\",\"2\",\"3\",\"4\",nil]\n"},
-{ &xtra[695], XTRA_DESCR, "Get the values of multiple keys.\n"},
+{ &xtra[699], XTRA_DESCR, "Get the values of multiple keys.\n"},
 { NULL, XTRA_RETURN,
 "An array of values or nil when key doesn't exist or is not a string\n"
 "type.\n"},
-{ &xtra[697], XTRA_SHORT, "set multiple values"},
-{ &xtra[698], XTRA_USAGE, "mset key val [key val ...]\n"},
-{ &xtra[699], XTRA_EXAMPLE, "> mset j 1 k 2 l 3 m 4\n"
+{ &xtra[701], XTRA_SHORT, "set multiple values"},
+{ &xtra[702], XTRA_USAGE, "mset key val [key val ...]\n"},
+{ &xtra[703], XTRA_EXAMPLE, "> mset j 1 k 2 l 3 m 4\n"
 "'OK'\n"},
-{ &xtra[700], XTRA_DESCR, "Set the values of multiple keys.\n"},
+{ &xtra[704], XTRA_DESCR, "Set the values of multiple keys.\n"},
 { NULL, XTRA_RETURN, "*OK*.\n"
 "\n"},
-{ &xtra[702], XTRA_SHORT, "set if not exist"},
-{ &xtra[703], XTRA_USAGE, "msetnx key val [key val ...]\n"},
-{ &xtra[704], XTRA_EXAMPLE,
+{ &xtra[706], XTRA_SHORT, "set if not exist"},
+{ &xtra[707], XTRA_USAGE, "msetnx key val [key val ...]\n"},
+{ &xtra[708], XTRA_EXAMPLE,
 "> del j k l m\n"
 "4\n"
 "> msetnx j 1 k 2 l 3 m 4\n"
 "1\n"
 "> msetnx j 1 k 2 l 3 m 4\n"
 "0\n"},
-{ &xtra[705], XTRA_DESCR,
+{ &xtra[709], XTRA_DESCR,
 "Set the values of keys if all keys do not exist.\n"},
 { NULL, XTRA_RETURN,
 "If all keys are created a *1* is returned, otherwise no kesy are\n"
 "created and a *0* is returnd;\n"},
-{ &xtra[707], XTRA_SHORT, "set with expiration"},
-{ &xtra[708], XTRA_USAGE, "psetex key ms val\n"},
-{ &xtra[709], XTRA_EXAMPLE,
+{ &xtra[711], XTRA_SHORT, "set with expiration"},
+{ &xtra[712], XTRA_USAGE, "psetex key ms val\n"},
+{ &xtra[713], XTRA_EXAMPLE,
 "> psetex k 1580166892000 hello\n"
 "'OK'\n"
 "> ttl k\n"
@@ -2345,14 +2368,14 @@ const RedisCmdExtra xtra[ 847 ] = {
 "13\n"
 "> pttl k\n"
 "11991\n"},
-{ &xtra[710], XTRA_DESCR,
+{ &xtra[714], XTRA_DESCR,
 "Set the value with expiration of key in milliseconds.  The expiration\n"
 "argument is either stamp or relative time.\n"},
 { NULL, XTRA_RETURN, "*OK*.\n"
 "\n"},
-{ &xtra[712], XTRA_SHORT, "set value"},
-{ &xtra[713], XTRA_USAGE, "set key val [ex secs] [px ms] [nx | xx]\n"},
-{ &xtra[714], XTRA_EXAMPLE,
+{ &xtra[716], XTRA_SHORT, "set value"},
+{ &xtra[717], XTRA_USAGE, "set key val [ex secs] [px ms] [nx | xx]\n"},
+{ &xtra[718], XTRA_EXAMPLE,
 "> set k one\n"
 "'OK'\n"
 "> set k one xx\n"
@@ -2365,14 +2388,14 @@ const RedisCmdExtra xtra[ 847 ] = {
 "11\n"
 "> pttl k\n"
 "4260\n"},
-{ &xtra[715], XTRA_DESCR,
+{ &xtra[719], XTRA_DESCR,
 "Set the key value optionally with expiration and *nx* or *xx* test.\n"
 "The *nx* option tests that the key does not exist before setting.  The\n"
 "*xx* tests that the key does exist before setting.\n"},
 { NULL, XTRA_RETURN, "*OK* on success, *nil* when failed.\n"},
-{ &xtra[717], XTRA_SHORT, "set bits"},
-{ &xtra[718], XTRA_USAGE, "setbit key off 1 | 0\n"},
-{ &xtra[719], XTRA_EXAMPLE,
+{ &xtra[721], XTRA_SHORT, "set bits"},
+{ &xtra[722], XTRA_USAGE, "setbit key off 1 | 0\n"},
+{ &xtra[723], XTRA_EXAMPLE,
 "> setbit k 0 1\n"
 "0\n"
 "> setbit k 1 1\n"
@@ -2383,13 +2406,13 @@ const RedisCmdExtra xtra[ 847 ] = {
 "1\n"
 "> getbit k 1\n"
 "0\n"},
-{ &xtra[720], XTRA_DESCR,
+{ &xtra[724], XTRA_DESCR,
 "Swap the value at bit offset in string with the new bit value.\n"},
 { NULL, XTRA_RETURN,
 "A *1* or *0* is returned, the previous value held by bit.\n"},
-{ &xtra[722], XTRA_SHORT, "set with expiration"},
-{ &xtra[723], XTRA_USAGE, "setex key secs val\n"},
-{ &xtra[724], XTRA_EXAMPLE,
+{ &xtra[726], XTRA_SHORT, "set with expiration"},
+{ &xtra[727], XTRA_USAGE, "setex key secs val\n"},
+{ &xtra[728], XTRA_EXAMPLE,
 "> setex k 1580166892 hello\n"
 "'OK'\n"
 "> ttl k\n"
@@ -2400,40 +2423,40 @@ const RedisCmdExtra xtra[ 847 ] = {
 "13\n"
 "> pttl k\n"
 "11991\n"},
-{ &xtra[725], XTRA_DESCR,
+{ &xtra[729], XTRA_DESCR,
 "Set the value with expiration of key in seconds.  The expiration\n"
 "argument is either stamp or relative time.\n"},
 { NULL, XTRA_RETURN, "*OK*.\n"
 "\n"},
-{ &xtra[727], XTRA_SHORT, "set if not exist"},
-{ &xtra[728], XTRA_USAGE, "setnx key val\n"},
-{ &xtra[729], XTRA_EXAMPLE,
+{ &xtra[731], XTRA_SHORT, "set if not exist"},
+{ &xtra[732], XTRA_USAGE, "setnx key val\n"},
+{ &xtra[733], XTRA_EXAMPLE,
 "> del k\n"
 "1\n"
 "> setnx k value\n"
 "'OK'\n"
 "> setnx k value\n"
 "nil\n"},
-{ &xtra[730], XTRA_DESCR, "Set the value if key does not exist.\n"},
+{ &xtra[734], XTRA_DESCR, "Set the value if key does not exist.\n"},
 { NULL, XTRA_RETURN,
 "*OK* if success, *nil* if key already exists.\n"},
-{ &xtra[732], XTRA_SHORT, "set value range"},
-{ &xtra[733], XTRA_USAGE, "setrange key off val\n"},
-{ &xtra[734], XTRA_EXAMPLE,
+{ &xtra[736], XTRA_SHORT, "set value range"},
+{ &xtra[737], XTRA_USAGE, "setrange key off val\n"},
+{ &xtra[738], XTRA_EXAMPLE,
 "> del k\n"
 "1\n"
 "> setrange k 5 waterbuffalo\n"
 "17\n"
 "> get k\n"
 "\"\\u0000\\u0000\\u0000\\u0000\\u0000waterbuffalo\"\n"},
-{ &xtra[735], XTRA_DESCR,
+{ &xtra[739], XTRA_DESCR,
 "Overwrite or create a range in a string stored with the key at the\n"
 "offset specified.  The data implicitly created by the setrange is zero\n"
 "padded.\n"},
 { NULL, XTRA_RETURN, "The length of key after modification.\n"},
-{ &xtra[737], XTRA_SHORT, "get strlen"},
-{ &xtra[738], XTRA_USAGE, "strlen key\n"},
-{ &xtra[739], XTRA_EXAMPLE,
+{ &xtra[741], XTRA_SHORT, "get strlen"},
+{ &xtra[742], XTRA_USAGE, "strlen key\n"},
+{ &xtra[743], XTRA_EXAMPLE,
 "> del k\n"
 "1\n"
 "> setrange k 5 waterbuffalo\n"
@@ -2442,40 +2465,40 @@ const RedisCmdExtra xtra[ 847 ] = {
 "17\n"
 "> get k\n"
 "\"\\u0000\\u0000\\u0000\\u0000\\u0000waterbuffalo\"\n"},
-{ &xtra[740], XTRA_DESCR,
+{ &xtra[744], XTRA_DESCR,
 "Get length of value, which is the maximum extent, not the strlen\n"
 "function.\n"},
 { NULL, XTRA_RETURN,
 "The length of value, which could be *0* if the key does not exist.\n"},
-{ &xtra[742], XTRA_SHORT, "discard trans"},
-{ &xtra[743], XTRA_USAGE, "discard \n"},
-{ &xtra[744], XTRA_EXAMPLE,
+{ &xtra[746], XTRA_SHORT, "discard trans"},
+{ &xtra[747], XTRA_USAGE, "discard \n"},
+{ &xtra[748], XTRA_EXAMPLE,
 "> multi\n"
 "'OK'\n"
 "> incr x\n"
 "'QUEUED'\n"
 "> discard\n"
 "'OK'\n"},
-{ &xtra[745], XTRA_DESCR,
+{ &xtra[749], XTRA_DESCR,
 "Discards watch commands and discards commands queued by multi.\n"},
 { NULL, XTRA_RETURN, "*OK* or error when no multi is started.\n"},
-{ &xtra[747], XTRA_SHORT, "run trans"},
-{ &xtra[748], XTRA_USAGE, "exec \n"},
-{ &xtra[749], XTRA_EXAMPLE,
+{ &xtra[751], XTRA_SHORT, "run trans"},
+{ &xtra[752], XTRA_USAGE, "exec \n"},
+{ &xtra[753], XTRA_EXAMPLE,
 "> multi\n"
 "'OK'\n"
 "> set x 10\n"
 "'QUEUED'\n"
 "> exec\n"
 "['OK']\n"},
-{ &xtra[750], XTRA_DESCR,
+{ &xtra[754], XTRA_DESCR,
 "Execute commands queued by multi as an atomic unit.\n"},
 { NULL, XTRA_RETURN,
 "An array of results, an element for every command, or *null* when a watch\n"
 "fails.\n"},
-{ &xtra[752], XTRA_SHORT, "start trans"},
-{ &xtra[753], XTRA_USAGE, "multi \n"},
-{ &xtra[754], XTRA_EXAMPLE,
+{ &xtra[756], XTRA_SHORT, "start trans"},
+{ &xtra[757], XTRA_USAGE, "multi \n"},
+{ &xtra[758], XTRA_EXAMPLE,
 "> multi\n"
 "'OK'\n"
 "> set x 10\n"
@@ -2490,24 +2513,24 @@ const RedisCmdExtra xtra[ 847 ] = {
 "'QUEUED'\n"
 "> exec\n"
 "`ERR transaction aborted, error cmd: \\'exec\\'`\n"},
-{ &xtra[755], XTRA_DESCR,
+{ &xtra[759], XTRA_DESCR,
 "Start a transaction, commands issued after multi but before exec are\n"
 "queued execution.  The syntax of the command and arguments is checked before\n"
 "being queued, so a command may be *QUEUED* or have an syntax error result.\n"},
 { NULL, XTRA_RETURN, "*OK*.\n"
 "\n"},
-{ &xtra[757], XTRA_SHORT, "stop watching"},
-{ &xtra[758], XTRA_USAGE, "unwatch \n"},
-{ &xtra[759], XTRA_EXAMPLE, "> watch x\n"
+{ &xtra[761], XTRA_SHORT, "stop watching"},
+{ &xtra[762], XTRA_USAGE, "unwatch \n"},
+{ &xtra[763], XTRA_EXAMPLE, "> watch x\n"
 "'OK'\n"
 "> unwatch\n"
 "'OK'\n"},
-{ &xtra[760], XTRA_DESCR, "Discard watched keys.\n"},
+{ &xtra[764], XTRA_DESCR, "Discard watched keys.\n"},
 { NULL, XTRA_RETURN, "*OK*.\n"
 "\n"},
-{ &xtra[762], XTRA_SHORT, "start watching"},
-{ &xtra[763], XTRA_USAGE, "watch key [key ...]\n"},
-{ &xtra[764], XTRA_EXAMPLE,
+{ &xtra[766], XTRA_SHORT, "start watching"},
+{ &xtra[767], XTRA_USAGE, "watch key [key ...]\n"},
+{ &xtra[768], XTRA_EXAMPLE,
 "> watch x\n"
 "'OK'\n"
 "> multi\n"
@@ -2516,24 +2539,24 @@ const RedisCmdExtra xtra[ 847 ] = {
 "'QUEUED'\n"
 "> exec\n"
 "null\n"},
-{ &xtra[765], XTRA_DESCR,
+{ &xtra[769], XTRA_DESCR,
 "Watch keys before a multi transaction starts.  After exec is issued,\n"
 "all watched keys are examined to make sure that none have been modified.  If a\n"
 "watched key was modified, then the transaction aborts and *null* is returned.\n"},
 { NULL, XTRA_RETURN, "*OK*.\n"
 "\n"},
-{ &xtra[767], XTRA_SHORT, "get stream info"},
-{ &xtra[768], XTRA_USAGE,
+{ &xtra[771], XTRA_SHORT, "get stream info"},
+{ &xtra[772], XTRA_USAGE,
 "xinfo [consumers key groupname] [groups key] [stream key]\n"},
-{ &xtra[769], XTRA_EXAMPLE,
+{ &xtra[773], XTRA_EXAMPLE,
 "> xinfo groups S\n"
 "[[\"name\",\"G\",\"consumers\",2,\"pending\",2,\"last-delivered-id\",\n"
 "  \"1580474523226-0\"],\n"
 "[\"name\",\"H\",\"consumers\",0,\"pending\",0,\"last-delivered-id\",\"0\"]]\n"},
-{ &xtra[770], XTRA_DESCR,
+{ &xtra[774], XTRA_DESCR,
 "Get group info for a stream, which shows what the next *id* will be,\n"
 "the number of consumers and the number of pending records.\n"},
-{ &xtra[771], XTRA_RETURN,
+{ &xtra[775], XTRA_RETURN,
 "An array of groups where each group is an array of field values:\n"
 "\n"
 "- name -- the name of the group.\n"
@@ -2544,12 +2567,12 @@ const RedisCmdExtra xtra[ 847 ] = {
 "\n"
 "The empty array *[]* is returned when the stream doesn't exist or it\n"
 "does not have groups.\n"},
-{ &xtra[772], XTRA_EXAMPLE,
+{ &xtra[776], XTRA_EXAMPLE,
 "> xinfo stream S\n"
 "[\"length\",3,\"groups\",2,\"last-generated-id\",\"1580474524828-0\",\"first-entry\",\n"
 "[\"1580474520477-0\",[\"c\",\"1\"]],\"last-entry\",[\"1580474524828-0\",[\"b\",\"1\"]]]\n"},
-{ &xtra[773], XTRA_DESCR, "Get the info for the a stream.\n"},
-{ &xtra[774], XTRA_RETURN,
+{ &xtra[777], XTRA_DESCR, "Get the info for the a stream.\n"},
+{ &xtra[778], XTRA_RETURN,
 "An array of field values describing the stream:\n"
 "\n"
 "- length -- the number of items in the stream\n"
@@ -2560,7 +2583,7 @@ const RedisCmdExtra xtra[ 847 ] = {
 "- last-entry -- the item which is at the tail of the stream.\n"
 "\n"
 "The empty array *[]* is returned when the stream doesn't exist.\n"},
-{ &xtra[775], XTRA_EXAMPLE,
+{ &xtra[779], XTRA_EXAMPLE,
 "> xinfo consumers S G\n"
 "[[\"name\",\"C\",\"pending\",1,\"idle\",2225891],[\"name\",\"D\",\"pending\",1,\n"
 "  \"idle\",2221204]]\n"},
@@ -2574,9 +2597,9 @@ const RedisCmdExtra xtra[ 847 ] = {
 "\n"
 "The empty array *[]* is returned when stream or group or consumers\n"
 "don't exist.\n"},
-{ &xtra[777], XTRA_SHORT, "add entry to stream"},
-{ &xtra[778], XTRA_USAGE, "xadd key id field string [field string ...]\n"},
-{ &xtra[779], XTRA_EXAMPLE,
+{ &xtra[781], XTRA_SHORT, "add entry to stream"},
+{ &xtra[782], XTRA_USAGE, "xadd key id field string [field string ...]\n"},
+{ &xtra[783], XTRA_EXAMPLE,
 "> xadd S * cosmic crisp\n"
 "\"1580392806377-0\"\n"
 "> xadd S * red delicous\n"
@@ -2584,7 +2607,7 @@ const RedisCmdExtra xtra[ 847 ] = {
 "> xrange S - +\n"
 "[[\"1580392806377-0\",[\"cosmic\",\"crisp\"]],\n"
 " [\"1580392886784-0\",[\"red\",\"delicious\"]]]\n"},
-{ &xtra[780], XTRA_DESCR,
+{ &xtra[784], XTRA_DESCR,
 "Add field value pairs to stream.  If *id* is the star, then it is\n"
 "generated using the current milliseconds, and an incrementing serial\n"
 "number which is only incremented within the millisecond period.  If\n"
@@ -2593,9 +2616,9 @@ const RedisCmdExtra xtra[ 847 ] = {
 "to increase over time.\n"},
 { NULL, XTRA_RETURN,
 "The string *id* associated with the new entry.\n"},
-{ &xtra[782], XTRA_SHORT, "trim stream to size"},
-{ &xtra[783], XTRA_USAGE, "xtrim key maxlen [~] count\n"},
-{ &xtra[784], XTRA_EXAMPLE,
+{ &xtra[786], XTRA_SHORT, "trim stream to size"},
+{ &xtra[787], XTRA_USAGE, "xtrim key maxlen [~] count\n"},
+{ &xtra[788], XTRA_EXAMPLE,
 "> xadd S * cosmic crisp\n"
 "\"1580392806377-0\"\n"
 "> xadd S * red delicous\n"
@@ -2611,27 +2634,27 @@ const RedisCmdExtra xtra[ 847 ] = {
 "> xrange S - +\n"
 "[[\"1580393902456-0\",[\"shiba\",\"inu\"]],\n"
 " [\"1580393946076-0\",[\"akita\",\"inu\"]]\n"},
-{ &xtra[785], XTRA_DESCR,
+{ &xtra[789], XTRA_DESCR,
 "Trims the stream to a maxlen items from the tail -- these are the\n"
 "oldest entries.\n"},
 { NULL, XTRA_RETURN,
 "An integer count of items removed from the stream.\n"},
-{ &xtra[787], XTRA_SHORT, "delete from stream"},
-{ &xtra[788], XTRA_USAGE, "xdel key id [id ...]\n"},
-{ &xtra[789], XTRA_EXAMPLE,
+{ &xtra[791], XTRA_SHORT, "delete from stream"},
+{ &xtra[792], XTRA_USAGE, "xdel key id [id ...]\n"},
+{ &xtra[793], XTRA_EXAMPLE,
 "> xadd S * hello world\n"
 "\"1580394876047-0\"\n"
 "> xadd S * hello world\n"
 "\"1580394877281-0\"\n"
 "> xdel S 1580394876047-0 1580394877281-0\n"
 "2\n"},
-{ &xtra[790], XTRA_DESCR,
+{ &xtra[794], XTRA_DESCR,
 "Delete entries from the stream which match the *id* strings.\n"},
 { NULL, XTRA_RETURN,
 "An integer count of items removed from the stream.\n"},
-{ &xtra[792], XTRA_SHORT, "get range of items"},
-{ &xtra[793], XTRA_USAGE, "xrange key start end [count cnt]\n"},
-{ &xtra[794], XTRA_EXAMPLE,
+{ &xtra[796], XTRA_SHORT, "get range of items"},
+{ &xtra[797], XTRA_USAGE, "xrange key start end [count cnt]\n"},
+{ &xtra[798], XTRA_EXAMPLE,
 "> xadd S * a 1\n"
 "\"1580458726320-0\"\n"
 "> xadd S * b 2\n"
@@ -2645,7 +2668,7 @@ const RedisCmdExtra xtra[ 847 ] = {
 "[[\"1580458729687-0\",[\"b\",\"2\"]],[\"1580458733903-0\",[\"c\",\"3\"]]]\n"
 "> xrange S 1580458733903-1 +\n"
 "[]\n"},
-{ &xtra[795], XTRA_DESCR,
+{ &xtra[799], XTRA_DESCR,
 "Get items between start and end range.  The *id* assigned to each item\n"
 "in the stream is a numerically increasing value.  The start is the low\n"
 "*id*, the end is the high *id*.  All of the items within the range are\n"
@@ -2654,9 +2677,9 @@ const RedisCmdExtra xtra[ 847 ] = {
 "An array of items.  Each item is an *id* followed by an array of all\n"
 "of the fields defined in the entry.  The empty array is the result\n"
 "when no items are found or the key does not exist.\n"},
-{ &xtra[797], XTRA_SHORT, "get reverse range"},
-{ &xtra[798], XTRA_USAGE, "xrevrange key start end [count cnt]\n"},
-{ &xtra[799], XTRA_EXAMPLE,
+{ &xtra[801], XTRA_SHORT, "get reverse range"},
+{ &xtra[802], XTRA_USAGE, "xrevrange key start end [count cnt]\n"},
+{ &xtra[803], XTRA_EXAMPLE,
 "> xadd S * a 1\n"
 "\"1580458726320-0\"\n"
 "> xadd S * b 2\n"
@@ -2670,7 +2693,7 @@ const RedisCmdExtra xtra[ 847 ] = {
 "[[\"1580458733903-0\",[\"c\",\"3\"]],[\"1580458729687-0\",[\"b\",\"2\"]]]\n"
 "> xrevrange S + 1580458733903-1\n"
 "[]\n"},
-{ &xtra[800], XTRA_DESCR,
+{ &xtra[804], XTRA_DESCR,
 "Get items between start and end range.  The *id* assigned to each item\n"
 "in the stream is a numerically increasing value.  The start is the\n"
 "high *id*, the end is the low *id*.  All of the items within the range\n"
@@ -2679,9 +2702,9 @@ const RedisCmdExtra xtra[ 847 ] = {
 "An array of items.  Each item is an *id* followed by an array of all\n"
 "of the fields defined in the entry.  The empty array is the result\n"
 "when no items are found or the key does not exist.\n"},
-{ &xtra[802], XTRA_SHORT, "get stream length"},
-{ &xtra[803], XTRA_USAGE, "xlen key\n"},
-{ &xtra[804], XTRA_EXAMPLE,
+{ &xtra[806], XTRA_SHORT, "get stream length"},
+{ &xtra[807], XTRA_USAGE, "xlen key\n"},
+{ &xtra[808], XTRA_EXAMPLE,
 "> xadd S * a 1\n"
 "\"1580458726320-0\"\n"
 "> xlen S\n"
@@ -2690,14 +2713,14 @@ const RedisCmdExtra xtra[ 847 ] = {
 "\"1580458729687-0\"\n"
 "> xlen S\n"
 "2\n"},
-{ &xtra[805], XTRA_DESCR, "Get the number of items in a stream.\n"},
+{ &xtra[809], XTRA_DESCR, "Get the number of items in a stream.\n"},
 { NULL, XTRA_RETURN,
 "An integer count of the number of items, or *0* when the stream is\n"
 "empty or the key doesn't exist.\n"},
-{ &xtra[807], XTRA_SHORT, "get next entry"},
-{ &xtra[808], XTRA_USAGE,
+{ &xtra[811], XTRA_SHORT, "get next entry"},
+{ &xtra[812], XTRA_USAGE,
 "xread [count cnt] [block ms] streams key [key ...] id [id ...]\n"},
-{ &xtra[809], XTRA_EXAMPLE,
+{ &xtra[813], XTRA_EXAMPLE,
 "> xadd S * a 1\n"
 "\"1580466119503-0\"\n"
 "> xadd T * x 1\n"
@@ -2705,7 +2728,7 @@ const RedisCmdExtra xtra[ 847 ] = {
 "> xread streams S T 0 0\n"
 "[[\"S\",[[\"1580466119503-0\",[\"a\",\"1\"]]]],\n"
 " [\"T\",[[\"1580466126059-0\",[\"x\",\"1\"]]]]]\n"},
-{ &xtra[810], XTRA_DESCR,
+{ &xtra[814], XTRA_DESCR,
 "Read new items on one or more streams which occur after the *id*.  If\n"
 "all streams are exhausted of new items, then the command can block, if\n"
 "requested, until items are available on any stream.\n"},
@@ -2715,11 +2738,11 @@ const RedisCmdExtra xtra[ 847 ] = {
 "structurally similar to the xrange command, where the results are\n"
 "combined over multiple streams.  If no items are available, or the\n"
 "block timeout expires, a *null* is returned.\n"},
-{ &xtra[812], XTRA_SHORT, "modify group"},
-{ &xtra[813], XTRA_USAGE,
+{ &xtra[816], XTRA_SHORT, "modify group"},
+{ &xtra[817], XTRA_USAGE,
 "xgroup [create key grp id [mkstream]] [setid key grp id]\n"
 " [destroy key grp] [delconsumer key grp cname]\n"},
-{ &xtra[814], XTRA_EXAMPLE,
+{ &xtra[818], XTRA_EXAMPLE,
 "> xgroup create S G 0 mkstream\n"
 "'OK'\n"
 "> xgroup create T G 0 mkstream\n"
@@ -2731,20 +2754,20 @@ const RedisCmdExtra xtra[ 847 ] = {
 "> xreadgroup group G C streams S T > >\n"
 "[[\"S\",[[\"1580466848853-0\",[\"a\",\"1\"]]]],\n"
 " [\"T\",[[\"1580466970348-0\",[\"x\",\"1\"]]]]]\n"},
-{ &xtra[815], XTRA_DESCR,
+{ &xtra[819], XTRA_DESCR,
 "Create a consumer group and initialize the next id that consumers will\n"
 "read.  The option mkstream will create an empty stream if it doesn't\n"
 "exit.\n"},
-{ &xtra[816], XTRA_EXAMPLE,
+{ &xtra[820], XTRA_EXAMPLE,
 "> xgroup setid S G 0\n"
 "'OK'\n"
 "> xreadgroup group G D streams S T > >\n"
 "[[\"S\",[[\"1580466848853-0\",[\"a\",\"1\"]]]]]\n"},
-{ &xtra[817], XTRA_DESCR,
+{ &xtra[821], XTRA_DESCR,
 "Set the next id that consumers will read.  Each group contains a\n"
 "pointer to the next id.  The setid argument moves the pointer to a\n"
 "different location.\n"},
-{ &xtra[818], XTRA_EXAMPLE,
+{ &xtra[822], XTRA_EXAMPLE,
 "> xinfo groups T\n"
 "[[\"name\",\"G\",\"consumers\",1,\"pending\",1,\n"
 "  \"last-delivered-id\",\"1580466970348-0\"]]\n"
@@ -2752,9 +2775,9 @@ const RedisCmdExtra xtra[ 847 ] = {
 "1\n"
 "> xinfo groups T\n"
 "[]\n"},
-{ &xtra[819], XTRA_DESCR,
+{ &xtra[823], XTRA_DESCR,
 "Destroy the group and associated consumers from the stream.\n"},
-{ &xtra[820], XTRA_EXAMPLE,
+{ &xtra[824], XTRA_EXAMPLE,
 "> xinfo consumers S G\n"
 "[[\"name\",\"C\",\"pending\",1,\"idle\",466329],\n"
 " [\"name\",\"D\",\"pending\",1,\"idle\",378057]]\n"
@@ -2762,7 +2785,7 @@ const RedisCmdExtra xtra[ 847 ] = {
 "1\n"
 "> xinfo consumers S G\n"
 "[[\"name\",\"C\",\"pending\",1,\"idle\",514499]]\n"},
-{ &xtra[821], XTRA_DESCR,
+{ &xtra[825], XTRA_DESCR,
 "Delete the consumer from the group.  The removes any pending items\n"
 "that the consumer has outstanding.\n"},
 { NULL, XTRA_RETURN,
@@ -2773,11 +2796,11 @@ const RedisCmdExtra xtra[ 847 ] = {
 "  found.\n"
 "- xgroup delconsumer -- An integer *1* if consumer destroyed, *0* if\n"
 "  not found.\n"},
-{ &xtra[823], XTRA_SHORT, "read next group"},
-{ &xtra[824], XTRA_USAGE,
+{ &xtra[827], XTRA_SHORT, "read next group"},
+{ &xtra[828], XTRA_USAGE,
 "xreadgroup group grp consumer [count cnt] [block ms] [noack]\n"
 " streams key [key ...] id [id ...]\n"},
-{ &xtra[825], XTRA_EXAMPLE,
+{ &xtra[829], XTRA_EXAMPLE,
 "> xadd S * a 1\n"
 "\"1580466848853-0\"\n"
 "> xadd T * x 1\n"
@@ -2797,7 +2820,7 @@ const RedisCmdExtra xtra[ 847 ] = {
 "[0,nil,nil,nil]\n"
 "> xpending T G\n"
 "[0,nil,nil,nil]\n"},
-{ &xtra[826], XTRA_DESCR,
+{ &xtra[830], XTRA_DESCR,
 "Read streams through consumer group.  This assigns items from the\n"
 "stream to the consumer attached to the group.  A record of this read\n"
 "is saved with the stream until it is acked with xack, or reassigned\n"
@@ -2815,9 +2838,9 @@ const RedisCmdExtra xtra[ 847 ] = {
 "structurally similar to the xrange command, where the results are\n"
 "combined over multiple streams.  If no items are available, or the\n"
 "block timeout expires, a *null* is returned.\n"},
-{ &xtra[828], XTRA_SHORT, "consume group entry"},
-{ &xtra[829], XTRA_USAGE, "xack key grp id [id ...]\n"},
-{ &xtra[830], XTRA_EXAMPLE,
+{ &xtra[832], XTRA_SHORT, "consume group entry"},
+{ &xtra[833], XTRA_USAGE, "xack key grp id [id ...]\n"},
+{ &xtra[834], XTRA_EXAMPLE,
 "> xreadgroup group G C streams S >\n"
 "[[\"S\",[[\"1580466848853-0\",[\"a\",\"1\"]]]]]\n"
 "> xpending S G\n"
@@ -2828,16 +2851,16 @@ const RedisCmdExtra xtra[ 847 ] = {
 "[0,nil,nil,nil]\n"
 "> xack S G 1580466848853-0\n"
 "0\n"},
-{ &xtra[831], XTRA_DESCR,
+{ &xtra[835], XTRA_DESCR,
 "Acknowledge consumption of the *id* strings.  The record in the stream\n"
 "associated with the group is removed from the pending list.\n"},
 { NULL, XTRA_RETURN,
 "An integer count of the number of *id* strings acked.\n"},
-{ &xtra[833], XTRA_SHORT, "read old group entries"},
-{ &xtra[834], XTRA_USAGE,
+{ &xtra[837], XTRA_SHORT, "read old group entries"},
+{ &xtra[838], XTRA_USAGE,
 "xclaim key grp consumer min-idle-time id [id ...] [idle ms]\n"
 "[time ms-utc] [retrycount cnt] [force] [justid]\n"},
-{ &xtra[835], XTRA_EXAMPLE,
+{ &xtra[839], XTRA_EXAMPLE,
 "> xreadgroup group G C streams S >\n"
 "[[\"S\",[[\"1580466848853-0\",[\"a\",\"1\"]]]]]\n"
 "> xclaim S G D 1 1580466848853-0\n"
@@ -2864,7 +2887,7 @@ const RedisCmdExtra xtra[ 847 ] = {
 "[\"1580466848853-0\"]\n"
 "> xpending S G\n"
 "[1,\"1580466848853-0\",\"1580466848853-0\",[[\"X\",\"1\"]]]\n"},
-{ &xtra[836], XTRA_DESCR,
+{ &xtra[840], XTRA_DESCR,
 "Recover items from a stream, group and assign them to a consumer.  An\n"
 "item must be older than min-idle-time millisecs in order for xclaim to\n"
 "succeed.  This is to prevent the race condtion of claiming items that\n"
@@ -2873,10 +2896,10 @@ const RedisCmdExtra xtra[ 847 ] = {
 { NULL, XTRA_RETURN,
 "The records are returned when xclaim succeeds, unless justid is\n"
 "specified.  An empty array is returned when no *id* succeeds.\n"},
-{ &xtra[838], XTRA_SHORT, "find pending by group"},
-{ &xtra[839], XTRA_USAGE,
+{ &xtra[842], XTRA_SHORT, "find pending by group"},
+{ &xtra[843], XTRA_USAGE,
 "xpending key grp [start end count] [consumer]\n"},
-{ &xtra[840], XTRA_EXAMPLE,
+{ &xtra[844], XTRA_EXAMPLE,
 "> xpending S G\n"
 "[1,\"1580466848853-0\",\"1580466848853-0\",[[\"X\",\"1\"]]]\n"
 "> xreadgroup group G C count 1 streams S >\n"
@@ -2899,7 +2922,7 @@ const RedisCmdExtra xtra[ 847 ] = {
 "> xpending S G\n"
 "[4,\"1580466848853-0\",\"1580472723272-0\",\n"
 " [[\"X\",\"1\"],[\"C\",\"1\"],[\"D\",\"2\"]]]\n"},
-{ &xtra[841], XTRA_DESCR,
+{ &xtra[845], XTRA_DESCR,
 "Get the pending *id* records from group.  Without a consumer, this\n"
 "requests the number of pending records, pending head and tail for the\n"
 "group, and the consumers pending count pairs.  With the consumer, this\n"
@@ -2913,9 +2936,9 @@ const RedisCmdExtra xtra[ 847 ] = {
 "- xpending key grp start end count consumer -- An array of pending\n"
 "  records belonging to the consumer requested, each with an *id*, an\n"
 "  idle time, and a delivery count.\n"},
-{ &xtra[843], XTRA_SHORT, "set last entry of group"},
-{ &xtra[844], XTRA_USAGE, "xsetid key grp id\n"},
-{ &xtra[845], XTRA_EXAMPLE,
+{ &xtra[847], XTRA_SHORT, "set last entry of group"},
+{ &xtra[848], XTRA_USAGE, "xsetid key grp id\n"},
+{ &xtra[849], XTRA_EXAMPLE,
 "> xinfo groups S\n"
 "[[\"name\",\"G\",\"consumers\",0,\"pending\",0,\n"
 "  \"last-delivered-id\",\"1580474520477-0\"]]\n"
@@ -2923,7 +2946,7 @@ const RedisCmdExtra xtra[ 847 ] = {
 "'OK'\n"
 "> xinfo groups S\n"
 "[[\"name\",\"G\",\"consumers\",0,\"pending\",0,\"last-delivered-id\",\"0\"]]\n"},
-{ &xtra[846], XTRA_DESCR,
+{ &xtra[850], XTRA_DESCR,
 "Set the next *id* of a group associated with a stream.\n"},
 { NULL, XTRA_RETURN,
 "*OK* if success, error when key or group doesn't exist.\n"},

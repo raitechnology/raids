@@ -720,8 +720,8 @@ RedisExec::exec_key_continue( EvKeyCtx &ctx ) noexcept
       case RANDOMKEY_CMD: ctx.status = ERR_BAD_CMD; break; /* in exec() */
       case RENAME_CMD:    ctx.status = this->exec_rename( ctx ); break;
       case RENAMENX_CMD:  ctx.status = this->exec_renamenx( ctx ); break;
-#if 0
       case RESTORE_CMD:   ctx.status = this->exec_restore( ctx ); break;
+#if 0
       case SORT_CMD:      ctx.status = this->exec_sort( ctx ); break;
 #endif
       case TOUCH_CMD:     ctx.status = this->exec_touch( ctx ); break;

@@ -885,7 +885,7 @@ Key
 | <<randomkey>> | 1 | 0 | 0 | 0 | read
 | <<rename>> | 3 | 1 | 2 | 1 | write
 | <<renamenx>> | 3 | 1 | 2 | 1 | write
-//| <<restore>> | -4 | 1 | 1 | 1 | write
+| <<restore>> | -4 | 1 | 1 | 1 | write
 //| <<sort>> | -2 | 1 | 1 | 1 | write movable
 | <<touch>> | -2 | 1 | 1 | 1 | write
 | <<ttl>> | 2 | 1 | 1 | 1 | read
@@ -1038,20 +1038,32 @@ object [refcount key | encoding key | idletime key | freq key | help]
 .Example
 ----
 > object freq k
-1
-> set k value2
+nil
+> set k hello
 'OK'
 > object freq k
-2
+0
+> set k world
+'OK'
+> object freq k
+1
+> object idletime k
+6
+> object encoding k
+"string"
 ----
 .Description
-Inspect key value attributes.
+Inspect key value attributes maintained and stored with the data.
 
 .Return
-- refcount, always *1*.
+If key does not exist, then *nil*.  Otherwise an integer value indicating
+one of the following based on the command:
+
+- refcount, valid values are always *1*.
 - encoding, the type of data.
-- idletime, always *0*.
-- freq, the number of time key was updated.
+- idletime, the number seconds since the value was updated.
+- freq, the number of times key was updated.  The inital value resets this to
+  zero, and every subsequent update increments.
 
 [[persist]]
 persist | clear expire stamp
@@ -1193,17 +1205,23 @@ Rename key if new key doesn't exists.
 
 .Return
 An integer *1* if success, *0* if not, error if key doesn't exist.
-////
+
 [[restore]]
 restore | restore key from dump
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 .Usage
 ----
-restore key ttl val
+restore key ttl value [replace] [absttl] [idletime idle] [freq lfu]
 ----
 .Description
-Restore key using dump format.
+Restore key using dump format.  The value argument is in a specific binary
+format that is constructed by the dump command, which has a version and a crc
+checksum attached (not easily constructed without a program).
 
+.Return
+*OK* when successful, error otherwise.
+
+////
 [[sort]]
 sort | sort keys
 ~~~~~~~~~~~~~~~~

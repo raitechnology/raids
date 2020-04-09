@@ -6,14 +6,10 @@
 #include <fcntl.h>
 #include <raimd/md_types.h>
 #include <raids/redis_exec.h>
-#include <rdbparser/rdb_encode.h>
-#include <raimd/md_list.h>
-#include <raimd/md_hash.h>
-#include <raimd/md_set.h>
-#include <raimd/md_zset.h>
-#include <raimd/md_geo.h>
+#include <raids/redis_rdb.h>
 #include <raids/exec_list_ctx.h>
 #include <raids/exec_stream_ctx.h>
+#include <h3api.h>
 
 using namespace rai;
 using namespace ds;
@@ -29,6 +25,7 @@ RedisExec::exec_dump( EvKeyCtx &ctx ) noexcept
   switch ( this->exec_key_fetch( ctx ) ) {
     case KEY_OK: {
       switch ( this->kctx.get_type() ) {
+        default:
         case MD_STRING: return this->dump_string( ctx );
         case MD_LIST:   return this->dump_list( ctx );
         case MD_HASH:   return this->dump_hash( ctx );
@@ -38,7 +35,6 @@ RedisExec::exec_dump( EvKeyCtx &ctx ) noexcept
         case MD_HYPERLOGLOG:
                         return this->dump_hll( ctx );
         case MD_STREAM: return this->dump_stream( ctx );
-        default:        return ERR_BAD_TYPE;
       }
     }
     /* FALLTHRU */
@@ -952,5 +948,460 @@ RedisExec::dump_stream( EvKeyCtx &ctx ) noexcept
 
   ctx.ival = dump.frame_dump_result( p );
   this->strm.sz += dump.sz;
+  return EXEC_OK;
+}
+
+void
+ExecRestore::d_start_key( void ) noexcept
+{
+  this->tmp.reuse();
+  switch ( this->dec.type ) {
+    default:
+    case RDB_STRING:
+    case RDB_MODULE_2:
+      break;
+    case RDB_LIST:
+    case RDB_LIST_ZIPLIST:
+    case RDB_LIST_QUICKLIST:
+      this->list = NULL;
+      break;
+    case RDB_SET:
+    case RDB_SET_INTSET:
+      this->set = NULL;
+      break;
+    case RDB_ZSET:
+    case RDB_ZSET_2:
+    case RDB_ZSET_ZIPLIST:
+      this->zset = NULL;
+      this->geo  = NULL;
+      this->is_geo = false;
+      break;
+    case RDB_HASH:
+    case RDB_HASH_ZIPMAP:
+    case RDB_HASH_ZIPLIST:
+      this->hash = NULL;
+      break;
+    case RDB_STREAM_LISTPACK:
+      this->strm    = NULL;
+      this->pend    = NULL;
+      this->pcount  = 0;
+      this->last_ns = 0;
+      break;
+  }
+}
+
+void
+ExecRestore::set_value( uint8_t type,  uint16_t fl,  const void *value,
+                        size_t len )
+{
+  void * data;
+
+  switch ( exec.get_key_write( ctx, type ) ) {
+    case KEY_NO_VALUE: /* overwrite key */
+      ctx.flags |= EKF_IS_NEW;
+      ctx.type   = type;
+      /* FALLTHRU */
+    case KEY_OK:
+    case KEY_IS_NEW:
+      exec.kctx.clear_stamps( true, false );
+      ctx.kstatus = exec.kctx.resize( &data, len );
+      if ( ctx.kstatus == KEY_OK ) {
+        ::memcpy( data, value, len );
+        ctx.flags |= EKF_KEYSPACE_EVENT | fl;
+        if ( type == MD_STREAM )
+          exec.kctx.update_stamps( 0, this->last_ns /* upd_ns */ );
+        return;
+      }
+      /* FALLTHRU */
+    default: this->status = ERR_KV_STATUS;
+  }
+}
+
+void
+ExecRestore::d_end_key( void ) noexcept
+{
+  switch ( this->dec.type ) {
+    case RDB_LIST:
+    case RDB_LIST_ZIPLIST:
+    case RDB_LIST_QUICKLIST:
+      if ( this->list != NULL ) {
+        this->set_value( MD_LIST, EKF_KEYSPACE_LIST, this->list->listp,
+                         this->list->size );
+        return;
+      }
+      break;
+
+    case RDB_SET:
+    case RDB_SET_INTSET:
+      if ( this->set != NULL ) {
+        this->set_value( MD_SET, EKF_KEYSPACE_SET, this->set->listp,
+                         this->set->size );
+        return;
+      }
+      break;
+
+    case RDB_ZSET:
+    case RDB_ZSET_2:
+    case RDB_ZSET_ZIPLIST:
+      if ( ! this->is_geo ) {
+        if ( this->zset != NULL ) {
+          this->set_value( MD_ZSET, EKF_KEYSPACE_ZSET, this->zset->listp,
+                           this->zset->size );
+          return;
+        }
+      }
+      else {
+        if ( this->geo != NULL ) {
+          this->set_value( MD_GEO, EKF_KEYSPACE_GEO, this->geo->listp,
+                           this->geo->size );
+          return;
+        }
+      }
+      break;
+
+    case RDB_HASH:
+    case RDB_HASH_ZIPMAP:
+    case RDB_HASH_ZIPLIST:
+      if ( this->hash != NULL ) {
+        this->set_value( MD_HASH, EKF_KEYSPACE_HASH, this->hash->listp,
+                         this->hash->size );
+        return;
+      }
+      break;
+
+    case RDB_STREAM_LISTPACK:
+      if ( this->strm != NULL ) {
+        this->set_value( MD_STREAM, EKF_KEYSPACE_STREAM,
+                         this->strm->stream.listp, this->strm->stream.size +
+                         this->strm->group.size + this->strm->pending.size );
+        return;
+      }
+      break;
+
+    case RDB_STRING: return;
+    default: break;
+  }
+  this->status = ERR_BAD_ARGS;
+}
+
+void
+ExecRestore::d_string( const RdbString &str ) noexcept
+{
+  ExecReStrBuf rsb( str );
+  if ( rsb.len == sizeof( HyperLogLog ) ) {
+    if ( le<uint16_t>( rsb.s ) == sizeof( HyperLogLog ) / 8 ) {
+      this->set_value( MD_HYPERLOGLOG, EKF_KEYSPACE_HLL, rsb.s, rsb.len );
+      return;
+    }
+  }
+  this->set_value( MD_STRING, EKF_KEYSPACE_STRING, rsb.s, rsb.len );
+}
+
+void
+ExecRestore::d_list( const RdbListElem &l ) noexcept
+{
+  ExecReStrBuf rsb( l.val );
+  ExecRestoreCtx<ListData> ctx( *this, this->list );
+
+  for (;;) {
+    if ( ctx.x != NULL )
+      if ( ctx.x->rpush( rsb.s, rsb.len ) != LIST_FULL )
+        return;
+    this->list = ctx.realloc( rsb.len + 1, l.cnt + 1 );
+  }
+}
+
+void
+ExecRestore::d_set( const RdbSetMember &s ) noexcept
+{
+  ExecReStrBuf mem( s.member );
+  ExecRestoreCtx<SetData> ctx( *this, this->set );
+
+  for (;;) {
+    if ( ctx.x != NULL )
+      if ( ctx.x->sadd( mem.s, mem.len ) != SET_FULL )
+        return;
+    this->set = ctx.realloc( mem.len + 1, s.cnt + 1 );
+  }
+}
+
+void
+ExecRestore::d_zset( const RdbZSetMember &z ) noexcept
+{
+  ExecReStrBuf mem( z.member ),
+               score( z.score );
+
+  if ( this->zset == NULL ) {
+    this->is_geo = false;
+    if ( score.len >= 18 ) {
+      GeoIndx test_h3;
+      if ( string_to_uint( score.s, score.len, test_h3 ) == 0 &&
+           h3IsValid( test_h3 ) )
+        this->is_geo = true;
+    }
+  }
+  if ( ! this->is_geo ) {
+    ZScore sc = ZScore::parse_len( score.s, score.len );
+    ExecRestoreCtx<ZSetData> ctx( *this, this->zset );
+
+    for (;;) {
+      if ( ctx.x != NULL )
+        if ( ctx.x->zadd( mem.s, mem.len, sc, 0 ) != ZSET_FULL )
+          return;
+      this->zset = ctx.realloc( mem.len + 1, z.cnt + 1 );
+    }
+  }
+  else {
+    GeoIndx h3;
+    ExecRestoreCtx<GeoData> ctx( *this, this->geo );
+
+    if ( string_to_uint( score.s, score.len, h3 ) == 0 ) {
+      for (;;) {
+        if ( ctx.x != NULL )
+          if ( ctx.x->geoadd( mem.s, mem.len, h3 ) != GEO_FULL )
+            return;
+        this->geo = ctx.realloc( mem.len + 1, z.cnt + 1 );
+      }
+    }
+  }
+}
+
+void
+ExecRestore::d_hash( const RdbHashEntry &h ) noexcept
+{
+  ExecReStrBuf fld( h.field ),
+               val( h.val );
+  ExecRestoreCtx<HashData> ctx( *this, this->hash );
+
+  for (;;) {
+    if ( ctx.x != NULL )
+      if ( ctx.x->hset( fld.s, fld.len, val.s, val.len ) != HASH_FULL )
+        return;
+    this->hash = ctx.realloc( fld.len + val.len + 3, h.cnt + 1 );
+  }
+}
+
+void
+ExecRestore::d_stream_entry( const RdbStreamEntry &entry ) noexcept
+{
+  char       id[ 64 ],
+             buf[ 24 ];
+  size_t     idlen,
+             count,
+             ndata,
+             k, d,
+             sz;
+  void     * mem, * p;
+  ListData * xl;
+
+  idlen = uint_to_str( entry.id.ms + entry.diff.ms, id );
+  id[ idlen++ ] = '-';
+  idlen += uint_to_str( entry.id.ser + entry.diff.ser, &id[ idlen ] );
+
+  ndata = idlen + 1;
+  count = entry.entry_field_count;
+  for ( k = 0; k < count; k++ ) {
+    RdbListValue & f = entry.fields[ k ],
+                 & v = entry.values[ k ];
+    if ( f.data != NULL )
+      ndata += f.data_len;
+    else
+      ndata += int_digits( f.ival );
+    if ( v.data != NULL )
+      ndata += v.data_len;
+    else
+      ndata += int_digits( v.ival );
+  }
+  count = count * 2 + 1; /* field name + value + id */
+  sz = ListData::alloc_size( count, ndata );
+  this->tmp.alloc( sizeof( ListData ) + sz, &mem );
+  p  = &((char *) mem)[ sizeof( ListData ) ];
+  xl = new ( mem ) ListData( p, sz );
+  xl->init( count, ndata );
+  xl->rpush( id, idlen );
+  count = entry.entry_field_count;
+  for ( k = 0; k < count; k++ ) {
+    RdbListValue & f = entry.fields[ k ],
+                 & v = entry.values[ k ];
+    if ( f.data != NULL )
+      xl->rpush( f.data, f.data_len );
+    else {
+      d = int_to_str( f.ival, buf );
+      xl->rpush( buf, d );
+    }
+    if ( v.data != NULL )
+      xl->rpush( v.data, v.data_len );
+    else {
+      d = int_to_str( v.ival, buf );
+      xl->rpush( buf, d );
+    }
+  }
+
+  ExecRestoreStream ctx( *this, this->strm );
+  for (;;) {
+    if ( ctx.x != NULL )
+      if ( ctx.x->stream.rpush( xl->listp, xl->size ) != LIST_FULL )
+        return;
+    this->strm = ctx.realloc( xl->size, entry.items_count );
+  }
+}
+
+void
+ExecRestore::d_stream_info( const RdbStreamInfo &info ) noexcept
+{
+  this->last_ns = info.last.ms * (uint64_t) 1000000 + info.last.ser;
+}
+
+void
+ExecRestore::d_stream_group( const RdbGroupInfo &group ) noexcept
+{
+  char       id[ 64 ];
+  size_t     idlen,
+             count = 2,
+             ndata,
+             sz;
+  void     * mem, * p;
+  ListData * xl;
+
+  idlen = uint_to_str( group.last.ms, id );
+  id[ idlen++ ] = '-';
+  idlen += uint_to_str( group.last.ser, &id[ idlen ] );
+
+  ndata = idlen + group.gname_len;
+  sz    = ListData::alloc_size( count, ndata );
+  this->tmp.alloc( sizeof( ListData ) + sz, &mem );
+  p  = &((char *) mem)[ sizeof( ListData ) ];
+  xl = new ( mem ) ListData( p, sz );
+  xl->init( count, ndata );
+  xl->rpush( group.gname, group.gname_len );
+  xl->rpush( id, idlen );
+
+  ExecRestoreStream ctx( *this, this->strm );
+  for (;;) {
+    if ( ctx.x != NULL )
+      if ( ctx.x->group.rpush( xl->listp, xl->size ) != LIST_FULL )
+        return;
+    this->strm = ctx.realloc_group( group.cnt * xl->size, group.cnt );
+  }
+}
+
+void
+ExecRestore::d_stream_pend( const RdbPendInfo &pend ) noexcept
+{
+  if ( pend.last_delivery != pend.id.ms || pend.delivery_cnt != 1 ) {
+    if ( this->pcount == 0 )
+      this->tmp.alloc( pend.cnt * sizeof( this->pend[ 0 ] ), &this->pend );
+    this->pend[ this->pcount ].id_ms         = pend.id.ms;
+    this->pend[ this->pcount ].id_ser        = pend.id.ser;
+    this->pend[ this->pcount ].last_delivery = pend.last_delivery;
+    this->pend[ this->pcount ].delivery_cnt  = pend.delivery_cnt;
+    this->pcount++;
+  }
+}
+
+void
+ExecRestore::d_stream_cons( const RdbConsumerInfo &/*cons*/ ) noexcept
+{
+}
+
+void
+ExecRestore::d_stream_cons_pend( const RdbConsPendInfo &pend ) noexcept
+{
+  char         id[ 64 ];
+  size_t       idlen,
+               count = 5,
+               ndata,
+               sz,
+               glen,
+               clen;
+  const char * gname,
+             * cname;
+  uint64_t     ns  = 0;
+  uint32_t     cnt = 1;
+  void       * mem, * p;
+  ListData   * xl;
+
+  idlen = uint_to_str( pend.id.ms, id );
+  id[ idlen++ ] = '-';
+  idlen += uint_to_str( pend.id.ser, &id[ idlen ] );
+  gname  = pend.cons.group.gname;
+  glen   = pend.cons.group.gname_len;
+  cname  = pend.cons.cname;
+  clen   = pend.cons.cname_len;
+
+  ndata = idlen + glen + clen + 8 + 4;
+  sz    = ListData::alloc_size( count, ndata );
+  this->tmp.alloc( sizeof( ListData ) + sz, &mem );
+  p  = &((char *) mem)[ sizeof( ListData ) ];
+  xl = new ( mem ) ListData( p, sz );
+  xl->init( count, ndata );
+
+  ns  = pend.id.ms;
+  cnt = 1;
+  for ( size_t i = 0; i < this->pcount; i++ ) { /* maybe bsearch this */
+    if ( pend.id.ms  == this->pend[ i ].id_ms &&
+         pend.id.ser == this->pend[ i ].id_ser ) {
+      ns  = this->pend[ i ].last_delivery;
+      cnt = this->pend[ i ].delivery_cnt;
+      break;
+    }
+  }
+  ns *= 1000000;
+
+  xl->rpush( id, idlen );   /* ID */
+  xl->rpush( gname, glen ); /* group */
+  xl->rpush( cname, clen ); /* consumer */
+  xl->rpush( &ns, 8 );      /* last delivered */
+  xl->rpush( &cnt, 4 );     /* delivery count */
+
+  ExecRestoreStream ctx( *this, this->strm );
+  for (;;) {
+    if ( ctx.x != NULL )
+      if ( ctx.x->pending.rpush( xl->listp, xl->size ) != LIST_FULL )
+        return;
+    this->strm = ctx.realloc_pending( pend.cons.group.pending_cnt * xl->size,
+                                      pend.cons.group.pending_cnt );
+  }
+}
+
+ExecStatus
+RedisExec::exec_restore( EvKeyCtx &ctx ) noexcept
+{
+  const char * val;
+  size_t       val_len;
+
+  /* RESTORE key ttl value [replace] [absttl] [idletime idle] [freq lfu] */
+  if ( ! this->msg.get_arg( 3, val, val_len ) )
+    return ERR_BAD_ARGS;
+
+  RdbBufptr    bptr( (const uint8_t *) val, val_len );
+  RdbDecode    decode;
+  ExecRestore  rest( decode, *this, ctx, val_len );
+  RdbErrCode   err;
+  const char * s = NULL;
+
+  decode.data_out = &rest;
+
+  if ( (err = decode.decode_hdr( bptr )) == RDB_OK )
+    err = decode.decode_body( bptr );
+
+  switch ( err ) {
+    case RDB_OK:          return rest.status;
+    case RDB_EOF_MARK:    s = "-ERR RDB-Unexpected eof"; break;
+    case RDB_ERR_OUTPUT:  s = "-ERR RDB-No output"; break;
+    case RDB_ERR_TRUNC:   s = "-ERR RDB-Input truncated"; break;
+    case RDB_ERR_VERSION: s = "-ERR RDB-Rdb version too old"; break;
+    case RDB_ERR_CRC:     s = "-ERR RDB-Crc does not match"; break;
+    case RDB_ERR_TYPE:    s = "-ERR RDB-Error unknown type"; break;
+    case RDB_ERR_HDR:     s = "-ERR RDB-Error parsing header"; break;
+    case RDB_ERR_LZF:     s = "-ERR RDB-Bad LZF compression"; break;
+    case RDB_ERR_NOTSUP:  s = "-ERR RDB-Object type not supported"; break;
+    case RDB_ERR_ZLEN:    s = "-ERR RDB-Zip list len mismatch"; break;
+  }
+  size_t len  = ::strlen( s );
+  char * buf  = this->strm.alloc( len + 2 );
+  ::memcpy( buf, s, len );
+  strm.sz += crlf( buf, len );
+
   return EXEC_OK;
 }

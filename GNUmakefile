@@ -190,7 +190,7 @@ redis_sortedset_includes := -Ih3/src/h3lib/include -I/usr/include/h3lib
 decimal_includes         := -Iraimd/libdecnumber/include
 ev_client_includes       := -Ilinecook/include
 term_includes            := -Ilinecook/include
-redis_rdb_includes       := -Irdbparser/include
+redis_rdb_includes       := -Irdbparser/include $(redis_geo_includes)
 
 libraids_files := ev_net ev_service ev_http ev_client ev_tcp ev_unix ev_udp \
   ev_nats ev_capr ev_rv shm_client stream_buf route_db redis_msg redis_cmd_db \
