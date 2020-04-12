@@ -55,7 +55,8 @@ enum ExecStatus {
   ERR_BAD_EXEC,         /* no transaction active to exec */
   ERR_BAD_DISCARD,      /* no transaction active to discard */
   ERR_ABORT_TRANS,      /* transaction aborted due to error */
-  ERR_SAVE              /* save failed */
+  ERR_SAVE,             /* save failed */
+  ERR_LOAD              /* load failed */
 };
 
 inline static bool exec_status_success( int status ) {
@@ -65,6 +66,11 @@ inline static bool exec_status_success( int status ) {
 inline static bool exec_status_fail( int status ) {
   return status > EXEC_SUCCESS;  /* the bad status */
 }
+
+/* time used to determine whether a timestamp or not */
+static const uint64_t TEN_YEARS_NS = (uint64_t) ( 10 * 12 ) *
+                                     (uint64_t) ( 30 * 24 * 60 * 60 ) *
+                                     (uint64_t) ( 1000 * 1000 * 1000 );
 
 struct EvSocket;
 struct EvPublish;
@@ -91,7 +97,8 @@ enum ExecCmdState { /* cmd_state flags */
   CMD_STATE_CLIENT_REPLY_OFF  = 4, /* mute output until client reply on again */
   CMD_STATE_MULTI_QUEUED      = 8, /* MULTI started, queue cmds */
   CMD_STATE_EXEC_MULTI        = 16,/* EXEC transaction running */
-  CMD_STATE_SAVE              = 32 /* SAVE is running */
+  CMD_STATE_SAVE              = 32,/* SAVE is running */
+  CMD_STATE_LOAD              = 64 /* LOAD is running */
 };
 
 struct RedisExec {
@@ -370,6 +377,7 @@ struct RedisExec {
   ExecStatus exec_monitor( void ) noexcept;
   ExecStatus exec_role( void ) noexcept;
   ExecStatus exec_save( void ) noexcept;
+  ExecStatus exec_load( void ) noexcept;
   ExecStatus exec_shutdown( void ) noexcept;
   ExecStatus exec_slaveof( void ) noexcept;
   ExecStatus exec_slowlog( void ) noexcept;

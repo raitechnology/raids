@@ -14,11 +14,15 @@ namespace rai {
 namespace ds {
 
 struct ExecRestore : public rdbparser::RdbOutput {
-  RedisExec  & exec;
-  EvKeyCtx   & ctx;     /* the key where data is restored */
-  size_t       msg_len; /* size of the restore data */
-  ExecStatus   status;  /* status to return to cmd execution */
-  bool         is_geo;  /* when zset code, if zset or geo type */
+  RedisExec & exec;
+  EvKeyCtx  * keyp;       /* the key where data is restored */
+  size_t      msg_len;    /* size of the restore data */
+  int64_t     freq;       /* restore lru freq arg */
+  uint64_t    ttl_ns,     /* restore ttl arg */
+              last_ns;    /* the last updated time */
+  ExecStatus  status;     /* status to return to cmd execution */
+  bool        is_geo,     /* when zset code, if zset or geo type */
+              is_replace; /* if ok to overwrite */
 
   union {
     md::ListData   * list; /* the data to store */
@@ -28,7 +32,6 @@ struct ExecRestore : public rdbparser::RdbOutput {
     md::HashData   * hash;
     md::StreamData * strm;
   };
-  uint64_t last_ns; /* the last used stream ms */
   size_t   pcount;  /* the pending record count */
   struct {
     uint64_t id_ms, id_ser, last_delivery, delivery_cnt;
@@ -36,21 +39,31 @@ struct ExecRestore : public rdbparser::RdbOutput {
 
   md::MDMsgMem tmp;
 
-  ExecRestore( rdbparser::RdbDecode &d,  RedisExec &e,  EvKeyCtx &c,
+  ExecRestore( rdbparser::RdbDecode &d,  RedisExec &e,  EvKeyCtx *c,
                size_t len )
-    : rdbparser::RdbOutput( d ), exec( e ), ctx( c ), msg_len( len ),
-      status( EXEC_SEND_OK ) {}
+    : rdbparser::RdbOutput( d ), exec( e ), keyp( c ), msg_len( len ),
+      freq( 0 ), ttl_ns( 0 ), last_ns( 0 ), status( EXEC_SEND_OK ),
+      is_geo( false ), is_replace( false ) {}
 
-  void resize_list( void );
-  void resize_set( void );
-  void resize_zset( void );
-  void resize_hash( void );
-  void resize_stream( void );
-
-  void set_value( uint8_t type,  uint16_t fl,  const void *value,  size_t len );
-
+  void reset_meta( void ) {
+    this->freq    = 0;
+    this->ttl_ns  = 0;
+    this->last_ns = 0;
+  }
+  void set_value( void ) noexcept;
+  void set_value( uint8_t type,  uint16_t fl,  const void *value,
+                  size_t len ) noexcept;
   virtual void d_start_key( void ) noexcept;
   virtual void d_end_key( void ) noexcept;
+  virtual void d_finish( bool ) noexcept;
+  virtual void d_idle( uint64_t i ) noexcept;
+  virtual void d_freq( uint8_t f ) noexcept;
+  virtual void d_aux( const rdbparser::RdbString &,
+                      const rdbparser::RdbString & ) noexcept;
+  virtual void d_dbresize( uint64_t/*i*/,  uint64_t/*j*/) noexcept;
+  virtual void d_expired_ms( uint64_t ms ) noexcept;
+  virtual void d_expired( uint32_t sec ) noexcept;
+  virtual void d_dbselect( uint32_t /*db*/ ) noexcept;
   /* rdb types */
   virtual void d_string( const rdbparser::RdbString &str ) noexcept;
   virtual void d_list( const rdbparser::RdbListElem &l ) noexcept;
@@ -69,6 +82,8 @@ struct ExecRestore : public rdbparser::RdbOutput {
   virtual void d_stream_end( rdbparser::StreamPart c ) noexcept;
   virtual void d_module( const RdbString &str ) noexcept;
 #endif
+
+  md::ListData *alloc_list( size_t &count,  size_t &ndata );
 };
 
 struct ExecReStrBuf {
@@ -106,8 +121,8 @@ struct ExecRestoreCtx {
     if ( this->x == NULL ) {
       count    = elem_cnt + 2;  /* may be ok up to 64k (zip list, zllen) */
       data_len = this->restore.msg_len / 2 + 2;
-      if ( data_len < elem_sz )
-        data_len = elem_sz;
+      if ( data_len < elem_sz * elem_cnt )
+        data_len = elem_sz * elem_cnt;
       asize    = LIST_CLASS::alloc_size( count, data_len );
     }
     else {
@@ -117,6 +132,7 @@ struct ExecRestoreCtx {
     }
 
     this->restore.tmp.alloc( sizeof( LIST_CLASS ) + asize, &m );
+    ::memset( m, 0, sizeof( LIST_CLASS ) + asize );
     p = &((char *) m)[ sizeof( LIST_CLASS ) ];
     newbe = new ( m ) LIST_CLASS( p, asize );
     newbe->init( count, data_len );
@@ -146,8 +162,8 @@ struct ExecRestoreStream {
     if ( this->x == NULL ) {
       count    = elem_cnt + 2;
       data_len = this->restore.msg_len / 2 + 2;
-      if ( data_len < elem_sz )
-        data_len = elem_sz;
+      if ( data_len < elem_sz * elem_cnt )
+        data_len = elem_sz * elem_cnt;
       l = 8, c = 1;
     }
     else {
@@ -162,8 +178,9 @@ struct ExecRestoreStream {
     else
       geom.add( this->x, l, c, l, c, data_len, count );
 
-    asize = geom.asize();
-    this->restore.tmp.alloc( sizeof( md::StreamData ) + asize, &m );
+    asize = sizeof( md::StreamData ) + geom.asize();
+    this->restore.tmp.alloc( asize, &m );
+    ::memset( m, 0, asize );
     p = &((char *) m)[ sizeof( md::StreamData ) ];
     newbe = geom.make_new( m, p );
     if ( this->x != NULL )

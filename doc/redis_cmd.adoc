@@ -1982,6 +1982,7 @@ Server
 | <<monitor>> | 1 | 0 | 0 | 0 | admin
 //| <<role>> | 1 | 0 | 0 | 0 |
 | <<save>> | 1 | 0 | 0 | 0 | admin
+| <<load>> | 1 | 0 | 0 | 0 | admin
 | <<shutdown>> | -1 | 0 | 0 | 0 | admin
 //| <<slaveof>> | 3 | 0 | 0 | 0 | admin
 //| <<slowlog>> | -2 | 0 | 0 | 0 | admin
@@ -2342,6 +2343,22 @@ save
 ----
 .Description
 Synchronously save to rdb format file.
+
+.Return
+*OK* or error if save fails.
+
+[[load]]
+load | sync load
+~~~~~~~~~~~~~~~~
+.Usage
+----
+load
+----
+.Description
+Synchronously load from rdb format file.
+
+.Return
+*OK* or error if load fails.
 
 [[shutdown]]
 shutdown | shutdown server

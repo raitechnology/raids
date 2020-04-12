@@ -557,6 +557,7 @@ RedisExec::exec_nokeys( void ) noexcept
     case ROLE_CMD:         return this->exec_role();
 #endif
     case SAVE_CMD:         return this->exec_save();
+    case LOAD_CMD:         return this->exec_load();
     case SHUTDOWN_CMD:     return this->exec_shutdown();
 #if 0
     case SLAVEOF_CMD:      return this->exec_slaveof();
@@ -609,7 +610,8 @@ RedisExec::exec_key_fetch( EvKeyCtx &ctx,  bool force_read ) noexcept
         this->kctx.release();
       }
     }
-    else if ( ( this->cmd_flags & CMD_WRITE_FLAG ) != 0 ) {
+    else if ( ( this->cmd_flags & CMD_WRITE_FLAG ) != 0 ||
+              ( this->cmd_state & CMD_STATE_LOAD ) != 0 ) {
       ctx.kstatus = this->kctx.acquire( &this->wrk );
       if ( ctx.kstatus == KEY_OK && this->kctx.is_expired() ) {
         this->kctx.expire();
@@ -781,6 +783,7 @@ RedisExec::exec_key_continue( EvKeyCtx &ctx ) noexcept
       case ROLE_CMD:
 #endif
       case SAVE_CMD:
+      case LOAD_CMD:
       case SHUTDOWN_CMD:
 #if 0
       case SLAVEOF_CMD:
@@ -915,7 +918,7 @@ RedisExec::exec_key_continue( EvKeyCtx &ctx ) noexcept
             }
             this->kctx.set_val( 0 );
           }
-          if ( ctx.type != MD_STREAM && ctx.type != MD_NODATA )
+          if ( ( ctx.state & EKS_NO_UPDATE ) == 0 )
             this->kctx.update_stamps( 0, this->kctx.ht.hdr.current_stamp );
         }
         this->key_flags |= ctx.flags;
@@ -1103,7 +1106,8 @@ RedisExec::send_status( ExecStatus stat,  KeyStatus kstat ) noexcept
     case ERR_BAD_EXEC:
     case ERR_BAD_DISCARD:
     case ERR_ABORT_TRANS:
-    case ERR_SAVE:        this->send_err_string( stat, kstat ); break;
+    case ERR_SAVE:
+    case ERR_LOAD:        this->send_err_string( stat, kstat ); break;
 
     /* ok status */
     case EXEC_QUIT:
@@ -1134,6 +1138,7 @@ RedisExec::send_err_string( ExecStatus stat,  KeyStatus kstat ) noexcept
     case ERR_BAD_DISCARD:      str = "-ERR bad discard, no multi"; break;
     case ERR_ABORT_TRANS:      str = "-ERR transaction aborted, error"; break;
     case ERR_SAVE:             str = "-ERR save failed, file error"; break;
+    case ERR_LOAD:             str = "-ERR load failed, file error"; break;
     default:                   str = "-ERR"; break;
   }
 

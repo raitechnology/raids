@@ -8,9 +8,6 @@
 namespace rai {
 namespace ds {
 
-struct BulkStr;
-struct BulkArr;
-
 enum RedisMsgStatus {
   REDIS_MSG_OK             = 0,
   REDIS_MSG_INT_OVERFLOW   = STR_CVT_INT_OVERFLOW,

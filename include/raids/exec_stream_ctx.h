@@ -15,7 +15,9 @@ struct ExecStreamCtx {
   int              n;
 
   ExecStreamCtx( RedisExec &e,  EvKeyCtx &c )
-    : exec( e ), kctx( e.kctx ), ctx( c ), x( 0 ), n( 0 ) {}
+    : exec( e ), kctx( e.kctx ), ctx( c ), x( 0 ), n( 0 ) {
+    c.state |= EKS_NO_UPDATE;
+  }
 
   kv::KeyStatus get_key_read( void )  { return this->do_key_fetch( true ); }
   kv::KeyStatus get_key_write( void ) { return this->do_key_fetch( false ); }

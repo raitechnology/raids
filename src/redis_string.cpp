@@ -982,10 +982,6 @@ ExecStatus
 RedisExec::do_set_value_expire( EvKeyCtx &ctx,  int n,  uint64_t ns,
                                 int flags ) noexcept
 {
-  /* time used to determine whether a timestamp or not */
-  static const uint64_t TEN_YEARS_NS = (uint64_t) ( 10 * 12 ) *
-                                       (uint64_t) ( 30 * 24 * 60 * 60 ) *
-                                       (uint64_t) ( 1000 * 1000 * 1000 );
   const char * value;
   size_t       valuelen;
   void       * data;

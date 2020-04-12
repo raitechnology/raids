@@ -18,7 +18,7 @@ struct EvKeyTempResult {
   }
 };
 
-enum EvKeyState { /* status for exec_key_continue(), memcached_key_continue() */
+enum EvKeyStatus {/* status for exec_key_continue(), memcached_key_continue() */
   EK_SUCCESS  = 20, /* statement finished */
   EK_DEPENDS  = 21, /* key depends on another */
   EK_CONTINUE = 22  /* more keys to process */
@@ -29,7 +29,7 @@ enum EvKeyState { /* status for exec_key_continue(), memcached_key_continue() */
 enum EvKeyFlags { /* bits for EvKeyCtx::flags */
   EKF_IS_READ_ONLY    = 1,     /* key is read only (no write access) */
   EKF_IS_NEW          = 2,     /* key doesn't exist */
-  EKF_IS_SAVED_CONT   = 4,     /* key has saved data on continuation */
+  EKF_UNUSED          = 4,     /* placeholder for something else */
   EKF_IS_EXPIRED      = 8,     /* a key read oper caused expired data */
   EKF_KEYSPACE_FWD    = 0x10,  /* operation resulted in a keyspace mod */
   EKF_KEYEVENT_FWD    = 0x20,  /* operation resulted in a keyevent mod */
@@ -51,7 +51,13 @@ enum EvKeyFlags { /* bits for EvKeyCtx::flags */
   EKF_KEYSPACE_GEO    = ( 6 << EKF_TYPE_SHIFT ),
   EKF_KEYSPACE_HLL    = ( 7 << EKF_TYPE_SHIFT ),
   EKF_KEYSPACE_STREAM = ( 8 << EKF_TYPE_SHIFT )  /* 32768 */
-  /* must fit into 16 bits */
+  /* must fit into 16 bits (no more left) */
+};
+
+enum EvKeyState { /* state of key */
+  EKS_INIT          = 0,     /* initialize */
+  EKS_IS_SAVED_CONT = 1,     /* key has saved data on continuation */
+  EKS_NO_UPDATE     = 2      /* key doesn't need an update stamp */
 };
 
 struct EvKeyCtx {
@@ -67,18 +73,18 @@ struct EvKeyCtx {
   const int         argn;    /* which arg number of command */
   int               status;  /* result of exec for this key */
   kv::KeyStatus     kstatus; /* result of key lookup */
-  uint16_t          flags;   /* is new, is read only */
+  uint16_t          flags;   /* ekf flags is new, is read only */
   uint8_t           dep,     /* depends on another key */
                     type;    /* value type, string, list, hash, etc */
   const uint32_t    key_idx; /* if cmd has multiple keys */
-  uint16_t          pad;     /* align kbuf.u.buf[] on a 64 bit boundary */
+  uint16_t          state;   /* eks state flags */
   kv::KeyFragment   kbuf;    /* key material, extends past structure */
 
   EvKeyCtx( kv::HashTab &h,  EvSocket *own,  const void *key,  size_t keystrlen,
             const int n,  const uint32_t idx,  const kv::HashSeed &hs )
      : ht( h ), owner( own ), ival( 0 ), part( 0 ), argn( n ), status( 0 ),
        kstatus( KEY_OK ), flags( EKF_IS_READ_ONLY ), dep( 0 ), type( 0 ),
-       key_idx( idx ) {
+       key_idx( idx ), state( EKS_INIT ) {
     this->copy_key( key, keystrlen );
     hs.hash( this->kbuf, this->hash1, this->hash2 );
   }
@@ -87,14 +93,14 @@ struct EvKeyCtx {
      : ht( ctx.ht ), owner( ctx.owner ), hash1( ctx.hash1 ), hash2( ctx.hash2 ),
        ival( 0 ), part( 0 ), argn( ctx.argn ), status( 0 ), kstatus( KEY_OK ),
        flags( EKF_IS_READ_ONLY ), dep( 0 ), type( ctx.type ),
-       key_idx( ctx.key_idx ) {
+       key_idx( ctx.key_idx ), state( EKS_INIT ) {
     this->copy_key( ctx.kbuf.u.buf, ctx.kbuf.keylen - 1 );
   }
 
   EvKeyCtx( kv::HashTab &h )
      : ht( h ), owner( 0 ), hash1( 0 ), hash2( 0 ), ival( 0 ), part( 0 ),
        argn( 0 ), status( 0 ), kstatus( KEY_OK ), flags( EKF_IS_READ_ONLY ),
-       dep( 0 ), type( 0 ), key_idx( 0 ) {}
+       dep( 0 ), type( 0 ), key_idx( 0 ), state( EKS_INIT ) {}
 
   void copy_key( const void *key,  size_t keystrlen ) {
     uint16_t       * p = (uint16_t *) (void *) this->kbuf.u.buf;

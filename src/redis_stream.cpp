@@ -658,7 +658,7 @@ RedisExec::exec_xread( EvKeyCtx &ctx ) noexcept
         return ERR_BAD_ARGS;
     }
   }
-  if ( ( ctx.flags & EKF_IS_SAVED_CONT ) != 0 ) {
+  if ( ( ctx.state & EKS_IS_SAVED_CONT ) != 0 ) {
     arglen = ctx.part->size;
     arg    = ctx.part->data( 0 );
   }
@@ -673,8 +673,8 @@ RedisExec::exec_xread( EvKeyCtx &ctx ) noexcept
     case KEY_NO_VALUE:  return ERR_BAD_TYPE;
     case KEY_NOT_FOUND:
       if ( blocking ) {
-        if ( ( ctx.flags & EKF_IS_SAVED_CONT ) == 0 ) {
-          ctx.flags |= EKF_IS_SAVED_CONT;
+        if ( ( ctx.state & EKS_IS_SAVED_CONT ) == 0 ) {
+          ctx.state |= EKS_IS_SAVED_CONT;
           this->save_data( ctx, "0", 1 );
         }
       }
@@ -693,7 +693,7 @@ RedisExec::exec_xread( EvKeyCtx &ctx ) noexcept
       if ( i == j ) {
         /* save the tail id if a wildcard($) is used */
         if ( blocking ) {
-          if ( ( ctx.flags & EKF_IS_SAVED_CONT ) == 0 ) {
+          if ( ( ctx.state & EKS_IS_SAVED_CONT ) == 0 ) {
             const char * id;
             size_t       idlen;
             /* various forms of the last element */
@@ -701,7 +701,7 @@ RedisExec::exec_xread( EvKeyCtx &ctx ) noexcept
                  ( arg[ 0 ] == '$' || arg[ 0 ] == '>' || arg[ 0 ] == '+' ) &&
                  stream.x->sindex_id_last( stream.x->stream, id, idlen,
                                            tmp ) == STRM_OK ) {
-              ctx.flags |= EKF_IS_SAVED_CONT;
+              ctx.state |= EKS_IS_SAVED_CONT;
               this->save_data( ctx, id, idlen );
             }
           }

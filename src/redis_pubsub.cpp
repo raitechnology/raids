@@ -758,7 +758,7 @@ RedisExec::save_blocked_cmd( int64_t timeout_val ) noexcept
       sz = kspc.make_listblkd_subj();
     else if ( this->catg == STREAM_CATG ) {
       sz = kspc.make_strmblkd_subj();
-      if ( ( this->keys[ i ]->flags & EKF_IS_SAVED_CONT ) != 0 &&
+      if ( ( this->keys[ i ]->state & EKS_IS_SAVED_CONT ) != 0 &&
            this->keys[ i ]->part != NULL )
         save_len = this->keys[ i ]->part->size;
       else
@@ -797,7 +797,7 @@ RedisExec::save_blocked_cmd( int64_t timeout_val ) noexcept
        * end of stream;  the saved continuation data caches this value
        * so that when xread resumes, it knows what data was added to
        * the stream */
-      if ( ( this->keys[ i ]->flags & EKF_IS_SAVED_CONT ) != 0 &&
+      if ( ( this->keys[ i ]->state & EKS_IS_SAVED_CONT ) != 0 &&
            this->keys[ i ]->part != NULL )
         save_len = this->keys[ i ]->part->size;
       else
@@ -874,7 +874,7 @@ RedisExec::drain_continuations( EvSocket *svc ) noexcept
                    k = cm->ptr[ i ].save_len;
             if ( k != 0 ) {
               this->save_data( *this->keys[ i ], &cm->ptr[ i ].value[ j ], k );
-              this->keys[ i ]->flags |= EKF_IS_SAVED_CONT;
+              this->keys[ i ]->state |= EKS_IS_SAVED_CONT;
             }
           }
           this->exec_run_to_completion();
