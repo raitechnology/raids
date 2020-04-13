@@ -109,7 +109,7 @@ RedisExec::exec_save( void ) noexcept
           this->kctx.get_stamps( key.hash1 /*exp*/, key.hash2 /*upd*/);
           if ( key.hash1 != 0 )
             key.hash1 /= 1000000; /* in millisecs */
-          if ( key.hash2 != 0 )
+          if ( key.hash2 >= cur_time )
             key.hash2 = ( cur_time - key.hash2 ) / 1000000000; /* in seconds */
           status = this->exec_dump( key );
         }
@@ -1021,12 +1021,13 @@ ExecRestore::set_value( uint8_t type,  uint16_t fl,  const void *value,
         this->status = ERR_KEY_EXISTS;
         return;
       }
-      this->exec.kctx.clear_stamps( true, false );
       ctx.kstatus = this->exec.kctx.resize( &data, len );
       if ( ctx.kstatus == KEY_OK ) {
         ::memcpy( data, value, len );
         ctx.flags |= EKF_KEYSPACE_EVENT | fl;
-        if ( this->ttl_ns + this->last_ns != 0 )
+        if ( this->ttl_ns == 0 )
+          this->exec.kctx.clear_stamps( true, false );
+        if ( ( this->ttl_ns | this->last_ns ) != 0 )
           this->exec.kctx.update_stamps( this->ttl_ns, this->last_ns );
         return;
       }
@@ -1109,6 +1110,7 @@ void
 ExecRestore::d_end_key( void ) noexcept
 {
   this->set_value();
+
   if ( this->dec.is_rdb_file ) {
     EvKeyCtx & ctx = *this->keyp;
     if ( ctx.is_new() ) {
@@ -1116,10 +1118,9 @@ ExecRestore::d_end_key( void ) noexcept
         this->exec.kctx.set_type( ctx.type );
       this->exec.kctx.set_val( 0 );
     }
-    if ( this->last_ns == 0 )
-      this->exec.kctx.update_stamps( 0, this->exec.kctx.ht.hdr.current_stamp );
     this->exec.kctx.release();
     this->reset_meta();
+    this->last_ns = this->ctime_ns;
     this->keyp = NULL;
   }
 }
@@ -1138,14 +1139,34 @@ ExecRestore::d_idle( uint64_t i ) noexcept {
   if ( this->keyp != NULL )
     this->keyp->state |= EKS_NO_UPDATE;
   this->last_ns = (uint64_t) i * (uint64_t) 1000000000;
+  if ( this->last_ns < this->ctime_ns )
+    this->last_ns = this->ctime_ns - this->last_ns;
 }
 void
 ExecRestore::d_freq( uint8_t f ) noexcept {
   this->freq = f;
 }
 void
-ExecRestore::d_aux( const RdbString &/*var*/,
-                    const RdbString &/*val*/ ) noexcept {}
+ExecRestore::d_aux( const RdbString &var,
+                    const RdbString &val ) noexcept
+{
+  if ( var.coding == RDB_STR_VAL && var.s_len == 5 &&
+       ::memcmp( var.s, "ctime", 5 ) == 0 ) {
+    int64_t ctime = 0;
+    if ( val.coding == RDB_INT_VAL )
+      ctime = val.ival;
+    else if ( val.coding == RDB_STR_VAL )
+      string_to_int( val.s, val.s_len, ctime );
+
+    if ( ctime != 0 ) {
+      uint64_t ns = (uint64_t) ctime * (uint64_t) 1000000000;
+      if ( this->last_ns == this->ctime_ns )
+        this->last_ns = ns;
+      this->ctime_ns = ns;
+    }
+  }
+}
+
 void
 ExecRestore::d_dbresize( uint64_t/*i*/,  uint64_t/*j*/) noexcept {}
 
@@ -1476,6 +1497,7 @@ RedisExec::exec_restore( EvKeyCtx &ctx ) noexcept
     return ERR_BAD_ARGS;
   else if ( ttl != 0 )
     rest.ttl_ns = (uint64_t) ttl * (uint64_t) 1000000;
+  rest.ctime_ns = this->kctx.ht.hdr.current_stamp;
 
   for ( size_t i = 4; i < this->argc; i++ ) {
     switch ( this->msg.match_arg( i, MARG( "replace" ),
@@ -1490,8 +1512,9 @@ RedisExec::exec_restore( EvKeyCtx &ctx ) noexcept
           return ERR_BAD_ARGS;
         if ( idletime != 0 ) {
           ctx.state |= EKS_NO_UPDATE;
-          rest.last_ns = this->kctx.ht.hdr.current_stamp -
-                         (uint64_t) idletime * (uint64_t) 1000000;
+          rest.last_ns = (uint64_t) idletime * (uint64_t) 1000000;
+          if ( rest.last_ns < rest.ctime_ns )
+            rest.last_ns = rest.ctime_ns - rest.last_ns;
         }
         break;
       case 4:
@@ -1553,6 +1576,8 @@ RedisExec::exec_load( void ) noexcept
 
     this->cmd_state |= CMD_STATE_LOAD;
     decode.data_out = &rest;
+    rest.ctime_ns = this->kctx.ht.hdr.current_stamp;
+    rest.last_ns  = rest.ctime_ns;
     for (;;) {
       RdbErrCode err = decode.decode_hdr( bptr ); /* find type, len and key */
       if ( err == RDB_OK )

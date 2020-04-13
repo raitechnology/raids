@@ -19,7 +19,8 @@ struct ExecRestore : public rdbparser::RdbOutput {
   size_t      msg_len;    /* size of the restore data */
   int64_t     freq;       /* restore lru freq arg */
   uint64_t    ttl_ns,     /* restore ttl arg */
-              last_ns;    /* the last updated time */
+              last_ns,    /* the last updated time */
+              ctime_ns;
   ExecStatus  status;     /* status to return to cmd execution */
   bool        is_geo,     /* when zset code, if zset or geo type */
               is_replace; /* if ok to overwrite */
@@ -42,8 +43,8 @@ struct ExecRestore : public rdbparser::RdbOutput {
   ExecRestore( rdbparser::RdbDecode &d,  RedisExec &e,  EvKeyCtx *c,
                size_t len )
     : rdbparser::RdbOutput( d ), exec( e ), keyp( c ), msg_len( len ),
-      freq( 0 ), ttl_ns( 0 ), last_ns( 0 ), status( EXEC_SEND_OK ),
-      is_geo( false ), is_replace( false ) {}
+      freq( 0 ), ttl_ns( 0 ), last_ns( 0 ), ctime_ns( 0 ),
+      status( EXEC_SEND_OK ), is_geo( false ), is_replace( false ) {}
 
   void reset_meta( void ) {
     this->freq    = 0;
