@@ -65,7 +65,7 @@ rai::ds::shmdp_atexit( void ) noexcept
     for (;;) {
       if ( qp->poll.quit >= 5 )
         break;
-      qp->poll.wait( qp->idle ? 100 : 0 );
+      qp->poll.wait( qp->idle == EvPoll::DISPATCH_IDLE ? 100 : 0 );
       qp->idle = qp->poll.dispatch();
     }
   }
@@ -353,11 +353,11 @@ select( int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds,
     }
   }
   qp->inprogress = true;
-  if ( qp->idle )
+  if ( qp->idle == EvPoll::DISPATCH_IDLE )
     qp->poll.wait( 0 );
   qp->idle = qp->poll.dispatch();
   qp->inprogress = false;
-  if ( ! qp->idle )
+  if ( qp->idle != EvPoll::DISPATCH_IDLE )
     return 0;
   return select_next( nfds, readfds, writefds, exceptfds, timeout );
 }
@@ -406,11 +406,11 @@ epoll_wait( int epfd, struct epoll_event *events,
     }
   }
   qp->inprogress = true;
-  if ( qp->idle )
+  if ( qp->idle == EvPoll::DISPATCH_IDLE )
     qp->poll.wait( 0 );
   qp->idle = qp->poll.dispatch();
   qp->inprogress = false;
-  if ( ! qp->idle )
+  if ( qp->idle != EvPoll::DISPATCH_IDLE )
     return 0;
   ds_epoll_wait_real++;
   return epoll_wait_next( epfd, events, maxevents, timeout );
@@ -647,10 +647,10 @@ QueuePoll::read( int fd, char *buf, size_t count ) noexcept
       break;
     mstatus = this->shm.exec->msg.unpack( &p->in_buf[ p->in_off ], buflen,
                                           this->shm.tmp );
-    if ( mstatus != REDIS_MSG_OK ) {
-      if ( mstatus != REDIS_MSG_PARTIAL ) {
+    if ( mstatus != DS_MSG_STATUS_OK ) {
+      if ( mstatus != DS_MSG_STATUS_PARTIAL ) {
         fprintf( stderr, "protocol error(%d/%s), ignoring %lu bytes\n",
-                 mstatus, redis_msg_status_string( mstatus ), buflen );
+                 mstatus, ds_msg_status_string( mstatus ), buflen );
         p->in_off = p->in_len;
         break;
       }

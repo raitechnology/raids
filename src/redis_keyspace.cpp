@@ -85,6 +85,8 @@ bool
 RedisKeyspace::fwd_bsubj( const char *blk ) noexcept
 {
   size_t subj_len = this->make_bsubj( blk );
+  uint32_t rcount;
+  bool b;
   if ( subj_len == 0 )
     return false;
 
@@ -92,13 +94,17 @@ RedisKeyspace::fwd_bsubj( const char *blk ) noexcept
                  this->exec.sub_id, kv_crc_c( this->subj, subj_len, 0 ),
                  NULL, 0, MD_STRING, ':' );
   /*printf( "%s <- %s\n", this->subj, this->evt );*/
-  return this->exec.sub_route.rte.forward_msg( pub, NULL, 0, NULL );
+  b = this->exec.sub_route.rte.forward_msg( pub, &rcount, 0, NULL );
+  this->exec.msg_route_cnt += rcount;
+  return b;
 }
 /* publish __keyevent@N__:event <- key */
 bool
 RedisKeyspace::fwd_keyevent( void ) noexcept
 {
   size_t subj_len = 20 + this->evtlen;
+  uint32_t rcount;
+  bool b;
   if ( ! this->alloc_subj( subj_len ) )
     return false;
   ::memcpy( this->subj, "__keyevent", 10 );
@@ -112,7 +118,9 @@ RedisKeyspace::fwd_keyevent( void ) noexcept
                  this->exec.sub_id, kv_crc_c( this->subj, subj_len, 0 ),
                  NULL, 0, MD_STRING, ';' );
   /*printf( "%s <- %s\n", this->subj, this->key );*/
-  return this->exec.sub_route.rte.forward_msg( pub, NULL, 0, NULL );
+  b = this->exec.sub_route.rte.forward_msg( pub, &rcount, 0, NULL );
+  this->exec.msg_route_cnt += rcount;
+  return b;
 }
 /* publish __monitor_@N__:peer_address <- [ msg, result, time ] */
 bool
@@ -140,6 +148,8 @@ RedisKeyspace::fwd_monitor( void ) noexcept
                        17 + 2;
   timeval tv;
   char  * msg = strm.alloc_temp( msg_sz );
+  uint32_t rcount;
+  bool b;
 
   if ( msg == NULL )
     return false;
@@ -186,7 +196,9 @@ RedisKeyspace::fwd_monitor( void ) noexcept
   EvPublish pub( this->subj, subj_len, NULL, 0, msg, msg_sz,
                  this->exec.sub_id, kv_crc_c( this->subj, subj_len, 0 ),
                  NULL, 0, MD_MESSAGE, '<' );
-  return this->exec.sub_route.rte.forward_msg( pub, NULL, 0, NULL );
+  b = this->exec.sub_route.rte.forward_msg( pub, &rcount, 0, NULL );
+  this->exec.msg_route_cnt += rcount;
+  return b;
 }
 /* given a command and keys, publish keyspace events */
 bool

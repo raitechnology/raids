@@ -9,8 +9,9 @@ namespace rai {
 namespace ds {
 
 struct EvHttpListen : public EvTcpListen {
+  uint64_t timer_id;
   EvListenOps ops;
-  EvHttpListen( EvPoll &p ) : EvTcpListen( p, this->ops ) {}
+  EvHttpListen( EvPoll &p ) noexcept;
   virtual bool accept( void ) noexcept;
   int listen( const char *ip,  int port ) {
     return this->EvTcpListen::listen( ip, port, "http_listen" );

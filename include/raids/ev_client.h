@@ -37,7 +37,13 @@ struct EvShm {
 
   EvShm() : map( 0 ), ctx_id( kv::MAX_CTX_ID ), dbx_id( kv::MAX_STAT_ID ) {}
   ~EvShm();
-  int open( const char *mn,  uint8_t db_num ) noexcept;
+  int open( const char *map_name      = KV_DEFAULT_SHM,
+            uint8_t db_num            = 0 ) noexcept;
+  int create( const char *map_name    = KV_DEFAULT_SHM,
+              uint8_t db_num          = 0,
+              uint64_t map_size       = (uint64_t) 2 * 1024 * 1024 * 1024,
+              double entry_ratio      = 0.25,
+              uint64_t max_value_size = 0 ) noexcept;
   void print( void ) noexcept;
   void close( void ) noexcept;
 };
@@ -56,14 +62,41 @@ struct EvShmClient : public EvShm, public EvClient, public StreamBuf,
   ~EvShmClient() noexcept;
 
   int init_exec( void ) noexcept;
-  /*virtual void send_msg( RedisMsg &msg );*/
   void process( void ) {}
   void read( void ) {}
   void write( void ) {}
   virtual void send_data( char *buf,  size_t size ) noexcept;
   bool on_msg( EvPublish &pub ) noexcept;
   bool hash_to_sub( uint32_t h,  char *key,  size_t &keylen ) noexcept;
-  void stream_to_msg( void ) noexcept;
+  void data_callback( void ) noexcept;
+  void process_shutdown( void ) noexcept;
+  void process_close( void ) {}
+  void release( void ) {
+    this->StreamBuf::reset();
+  }
+};
+
+struct EvShmApi : public EvShm, public StreamBuf, public EvSocket {
+  RedisExec * exec;
+  int         pfd[ 2 ];
+  EvSocketOps ops;
+  uint64_t    timer_id;
+
+  EvShmApi( EvPoll &p )
+    : EvSocket( p, EV_SHM_API, this->ops ), exec( 0 ), timer_id( 0 ) {
+    this->pfd[ 0 ] = this->pfd[ 1 ] = -1;
+  }
+  ~EvShmApi() noexcept;
+
+  int init_exec( void ) noexcept;
+  void exec_key_prefetch( EvKeyCtx & ) {}
+  int exec_key_continue( EvKeyCtx & ) { return 0; }
+  bool timer_expire( uint64_t, uint64_t );
+  void process( void ) noexcept;
+  void read( void ) {}
+  void write( void ) {}
+  bool on_msg( EvPublish &pub ) noexcept;
+  bool hash_to_sub( uint32_t h,  char *key,  size_t &keylen ) noexcept;
   void process_shutdown( void ) noexcept;
   void process_close( void ) {}
   void release( void ) {

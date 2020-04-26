@@ -440,41 +440,21 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <li><a href="#select">select | choose db</a></li>
 </ul>
 </li>
-<li><a href="#_geo">Geo</a>
+<li><a href="#_server">Server</a>
 <ul class="sectlevel2">
-<li><a href="#geoadd">geoadd | add a pos to key</a></li>
-<li><a href="#geohash">geohash | get hash of members</a></li>
-<li><a href="#geopos">geopos | get pos of members</a></li>
-<li><a href="#geodist">geodist | get member distance</a></li>
-<li><a href="#georadius">georadius | get members in radius</a></li>
-<li><a href="#georadiusbymember">georadiusbymember | get members</a></li>
-</ul>
-</li>
-<li><a href="#_hash">Hash</a>
-<ul class="sectlevel2">
-<li><a href="#happend">happend | append a value</a></li>
-<li><a href="#hdel">hdel | delete fields</a></li>
-<li><a href="#hexists">hexists | if field exists</a></li>
-<li><a href="#hget">hget | get a field value</a></li>
-<li><a href="#hgetall">hgetall | get all field values</a></li>
-<li><a href="#hincrby">hincrby | incr field</a></li>
-<li><a href="#hincrbyfloat">hincrbyfloat | incr field</a></li>
-<li><a href="#hkeys">hkeys | get all field keys</a></li>
-<li><a href="#hlen">hlen | get number of fields</a></li>
-<li><a href="#hmget">hmget | get multiple field vals</a></li>
-<li><a href="#hmset">hmset | set multiple field vals</a></li>
-<li><a href="#hset">hset | set a field value</a></li>
-<li><a href="#hsetnx">hsetnx | set if not present</a></li>
-<li><a href="#hstrlen">hstrlen | get strlen of field val</a></li>
-<li><a href="#hvals">hvals | get all values</a></li>
-<li><a href="#hscan">hscan | iterate fields</a></li>
-</ul>
-</li>
-<li><a href="#_hyperloglog">Hyperloglog</a>
-<ul class="sectlevel2">
-<li><a href="#pfadd">pfadd | add elems to hlog</a></li>
-<li><a href="#pfcount">pfcount | get hlog cardinality</a></li>
-<li><a href="#pfmerge">pfmerge | merge multiple hlogs</a></li>
+<li><a href="#client">client | query connected clients</a></li>
+<li><a href="#command">command | query command info</a></li>
+<li><a href="#config">config | query config</a></li>
+<li><a href="#dbsize">dbsize | get number of keys</a></li>
+<li><a href="#debug">debug | run debug</a></li>
+<li><a href="#flushall">flushall | remove keys</a></li>
+<li><a href="#flushdb">flushdb | remove keys from db</a></li>
+<li><a href="#info">info | query server stats</a></li>
+<li><a href="#monitor">monitor | monitor commands</a></li>
+<li><a href="#save">save | sync save</a></li>
+<li><a href="#load">load | sync load</a></li>
+<li><a href="#shutdown">shutdown | shutdown server</a></li>
+<li><a href="#time">time | get server time</a></li>
 </ul>
 </li>
 <li><a href="#_key">Key</a>
@@ -493,11 +473,40 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <li><a href="#randomkey">randomkey | get a random key</a></li>
 <li><a href="#rename">rename | rename key to new name</a></li>
 <li><a href="#renamenx">renamenx | rename key if not exist</a></li>
+<li><a href="#restore">restore | restore key from dump</a></li>
 <li><a href="#touch">touch | set last access time</a></li>
 <li><a href="#ttl">ttl | get ttl secs</a></li>
 <li><a href="#type">type | get type of key</a></li>
 <li><a href="#unlink">unlink | delete key</a></li>
 <li><a href="#scan">scan | scan matching keys</a></li>
+</ul>
+</li>
+<li><a href="#_string">String</a>
+<ul class="sectlevel2">
+<li><a href="#append">append | append to value</a></li>
+<li><a href="#bitcount">bitcount | count bits</a></li>
+<li><a href="#bitfield">bitfield | manipulate bits</a></li>
+<li><a href="#bitop">bitop | bitwise operator</a></li>
+<li><a href="#bitpos">bitpos | find a bit</a></li>
+<li><a href="#decr">decr | decr by one</a></li>
+<li><a href="#decrby">decrby | decr by integer</a></li>
+<li><a href="#get">get | get key value</a></li>
+<li><a href="#getbit">getbit | git bit at offset</a></li>
+<li><a href="#getrange">getrange | get range in string</a></li>
+<li><a href="#getset">getset | swap values</a></li>
+<li><a href="#incr">incr | incr by one</a></li>
+<li><a href="#incrby">incrby | incr by integer</a></li>
+<li><a href="#incrbyfloat">incrbyfloat | incr by decimal</a></li>
+<li><a href="#mget">mget | get multiple values</a></li>
+<li><a href="#mset">mset | set multiple values</a></li>
+<li><a href="#msetnx">msetnx | set if not exist</a></li>
+<li><a href="#psetex">psetex | set with expiration</a></li>
+<li><a href="#set">set | set value</a></li>
+<li><a href="#setbit">setbit | set bits</a></li>
+<li><a href="#setex">setex | set with expiration</a></li>
+<li><a href="#setnx">setnx | set if not exist</a></li>
+<li><a href="#setrange">setrange | set value range</a></li>
+<li><a href="#strlen">strlen | get strlen</a></li>
 </ul>
 </li>
 <li><a href="#_list">List</a>
@@ -521,29 +530,24 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <li><a href="#rpushx">rpushx | right push if exist</a></li>
 </ul>
 </li>
-<li><a href="#_pubsub">Pubsub</a>
+<li><a href="#_hash">Hash</a>
 <ul class="sectlevel2">
-<li><a href="#psubscribe">psubscribe | pattern subscribe</a></li>
-<li><a href="#pubsub">pubsub | query pubsub info</a></li>
-<li><a href="#publish">publish | publish msg to channel</a></li>
-<li><a href="#punsubscribe">punsubscribe | pattern unsubscribe</a></li>
-<li><a href="#subscribe">subscribe | subscribe channel</a></li>
-<li><a href="#unsubscribe">unsubscribe | unsubscribe channel</a></li>
-</ul>
-</li>
-<li><a href="#_server">Server</a>
-<ul class="sectlevel2">
-<li><a href="#client">client | query connected clients</a></li>
-<li><a href="#command">command | query command info</a></li>
-<li><a href="#config">config | query config</a></li>
-<li><a href="#dbsize">dbsize | get number of keys</a></li>
-<li><a href="#debug">debug | run debug</a></li>
-<li><a href="#flushall">flushall | remove keys</a></li>
-<li><a href="#flushdb">flushdb | remove keys from db</a></li>
-<li><a href="#info">info | query server stats</a></li>
-<li><a href="#monitor">monitor | monitor commands</a></li>
-<li><a href="#shutdown">shutdown | shutdown server</a></li>
-<li><a href="#time">time | get server time</a></li>
+<li><a href="#happend">happend | append a value</a></li>
+<li><a href="#hdel">hdel | delete fields</a></li>
+<li><a href="#hexists">hexists | if field exists</a></li>
+<li><a href="#hget">hget | get a field value</a></li>
+<li><a href="#hgetall">hgetall | get all field values</a></li>
+<li><a href="#hincrby">hincrby | incr field</a></li>
+<li><a href="#hincrbyfloat">hincrbyfloat | incr field</a></li>
+<li><a href="#hkeys">hkeys | get all field keys</a></li>
+<li><a href="#hlen">hlen | get number of fields</a></li>
+<li><a href="#hmget">hmget | get multiple field vals</a></li>
+<li><a href="#hmset">hmset | set multiple field vals</a></li>
+<li><a href="#hset">hset | set a field value</a></li>
+<li><a href="#hsetnx">hsetnx | set if not present</a></li>
+<li><a href="#hstrlen">hstrlen | get strlen of field val</a></li>
+<li><a href="#hvals">hvals | get all values</a></li>
+<li><a href="#hscan">hscan | iterate fields</a></li>
 </ul>
 </li>
 <li><a href="#_set">Set</a>
@@ -594,32 +598,31 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <li><a href="#bzpopmax">bzpopmax | block pop max score</a></li>
 </ul>
 </li>
-<li><a href="#_string">String</a>
+<li><a href="#_geo">Geo</a>
 <ul class="sectlevel2">
-<li><a href="#append">append | append to value</a></li>
-<li><a href="#bitcount">bitcount | count bits</a></li>
-<li><a href="#bitfield">bitfield | manipulate bits</a></li>
-<li><a href="#bitop">bitop | bitwise operator</a></li>
-<li><a href="#bitpos">bitpos | find a bit</a></li>
-<li><a href="#decr">decr | decr by one</a></li>
-<li><a href="#decrby">decrby | decr by integer</a></li>
-<li><a href="#get">get | get key value</a></li>
-<li><a href="#getbit">getbit | git bit at offset</a></li>
-<li><a href="#getrange">getrange | get range in string</a></li>
-<li><a href="#getset">getset | swap values</a></li>
-<li><a href="#incr">incr | incr by one</a></li>
-<li><a href="#incrby">incrby | incr by integer</a></li>
-<li><a href="#incrbyfloat">incrbyfloat | incr by decimal</a></li>
-<li><a href="#mget">mget | get multiple values</a></li>
-<li><a href="#mset">mset | set multiple values</a></li>
-<li><a href="#msetnx">msetnx | set if not exist</a></li>
-<li><a href="#psetex">psetex | set with expiration</a></li>
-<li><a href="#set">set | set value</a></li>
-<li><a href="#setbit">setbit | set bits</a></li>
-<li><a href="#setex">setex | set with expiration</a></li>
-<li><a href="#setnx">setnx | set if not exist</a></li>
-<li><a href="#setrange">setrange | set value range</a></li>
-<li><a href="#strlen">strlen | get strlen</a></li>
+<li><a href="#geoadd">geoadd | add a pos to key</a></li>
+<li><a href="#geohash">geohash | get hash of members</a></li>
+<li><a href="#geopos">geopos | get pos of members</a></li>
+<li><a href="#geodist">geodist | get member distance</a></li>
+<li><a href="#georadius">georadius | get members in radius</a></li>
+<li><a href="#georadiusbymember">georadiusbymember | get members</a></li>
+</ul>
+</li>
+<li><a href="#_hyperloglog">Hyperloglog</a>
+<ul class="sectlevel2">
+<li><a href="#pfadd">pfadd | add elems to hlog</a></li>
+<li><a href="#pfcount">pfcount | get hlog cardinality</a></li>
+<li><a href="#pfmerge">pfmerge | merge multiple hlogs</a></li>
+</ul>
+</li>
+<li><a href="#_pubsub">Pubsub</a>
+<ul class="sectlevel2">
+<li><a href="#psubscribe">psubscribe | pattern subscribe</a></li>
+<li><a href="#pubsub">pubsub | query pubsub info</a></li>
+<li><a href="#publish">publish | publish msg to channel</a></li>
+<li><a href="#punsubscribe">punsubscribe | pattern unsubscribe</a></li>
+<li><a href="#subscribe">subscribe | subscribe channel</a></li>
+<li><a href="#unsubscribe">unsubscribe | unsubscribe channel</a></li>
 </ul>
 </li>
 <li><a href="#_transaction">Transaction</a>
@@ -1067,7 +1070,7 @@ when it is present.</p>
 </div>
 </div>
 <div class="sect1">
-<h2 id="_geo">Geo</h2>
+<h2 id="_server">Server</h2>
 <div class="sectionbody">
 <table class="tableblock frame-all grid-all spread">
 <colgroup>
@@ -1090,922 +1093,550 @@ when it is present.</p>
 </thead>
 <tbody>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#geoadd">geoadd | add a pos to key</a></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">-5</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">write</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#geohash">geohash | get hash of members</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#client">client | query connected clients</a></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">-2</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">read</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">admin</p></td>
 </tr>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#geopos">geopos | get pos of members</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#command">command | query command info</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#config">config | query config</a></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">-2</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">read</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">admin</p></td>
 </tr>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#geodist">geodist | get member distance</a></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">-4</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#dbsize">dbsize | get number of keys</a></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">read</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"></td>
 </tr>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#georadius">georadius | get members in radius</a></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">-6</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">write movable</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#debug">debug | run debug</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">admin</p></td>
 </tr>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#georadiusbymember">georadiusbymember | get members</a></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">-5</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#flushall">flushall | remove keys</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">admin</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#flushdb">flushdb | remove keys from db</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">admin</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#info">info | query server stats</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#monitor">monitor | monitor commands</a></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">admin</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#save">save | sync save</a></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">admin</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#load">load | sync load</a></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">write movable</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">admin</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#shutdown">shutdown | shutdown server</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">admin</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#time">time | get server time</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"></td>
 </tr>
 </tbody>
 </table>
 <div class="sect2">
-<h3 id="geoadd">geoadd | add a pos to key</h3>
+<h3 id="client">client | query connected clients</h3>
 <div class="listingblock">
 <div class="title">Usage</div>
 <div class="content">
-<pre>geoadd key long lat mem [long lat mem ...]</pre>
-</div>
-</div>
-<div class="paragraph">
-<div class="title">Description</div>
-<p>Add longitude, latitude to key as member by converting the position to
-a <strong>Uber H3</strong> hash and adding it to the set.  The members are ordered by
-hash because hashes closest to eachother are also closest by spatual
-distance.</p>
-</div>
-<div class="paragraph">
-<div class="title">Return</div>
-<p>An integer is returned indicating how many members were added which
-did not already exist.</p>
-</div>
-</div>
-<div class="sect2">
-<h3 id="geohash">geohash | get hash of members</h3>
-<div class="listingblock">
-<div class="title">Usage</div>
-<div class="content">
-<pre>geohash key mem [mem ...]</pre>
-</div>
-</div>
-<div class="paragraph">
-<div class="title">Description</div>
-<p>Get geo hash string by finding the members and converting the <strong>Uber
-H3</strong> hash to an encoded hash string as described in on the geohash wiki
-page: <a href="https://en.wikipedia.org/wiki/Geohash" class="bare">https://en.wikipedia.org/wiki/Geohash</a></p>
-</div>
-<div class="paragraph">
-<div class="title">Return</div>
-<p>An array of geohash strings, which may be <strong>nil</strong> if member is not
-found.</p>
-</div>
-</div>
-<div class="sect2">
-<h3 id="geopos">geopos | get pos of members</h3>
-<div class="listingblock">
-<div class="title">Usage</div>
-<div class="content">
-<pre>geopos key [mem ...]</pre>
-</div>
-</div>
-<div class="paragraph">
-<div class="title">Description</div>
-<p>Get geo positions of members as longitude, latitude pairs.</p>
-</div>
-<div class="paragraph">
-<div class="title">Return</div>
-<p>An array of positions or <strong>null</strong> if member is not found.</p>
-</div>
-</div>
-<div class="sect2">
-<h3 id="geodist">geodist | get member distance</h3>
-<div class="listingblock">
-<div class="title">Usage</div>
-<div class="content">
-<pre>geodist key mem1 mem2 [unit]</pre>
-</div>
-</div>
-<div class="paragraph">
-<div class="title">Description</div>
-<p>Compute the distance in units between members.  Default unit is
-meters, but km, feet, miles are accepted.</p>
-</div>
-<div class="paragraph">
-<div class="title">Return</div>
-<p>A decimal string representing the distance or <strong>nil</strong> when member is not
-found.</p>
-</div>
-</div>
-<div class="sect2">
-<h3 id="georadius">georadius | get members in radius</h3>
-<div class="listingblock">
-<div class="title">Usage</div>
-<div class="content">
-<pre>georadius key long lat rad m | k | ft | mi [withcoord] [withdist]
- [withhash] [count n] [asc | desc] [storedist key]</pre>
-</div>
-</div>
-<div class="paragraph">
-<div class="title">Description</div>
-<p>Get all members within a radius of position.  This iterates through
-the set using the hash of longitude latitude as the starting point.
-When the endpoints are found, the members are returned or stored.
-When storedist is used, then the distance and members are stored in a
-sorted set.</p>
-</div>
-<div class="paragraph">
-<div class="title">Return</div>
-<p>An array of members with optional distance, hash, and/or coordinates.
-The hash is an integer used by the <strong>Uber H3</strong> library.</p>
-</div>
-</div>
-<div class="sect2">
-<h3 id="georadiusbymember">georadiusbymember | get members</h3>
-<div class="listingblock">
-<div class="title">Usage</div>
-<div class="content">
-<pre>georadiusbymember key member rad m | k | ft | mi [withcoord]
- [withdist] [withhash] [count n] [asc | desc] [storedist key]</pre>
-</div>
-</div>
-<div class="paragraph">
-<div class="title">Description</div>
-<p>Similar to georadius, get all members within a radius of an existing
-member.  This iterates through the set using the named member as the
-starting point.  When the endpoints are found, the members are
-returned or stored.  When storedist is used, then the distance and
-members are stored in a sorted set.</p>
-</div>
-<div class="paragraph">
-<div class="title">Return</div>
-<p>An array of members with optional distance, hash, and/or coordinates.
-The hash is an integer used by the <strong>Uber H3</strong> library.</p>
-</div>
-</div>
-</div>
-</div>
-<div class="sect1">
-<h2 id="_hash">Hash</h2>
-<div class="sectionbody">
-<table class="tableblock frame-all grid-all spread">
-<colgroup>
-<col style="width: 37.5%;">
-<col style="width: 12.5%;">
-<col style="width: 12.5%;">
-<col style="width: 12.5%;">
-<col style="width: 12.5%;">
-<col style="width: 12.5%;">
-</colgroup>
-<thead>
-<tr>
-<th class="tableblock halign-left valign-top">command</th>
-<th class="tableblock halign-left valign-top">arity</th>
-<th class="tableblock halign-left valign-top">first key</th>
-<th class="tableblock halign-left valign-top">last key</th>
-<th class="tableblock halign-left valign-top">step</th>
-<th class="tableblock halign-left valign-top">flags</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#happend">happend | append a value</a></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">-4</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">write</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#hdel">hdel | delete fields</a></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">-3</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">write</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#hexists">hexists | if field exists</a></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">3</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">read</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#hget">hget | get a field value</a></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">3</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">read</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#hgetall">hgetall | get all field values</a></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">2</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">read</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#hincrby">hincrby | incr field</a></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">4</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">write</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#hincrbyfloat">hincrbyfloat | incr field</a></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">4</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">write</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#hkeys">hkeys | get all field keys</a></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">2</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">read</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#hlen">hlen | get number of fields</a></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">2</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">read</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#hmget">hmget | get multiple field vals</a></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">-3</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">read</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#hmset">hmset | set multiple field vals</a></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">-4</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">write</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#hset">hset | set a field value</a></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">-4</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">write</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#hsetnx">hsetnx | set if not present</a></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">4</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">write</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#hstrlen">hstrlen | get strlen of field val</a></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">3</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">read</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#hvals">hvals | get all values</a></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">2</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">read</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#hscan">hscan | iterate fields</a></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">-3</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">read</p></td>
-</tr>
-</tbody>
-</table>
-<div class="sect2">
-<h3 id="happend">happend | append a value</h3>
-<div class="listingblock">
-<div class="title">Usage</div>
-<div class="content">
-<pre>happend key field val [val ...]</pre>
+<pre>client [setname name | getname | id | kill match | list match |
+        reply state]</pre>
 </div>
 </div>
 <div class="listingblock">
 <div class="title">Example</div>
 <div class="content">
-<pre>&gt; happend h f v
+<pre>&gt; client setname AAA
+'OK'</pre>
+</div>
+</div>
+<div class="paragraph">
+<div class="title">Description</div>
+<p>Set the current connection name.</p>
+</div>
+<div class="listingblock">
+<div class="title">Example</div>
+<div class="content">
+<pre>&gt; client getname
+"AAA"</pre>
+</div>
+</div>
+<div class="paragraph">
+<div class="title">Description</div>
+<p>Get the current connection name.</p>
+</div>
+<div class="listingblock">
+<div class="title">Example</div>
+<div class="content">
+<pre>&gt; client id
+12</pre>
+</div>
+</div>
+<div class="paragraph">
+<div class="title">Description</div>
+<p>Get the current connection id.</p>
+</div>
+<div class="listingblock">
+<div class="title">Example</div>
+<div class="content">
+<pre>&gt; client list type tcp
+id=12 addr=[::1]:58806 fd=14 name=AAA kind=redis age=150 idle=0 rbuf=0
+  rsz=16384 imsg=7 br=257 wbuf=0 wsz=5120 omsg=6 bs=1082 flags=N db=0
+  sub=0 psub=0 multi=-1 cmd=client
+id=13 addr=[::1]:58808 fd=15 name= kind=redis age=74 idle=74 rbuf=0
+  rsz=16384 imsg=0 br=0 wbuf=0 wsz=5120 omsg=0 bs=0 flags=N db=0
+  sub=0 psub=0 multi=-1 cmd=none</pre>
+</div>
+</div>
+<div class="paragraph">
+<div class="title">Description</div>
+<p>List the clients.  The filters that match the clients which are listed
+are:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>type [ tcp | udp | unix | listen | redis | pubsub | normal | http |
+nats | capr | rv ]&#8201;&#8212;&#8201;filter by connection class.</p>
+</li>
+<li>
+<p>id N&#8201;&#8212;&#8201;filter by id number</p>
+</li>
+<li>
+<p>addr IP&#8201;&#8212;&#8201;filter by IP address</p>
+</li>
+<li>
+<p>skipme&#8201;&#8212;&#8201;skip the current connection</p>
+</li>
+</ul>
+</div>
+<div class="listingblock">
+<div class="title">Example</div>
+<div class="content">
+<pre>&gt; client kill id 13
 1
-&gt; happend h f w
-0
-&gt; hgetall h
-["f","vw"]</pre>
-</div>
-</div>
-<div class="paragraph">
-<div class="title">Description</div>
-<p>Append a string to a field value.</p>
-</div>
-<div class="paragraph">
-<div class="title">Return</div>
-<p>An integer 1 or 0 indicating whether the field was created.</p>
-</div>
-</div>
-<div class="sect2">
-<h3 id="hdel">hdel | delete fields</h3>
-<div class="listingblock">
-<div class="title">Usage</div>
-<div class="content">
-<pre>hdel key field [field ...]</pre>
-</div>
-</div>
-<div class="listingblock">
-<div class="title">Example</div>
-<div class="content">
-<pre>&gt; hmset h f 1 g 2
-'OK'
-&gt; hdel h f g
-2</pre>
-</div>
-</div>
-<div class="paragraph">
-<div class="title">Description</div>
-<p>Remove one or more fields from a hash set.</p>
-</div>
-<div class="paragraph">
-<div class="title">Return</div>
-<p>An integer indicating how many fields were removed.</p>
-</div>
-</div>
-<div class="sect2">
-<h3 id="hexists">hexists | if field exists</h3>
-<div class="listingblock">
-<div class="title">Usage</div>
-<div class="content">
-<pre>hexists key field</pre>
-</div>
-</div>
-<div class="listingblock">
-<div class="title">Example</div>
-<div class="content">
-<pre>&gt; hmset h f 1 g 2
-'OK'
-&gt; hexists h f
-1
-&gt; hexists h h
+&gt; client kill type redis skipme
 0</pre>
 </div>
 </div>
 <div class="paragraph">
 <div class="title">Description</div>
-<p>Test whether field exists in hash.</p>
-</div>
-<div class="paragraph">
-<div class="title">Return</div>
-<p>An integer <strong>1</strong> indicating the field exists or <strong>0</strong> when it doesn&#8217;t.</p>
-</div>
-</div>
-<div class="sect2">
-<h3 id="hget">hget | get a field value</h3>
-<div class="listingblock">
-<div class="title">Usage</div>
-<div class="content">
-<pre>hget key field</pre>
-</div>
+<p>Kill clients.  The filters that match the clients which are listed the
+same as the filters that list.</p>
 </div>
 <div class="listingblock">
 <div class="title">Example</div>
 <div class="content">
-<pre>&gt; hmset h f 1 g 2
+<pre>&gt; client reply skip
+&gt; ping
+&gt; ping
+'PONG'
+&gt; client reply off
+&gt; ping
+&gt; client reply on
 'OK'
-&gt; hget h f
-"1"
-&gt; hget h h
-nil</pre>
+&gt; ping
+'PONG'</pre>
 </div>
 </div>
 <div class="paragraph">
 <div class="title">Description</div>
-<p>Get the value associated with field.</p>
-</div>
-<div class="paragraph">
-<div class="title">Return</div>
-<p>A string value or <strong>nil</strong> when the field does not exist.</p>
+<p>Alter the reply behavior of the connection.  If skipped or off, output
+will be muted.</p>
 </div>
 </div>
 <div class="sect2">
-<h3 id="hgetall">hgetall | get all field values</h3>
+<h3 id="command">command | query command info</h3>
 <div class="listingblock">
 <div class="title">Usage</div>
 <div class="content">
-<pre>hgetall key</pre>
+<pre>command [count | getkeys &lt;cmd-full&gt; | info [cmd] | help]</pre>
 </div>
 </div>
 <div class="listingblock">
 <div class="title">Example</div>
 <div class="content">
-<pre>&gt; hmset h f 1 g 2
+<pre>&gt; command info get
+[["get",2,['readonly','fast'],1,1,1]]
+&gt; command count
+193
+&gt; command help get
+['GET','key ; Get value']</pre>
+</div>
+</div>
+<div class="paragraph">
+<div class="title">Description</div>
+<p>Get command details and help.</p>
+</div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p>Array of strings, command info.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="config">config | query config</h3>
+<div class="listingblock">
+<div class="title">Usage</div>
+<div class="content">
+<pre>config [get &lt;param&gt; | rewrite | set &lt;param&gt; &lt;value&gt; | resetstat]</pre>
+</div>
+</div>
+<div class="paragraph">
+<div class="title">Description</div>
+<p>Get, set config parameters.  There is no configuration, so these
+are not functional except get, which returns sane values.</p>
+</div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p>Array of config key values.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="dbsize">dbsize | get number of keys</h3>
+<div class="listingblock">
+<div class="title">Usage</div>
+<div class="content">
+<pre>dbsize</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="title">Example</div>
+<div class="content">
+<pre>&gt; dbsize
+299999</pre>
+</div>
+</div>
+<div class="paragraph">
+<div class="title">Description</div>
+<p>Get number of keys in db.</p>
+</div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p>An integer number of keys.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="debug">debug | run debug</h3>
+<div class="listingblock">
+<div class="title">Usage</div>
+<div class="content">
+<pre>debug [object key | htstats]</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="title">Example</div>
+<div class="content">
+<pre>&gt; set hello world
 'OK'
-&gt; hgetall h
-["f","1","g","2"]</pre>
+&gt; debug object hello
+key:         "hello"
+hash:        2aa73a1eeb0b2d45:fd102121185ce157
+pos:         [732172]+0.0
+update_time: -4s
+flags:       string-Upd-Ival-Key-Stmp
+db:          0
+val:         0
+seqno:       3
+size:        5</pre>
 </div>
 </div>
 <div class="paragraph">
 <div class="title">Description</div>
-<p>Get all of the fields and values associated with the hash stored at
-key.</p>
+<p>Get debug info about key.</p>
+</div>
+<div class="listingblock">
+<div class="title">Example</div>
+<div class="content">
+<pre>&gt; debug htstats
+db_num:  0
+
+-= totals =-
+read:    8896064
+write:   2045184
+spins:   0
+chains:  0
+add:     303
+drop:    2
+expire:  0
+htevict: 0
+afail:   0
+hit:     511040
+miss:    0
+cuckacq: 0
+cuckfet: 0
+cuckmov: 0
+cuckret: 0
+cuckmax: 0
+
+-= self =-
+read:    8896064
+write:   2045184
+spins:   0
+chains:  0
+add:     303
+drop:    2
+expire:  0
+htevict: 0
+afail:   0
+hit:     511040
+miss:    0
+cuckacq: 0
+cuckfet: 0
+cuckmov: 0
+cuckret: 0
+cuckmax: 0</pre>
+</div>
+</div>
+<div class="paragraph">
+<div class="title">Description</div>
+<p>Get information about the hash table counters.</p>
 </div>
 <div class="paragraph">
 <div class="title">Return</div>
-<p>An array of field value pairs.  An empty array when key doesn&#8217;t exist.</p>
+<p>A string description of debug info or bad command error.</p>
 </div>
 </div>
 <div class="sect2">
-<h3 id="hincrby">hincrby | incr field</h3>
+<h3 id="flushall">flushall | remove keys</h3>
 <div class="listingblock">
 <div class="title">Usage</div>
 <div class="content">
-<pre>hincrby key field int</pre>
+<pre>flushall [async]</pre>
+</div>
+</div>
+<div class="paragraph">
+<div class="title">Description</div>
+<p>Remove keys from all dbs.</p>
+</div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p><strong>OK</strong> if successful, error otherwise.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="flushdb">flushdb | remove keys from db</h3>
+<div class="listingblock">
+<div class="title">Usage</div>
+<div class="content">
+<pre>flushdb [async]</pre>
+</div>
+</div>
+<div class="paragraph">
+<div class="title">Description</div>
+<p>Remove keys from selected db</p>
+</div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p><strong>OK</strong> if successful, error otherwise.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="info">info | query server stats</h3>
+<div class="listingblock">
+<div class="title">Usage</div>
+<div class="content">
+<pre>info [server | clients | memory | persistence | stats |
+      replication | cpu | commandstats | cluster | keyspace]</pre>
 </div>
 </div>
 <div class="listingblock">
 <div class="title">Example</div>
 <div class="content">
-<pre>&gt; hmset h f 1 g 2
-'OK'
-&gt; hincrby h f 10
-11</pre>
+<pre>&gt; info server
+raids_version:        1.0.0-11
+raids_git:            fee49cdd
+gcc_version:          9.1.1
+process_id:           32167
+&gt; info clients
+redis_clients:        1
+pubsub_clients:       0
+&gt; info memory
+vm_peak:              8204MB
+vm_size:              8204MB
+&gt; info stats
+ht_operations:        505M
+ht_chains:            1.0
+ht_read:              505M
+ht_write:             287
+&gt; info cpu
+used_cpu_sys:         0.069951
+used_cpu_user:        1.445196
+used_cpu_total:       1.515147</pre>
 </div>
 </div>
 <div class="paragraph">
 <div class="title">Description</div>
-<p>Add an integer value to field.</p>
+<p>Get version info and counters.</p>
 </div>
 <div class="paragraph">
 <div class="title">Return</div>
-<p>The integer value after incrementing the integer or an error if the
-value stored in field is not an integer.</p>
+<p>A text string with newlines that has the requested info.</p>
 </div>
 </div>
 <div class="sect2">
-<h3 id="hincrbyfloat">hincrbyfloat | incr field</h3>
+<h3 id="monitor">monitor | monitor commands</h3>
 <div class="listingblock">
 <div class="title">Usage</div>
 <div class="content">
-<pre>hincrbyfloat key field num</pre>
+<pre>monitor</pre>
 </div>
 </div>
 <div class="listingblock">
 <div class="title">Example</div>
 <div class="content">
-<pre>&gt; hmset h f 1 g 2
-'OK'
-&gt; hincrbyfloat h f 123456.66
-"123457.66"</pre>
+<pre>&gt; monitor
+["pmessage","__monitor_@*","__monitor_@0__:127.0.0.1:60646",
+[["get","k"],"value","1580125101.975300"]]</pre>
 </div>
 </div>
 <div class="paragraph">
 <div class="title">Description</div>
-<p>Add a numeric value to field.  This uses 128 bit decimal arithmetic
-which has a 34 digit range and an exponent from -6143 to +6144.
-<a href="https://en.wikipedia.org/wiki/Decimal128_floating-point_format" class="bare">https://en.wikipedia.org/wiki/Decimal128_floating-point_format</a></p>
+<p>Monitor commands executed by server from all clients.  This is an
+alias for <code>psubscribe _monitor_@*</code>.  Running once enables, running
+twice disables the monitor.  In order to monitor just one client, or
+just one ip address, use a pattern that includes the address:
+<code>psubscribe _monitor_@0__:127.0.0.1*</code></p>
 </div>
 <div class="paragraph">
 <div class="title">Return</div>
-<p>A string numeric value after incrementing the number or an error if
-the value stored in field is not a number.</p>
+<p>An array which indicates the db number and client connected address
+(<code>"__monitor_@0__:127.0.0.1:60646"</code>), the command executed
+(<code>["get","k"]</code>), and the result of executing the command (<code>"value"</code>).</p>
 </div>
 </div>
 <div class="sect2">
-<h3 id="hkeys">hkeys | get all field keys</h3>
+<h3 id="save">save | sync save</h3>
 <div class="listingblock">
 <div class="title">Usage</div>
 <div class="content">
-<pre>hkeys key</pre>
+<pre>save</pre>
+</div>
+</div>
+<div class="paragraph">
+<div class="title">Description</div>
+<p>Synchronously save to rdb format file.</p>
+</div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p><strong>OK</strong> or error if save fails.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="load">load | sync load</h3>
+<div class="listingblock">
+<div class="title">Usage</div>
+<div class="content">
+<pre>load</pre>
+</div>
+</div>
+<div class="paragraph">
+<div class="title">Description</div>
+<p>Synchronously load from rdb format file.</p>
+</div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p><strong>OK</strong> or error if load fails.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="shutdown">shutdown | shutdown server</h3>
+<div class="listingblock">
+<div class="title">Usage</div>
+<div class="content">
+<pre>shutdown</pre>
+</div>
+</div>
+<div class="paragraph">
+<div class="title">Description</div>
+<p>Shutdown server.  This will cause the connected instance to quit.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="time">time | get server time</h3>
+<div class="listingblock">
+<div class="title">Usage</div>
+<div class="content">
+<pre>time</pre>
 </div>
 </div>
 <div class="listingblock">
 <div class="title">Example</div>
 <div class="content">
-<pre>&gt; hmset h f 1 g 2
-'OK'
-&gt; hkeys h
-["f","g"]</pre>
+<pre>&gt; time
+["1580125969","562228"]</pre>
 </div>
 </div>
 <div class="paragraph">
 <div class="title">Description</div>
-<p>Get all field keys in the hash.</p>
+<p>Get server time.</p>
 </div>
 <div class="paragraph">
 <div class="title">Return</div>
-<p>An array of field names.</p>
-</div>
-</div>
-<div class="sect2">
-<h3 id="hlen">hlen | get number of fields</h3>
-<div class="listingblock">
-<div class="title">Usage</div>
-<div class="content">
-<pre>hlen key</pre>
-</div>
-</div>
-<div class="listingblock">
-<div class="title">Example</div>
-<div class="content">
-<pre>&gt; hmset h f 1 g 2
-'OK'
-&gt; hlen h
-2</pre>
-</div>
-</div>
-<div class="paragraph">
-<div class="title">Description</div>
-<p>Get the number field value pairs in the hash.</p>
-</div>
-<div class="paragraph">
-<div class="title">Return</div>
-<p>An integer count of the number of fields.</p>
-</div>
-</div>
-<div class="sect2">
-<h3 id="hmget">hmget | get multiple field vals</h3>
-<div class="listingblock">
-<div class="title">Usage</div>
-<div class="content">
-<pre>hmget key field [field ...]</pre>
-</div>
-</div>
-<div class="listingblock">
-<div class="title">Example</div>
-<div class="content">
-<pre>&gt; hmset h f 1 g 2
-'OK'
-&gt; hmget h f g h
-["1","2",nil]</pre>
-</div>
-</div>
-<div class="paragraph">
-<div class="title">Description</div>
-<p>Get multiple values from a hash.  If a field doesn&#8217;t exist, a <strong>nil</strong> is
-returned.</p>
-</div>
-<div class="paragraph">
-<div class="title">Return</div>
-<p>An array of values or <strong>nil</strong>.</p>
-</div>
-</div>
-<div class="sect2">
-<h3 id="hmset">hmset | set multiple field vals</h3>
-<div class="listingblock">
-<div class="title">Usage</div>
-<div class="content">
-<pre>hmset key field value [field value ...]</pre>
-</div>
-</div>
-<div class="listingblock">
-<div class="title">Example</div>
-<div class="content">
-<pre>&gt; hmset h f 1 g 2
-'OK'
-&gt; hmset h g 3 tree 50
-'OK'
-&gt; hgetall h
-["f","1","g","3","tree","50"]</pre>
-</div>
-</div>
-<div class="paragraph">
-<div class="title">Description</div>
-<p>Set multiple field value pairs in the hash.</p>
-</div>
-<div class="paragraph">
-<div class="title">Return</div>
-<p><strong>OK</strong>.</p>
-</div>
-</div>
-<div class="sect2">
-<h3 id="hset">hset | set a field value</h3>
-<div class="listingblock">
-<div class="title">Usage</div>
-<div class="content">
-<pre>hset key value [field value ...]</pre>
-</div>
-</div>
-<div class="listingblock">
-<div class="title">Example</div>
-<div class="content">
-<pre>&gt; hset h f 1 g 2
-2
-&gt; hset h g 3 tree 50
-1
-&gt; hgetall h
-["f","1","g","3","tree","50"]</pre>
-</div>
-</div>
-<div class="paragraph">
-<div class="title">Description</div>
-<p>Set multiple field value pairs in the hash.  Preexisting fields will
-be overwritten, and new fields will be added to the hash.</p>
-</div>
-<div class="paragraph">
-<div class="title">Return</div>
-<p>An integer indicating number of fields created.</p>
-</div>
-</div>
-<div class="sect2">
-<h3 id="hsetnx">hsetnx | set if not present</h3>
-<div class="listingblock">
-<div class="title">Usage</div>
-<div class="content">
-<pre>hsetnx key field value</pre>
-</div>
-</div>
-<div class="listingblock">
-<div class="title">Example</div>
-<div class="content">
-<pre>&gt; hmset h f 1 g 2
-'OK'
-&gt; hsetnx h tree 50
-1
-&gt; hsetnx h g 3
-0
-&gt; hgetall h
-["f","1","g","2","tree","50"]</pre>
-</div>
-</div>
-<div class="paragraph">
-<div class="title">Description</div>
-<p>Set a field in a hash only when it does not exist.</p>
-</div>
-<div class="paragraph">
-<div class="title">Return</div>
-<p>An integer <strong>1</strong> or <strong>0</strong> indicating success.</p>
-</div>
-</div>
-<div class="sect2">
-<h3 id="hstrlen">hstrlen | get strlen of field val</h3>
-<div class="listingblock">
-<div class="title">Usage</div>
-<div class="content">
-<pre>hstrlen key field</pre>
-</div>
-</div>
-<div class="listingblock">
-<div class="title">Example</div>
-<div class="content">
-<pre>&gt; hsetnx h tree 50
-1
-&gt; hstrlen h tree
-2</pre>
-</div>
-</div>
-<div class="paragraph">
-<div class="title">Description</div>
-<p>Get the string length of value stored with field, <strong>0</strong> if field does
-not exist.</p>
-</div>
-<div class="paragraph">
-<div class="title">Return</div>
-<p>An integer string length, which is the count of the 8 bit characters
-in the value.</p>
-</div>
-</div>
-<div class="sect2">
-<h3 id="hvals">hvals | get all values</h3>
-<div class="listingblock">
-<div class="title">Usage</div>
-<div class="content">
-<pre>hvals key</pre>
-</div>
-</div>
-<div class="listingblock">
-<div class="title">Example</div>
-<div class="content">
-<pre>&gt; hmset h f 1 g 2
-'OK'
-&gt; hvals h
-["f","1","g","2"]</pre>
-</div>
-</div>
-<div class="paragraph">
-<div class="title">Description</div>
-<p>Get all of the values stored in the hash.</p>
-</div>
-<div class="paragraph">
-<div class="title">Return</div>
-<p>An array of all the values or <strong>nil</strong> when hash does not exist.</p>
-</div>
-</div>
-<div class="sect2">
-<h3 id="hscan">hscan | iterate fields</h3>
-<div class="listingblock">
-<div class="title">Usage</div>
-<div class="content">
-<pre>hscan key cursor [match pattern] [count int]</pre>
-</div>
-</div>
-<div class="listingblock">
-<div class="title">Example</div>
-<div class="content">
-<pre>&gt; hset h abc 1 abb 2 abd 3 xyz 4 zzz 5
-5
-&gt; hscan h 0 match a* count 1
-["2",["abc","1"]]
-&gt; hscan h 2 match a* count 1
-["3",["abb","2"]]
-&gt; hscan h 3 match a* count 1
-["4",["abd","3"]]
-&gt; hscan h 4 match a* count 1
-["0",[]]
-&gt; hscan h 0
-["0",["abc","1","abb","2","abd","3","xyz","4","zzz","5"]]
-&gt; hscan h 5 match a* count 1
-["0",[]]</pre>
-</div>
-</div>
-<div class="paragraph">
-<div class="title">Description</div>
-<p>Get the fields and values which match a pattern.  The cursor is the
-offset into the scan where the results will start.  If the cursor is
-equal to 3, then the match will start at the 3rd field in the hash.</p>
-</div>
-<div class="paragraph">
-<div class="title">Return</div>
-<p>An array within an array.  The outer array is the cursor counter, the
-inner array is the fields and values.</p>
-</div>
-</div>
-</div>
-</div>
-<div class="sect1">
-<h2 id="_hyperloglog">Hyperloglog</h2>
-<div class="sectionbody">
-<table class="tableblock frame-all grid-all spread">
-<colgroup>
-<col style="width: 37.5%;">
-<col style="width: 12.5%;">
-<col style="width: 12.5%;">
-<col style="width: 12.5%;">
-<col style="width: 12.5%;">
-<col style="width: 12.5%;">
-</colgroup>
-<thead>
-<tr>
-<th class="tableblock halign-left valign-top">command</th>
-<th class="tableblock halign-left valign-top">arity</th>
-<th class="tableblock halign-left valign-top">first key</th>
-<th class="tableblock halign-left valign-top">last key</th>
-<th class="tableblock halign-left valign-top">step</th>
-<th class="tableblock halign-left valign-top">flags</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#pfadd">pfadd | add elems to hlog</a></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">-2</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">write</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#pfcount">pfcount | get hlog cardinality</a></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">-2</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">-1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">read</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#pfmerge">pfmerge | merge multiple hlogs</a></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">-2</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">-1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">write</p></td>
-</tr>
-</tbody>
-</table>
-<div class="sect2">
-<h3 id="pfadd">pfadd | add elems to hlog</h3>
-<div class="listingblock">
-<div class="title">Usage</div>
-<div class="content">
-<pre>pfadd key elem [elem ...]</pre>
-</div>
-</div>
-<div class="listingblock">
-<div class="title">Example</div>
-<div class="content">
-<pre>&gt; pfadd hl 1 2 3 4 5 6
-1</pre>
-</div>
-</div>
-<div class="paragraph">
-<div class="title">Description</div>
-<p>Add elems to hyperloglog table.</p>
-</div>
-<div class="paragraph">
-<div class="title">Return</div>
-<p>The integer <strong>1</strong> is returned when new elements are added, <strong>0</strong> is
-returned when all elements are collisions or duplicates.</p>
-</div>
-</div>
-<div class="sect2">
-<h3 id="pfcount">pfcount | get hlog cardinality</h3>
-<div class="listingblock">
-<div class="title">Usage</div>
-<div class="content">
-<pre>pfcount key [key ...]</pre>
-</div>
-</div>
-<div class="listingblock">
-<div class="title">Example</div>
-<div class="content">
-<pre>&gt; pfadd hl 1 2 3 4 5 6
-1
-&gt; pfcount hl
-6</pre>
-</div>
-</div>
-<div class="paragraph">
-<div class="title">Description</div>
-<p>Get approximate cardinality of hyperloglog table.</p>
-</div>
-<div class="paragraph">
-<div class="title">Return</div>
-<p>An integer count of the cardinality estimate.</p>
-</div>
-</div>
-<div class="sect2">
-<h3 id="pfmerge">pfmerge | merge multiple hlogs</h3>
-<div class="listingblock">
-<div class="title">Usage</div>
-<div class="content">
-<pre>pfmerge dkey skey [skey ...]</pre>
-</div>
-</div>
-<div class="listingblock">
-<div class="title">Example</div>
-<div class="content">
-<pre>&gt; pfadd hl 1 2 3 4 5 6 10
-1
-&gt; pfcount hl
-7
-&gt; pfadd hl2 1 2 3 4 5 6 7
-1
-&gt; pfcount hl2
-7
-&gt; pfmerge hl2 hl hl2
-'OK'
-&gt; pfcount hl2
-8</pre>
-</div>
-</div>
-<div class="paragraph">
-<div class="title">Description</div>
-<p>Merge multiple hyperloglog tables and write them to the destination.
-The dest key is not merged, it written to.  A dest key can be used as
-a source key, but the original data in the source will be overwritten
-with the merged data.</p>
-</div>
-<div class="paragraph">
-<div class="title">Return</div>
-<p><strong>OK</strong>.</p>
+<p>An array, UTC seconds and microseconds (1 usec = 1/1000000 second).</p>
 </div>
 </div>
 </div>
@@ -2146,6 +1777,14 @@ with the merged data.</p>
 <td class="tableblock halign-left valign-top"><p class="tableblock">write</p></td>
 </tr>
 <tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#restore">restore | restore key from dump</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-4</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">write</p></td>
+</tr>
+<tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#touch">touch | set last access time</a></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">-2</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
@@ -2225,10 +1864,7 @@ with the merged data.</p>
 <pre>&gt; set k sophisticateduniverse
 'OK'
 &gt; dump k
-"n\u0210/&lt;\u0214\u0186\u0234JH\u0252H\u0231\u0134U\u0138\u0197"
-"\u0000\u0000\u0000\u0002\u0128\u0003\u0002\u0000k\u0000\u0000"
-"\u0000\u0000\u0000\u0000\u0000sophisticateduniverseo\u0238"
-"\u0021\u0021\u0128\u0214\u0186n\u0210/&lt;"</pre>
+"\u0000\u0021sophisticateduniverse\t\u0000!y0\u00022ZD\u0163"</pre>
 </div>
 </div>
 <div class="paragraph">
@@ -2351,31 +1987,44 @@ does not exist.</p>
 <div class="title">Example</div>
 <div class="content">
 <pre>&gt; object freq k
-1
-&gt; set k value2
+nil
+&gt; set k hello
 'OK'
 &gt; object freq k
-2</pre>
+0
+&gt; set k world
+'OK'
+&gt; object freq k
+1
+&gt; object idletime k
+6
+&gt; object encoding k
+"string"</pre>
 </div>
 </div>
 <div class="paragraph">
 <div class="title">Description</div>
-<p>Inspect key value attributes.</p>
+<p>Inspect key value attributes maintained and stored with the data.</p>
+</div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p>If key does not exist, then <strong>nil</strong>.  Otherwise an integer value indicating
+one of the following based on the command:</p>
 </div>
 <div class="ulist">
-<div class="title">Return</div>
 <ul>
 <li>
-<p>refcount, always <strong>1</strong>.</p>
+<p>refcount, valid values are always <strong>1</strong>.</p>
 </li>
 <li>
 <p>encoding, the type of data.</p>
 </li>
 <li>
-<p>idletime, always <strong>0</strong>.</p>
+<p>idletime, the number seconds since the value was updated.</p>
 </li>
 <li>
-<p>freq, the number of time key was updated.</p>
+<p>freq, the number of times key was updated.  The inital value resets this to
+zero, and every subsequent update increments.</p>
 </li>
 </ul>
 </div>
@@ -2564,6 +2213,25 @@ does not exist.</p>
 </div>
 </div>
 <div class="sect2">
+<h3 id="restore">restore | restore key from dump</h3>
+<div class="listingblock">
+<div class="title">Usage</div>
+<div class="content">
+<pre>restore key ttl value [replace] [absttl] [idletime idle] [freq lfu]</pre>
+</div>
+</div>
+<div class="paragraph">
+<div class="title">Description</div>
+<p>Restore key using dump format.  The value argument is in a specific binary
+format that is constructed by the dump command, which has a version and a crc
+checksum attached (not easily constructed without a program).</p>
+</div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p><strong>OK</strong> when successful, error otherwise.</p>
+</div>
+</div>
+<div class="sect2">
 <h3 id="touch">touch | set last access time</h3>
 <div class="listingblock">
 <div class="title">Usage</div>
@@ -2698,6 +2366,982 @@ in the key hash.</p>
 <div class="title">Return</div>
 <p>An array within an array.  The outer array is the cursor counter, the
 inner array is the keys matched.</p>
+</div>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_string">String</h2>
+<div class="sectionbody">
+<table class="tableblock frame-all grid-all spread">
+<colgroup>
+<col style="width: 37.5%;">
+<col style="width: 12.5%;">
+<col style="width: 12.5%;">
+<col style="width: 12.5%;">
+<col style="width: 12.5%;">
+<col style="width: 12.5%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">command</th>
+<th class="tableblock halign-left valign-top">arity</th>
+<th class="tableblock halign-left valign-top">first key</th>
+<th class="tableblock halign-left valign-top">last key</th>
+<th class="tableblock halign-left valign-top">step</th>
+<th class="tableblock halign-left valign-top">flags</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#append">append | append to value</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">3</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">write</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#bitcount">bitcount | count bits</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-2</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">read</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#bitfield">bitfield | manipulate bits</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-2</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">write</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#bitop">bitop | bitwise operator</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-4</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">2</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">write</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#bitpos">bitpos | find a bit</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-3</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">read</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#decr">decr | decr by one</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">2</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">write</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#decrby">decrby | decr by integer</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">3</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">write</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#get">get | get key value</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">2</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">read</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#getbit">getbit | git bit at offset</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">3</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">read</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#getrange">getrange | get range in string</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">4</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">read</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#getset">getset | swap values</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">3</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">write</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#incr">incr | incr by one</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">2</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">write</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#incrby">incrby | incr by integer</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">3</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">write</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#incrbyfloat">incrbyfloat | incr by decimal</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">3</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">write</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#mget">mget | get multiple values</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-2</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">read</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#mset">mset | set multiple values</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-3</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">2</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">write</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#msetnx">msetnx | set if not exist</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-3</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">2</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">write</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#psetex">psetex | set with expiration</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">4</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">write</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#set">set | set value</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-3</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">write</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#setbit">setbit | set bits</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">4</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">write</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#setex">setex | set with expiration</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">4</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">write</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#setnx">setnx | set if not exist</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">3</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">write</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#setrange">setrange | set value range</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">4</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">write</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#strlen">strlen | get strlen</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">2</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">read</p></td>
+</tr>
+</tbody>
+</table>
+<div class="sect2">
+<h3 id="append">append | append to value</h3>
+<div class="listingblock">
+<div class="title">Usage</div>
+<div class="content">
+<pre>append key value</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="title">Example</div>
+<div class="content">
+<pre>&gt; append s string
+5
+&gt; append s value
+9
+&gt; get s
+"stringvalue"</pre>
+</div>
+</div>
+<div class="paragraph">
+<div class="title">Description</div>
+<p>Append value to key.</p>
+</div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p>The integer strlen of the key after value appended.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="bitcount">bitcount | count bits</h3>
+<div class="listingblock">
+<div class="title">Usage</div>
+<div class="content">
+<pre>bitcount key [start end]</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="title">Example</div>
+<div class="content">
+<pre>&gt; set s string
+'OK'
+&gt; bitcount s 0 0
+5
+&gt; bitfield s get u8 0
+115
+&gt; getrange s 0 0
+"s"</pre>
+</div>
+</div>
+<div class="paragraph">
+<div class="title">Description</div>
+<p>Count the bits in string from byte offset start to offset end,
+inclusive.</p>
+</div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p>An integer count of bits set in the byte range.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="bitfield">bitfield | manipulate bits</h3>
+<div class="listingblock">
+<div class="title">Usage</div>
+<div class="content">
+<pre>bitfield key [get type off] [set type off value]
+ [incrby type off incr] [overflow wrap | sat | fail]</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="title">Example</div>
+<div class="content">
+<pre>&gt; bitfield bf set u8 0 1 set u8 8 2 set u8 16 3 set u8 24 4
+[0,0,0,0]</pre>
+</div>
+</div>
+<div class="paragraph">
+<div class="title">Description</div>
+<p>Set integer value at bit offset off as type, where type is signed (iN)
+or unsigned (uN) with bit size <strong>1</strong> through <strong>63</strong>, <strong>64</strong> for signed.</p>
+</div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p>An array of the integers that existed before setting the new values.</p>
+</div>
+<div class="listingblock">
+<div class="title">Example</div>
+<div class="content">
+<pre>&gt; bitfield bf get u8 0 get u8 8 get u8 16 get u8 24
+[1,2,3,4]</pre>
+</div>
+</div>
+<div class="paragraph">
+<div class="title">Description</div>
+<p>Get integer value at bit offset, using signed or unsigned type.</p>
+</div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p>An array of integers that are requested.</p>
+</div>
+<div class="listingblock">
+<div class="title">Example</div>
+<div class="content">
+<pre>&gt; bitfield bf incrby u8 0 1 incrby u8 8 1 incrby u8 16 1 incrby u8 24 1
+[2,3,4,5]
+&gt; bitfield bf incrby u8 0 255 overflow wrap
+[1]
+&gt; bitfield bf incrby u8 8 255 overflow sat
+[255]
+&gt; bitfield bf incrby u8 16 255 overflow fail
+[nil]</pre>
+</div>
+</div>
+<div class="paragraph">
+<div class="title">Description</div>
+<p>Increment integer values at bit offsets.  The overflow arument
+modifies the behavior of increment in the case that the result wraps
+around zero.  Wrap is the default, saturate (sat) caps the value at
+the highest and lowest point, fail discards the new value and uses the
+old value, returning <strong>nil</strong>.</p>
+</div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p>An array of the integers after incrementing.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="bitop">bitop | bitwise operator</h3>
+<div class="listingblock">
+<div class="title">Usage</div>
+<div class="content">
+<pre>bitop (and | or | xor | not) dest src [src src ...]</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="title">Example</div>
+<div class="content">
+<pre>&gt; bitfield i set u8 0 3
+[0]
+&gt; bitfield j set u8 0 1
+[0]
+&gt; bitop xor k j i
+1
+&gt; bitfield k get u8 0
+[2]</pre>
+</div>
+</div>
+<div class="paragraph">
+<div class="title">Description</div>
+<p>Bitwise store to dest from srcs by performing logical operations on
+each bit.</p>
+</div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p>The number of bytes stored in dest, which is the minimum size of i and
+j, since the trailing zeros are not stored.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="bitpos">bitpos | find a bit</h3>
+<div class="listingblock">
+<div class="title">Usage</div>
+<div class="content">
+<pre>bitpos key bit [start end]</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="title">Example</div>
+<div class="content">
+<pre>&gt; bitfield k set u8 0 16
+[0]
+&gt; bitpos k 1 0 1
+4
+&gt; bitpos k 0 0 1
+0</pre>
+</div>
+</div>
+<div class="paragraph">
+<div class="title">Description</div>
+<p>Find first bit set or clear between start offset and end offset.</p>
+</div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p>The position of the bit set or clear, or <strong>-1</strong> when not found.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="decr">decr | decr by one</h3>
+<div class="listingblock">
+<div class="title">Usage</div>
+<div class="content">
+<pre>decr key</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="title">Example</div>
+<div class="content">
+<pre>&gt; set k 10
+'OK'
+&gt; decr k
+9
+&gt; decr k
+8</pre>
+</div>
+</div>
+<div class="paragraph">
+<div class="title">Description</div>
+<p>Decrement integer at key by one.</p>
+</div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p>The value after decrementing it.  If key is created, then it is
+initialized to <strong>-1</strong>.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="decrby">decrby | decr by integer</h3>
+<div class="listingblock">
+<div class="title">Usage</div>
+<div class="content">
+<pre>decrby key int</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="title">Example</div>
+<div class="content">
+<pre>&gt; set k 10
+'OK'
+&gt; decrby k -1
+11
+&gt; decrby k 10
+1</pre>
+</div>
+</div>
+<div class="paragraph">
+<div class="title">Description</div>
+<p>Decrement integer at key by the integer argument.</p>
+</div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p>The value after decrementing it.  If key is created, then it is
+initialized to the negative of the integer argument.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="get">get | get key value</h3>
+<div class="listingblock">
+<div class="title">Usage</div>
+<div class="content">
+<pre>get key</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="title">Example</div>
+<div class="content">
+<pre>&gt; set k val
+'OK'
+&gt; get k
+"val"
+&gt; del k
+1
+&gt; get k
+nil</pre>
+</div>
+</div>
+<div class="paragraph">
+<div class="title">Description</div>
+<p>Get the key value.</p>
+</div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p>The string value or <strong>nil</strong> when not found.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="getbit">getbit | git bit at offset</h3>
+<div class="listingblock">
+<div class="title">Usage</div>
+<div class="content">
+<pre>getbit key off</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="title">Example</div>
+<div class="content">
+<pre>&gt; bitfield k set u8 0 16
+[0]
+&gt; getbit k 0
+0
+&gt; getbit k 3
+0
+&gt; getbit k 4
+1</pre>
+</div>
+</div>
+<div class="paragraph">
+<div class="title">Description</div>
+<p>Get value at bit offset in the string stored at the key.</p>
+</div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p>A <strong>1</strong> if the bit is set, a <strong>0</strong> if not set or not found.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="getrange">getrange | get range in string</h3>
+<div class="listingblock">
+<div class="title">Usage</div>
+<div class="content">
+<pre>getrange key start end</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="title">Example</div>
+<div class="content">
+<pre>&gt; set k 0123456789
+'OK'
+&gt; getrange k 3 7
+"34567"
+&gt; getrange k 12 13
+""
+&gt; getrange k 7 -3
+"7"
+&gt; getrange k 0 -1
+"0123456789"</pre>
+</div>
+</div>
+<div class="paragraph">
+<div class="title">Description</div>
+<p>Get a substring of the string value at key.  Start and/or end may be
+negative to index from the end of the string.</p>
+</div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p>A string with the characters in the range start to end, inclusive.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="getset">getset | swap values</h3>
+<div class="listingblock">
+<div class="title">Usage</div>
+<div class="content">
+<pre>getset key value</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="title">Example</div>
+<div class="content">
+<pre>&gt; getset k 2
+nil
+&gt; getset k 3
+"2"</pre>
+</div>
+</div>
+<div class="paragraph">
+<div class="title">Description</div>
+<p>Swap new value with current value and return it.</p>
+</div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p>The value currently stored with the key, or <strong>nil</strong> if the key is
+created.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="incr">incr | incr by one</h3>
+<div class="listingblock">
+<div class="title">Usage</div>
+<div class="content">
+<pre>incr key</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="title">Example</div>
+<div class="content">
+<pre>&gt; incr k
+4
+&gt; incr k
+5
+&gt; del k
+1
+&gt; incr k
+1</pre>
+</div>
+</div>
+<div class="paragraph">
+<div class="title">Description</div>
+<p>Increment integer at key by one.</p>
+</div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p>The value after it is incremented.  If key is created, then it is
+initialized to <strong>1</strong>.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="incrby">incrby | incr by integer</h3>
+<div class="listingblock">
+<div class="title">Usage</div>
+<div class="content">
+<pre>incrby key int</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="title">Example</div>
+<div class="content">
+<pre>&gt; del k
+1
+&gt; incrby k 100
+100
+&gt; incrby k 100
+200</pre>
+</div>
+</div>
+<div class="paragraph">
+<div class="title">Description</div>
+<p>Increment integer at key by the integer argument.</p>
+</div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p>The value after it is incremented.  If key is created, then it is
+initialized to the integer argument.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="incrbyfloat">incrbyfloat | incr by decimal</h3>
+<div class="listingblock">
+<div class="title">Usage</div>
+<div class="content">
+<pre>incrbyfloat key decimal</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="title">Example</div>
+<div class="content">
+<pre>&gt; incrbyfloat n 1.1
+"1.1"
+&gt; incrbyfloat n 1.1
+"2.2"
+&gt; incrbyfloat n 1.1
+"3.3"</pre>
+</div>
+</div>
+<div class="paragraph">
+<div class="title">Description</div>
+<p>Increment number at key by decimal value.  This uses 128 bit decimal
+arithmetic which has a 34 digit range and an exponent from -6143 to
++6144.  <a href="https://en.wikipedia.org/wiki/Decimal128_floating-point_format" class="bare">https://en.wikipedia.org/wiki/Decimal128_floating-point_format</a></p>
+</div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p>The number after it is incremented.  If key is created, then it is
+initialized to the decimal argument.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="mget">mget | get multiple values</h3>
+<div class="listingblock">
+<div class="title">Usage</div>
+<div class="content">
+<pre>mget key [key ...]</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="title">Example</div>
+<div class="content">
+<pre>&gt; mset j 1 k 2 l 3 m 4
+'OK'
+&gt; mget j k l m mm
+["1","2","3","4",nil]</pre>
+</div>
+</div>
+<div class="paragraph">
+<div class="title">Description</div>
+<p>Get the values of multiple keys.</p>
+</div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p>An array of values or nil when key doesn&#8217;t exist or is not a string
+type.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="mset">mset | set multiple values</h3>
+<div class="listingblock">
+<div class="title">Usage</div>
+<div class="content">
+<pre>mset key val [key val ...]</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="title">Example</div>
+<div class="content">
+<pre>&gt; mset j 1 k 2 l 3 m 4
+'OK'</pre>
+</div>
+</div>
+<div class="paragraph">
+<div class="title">Description</div>
+<p>Set the values of multiple keys.</p>
+</div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p><strong>OK</strong>.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="msetnx">msetnx | set if not exist</h3>
+<div class="listingblock">
+<div class="title">Usage</div>
+<div class="content">
+<pre>msetnx key val [key val ...]</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="title">Example</div>
+<div class="content">
+<pre>&gt; del j k l m
+4
+&gt; msetnx j 1 k 2 l 3 m 4
+1
+&gt; msetnx j 1 k 2 l 3 m 4
+0</pre>
+</div>
+</div>
+<div class="paragraph">
+<div class="title">Description</div>
+<p>Set the values of keys if all keys do not exist.</p>
+</div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p>If all keys are created a <strong>1</strong> is returned, otherwise no kesy are
+created and a <strong>0</strong> is returnd;</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="psetex">psetex | set with expiration</h3>
+<div class="listingblock">
+<div class="title">Usage</div>
+<div class="content">
+<pre>psetex key ms val</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="title">Example</div>
+<div class="content">
+<pre>&gt; psetex k 1580166892000 hello
+'OK'
+&gt; ttl k
+80
+&gt; psetex k 15000 hello
+'OK'
+&gt; ttl k
+13
+&gt; pttl k
+11991</pre>
+</div>
+</div>
+<div class="paragraph">
+<div class="title">Description</div>
+<p>Set the value with expiration of key in milliseconds.  The expiration
+argument is either stamp or relative time.</p>
+</div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p><strong>OK</strong>.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="set">set | set value</h3>
+<div class="listingblock">
+<div class="title">Usage</div>
+<div class="content">
+<pre>set key val [ex secs] [px ms] [nx | xx]</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="title">Example</div>
+<div class="content">
+<pre>&gt; set k one
+'OK'
+&gt; set k one xx
+'OK'
+&gt; set k one nx
+nil
+&gt; set k one px 15000 xx
+'OK'
+&gt; ttl k
+11
+&gt; pttl k
+4260</pre>
+</div>
+</div>
+<div class="paragraph">
+<div class="title">Description</div>
+<p>Set the key value optionally with expiration and <strong>nx</strong> or <strong>xx</strong> test.
+The <strong>nx</strong> option tests that the key does not exist before setting.  The
+<strong>xx</strong> tests that the key does exist before setting.</p>
+</div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p><strong>OK</strong> on success, <strong>nil</strong> when failed.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="setbit">setbit | set bits</h3>
+<div class="listingblock">
+<div class="title">Usage</div>
+<div class="content">
+<pre>setbit key off 1 | 0</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="title">Example</div>
+<div class="content">
+<pre>&gt; setbit k 0 1
+0
+&gt; setbit k 1 1
+0
+&gt; setbit k 1 0
+1
+&gt; getbit k 0
+1
+&gt; getbit k 1
+0</pre>
+</div>
+</div>
+<div class="paragraph">
+<div class="title">Description</div>
+<p>Swap the value at bit offset in string with the new bit value.</p>
+</div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p>A <strong>1</strong> or <strong>0</strong> is returned, the previous value held by bit.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="setex">setex | set with expiration</h3>
+<div class="listingblock">
+<div class="title">Usage</div>
+<div class="content">
+<pre>setex key secs val</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="title">Example</div>
+<div class="content">
+<pre>&gt; setex k 1580166892 hello
+'OK'
+&gt; ttl k
+80
+&gt; setex k 15 hello
+'OK'
+&gt; ttl k
+13
+&gt; pttl k
+11991</pre>
+</div>
+</div>
+<div class="paragraph">
+<div class="title">Description</div>
+<p>Set the value with expiration of key in seconds.  The expiration
+argument is either stamp or relative time.</p>
+</div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p><strong>OK</strong>.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="setnx">setnx | set if not exist</h3>
+<div class="listingblock">
+<div class="title">Usage</div>
+<div class="content">
+<pre>setnx key val</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="title">Example</div>
+<div class="content">
+<pre>&gt; del k
+1
+&gt; setnx k value
+'OK'
+&gt; setnx k value
+nil</pre>
+</div>
+</div>
+<div class="paragraph">
+<div class="title">Description</div>
+<p>Set the value if key does not exist.</p>
+</div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p><strong>OK</strong> if success, <strong>nil</strong> if key already exists.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="setrange">setrange | set value range</h3>
+<div class="listingblock">
+<div class="title">Usage</div>
+<div class="content">
+<pre>setrange key off val</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="title">Example</div>
+<div class="content">
+<pre>&gt; del k
+1
+&gt; setrange k 5 waterbuffalo
+17
+&gt; get k
+"\u0000\u0000\u0000\u0000\u0000waterbuffalo"</pre>
+</div>
+</div>
+<div class="paragraph">
+<div class="title">Description</div>
+<p>Overwrite or create a range in a string stored with the key at the
+offset specified.  The data implicitly created by the setrange is zero
+padded.</p>
+</div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p>The length of key after modification.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="strlen">strlen | get strlen</h3>
+<div class="listingblock">
+<div class="title">Usage</div>
+<div class="content">
+<pre>strlen key</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="title">Example</div>
+<div class="content">
+<pre>&gt; del k
+1
+&gt; setrange k 5 waterbuffalo
+17
+&gt; strlen k
+17
+&gt; get k
+"\u0000\u0000\u0000\u0000\u0000waterbuffalo"</pre>
+</div>
+</div>
+<div class="paragraph">
+<div class="title">Description</div>
+<p>Get length of value, which is the maximum extent, not the strlen
+function.</p>
+</div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p>The length of value, which could be <strong>0</strong> if the key does not exist.</p>
 </div>
 </div>
 </div>
@@ -3351,7 +3995,7 @@ source is empty, return <strong>nil</strong>.</p>
 </div>
 </div>
 <div class="sect1">
-<h2 id="_pubsub">Pubsub</h2>
+<h2 id="_hash">Hash</h2>
 <div class="sectionbody">
 <table class="tableblock frame-all grid-all spread">
 <colgroup>
@@ -3374,762 +4018,585 @@ source is empty, return <strong>nil</strong>.</p>
 </thead>
 <tbody>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#psubscribe">psubscribe | pattern subscribe</a></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">-2</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
-<td class="tableblock halign-left valign-top"></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#happend">happend | append a value</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-4</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">write</p></td>
 </tr>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#pubsub">pubsub | query pubsub info</a></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">-2</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
-<td class="tableblock halign-left valign-top"></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#hdel">hdel | delete fields</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-3</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">write</p></td>
 </tr>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#publish">publish | publish msg to channel</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#hexists">hexists | if field exists</a></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">3</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
-<td class="tableblock halign-left valign-top"></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">read</p></td>
 </tr>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#punsubscribe">punsubscribe | pattern unsubscribe</a></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">-1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
-<td class="tableblock halign-left valign-top"></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#hget">hget | get a field value</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">3</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">read</p></td>
 </tr>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#subscribe">subscribe | subscribe channel</a></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">-2</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
-<td class="tableblock halign-left valign-top"></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#hgetall">hgetall | get all field values</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">2</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">read</p></td>
 </tr>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#unsubscribe">unsubscribe | unsubscribe channel</a></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">-1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
-<td class="tableblock halign-left valign-top"></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#hincrby">hincrby | incr field</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">4</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">write</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#hincrbyfloat">hincrbyfloat | incr field</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">4</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">write</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#hkeys">hkeys | get all field keys</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">2</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">read</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#hlen">hlen | get number of fields</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">2</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">read</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#hmget">hmget | get multiple field vals</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-3</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">read</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#hmset">hmset | set multiple field vals</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-4</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">write</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#hset">hset | set a field value</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-4</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">write</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#hsetnx">hsetnx | set if not present</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">4</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">write</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#hstrlen">hstrlen | get strlen of field val</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">3</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">read</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#hvals">hvals | get all values</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">2</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">read</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#hscan">hscan | iterate fields</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-3</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">read</p></td>
 </tr>
 </tbody>
 </table>
 <div class="sect2">
-<h3 id="psubscribe">psubscribe | pattern subscribe</h3>
+<h3 id="happend">happend | append a value</h3>
 <div class="listingblock">
 <div class="title">Usage</div>
 <div class="content">
-<pre>psubscribe pat [pat ...]</pre>
+<pre>happend key field val [val ...]</pre>
 </div>
 </div>
 <div class="listingblock">
 <div class="title">Example</div>
 <div class="content">
-<pre>&gt; psubscribe p* q*
-executing: ["psubscribe","p*","q*"]
-["psubscribe","p*",1]
-["psubscribe","q*",2]
-["pmessage","p*","publius","friend"]
-["pmessage","q*","qQq","OoO"]</pre>
-</div>
-</div>
-<div class="paragraph">
-<div class="title">Description</div>
-<p>Subscribe to patterns.  The messages published to channels which match
-the pattern will be forwarded to the client.  A message may be
-forwarded to the same client more than once if its channel matches
-multiple patterns.  It is also possible to be forwarded the message
-again if the channel matches a subscription.</p>
-</div>
-<div class="paragraph">
-<div class="title">Return</div>
-<p>An array with the subscription and an integer which is a count of the
-subscriptions open.</p>
-</div>
-</div>
-<div class="sect2">
-<h3 id="pubsub">pubsub | query pubsub info</h3>
-<div class="listingblock">
-<div class="title">Usage</div>
-<div class="content">
-<pre>pubsub [channels [pattern] | numsub channel | numpat]</pre>
-</div>
-</div>
-<div class="listingblock">
-<div class="title">Example</div>
-<div class="content">
-<pre>&gt; pubsub channels
-["two","five","seven","six","one","three","four"]
-&gt; pubsub channels t*
-["two","three"]
-&gt; pubsub channels x*
-[]</pre>
-</div>
-</div>
-<div class="paragraph">
-<div class="title">Description</div>
-<p>Get the channels that are in use which match a pattern.</p>
-</div>
-<div class="listingblock">
-<div class="title">Example</div>
-<div class="content">
-<pre>&gt; pubsub numsub one two three
-["one",1,"two",1,"three",1]</pre>
-</div>
-</div>
-<div class="paragraph">
-<div class="title">Description</div>
-<p>Get the number of subscription on each channel.</p>
-</div>
-<div class="listingblock">
-<div class="title">Example</div>
-<div class="content">
-<pre>&gt; pubsub numpat
-3</pre>
-</div>
-</div>
-<div class="paragraph">
-<div class="title">Description</div>
-<p>Display the number of pattern subscriptions open.</p>
-</div>
-</div>
-<div class="sect2">
-<h3 id="publish">publish | publish msg to channel</h3>
-<div class="listingblock">
-<div class="title">Usage</div>
-<div class="content">
-<pre>publish channel msg</pre>
-</div>
-</div>
-<div class="listingblock">
-<div class="title">Example</div>
-<div class="content">
-<pre>&gt; publish one two
-1</pre>
-</div>
-</div>
-<div class="paragraph">
-<div class="title">Description</div>
-<p>Publish msg to channel.</p>
-</div>
-<div class="paragraph">
-<div class="title">Return</div>
-<p>A count of the times the message is forwarded to a client.</p>
-</div>
-</div>
-<div class="sect2">
-<h3 id="punsubscribe">punsubscribe | pattern unsubscribe</h3>
-<div class="listingblock">
-<div class="title">Usage</div>
-<div class="content">
-<pre>punsubscribe [pat ...]</pre>
-</div>
-</div>
-<div class="listingblock">
-<div class="title">Example</div>
-<div class="content">
-<pre>&gt; psubscribe x*
-["psubscribe","x*",1]
-&gt; punsubscribe x*
-["punsubscribe","x*",0]</pre>
-</div>
-</div>
-<div class="paragraph">
-<div class="title">Description</div>
-<p>Unsubscribe patterns.  This cancels interest in the patterns
-previously subscribed.  If no patterns are named, all patterns are
-unsubscribed.</p>
-</div>
-<div class="paragraph">
-<div class="title">Return</div>
-<p>An array with the punsubscribe and an integer count of the number of
-subscriptions that the client has open.</p>
-</div>
-</div>
-<div class="sect2">
-<h3 id="subscribe">subscribe | subscribe channel</h3>
-<div class="listingblock">
-<div class="title">Usage</div>
-<div class="content">
-<pre>subscribe chan [chan ...]</pre>
-</div>
-</div>
-<div class="listingblock">
-<div class="title">Example</div>
-<div class="content">
-<pre>&gt; subscribe x
-["subscribe","x",1]</pre>
-</div>
-</div>
-<div class="paragraph">
-<div class="title">Description</div>
-<p>Subscribe to channels.  The messages published to the channels that
-are subscribed will be forwarded to the client.</p>
-</div>
-<div class="paragraph">
-<div class="title">Return</div>
-<p>An array with the subscription and an integer which is a count of the
-subscriptions open.</p>
-</div>
-</div>
-<div class="sect2">
-<h3 id="unsubscribe">unsubscribe | unsubscribe channel</h3>
-<div class="listingblock">
-<div class="title">Usage</div>
-<div class="content">
-<pre>unsubscribe [chan ...]</pre>
-</div>
-</div>
-<div class="listingblock">
-<div class="title">Example</div>
-<div class="content">
-<pre>&gt; subscribe x
-["subscribe","x",1]
-&gt; unsubscribe x
-["unsubscribe","x",0]</pre>
-</div>
-</div>
-<div class="paragraph">
-<div class="title">Description</div>
-<p>Unsubscribe channels.  This cancels interest in the channels
-previously subscribed.  If no channels are named, all channels are
-unsubscribed.</p>
-</div>
-<div class="paragraph">
-<div class="title">Return</div>
-<p>An array with the unsubscribe and an integer count of the number of
-subscriptions that the client has open.</p>
-</div>
-</div>
-</div>
-</div>
-<div class="sect1">
-<h2 id="_server">Server</h2>
-<div class="sectionbody">
-<table class="tableblock frame-all grid-all spread">
-<colgroup>
-<col style="width: 37.5%;">
-<col style="width: 12.5%;">
-<col style="width: 12.5%;">
-<col style="width: 12.5%;">
-<col style="width: 12.5%;">
-<col style="width: 12.5%;">
-</colgroup>
-<thead>
-<tr>
-<th class="tableblock halign-left valign-top">command</th>
-<th class="tableblock halign-left valign-top">arity</th>
-<th class="tableblock halign-left valign-top">first key</th>
-<th class="tableblock halign-left valign-top">last key</th>
-<th class="tableblock halign-left valign-top">step</th>
-<th class="tableblock halign-left valign-top">flags</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#client">client | query connected clients</a></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">-2</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">admin</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#command">command | query command info</a></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">-1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
-<td class="tableblock halign-left valign-top"></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#config">config | query config</a></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">-2</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">admin</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#dbsize">dbsize | get number of keys</a></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
-<td class="tableblock halign-left valign-top"></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#debug">debug | run debug</a></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">-1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">admin</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#flushall">flushall | remove keys</a></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">-1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">admin</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#flushdb">flushdb | remove keys from db</a></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">-1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">admin</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#info">info | query server stats</a></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">-1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
-<td class="tableblock halign-left valign-top"></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#monitor">monitor | monitor commands</a></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">admin</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#shutdown">shutdown | shutdown server</a></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">-1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">admin</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#time">time | get server time</a></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
-<td class="tableblock halign-left valign-top"></td>
-</tr>
-</tbody>
-</table>
-<div class="sect2">
-<h3 id="client">client | query connected clients</h3>
-<div class="listingblock">
-<div class="title">Usage</div>
-<div class="content">
-<pre>client [setname name | getname | id | kill match | list match |
-        reply state]</pre>
-</div>
-</div>
-<div class="listingblock">
-<div class="title">Example</div>
-<div class="content">
-<pre>&gt; client setname AAA
-'OK'</pre>
-</div>
-</div>
-<div class="paragraph">
-<div class="title">Description</div>
-<p>Set the current connection name.</p>
-</div>
-<div class="listingblock">
-<div class="title">Example</div>
-<div class="content">
-<pre>&gt; client getname
-"AAA"</pre>
-</div>
-</div>
-<div class="paragraph">
-<div class="title">Description</div>
-<p>Get the current connection name.</p>
-</div>
-<div class="listingblock">
-<div class="title">Example</div>
-<div class="content">
-<pre>&gt; client id
-12</pre>
-</div>
-</div>
-<div class="paragraph">
-<div class="title">Description</div>
-<p>Get the current connection id.</p>
-</div>
-<div class="listingblock">
-<div class="title">Example</div>
-<div class="content">
-<pre>&gt; client list type tcp
-id=12 addr=[::1]:58806 fd=14 name=AAA kind=redis age=150 idle=0 rbuf=0
-  rsz=16384 imsg=7 br=257 wbuf=0 wsz=5120 omsg=6 bs=1082 flags=N db=0
-  sub=0 psub=0 multi=-1 cmd=client
-id=13 addr=[::1]:58808 fd=15 name= kind=redis age=74 idle=74 rbuf=0
-  rsz=16384 imsg=0 br=0 wbuf=0 wsz=5120 omsg=0 bs=0 flags=N db=0
-  sub=0 psub=0 multi=-1 cmd=none</pre>
-</div>
-</div>
-<div class="paragraph">
-<div class="title">Description</div>
-<p>List the clients.  The filters that match the clients which are listed
-are:</p>
-</div>
-<div class="ulist">
-<ul>
-<li>
-<p>type [ tcp | udp | unix | listen | redis | pubsub | normal | http |
-nats | capr | rv ]&#8201;&#8212;&#8201;filter by connection class.</p>
-</li>
-<li>
-<p>id N&#8201;&#8212;&#8201;filter by id number</p>
-</li>
-<li>
-<p>addr IP&#8201;&#8212;&#8201;filter by IP address</p>
-</li>
-<li>
-<p>skipme&#8201;&#8212;&#8201;skip the current connection</p>
-</li>
-</ul>
-</div>
-<div class="listingblock">
-<div class="title">Example</div>
-<div class="content">
-<pre>&gt; client kill id 13
+<pre>&gt; happend h f v
 1
-&gt; client kill type redis skipme
+&gt; happend h f w
+0
+&gt; hgetall h
+["f","vw"]</pre>
+</div>
+</div>
+<div class="paragraph">
+<div class="title">Description</div>
+<p>Append a string to a field value.</p>
+</div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p>An integer 1 or 0 indicating whether the field was created.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="hdel">hdel | delete fields</h3>
+<div class="listingblock">
+<div class="title">Usage</div>
+<div class="content">
+<pre>hdel key field [field ...]</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="title">Example</div>
+<div class="content">
+<pre>&gt; hmset h f 1 g 2
+'OK'
+&gt; hdel h f g
+2</pre>
+</div>
+</div>
+<div class="paragraph">
+<div class="title">Description</div>
+<p>Remove one or more fields from a hash set.</p>
+</div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p>An integer indicating how many fields were removed.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="hexists">hexists | if field exists</h3>
+<div class="listingblock">
+<div class="title">Usage</div>
+<div class="content">
+<pre>hexists key field</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="title">Example</div>
+<div class="content">
+<pre>&gt; hmset h f 1 g 2
+'OK'
+&gt; hexists h f
+1
+&gt; hexists h h
 0</pre>
 </div>
 </div>
 <div class="paragraph">
 <div class="title">Description</div>
-<p>Kill clients.  The filters that match the clients which are listed the
-same as the filters that list.</p>
+<p>Test whether field exists in hash.</p>
+</div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p>An integer <strong>1</strong> indicating the field exists or <strong>0</strong> when it doesn&#8217;t.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="hget">hget | get a field value</h3>
+<div class="listingblock">
+<div class="title">Usage</div>
+<div class="content">
+<pre>hget key field</pre>
+</div>
 </div>
 <div class="listingblock">
 <div class="title">Example</div>
 <div class="content">
-<pre>&gt; client reply skip
-&gt; ping
-&gt; ping
-'PONG'
-&gt; client reply off
-&gt; ping
-&gt; client reply on
+<pre>&gt; hmset h f 1 g 2
 'OK'
-&gt; ping
-'PONG'</pre>
+&gt; hget h f
+"1"
+&gt; hget h h
+nil</pre>
 </div>
 </div>
 <div class="paragraph">
 <div class="title">Description</div>
-<p>Alter the reply behavior of the connection.  If skipped or off, output
-will be muted.</p>
+<p>Get the value associated with field.</p>
+</div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p>A string value or <strong>nil</strong> when the field does not exist.</p>
 </div>
 </div>
 <div class="sect2">
-<h3 id="command">command | query command info</h3>
+<h3 id="hgetall">hgetall | get all field values</h3>
 <div class="listingblock">
 <div class="title">Usage</div>
 <div class="content">
-<pre>command [count | getkeys &lt;cmd-full&gt; | info [cmd] | help]</pre>
+<pre>hgetall key</pre>
 </div>
 </div>
 <div class="listingblock">
 <div class="title">Example</div>
 <div class="content">
-<pre>&gt; command info get
-[["get",2,['readonly','fast'],1,1,1]]
-&gt; command count
-193
-&gt; command help get
-['GET','key ; Get value']</pre>
-</div>
-</div>
-<div class="paragraph">
-<div class="title">Description</div>
-<p>Get command details and help.</p>
-</div>
-<div class="paragraph">
-<div class="title">Return</div>
-<p>Array of strings, command info.</p>
-</div>
-</div>
-<div class="sect2">
-<h3 id="config">config | query config</h3>
-<div class="listingblock">
-<div class="title">Usage</div>
-<div class="content">
-<pre>config [get &lt;param&gt; | rewrite | set &lt;param&gt; &lt;value&gt; | resetstat]</pre>
-</div>
-</div>
-<div class="paragraph">
-<div class="title">Description</div>
-<p>Get, set config parameters.  There is no configuration, so these
-are not functional except get, which returns sane values.</p>
-</div>
-<div class="paragraph">
-<div class="title">Return</div>
-<p>Array of config key values.</p>
-</div>
-</div>
-<div class="sect2">
-<h3 id="dbsize">dbsize | get number of keys</h3>
-<div class="listingblock">
-<div class="title">Usage</div>
-<div class="content">
-<pre>dbsize</pre>
-</div>
-</div>
-<div class="listingblock">
-<div class="title">Example</div>
-<div class="content">
-<pre>&gt; dbsize
-299999</pre>
-</div>
-</div>
-<div class="paragraph">
-<div class="title">Description</div>
-<p>Get number of keys in db.</p>
-</div>
-<div class="paragraph">
-<div class="title">Return</div>
-<p>An integer number of keys.</p>
-</div>
-</div>
-<div class="sect2">
-<h3 id="debug">debug | run debug</h3>
-<div class="listingblock">
-<div class="title">Usage</div>
-<div class="content">
-<pre>debug [object key | htstats]</pre>
-</div>
-</div>
-<div class="listingblock">
-<div class="title">Example</div>
-<div class="content">
-<pre>&gt; set hello world
+<pre>&gt; hmset h f 1 g 2
 'OK'
-&gt; debug object hello
-key:         "hello"
-hash:        2aa73a1eeb0b2d45:fd102121185ce157
-pos:         [732172]+0.0
-update_time: -4s
-flags:       string-Upd-Ival-Key-Stmp
-db:          0
-val:         0
-seqno:       3
-size:        5</pre>
+&gt; hgetall h
+["f","1","g","2"]</pre>
 </div>
 </div>
 <div class="paragraph">
 <div class="title">Description</div>
-<p>Get debug info about key.</p>
-</div>
-<div class="listingblock">
-<div class="title">Example</div>
-<div class="content">
-<pre>&gt; debug htstats
-db_num:  0
-
--= totals =-
-read:    8896064
-write:   2045184
-spins:   0
-chains:  0
-add:     303
-drop:    2
-expire:  0
-htevict: 0
-afail:   0
-hit:     511040
-miss:    0
-cuckacq: 0
-cuckfet: 0
-cuckmov: 0
-cuckret: 0
-cuckmax: 0
-
--= self =-
-read:    8896064
-write:   2045184
-spins:   0
-chains:  0
-add:     303
-drop:    2
-expire:  0
-htevict: 0
-afail:   0
-hit:     511040
-miss:    0
-cuckacq: 0
-cuckfet: 0
-cuckmov: 0
-cuckret: 0
-cuckmax: 0</pre>
-</div>
-</div>
-<div class="paragraph">
-<div class="title">Description</div>
-<p>Get information about the hash table counters.</p>
+<p>Get all of the fields and values associated with the hash stored at
+key.</p>
 </div>
 <div class="paragraph">
 <div class="title">Return</div>
-<p>A string description of debug info or bad command error.</p>
+<p>An array of field value pairs.  An empty array when key doesn&#8217;t exist.</p>
 </div>
 </div>
 <div class="sect2">
-<h3 id="flushall">flushall | remove keys</h3>
+<h3 id="hincrby">hincrby | incr field</h3>
 <div class="listingblock">
 <div class="title">Usage</div>
 <div class="content">
-<pre>flushall [async]</pre>
-</div>
-</div>
-<div class="paragraph">
-<div class="title">Description</div>
-<p>Remove keys from all dbs.</p>
-</div>
-<div class="paragraph">
-<div class="title">Return</div>
-<p><strong>OK</strong> if successful, error otherwise.</p>
-</div>
-</div>
-<div class="sect2">
-<h3 id="flushdb">flushdb | remove keys from db</h3>
-<div class="listingblock">
-<div class="title">Usage</div>
-<div class="content">
-<pre>flushdb [async]</pre>
-</div>
-</div>
-<div class="paragraph">
-<div class="title">Description</div>
-<p>Remove keys from selected db</p>
-</div>
-<div class="paragraph">
-<div class="title">Return</div>
-<p><strong>OK</strong> if successful, error otherwise.</p>
-</div>
-</div>
-<div class="sect2">
-<h3 id="info">info | query server stats</h3>
-<div class="listingblock">
-<div class="title">Usage</div>
-<div class="content">
-<pre>info [server | clients | memory | persistence | stats |
-      replication | cpu | commandstats | cluster | keyspace]</pre>
+<pre>hincrby key field int</pre>
 </div>
 </div>
 <div class="listingblock">
 <div class="title">Example</div>
 <div class="content">
-<pre>&gt; info server
-raids_version:        1.0.0-11
-raids_git:            fee49cdd
-gcc_version:          9.1.1
-process_id:           32167
-&gt; info clients
-redis_clients:        1
-pubsub_clients:       0
-&gt; info memory
-vm_peak:              8204MB
-vm_size:              8204MB
-&gt; info stats
-ht_operations:        505M
-ht_chains:            1.0
-ht_read:              505M
-ht_write:             287
-&gt; info cpu
-used_cpu_sys:         0.069951
-used_cpu_user:        1.445196
-used_cpu_total:       1.515147</pre>
+<pre>&gt; hmset h f 1 g 2
+'OK'
+&gt; hincrby h f 10
+11</pre>
 </div>
 </div>
 <div class="paragraph">
 <div class="title">Description</div>
-<p>Get version info and counters.</p>
+<p>Add an integer value to field.</p>
 </div>
 <div class="paragraph">
 <div class="title">Return</div>
-<p>A text string with newlines that has the requested info.</p>
+<p>The integer value after incrementing the integer or an error if the
+value stored in field is not an integer.</p>
 </div>
 </div>
 <div class="sect2">
-<h3 id="monitor">monitor | monitor commands</h3>
+<h3 id="hincrbyfloat">hincrbyfloat | incr field</h3>
 <div class="listingblock">
 <div class="title">Usage</div>
 <div class="content">
-<pre>monitor</pre>
+<pre>hincrbyfloat key field num</pre>
 </div>
 </div>
 <div class="listingblock">
 <div class="title">Example</div>
 <div class="content">
-<pre>&gt; monitor
-["pmessage","__monitor_@*","__monitor_@0__:127.0.0.1:60646",
-[["get","k"],"value","1580125101.975300"]]</pre>
+<pre>&gt; hmset h f 1 g 2
+'OK'
+&gt; hincrbyfloat h f 123456.66
+"123457.66"</pre>
 </div>
 </div>
 <div class="paragraph">
 <div class="title">Description</div>
-<p>Monitor commands executed by server from all clients.  This is an
-alias for <code>psubscribe _monitor_@*</code>.  Running once enables, running
-twice disables the monitor.  In order to monitor just one client, or
-just one ip address, use a pattern that includes the address:
-<code>psubscribe _monitor_@0__:127.0.0.1*</code></p>
+<p>Add a numeric value to field.  This uses 128 bit decimal arithmetic
+which has a 34 digit range and an exponent from -6143 to +6144.
+<a href="https://en.wikipedia.org/wiki/Decimal128_floating-point_format" class="bare">https://en.wikipedia.org/wiki/Decimal128_floating-point_format</a></p>
 </div>
 <div class="paragraph">
 <div class="title">Return</div>
-<p>An array which indicates the db number and client connected address
-(<code>"__monitor_@0__:127.0.0.1:60646"</code>), the command executed
-(<code>["get","k"]</code>), and the result of executing the command (<code>"value"</code>).</p>
+<p>A string numeric value after incrementing the number or an error if
+the value stored in field is not a number.</p>
 </div>
 </div>
 <div class="sect2">
-<h3 id="shutdown">shutdown | shutdown server</h3>
+<h3 id="hkeys">hkeys | get all field keys</h3>
 <div class="listingblock">
 <div class="title">Usage</div>
 <div class="content">
-<pre>shutdown</pre>
-</div>
-</div>
-<div class="paragraph">
-<div class="title">Description</div>
-<p>Shutdown server.  This will cause the connected instance to quit.</p>
-</div>
-</div>
-<div class="sect2">
-<h3 id="time">time | get server time</h3>
-<div class="listingblock">
-<div class="title">Usage</div>
-<div class="content">
-<pre>time</pre>
+<pre>hkeys key</pre>
 </div>
 </div>
 <div class="listingblock">
 <div class="title">Example</div>
 <div class="content">
-<pre>&gt; time
-["1580125969","562228"]</pre>
+<pre>&gt; hmset h f 1 g 2
+'OK'
+&gt; hkeys h
+["f","g"]</pre>
 </div>
 </div>
 <div class="paragraph">
 <div class="title">Description</div>
-<p>Get server time.</p>
+<p>Get all field keys in the hash.</p>
 </div>
 <div class="paragraph">
 <div class="title">Return</div>
-<p>An array, UTC seconds and microseconds (1 usec = 1/1000000 second).</p>
+<p>An array of field names.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="hlen">hlen | get number of fields</h3>
+<div class="listingblock">
+<div class="title">Usage</div>
+<div class="content">
+<pre>hlen key</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="title">Example</div>
+<div class="content">
+<pre>&gt; hmset h f 1 g 2
+'OK'
+&gt; hlen h
+2</pre>
+</div>
+</div>
+<div class="paragraph">
+<div class="title">Description</div>
+<p>Get the number field value pairs in the hash.</p>
+</div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p>An integer count of the number of fields.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="hmget">hmget | get multiple field vals</h3>
+<div class="listingblock">
+<div class="title">Usage</div>
+<div class="content">
+<pre>hmget key field [field ...]</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="title">Example</div>
+<div class="content">
+<pre>&gt; hmset h f 1 g 2
+'OK'
+&gt; hmget h f g h
+["1","2",nil]</pre>
+</div>
+</div>
+<div class="paragraph">
+<div class="title">Description</div>
+<p>Get multiple values from a hash.  If a field doesn&#8217;t exist, a <strong>nil</strong> is
+returned.</p>
+</div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p>An array of values or <strong>nil</strong>.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="hmset">hmset | set multiple field vals</h3>
+<div class="listingblock">
+<div class="title">Usage</div>
+<div class="content">
+<pre>hmset key field value [field value ...]</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="title">Example</div>
+<div class="content">
+<pre>&gt; hmset h f 1 g 2
+'OK'
+&gt; hmset h g 3 tree 50
+'OK'
+&gt; hgetall h
+["f","1","g","3","tree","50"]</pre>
+</div>
+</div>
+<div class="paragraph">
+<div class="title">Description</div>
+<p>Set multiple field value pairs in the hash.</p>
+</div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p><strong>OK</strong>.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="hset">hset | set a field value</h3>
+<div class="listingblock">
+<div class="title">Usage</div>
+<div class="content">
+<pre>hset key field value [field value ...]</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="title">Example</div>
+<div class="content">
+<pre>&gt; hset h f 1 g 2
+2
+&gt; hset h g 3 tree 50
+1
+&gt; hgetall h
+["f","1","g","3","tree","50"]</pre>
+</div>
+</div>
+<div class="paragraph">
+<div class="title">Description</div>
+<p>Set multiple field value pairs in the hash.  Preexisting fields will
+be overwritten, and new fields will be added to the hash.</p>
+</div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p>An integer indicating number of fields created.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="hsetnx">hsetnx | set if not present</h3>
+<div class="listingblock">
+<div class="title">Usage</div>
+<div class="content">
+<pre>hsetnx key field value</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="title">Example</div>
+<div class="content">
+<pre>&gt; hmset h f 1 g 2
+'OK'
+&gt; hsetnx h tree 50
+1
+&gt; hsetnx h g 3
+0
+&gt; hgetall h
+["f","1","g","2","tree","50"]</pre>
+</div>
+</div>
+<div class="paragraph">
+<div class="title">Description</div>
+<p>Set a field in a hash only when it does not exist.</p>
+</div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p>An integer <strong>1</strong> or <strong>0</strong> indicating success.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="hstrlen">hstrlen | get strlen of field val</h3>
+<div class="listingblock">
+<div class="title">Usage</div>
+<div class="content">
+<pre>hstrlen key field</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="title">Example</div>
+<div class="content">
+<pre>&gt; hsetnx h tree 50
+1
+&gt; hstrlen h tree
+2</pre>
+</div>
+</div>
+<div class="paragraph">
+<div class="title">Description</div>
+<p>Get the string length of value stored with field, <strong>0</strong> if field does
+not exist.</p>
+</div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p>An integer string length, which is the count of the 8 bit characters
+in the value.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="hvals">hvals | get all values</h3>
+<div class="listingblock">
+<div class="title">Usage</div>
+<div class="content">
+<pre>hvals key</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="title">Example</div>
+<div class="content">
+<pre>&gt; hmset h f 1 g 2
+'OK'
+&gt; hvals h
+["f","1","g","2"]</pre>
+</div>
+</div>
+<div class="paragraph">
+<div class="title">Description</div>
+<p>Get all of the values stored in the hash.</p>
+</div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p>An array of all the values or <strong>nil</strong> when hash does not exist.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="hscan">hscan | iterate fields</h3>
+<div class="listingblock">
+<div class="title">Usage</div>
+<div class="content">
+<pre>hscan key cursor [match pattern] [count int]</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="title">Example</div>
+<div class="content">
+<pre>&gt; hset h abc 1 abb 2 abd 3 xyz 4 zzz 5
+5
+&gt; hscan h 0 match a* count 1
+["2",["abc","1"]]
+&gt; hscan h 2 match a* count 1
+["3",["abb","2"]]
+&gt; hscan h 3 match a* count 1
+["4",["abd","3"]]
+&gt; hscan h 4 match a* count 1
+["0",[]]
+&gt; hscan h 0
+["0",["abc","1","abb","2","abd","3","xyz","4","zzz","5"]]
+&gt; hscan h 5 match a* count 1
+["0",[]]</pre>
+</div>
+</div>
+<div class="paragraph">
+<div class="title">Description</div>
+<p>Get the fields and values which match a pattern.  The cursor is the
+offset into the scan where the results will start.  If the cursor is
+equal to 3, then the match will start at the 3rd field in the hash.</p>
+</div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p>An array within an array.  The outer array is the cursor counter, the
+inner array is the fields and values.</p>
 </div>
 </div>
 </div>
@@ -5766,7 +6233,7 @@ occurs, then null is returned.</p>
 </div>
 </div>
 <div class="sect1">
-<h2 id="_string">String</h2>
+<h2 id="_geo">Geo</h2>
 <div class="sectionbody">
 <table class="tableblock frame-all grid-all spread">
 <colgroup>
@@ -5789,15 +6256,15 @@ occurs, then null is returned.</p>
 </thead>
 <tbody>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#append">append | append to value</a></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">3</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#geoadd">geoadd | add a pos to key</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-5</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">write</p></td>
 </tr>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#bitcount">bitcount | count bits</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#geohash">geohash | get hash of members</a></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">-2</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
@@ -5805,938 +6272,561 @@ occurs, then null is returned.</p>
 <td class="tableblock halign-left valign-top"><p class="tableblock">read</p></td>
 </tr>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#bitfield">bitfield | manipulate bits</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#geopos">geopos | get pos of members</a></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">-2</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">write</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">read</p></td>
 </tr>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#bitop">bitop | bitwise operator</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#geodist">geodist | get member distance</a></p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">-4</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">2</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">-1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">write</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#bitpos">bitpos | find a bit</a></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">-3</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">read</p></td>
 </tr>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#decr">decr | decr by one</a></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">2</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#georadius">georadius | get members in radius</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-6</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">write</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">write movable</p></td>
 </tr>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#decrby">decrby | decr by integer</a></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">3</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#georadiusbymember">georadiusbymember | get members</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-5</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">write</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#get">get | get key value</a></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">2</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">read</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#getbit">getbit | git bit at offset</a></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">3</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">read</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#getrange">getrange | get range in string</a></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">4</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">read</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#getset">getset | swap values</a></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">3</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">write</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#incr">incr | incr by one</a></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">2</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">write</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#incrby">incrby | incr by integer</a></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">3</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">write</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#incrbyfloat">incrbyfloat | incr by decimal</a></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">3</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">write</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#mget">mget | get multiple values</a></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">-2</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">-1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">read</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#mset">mset | set multiple values</a></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">-3</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">-1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">2</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">write</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#msetnx">msetnx | set if not exist</a></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">-3</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">-1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">2</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">write</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#psetex">psetex | set with expiration</a></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">4</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">write</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#set">set | set value</a></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">-3</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">write</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#setbit">setbit | set bits</a></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">4</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">write</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#setex">setex | set with expiration</a></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">4</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">write</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#setnx">setnx | set if not exist</a></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">3</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">write</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#setrange">setrange | set value range</a></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">4</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">write</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#strlen">strlen | get strlen</a></p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">2</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">read</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">write movable</p></td>
 </tr>
 </tbody>
 </table>
 <div class="sect2">
-<h3 id="append">append | append to value</h3>
+<h3 id="geoadd">geoadd | add a pos to key</h3>
 <div class="listingblock">
 <div class="title">Usage</div>
 <div class="content">
-<pre>append key value</pre>
-</div>
-</div>
-<div class="listingblock">
-<div class="title">Example</div>
-<div class="content">
-<pre>&gt; append s string
-5
-&gt; append s value
-9
-&gt; get s
-"stringvalue"</pre>
+<pre>geoadd key long lat mem [long lat mem ...]</pre>
 </div>
 </div>
 <div class="paragraph">
 <div class="title">Description</div>
-<p>Append value to key.</p>
+<p>Add longitude, latitude to key as member by converting the position to
+a <strong>Uber H3</strong> hash and adding it to the set.  The members are ordered by
+hash because hashes closest to eachother are also closest by spatual
+distance.</p>
 </div>
 <div class="paragraph">
 <div class="title">Return</div>
-<p>The integer strlen of the key after value appended.</p>
+<p>An integer is returned indicating how many members were added which
+did not already exist.</p>
 </div>
 </div>
 <div class="sect2">
-<h3 id="bitcount">bitcount | count bits</h3>
+<h3 id="geohash">geohash | get hash of members</h3>
 <div class="listingblock">
 <div class="title">Usage</div>
 <div class="content">
-<pre>bitcount key [start end]</pre>
-</div>
-</div>
-<div class="listingblock">
-<div class="title">Example</div>
-<div class="content">
-<pre>&gt; set s string
-'OK'
-&gt; bitcount s 0 0
-5
-&gt; bitfield s get u8 0
-115
-&gt; getrange s 0 0
-"s"</pre>
+<pre>geohash key mem [mem ...]</pre>
 </div>
 </div>
 <div class="paragraph">
 <div class="title">Description</div>
-<p>Count the bits in string from byte offset start to offset end,
-inclusive.</p>
+<p>Get geo hash string by finding the members and converting the <strong>Uber
+H3</strong> hash to an encoded hash string as described in on the geohash wiki
+page: <a href="https://en.wikipedia.org/wiki/Geohash" class="bare">https://en.wikipedia.org/wiki/Geohash</a></p>
 </div>
 <div class="paragraph">
 <div class="title">Return</div>
-<p>An integer count of bits set in the byte range.</p>
+<p>An array of geohash strings, which may be <strong>nil</strong> if member is not
+found.</p>
 </div>
 </div>
 <div class="sect2">
-<h3 id="bitfield">bitfield | manipulate bits</h3>
+<h3 id="geopos">geopos | get pos of members</h3>
 <div class="listingblock">
 <div class="title">Usage</div>
 <div class="content">
-<pre>bitfield key [get type off] [set type off value]
- [incrby type off incr] [overflow wrap | sat | fail]</pre>
-</div>
-</div>
-<div class="listingblock">
-<div class="title">Example</div>
-<div class="content">
-<pre>&gt; bitfield bf set u8 0 1 set u8 8 2 set u8 16 3 set u8 24 4
-[0,0,0,0]</pre>
+<pre>geopos key [mem ...]</pre>
 </div>
 </div>
 <div class="paragraph">
 <div class="title">Description</div>
-<p>Set integer value at bit offset off as type, where type is signed (iN)
-or unsigned (uN) with bit size <strong>1</strong> through <strong>63</strong>, <strong>64</strong> for signed.</p>
+<p>Get geo positions of members as longitude, latitude pairs.</p>
 </div>
 <div class="paragraph">
 <div class="title">Return</div>
-<p>An array of the integers that existed before setting the new values.</p>
-</div>
-<div class="listingblock">
-<div class="title">Example</div>
-<div class="content">
-<pre>&gt; bitfield bf get u8 0 get u8 8 get u8 16 get u8 24
-[1,2,3,4]</pre>
-</div>
-</div>
-<div class="paragraph">
-<div class="title">Description</div>
-<p>Get integer value at bit offset, using signed or unsigned type.</p>
-</div>
-<div class="paragraph">
-<div class="title">Return</div>
-<p>An array of integers that are requested.</p>
-</div>
-<div class="listingblock">
-<div class="title">Example</div>
-<div class="content">
-<pre>&gt; bitfield bf incrby u8 0 1 incrby u8 8 1 incrby u8 16 1 incrby u8 24 1
-[2,3,4,5]
-&gt; bitfield bf incrby u8 0 255 overflow wrap
-[1]
-&gt; bitfield bf incrby u8 8 255 overflow sat
-[255]
-&gt; bitfield bf incrby u8 16 255 overflow fail
-[nil]</pre>
-</div>
-</div>
-<div class="paragraph">
-<div class="title">Description</div>
-<p>Increment integer values at bit offsets.  The overflow arument
-modifies the behavior of increment in the case that the result wraps
-around zero.  Wrap is the default, saturate (sat) caps the value at
-the highest and lowest point, fail discards the new value and uses the
-old value, returning <strong>nil</strong>.</p>
-</div>
-<div class="paragraph">
-<div class="title">Return</div>
-<p>An array of the integers after incrementing.</p>
+<p>An array of positions or <strong>null</strong> if member is not found.</p>
 </div>
 </div>
 <div class="sect2">
-<h3 id="bitop">bitop | bitwise operator</h3>
+<h3 id="geodist">geodist | get member distance</h3>
 <div class="listingblock">
 <div class="title">Usage</div>
 <div class="content">
-<pre>bitop (and | or | xor | not) dest src [src src ...]</pre>
+<pre>geodist key mem1 mem2 [unit]</pre>
+</div>
+</div>
+<div class="paragraph">
+<div class="title">Description</div>
+<p>Compute the distance in units between members.  Default unit is
+meters, but km, feet, miles are accepted.</p>
+</div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p>A decimal string representing the distance or <strong>nil</strong> when member is not
+found.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="georadius">georadius | get members in radius</h3>
+<div class="listingblock">
+<div class="title">Usage</div>
+<div class="content">
+<pre>georadius key long lat rad m | k | ft | mi [withcoord] [withdist]
+ [withhash] [count n] [asc | desc] [storedist key]</pre>
+</div>
+</div>
+<div class="paragraph">
+<div class="title">Description</div>
+<p>Get all members within a radius of position.  This iterates through
+the set using the hash of longitude latitude as the starting point.
+When the endpoints are found, the members are returned or stored.
+When storedist is used, then the distance and members are stored in a
+sorted set.</p>
+</div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p>An array of members with optional distance, hash, and/or coordinates.
+The hash is an integer used by the <strong>Uber H3</strong> library.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="georadiusbymember">georadiusbymember | get members</h3>
+<div class="listingblock">
+<div class="title">Usage</div>
+<div class="content">
+<pre>georadiusbymember key member rad m | k | ft | mi [withcoord]
+ [withdist] [withhash] [count n] [asc | desc] [storedist key]</pre>
+</div>
+</div>
+<div class="paragraph">
+<div class="title">Description</div>
+<p>Similar to georadius, get all members within a radius of an existing
+member.  This iterates through the set using the named member as the
+starting point.  When the endpoints are found, the members are
+returned or stored.  When storedist is used, then the distance and
+members are stored in a sorted set.</p>
+</div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p>An array of members with optional distance, hash, and/or coordinates.
+The hash is an integer used by the <strong>Uber H3</strong> library.</p>
+</div>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_hyperloglog">Hyperloglog</h2>
+<div class="sectionbody">
+<table class="tableblock frame-all grid-all spread">
+<colgroup>
+<col style="width: 37.5%;">
+<col style="width: 12.5%;">
+<col style="width: 12.5%;">
+<col style="width: 12.5%;">
+<col style="width: 12.5%;">
+<col style="width: 12.5%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">command</th>
+<th class="tableblock halign-left valign-top">arity</th>
+<th class="tableblock halign-left valign-top">first key</th>
+<th class="tableblock halign-left valign-top">last key</th>
+<th class="tableblock halign-left valign-top">step</th>
+<th class="tableblock halign-left valign-top">flags</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#pfadd">pfadd | add elems to hlog</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-2</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">write</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#pfcount">pfcount | get hlog cardinality</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-2</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">read</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#pfmerge">pfmerge | merge multiple hlogs</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-2</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">write</p></td>
+</tr>
+</tbody>
+</table>
+<div class="sect2">
+<h3 id="pfadd">pfadd | add elems to hlog</h3>
+<div class="listingblock">
+<div class="title">Usage</div>
+<div class="content">
+<pre>pfadd key elem [elem ...]</pre>
 </div>
 </div>
 <div class="listingblock">
 <div class="title">Example</div>
 <div class="content">
-<pre>&gt; bitfield i set u8 0 3
-[0]
-&gt; bitfield j set u8 0 1
-[0]
-&gt; bitop xor k j i
+<pre>&gt; pfadd hl 1 2 3 4 5 6
+1</pre>
+</div>
+</div>
+<div class="paragraph">
+<div class="title">Description</div>
+<p>Add elems to hyperloglog table.</p>
+</div>
+<div class="paragraph">
+<div class="title">Return</div>
+<p>The integer <strong>1</strong> is returned when new elements are added, <strong>0</strong> is
+returned when all elements are collisions or duplicates.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="pfcount">pfcount | get hlog cardinality</h3>
+<div class="listingblock">
+<div class="title">Usage</div>
+<div class="content">
+<pre>pfcount key [key ...]</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="title">Example</div>
+<div class="content">
+<pre>&gt; pfadd hl 1 2 3 4 5 6
 1
-&gt; bitfield k get u8 0
-[2]</pre>
+&gt; pfcount hl
+6</pre>
 </div>
 </div>
 <div class="paragraph">
 <div class="title">Description</div>
-<p>Bitwise store to dest from srcs by performing logical operations on
-each bit.</p>
+<p>Get approximate cardinality of hyperloglog table.</p>
 </div>
 <div class="paragraph">
 <div class="title">Return</div>
-<p>The number of bytes stored in dest, which is the minimum size of i and
-j, since the trailing zeros are not stored.</p>
+<p>An integer count of the cardinality estimate.</p>
 </div>
 </div>
 <div class="sect2">
-<h3 id="bitpos">bitpos | find a bit</h3>
+<h3 id="pfmerge">pfmerge | merge multiple hlogs</h3>
 <div class="listingblock">
 <div class="title">Usage</div>
 <div class="content">
-<pre>bitpos key bit [start end]</pre>
+<pre>pfmerge dkey skey [skey ...]</pre>
 </div>
 </div>
 <div class="listingblock">
 <div class="title">Example</div>
 <div class="content">
-<pre>&gt; bitfield k set u8 0 16
-[0]
-&gt; bitpos k 1 0 1
-4
-&gt; bitpos k 0 0 1
-0</pre>
-</div>
-</div>
-<div class="paragraph">
-<div class="title">Description</div>
-<p>Find first bit set or clear between start offset and end offset.</p>
-</div>
-<div class="paragraph">
-<div class="title">Return</div>
-<p>The position of the bit set or clear, or <strong>-1</strong> when not found.</p>
-</div>
-</div>
-<div class="sect2">
-<h3 id="decr">decr | decr by one</h3>
-<div class="listingblock">
-<div class="title">Usage</div>
-<div class="content">
-<pre>decr key</pre>
-</div>
-</div>
-<div class="listingblock">
-<div class="title">Example</div>
-<div class="content">
-<pre>&gt; set k 10
+<pre>&gt; pfadd hl 1 2 3 4 5 6 10
+1
+&gt; pfcount hl
+7
+&gt; pfadd hl2 1 2 3 4 5 6 7
+1
+&gt; pfcount hl2
+7
+&gt; pfmerge hl2 hl hl2
 'OK'
-&gt; decr k
-9
-&gt; decr k
+&gt; pfcount hl2
 8</pre>
 </div>
 </div>
 <div class="paragraph">
 <div class="title">Description</div>
-<p>Decrement integer at key by one.</p>
-</div>
-<div class="paragraph">
-<div class="title">Return</div>
-<p>The value after decrementing it.  If key is created, then it is
-initialized to <strong>-1</strong>.</p>
-</div>
-</div>
-<div class="sect2">
-<h3 id="decrby">decrby | decr by integer</h3>
-<div class="listingblock">
-<div class="title">Usage</div>
-<div class="content">
-<pre>decrby key int</pre>
-</div>
-</div>
-<div class="listingblock">
-<div class="title">Example</div>
-<div class="content">
-<pre>&gt; set k 10
-'OK'
-&gt; decrby k -1
-11
-&gt; decrby k 10
-1</pre>
-</div>
-</div>
-<div class="paragraph">
-<div class="title">Description</div>
-<p>Decrement integer at key by the integer argument.</p>
-</div>
-<div class="paragraph">
-<div class="title">Return</div>
-<p>The value after decrementing it.  If key is created, then it is
-initialized to the negative of the integer argument.</p>
-</div>
-</div>
-<div class="sect2">
-<h3 id="get">get | get key value</h3>
-<div class="listingblock">
-<div class="title">Usage</div>
-<div class="content">
-<pre>get key</pre>
-</div>
-</div>
-<div class="listingblock">
-<div class="title">Example</div>
-<div class="content">
-<pre>&gt; set k val
-'OK'
-&gt; get k
-"val"
-&gt; del k
-1
-&gt; get k
-nil</pre>
-</div>
-</div>
-<div class="paragraph">
-<div class="title">Description</div>
-<p>Get the key value.</p>
-</div>
-<div class="paragraph">
-<div class="title">Return</div>
-<p>The string value or <strong>nil</strong> when not found.</p>
-</div>
-</div>
-<div class="sect2">
-<h3 id="getbit">getbit | git bit at offset</h3>
-<div class="listingblock">
-<div class="title">Usage</div>
-<div class="content">
-<pre>getbit key off</pre>
-</div>
-</div>
-<div class="listingblock">
-<div class="title">Example</div>
-<div class="content">
-<pre>&gt; bitfield k set u8 0 16
-[0]
-&gt; getbit k 0
-0
-&gt; getbit k 3
-0
-&gt; getbit k 4
-1</pre>
-</div>
-</div>
-<div class="paragraph">
-<div class="title">Description</div>
-<p>Get value at bit offset in the string stored at the key.</p>
-</div>
-<div class="paragraph">
-<div class="title">Return</div>
-<p>A <strong>1</strong> if the bit is set, a <strong>0</strong> if not set or not found.</p>
-</div>
-</div>
-<div class="sect2">
-<h3 id="getrange">getrange | get range in string</h3>
-<div class="listingblock">
-<div class="title">Usage</div>
-<div class="content">
-<pre>getrange key start end</pre>
-</div>
-</div>
-<div class="listingblock">
-<div class="title">Example</div>
-<div class="content">
-<pre>&gt; set k 0123456789
-'OK'
-&gt; getrange k 3 7
-"34567"
-&gt; getrange k 12 13
-""
-&gt; getrange k 7 -3
-"7"
-&gt; getrange k 0 -1
-"0123456789"</pre>
-</div>
-</div>
-<div class="paragraph">
-<div class="title">Description</div>
-<p>Get a substring of the string value at key.  Start and/or end may be
-negative to index from the end of the string.</p>
-</div>
-<div class="paragraph">
-<div class="title">Return</div>
-<p>A string with the characters in the range start to end, inclusive.</p>
-</div>
-</div>
-<div class="sect2">
-<h3 id="getset">getset | swap values</h3>
-<div class="listingblock">
-<div class="title">Usage</div>
-<div class="content">
-<pre>getset key value</pre>
-</div>
-</div>
-<div class="listingblock">
-<div class="title">Example</div>
-<div class="content">
-<pre>&gt; getset k 2
-nil
-&gt; getset k 3
-"2"</pre>
-</div>
-</div>
-<div class="paragraph">
-<div class="title">Description</div>
-<p>Swap new value with current value and return it.</p>
-</div>
-<div class="paragraph">
-<div class="title">Return</div>
-<p>The value currently stored with the key, or <strong>nil</strong> if the key is
-created.</p>
-</div>
-</div>
-<div class="sect2">
-<h3 id="incr">incr | incr by one</h3>
-<div class="listingblock">
-<div class="title">Usage</div>
-<div class="content">
-<pre>incr key</pre>
-</div>
-</div>
-<div class="listingblock">
-<div class="title">Example</div>
-<div class="content">
-<pre>&gt; incr k
-4
-&gt; incr k
-5
-&gt; del k
-1
-&gt; incr k
-1</pre>
-</div>
-</div>
-<div class="paragraph">
-<div class="title">Description</div>
-<p>Increment integer at key by one.</p>
-</div>
-<div class="paragraph">
-<div class="title">Return</div>
-<p>The value after it is incremented.  If key is created, then it is
-initialized to <strong>1</strong>.</p>
-</div>
-</div>
-<div class="sect2">
-<h3 id="incrby">incrby | incr by integer</h3>
-<div class="listingblock">
-<div class="title">Usage</div>
-<div class="content">
-<pre>incrby key int</pre>
-</div>
-</div>
-<div class="listingblock">
-<div class="title">Example</div>
-<div class="content">
-<pre>&gt; del k
-1
-&gt; incrby k 100
-100
-&gt; incrby k 100
-200</pre>
-</div>
-</div>
-<div class="paragraph">
-<div class="title">Description</div>
-<p>Increment integer at key by the integer argument.</p>
-</div>
-<div class="paragraph">
-<div class="title">Return</div>
-<p>The value after it is incremented.  If key is created, then it is
-initialized to the integer argument.</p>
-</div>
-</div>
-<div class="sect2">
-<h3 id="incrbyfloat">incrbyfloat | incr by decimal</h3>
-<div class="listingblock">
-<div class="title">Usage</div>
-<div class="content">
-<pre>incrbyfloat key decimal</pre>
-</div>
-</div>
-<div class="listingblock">
-<div class="title">Example</div>
-<div class="content">
-<pre>&gt; incrbyfloat n 1.1
-"1.1"
-&gt; incrbyfloat n 1.1
-"2.2"
-&gt; incrbyfloat n 1.1
-"3.3"</pre>
-</div>
-</div>
-<div class="paragraph">
-<div class="title">Description</div>
-<p>Increment number at key by decimal value.  This uses 128 bit decimal
-arithmetic which has a 34 digit range and an exponent from -6143 to
-+6144.  <a href="https://en.wikipedia.org/wiki/Decimal128_floating-point_format" class="bare">https://en.wikipedia.org/wiki/Decimal128_floating-point_format</a></p>
-</div>
-<div class="paragraph">
-<div class="title">Return</div>
-<p>The number after it is incremented.  If key is created, then it is
-initialized to the decimal argument.</p>
-</div>
-</div>
-<div class="sect2">
-<h3 id="mget">mget | get multiple values</h3>
-<div class="listingblock">
-<div class="title">Usage</div>
-<div class="content">
-<pre>mget key [key ...]</pre>
-</div>
-</div>
-<div class="listingblock">
-<div class="title">Example</div>
-<div class="content">
-<pre>&gt; mset j 1 k 2 l 3 m 4
-'OK'
-&gt; mget j k l m mm
-["1","2","3","4",nil]</pre>
-</div>
-</div>
-<div class="paragraph">
-<div class="title">Description</div>
-<p>Get the values of multiple keys.</p>
-</div>
-<div class="paragraph">
-<div class="title">Return</div>
-<p>An array of values or nil when key doesn&#8217;t exist or is not a string
-type.</p>
-</div>
-</div>
-<div class="sect2">
-<h3 id="mset">mset | set multiple values</h3>
-<div class="listingblock">
-<div class="title">Usage</div>
-<div class="content">
-<pre>mset key val [key val ...]</pre>
-</div>
-</div>
-<div class="listingblock">
-<div class="title">Example</div>
-<div class="content">
-<pre>&gt; mset j 1 k 2 l 3 m 4
-'OK'</pre>
-</div>
-</div>
-<div class="paragraph">
-<div class="title">Description</div>
-<p>Set the values of multiple keys.</p>
+<p>Merge multiple hyperloglog tables and write them to the destination.
+The dest key is not merged, it written to.  A dest key can be used as
+a source key, but the original data in the source will be overwritten
+with the merged data.</p>
 </div>
 <div class="paragraph">
 <div class="title">Return</div>
 <p><strong>OK</strong>.</p>
 </div>
 </div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_pubsub">Pubsub</h2>
+<div class="sectionbody">
+<table class="tableblock frame-all grid-all spread">
+<colgroup>
+<col style="width: 37.5%;">
+<col style="width: 12.5%;">
+<col style="width: 12.5%;">
+<col style="width: 12.5%;">
+<col style="width: 12.5%;">
+<col style="width: 12.5%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">command</th>
+<th class="tableblock halign-left valign-top">arity</th>
+<th class="tableblock halign-left valign-top">first key</th>
+<th class="tableblock halign-left valign-top">last key</th>
+<th class="tableblock halign-left valign-top">step</th>
+<th class="tableblock halign-left valign-top">flags</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#psubscribe">psubscribe | pattern subscribe</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-2</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#pubsub">pubsub | query pubsub info</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-2</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#publish">publish | publish msg to channel</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">3</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#punsubscribe">punsubscribe | pattern unsubscribe</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#subscribe">subscribe | subscribe channel</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-2</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><a href="#unsubscribe">unsubscribe | unsubscribe channel</a></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0</p></td>
+<td class="tableblock halign-left valign-top"></td>
+</tr>
+</tbody>
+</table>
 <div class="sect2">
-<h3 id="msetnx">msetnx | set if not exist</h3>
+<h3 id="psubscribe">psubscribe | pattern subscribe</h3>
 <div class="listingblock">
 <div class="title">Usage</div>
 <div class="content">
-<pre>msetnx key val [key val ...]</pre>
+<pre>psubscribe pat [pat ...]</pre>
 </div>
 </div>
 <div class="listingblock">
 <div class="title">Example</div>
 <div class="content">
-<pre>&gt; del j k l m
-4
-&gt; msetnx j 1 k 2 l 3 m 4
-1
-&gt; msetnx j 1 k 2 l 3 m 4
-0</pre>
+<pre>&gt; psubscribe p* q*
+executing: ["psubscribe","p*","q*"]
+["psubscribe","p*",1]
+["psubscribe","q*",2]
+["pmessage","p*","publius","friend"]
+["pmessage","q*","qQq","OoO"]</pre>
 </div>
 </div>
 <div class="paragraph">
 <div class="title">Description</div>
-<p>Set the values of keys if all keys do not exist.</p>
+<p>Subscribe to patterns.  The messages published to channels which match
+the pattern will be forwarded to the client.  A message may be
+forwarded to the same client more than once if its channel matches
+multiple patterns.  It is also possible to be forwarded the message
+again if the channel matches a subscription.</p>
 </div>
 <div class="paragraph">
 <div class="title">Return</div>
-<p>If all keys are created a <strong>1</strong> is returned, otherwise no kesy are
-created and a <strong>0</strong> is returnd;</p>
+<p>An array with the subscription and an integer which is a count of the
+subscriptions open.</p>
 </div>
 </div>
 <div class="sect2">
-<h3 id="psetex">psetex | set with expiration</h3>
+<h3 id="pubsub">pubsub | query pubsub info</h3>
 <div class="listingblock">
 <div class="title">Usage</div>
 <div class="content">
-<pre>psetex key ms val</pre>
+<pre>pubsub [channels [pattern] | numsub channel | numpat]</pre>
 </div>
 </div>
 <div class="listingblock">
 <div class="title">Example</div>
 <div class="content">
-<pre>&gt; psetex k 1580166892000 hello
-'OK'
-&gt; ttl k
-80
-&gt; psetex k 15000 hello
-'OK'
-&gt; ttl k
-13
-&gt; pttl k
-11991</pre>
+<pre>&gt; pubsub channels
+["two","five","seven","six","one","three","four"]
+&gt; pubsub channels t*
+["two","three"]
+&gt; pubsub channels x*
+[]</pre>
 </div>
 </div>
 <div class="paragraph">
 <div class="title">Description</div>
-<p>Set the value with expiration of key in milliseconds.  The expiration
-argument is either stamp or relative time.</p>
+<p>Get the channels that are in use which match a pattern.</p>
+</div>
+<div class="listingblock">
+<div class="title">Example</div>
+<div class="content">
+<pre>&gt; pubsub numsub one two three
+["one",1,"two",1,"three",1]</pre>
+</div>
 </div>
 <div class="paragraph">
-<div class="title">Return</div>
-<p><strong>OK</strong>.</p>
+<div class="title">Description</div>
+<p>Get the number of subscription on each channel.</p>
+</div>
+<div class="listingblock">
+<div class="title">Example</div>
+<div class="content">
+<pre>&gt; pubsub numpat
+3</pre>
+</div>
+</div>
+<div class="paragraph">
+<div class="title">Description</div>
+<p>Display the number of pattern subscriptions open.</p>
 </div>
 </div>
 <div class="sect2">
-<h3 id="set">set | set value</h3>
+<h3 id="publish">publish | publish msg to channel</h3>
 <div class="listingblock">
 <div class="title">Usage</div>
 <div class="content">
-<pre>set key val [ex secs] [px ms] [nx | xx]</pre>
+<pre>publish channel msg</pre>
 </div>
 </div>
 <div class="listingblock">
 <div class="title">Example</div>
 <div class="content">
-<pre>&gt; set k one
-'OK'
-&gt; set k one xx
-'OK'
-&gt; set k one nx
-nil
-&gt; set k one px 15000 xx
-'OK'
-&gt; ttl k
-11
-&gt; pttl k
-4260</pre>
+<pre>&gt; publish one two
+1</pre>
 </div>
 </div>
 <div class="paragraph">
 <div class="title">Description</div>
-<p>Set the key value optionally with expiration and <strong>nx</strong> or <strong>xx</strong> test.
-The <strong>nx</strong> option tests that the key does not exist before setting.  The
-<strong>xx</strong> tests that the key does exist before setting.</p>
+<p>Publish msg to channel.</p>
 </div>
 <div class="paragraph">
 <div class="title">Return</div>
-<p><strong>OK</strong> on success, <strong>nil</strong> when failed.</p>
+<p>A count of the times the message is forwarded to a client.</p>
 </div>
 </div>
 <div class="sect2">
-<h3 id="setbit">setbit | set bits</h3>
+<h3 id="punsubscribe">punsubscribe | pattern unsubscribe</h3>
 <div class="listingblock">
 <div class="title">Usage</div>
 <div class="content">
-<pre>setbit key off 1 | 0</pre>
+<pre>punsubscribe [pat ...]</pre>
 </div>
 </div>
 <div class="listingblock">
 <div class="title">Example</div>
 <div class="content">
-<pre>&gt; setbit k 0 1
-0
-&gt; setbit k 1 1
-0
-&gt; setbit k 1 0
-1
-&gt; getbit k 0
-1
-&gt; getbit k 1
-0</pre>
+<pre>&gt; psubscribe x*
+["psubscribe","x*",1]
+&gt; punsubscribe x*
+["punsubscribe","x*",0]</pre>
 </div>
 </div>
 <div class="paragraph">
 <div class="title">Description</div>
-<p>Swap the value at bit offset in string with the new bit value.</p>
+<p>Unsubscribe patterns.  This cancels interest in the patterns
+previously subscribed.  If no patterns are named, all patterns are
+unsubscribed.</p>
 </div>
 <div class="paragraph">
 <div class="title">Return</div>
-<p>A <strong>1</strong> or <strong>0</strong> is returned, the previous value held by bit.</p>
+<p>An array with the punsubscribe and an integer count of the number of
+subscriptions that the client has open.</p>
 </div>
 </div>
 <div class="sect2">
-<h3 id="setex">setex | set with expiration</h3>
+<h3 id="subscribe">subscribe | subscribe channel</h3>
 <div class="listingblock">
 <div class="title">Usage</div>
 <div class="content">
-<pre>setex key secs val</pre>
+<pre>subscribe chan [chan ...]</pre>
 </div>
 </div>
 <div class="listingblock">
 <div class="title">Example</div>
 <div class="content">
-<pre>&gt; setex k 1580166892 hello
-'OK'
-&gt; ttl k
-80
-&gt; setex k 15 hello
-'OK'
-&gt; ttl k
-13
-&gt; pttl k
-11991</pre>
+<pre>&gt; subscribe x
+["subscribe","x",1]</pre>
 </div>
 </div>
 <div class="paragraph">
 <div class="title">Description</div>
-<p>Set the value with expiration of key in seconds.  The expiration
-argument is either stamp or relative time.</p>
+<p>Subscribe to channels.  The messages published to the channels that
+are subscribed will be forwarded to the client.</p>
 </div>
 <div class="paragraph">
 <div class="title">Return</div>
-<p><strong>OK</strong>.</p>
+<p>An array with the subscription and an integer which is a count of the
+subscriptions open.</p>
 </div>
 </div>
 <div class="sect2">
-<h3 id="setnx">setnx | set if not exist</h3>
+<h3 id="unsubscribe">unsubscribe | unsubscribe channel</h3>
 <div class="listingblock">
 <div class="title">Usage</div>
 <div class="content">
-<pre>setnx key val</pre>
+<pre>unsubscribe [chan ...]</pre>
 </div>
 </div>
 <div class="listingblock">
 <div class="title">Example</div>
 <div class="content">
-<pre>&gt; del k
-1
-&gt; setnx k value
-'OK'
-&gt; setnx k value
-nil</pre>
+<pre>&gt; subscribe x
+["subscribe","x",1]
+&gt; unsubscribe x
+["unsubscribe","x",0]</pre>
 </div>
 </div>
 <div class="paragraph">
 <div class="title">Description</div>
-<p>Set the value if key does not exist.</p>
+<p>Unsubscribe channels.  This cancels interest in the channels
+previously subscribed.  If no channels are named, all channels are
+unsubscribed.</p>
 </div>
 <div class="paragraph">
 <div class="title">Return</div>
-<p><strong>OK</strong> if success, <strong>nil</strong> if key already exists.</p>
-</div>
-</div>
-<div class="sect2">
-<h3 id="setrange">setrange | set value range</h3>
-<div class="listingblock">
-<div class="title">Usage</div>
-<div class="content">
-<pre>setrange key off val</pre>
-</div>
-</div>
-<div class="listingblock">
-<div class="title">Example</div>
-<div class="content">
-<pre>&gt; del k
-1
-&gt; setrange k 5 waterbuffalo
-17
-&gt; get k
-"\u0000\u0000\u0000\u0000\u0000waterbuffalo"</pre>
-</div>
-</div>
-<div class="paragraph">
-<div class="title">Description</div>
-<p>Overwrite or create a range in a string stored with the key at the
-offset specified.  The data implicitly created by the setrange is zero
-padded.</p>
-</div>
-<div class="paragraph">
-<div class="title">Return</div>
-<p>The length of key after modification.</p>
-</div>
-</div>
-<div class="sect2">
-<h3 id="strlen">strlen | get strlen</h3>
-<div class="listingblock">
-<div class="title">Usage</div>
-<div class="content">
-<pre>strlen key</pre>
-</div>
-</div>
-<div class="listingblock">
-<div class="title">Example</div>
-<div class="content">
-<pre>&gt; del k
-1
-&gt; setrange k 5 waterbuffalo
-17
-&gt; strlen k
-17
-&gt; get k
-"\u0000\u0000\u0000\u0000\u0000waterbuffalo"</pre>
-</div>
-</div>
-<div class="paragraph">
-<div class="title">Description</div>
-<p>Get length of value, which is the maximum extent, not the strlen
-function.</p>
-</div>
-<div class="paragraph">
-<div class="title">Return</div>
-<p>The length of value, which could be <strong>0</strong> if the key does not exist.</p>
+<p>An array with the unsubscribe and an integer count of the number of
+subscriptions that the client has open.</p>
 </div>
 </div>
 </div>
@@ -6827,7 +6917,7 @@ function.</p>
 </div>
 <div class="paragraph">
 <div class="title">Description</div>
-<p>Discards <a href="#watch">watch | start watching</a> commands and discards commands queued by <a href="#multi">multi | start trans</a>.</p>
+<p>Discards watch commands and discards commands queued by multi.</p>
 </div>
 <div class="paragraph">
 <div class="title">Return</div>
@@ -6855,11 +6945,11 @@ function.</p>
 </div>
 <div class="paragraph">
 <div class="title">Description</div>
-<p>Execute commands queued by <a href="#multi">multi | start trans</a> as an atomic unit.</p>
+<p>Execute commands queued by multi as an atomic unit.</p>
 </div>
 <div class="paragraph">
 <div class="title">Return</div>
-<p>An array of results, an element for every command, or <strong>null</strong> when a <a href="#watch">watch | start watching</a>
+<p>An array of results, an element for every command, or <strong>null</strong> when a watch
 fails.</p>
 </div>
 </div>
@@ -6892,7 +6982,7 @@ fails.</p>
 </div>
 <div class="paragraph">
 <div class="title">Description</div>
-<p>Start a transaction, commands issued after <a href="#multi">multi | start trans</a> but before <a href="#exec">exec | run trans</a> are
+<p>Start a transaction, commands issued after multi but before exec are
 queued execution.  The syntax of the command and arguments is checked before
 being queued, so a command may be <strong>QUEUED</strong> or have an syntax error result.</p>
 </div>
@@ -6950,7 +7040,7 @@ null</pre>
 </div>
 <div class="paragraph">
 <div class="title">Description</div>
-<p>Watch keys before a <a href="#multi">multi | start trans</a> transaction starts.  After <a href="#exec">exec | run trans</a> is issued,
+<p>Watch keys before a multi transaction starts.  After exec is issued,
 all watched keys are examined to make sure that none have been modified.  If a
 watched key was modified, then the transaction aborts and <strong>null</strong> is returned.</p>
 </div>
@@ -7798,7 +7888,7 @@ idle time, and a delivery count.</p>
 </div>
 <div id="footer">
 <div id="footer-text">
-Last updated 2020-03-21 17:22:13 PDT
+Last updated 2020-04-22 02:17:57 PDT
 </div>
 </div>
 </body>

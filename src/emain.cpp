@@ -146,8 +146,8 @@ main( int argc, char *argv[] )
     for (;;) {
       if ( poll.quit >= 5 )
         break;
-      bool idle = poll.dispatch(); /* true if idle, false if busy */
-      poll.wait( idle ? 100 : 0 );
+      int state = poll.dispatch(); /* 0 if idle, 1, 2, 3 if busy */
+      poll.wait( state == EvPoll::DISPATCH_IDLE ? 100 : 0 );
       if ( sighndl.signaled && ! poll.quit )
         poll.quit++;
     }

@@ -73,7 +73,7 @@ main( int, char ** )
                           sizeof( examples2[ 0 ] ); i++ ) {
     sz = examples2[ i ].len;
     x = m.unpack( examples2[ i ].ex, sz, wrk );
-    if ( x != REDIS_MSG_OK || sz != examples2[ i ].len ) {
+    if ( x != DS_MSG_STATUS_OK || sz != examples2[ i ].len ) {
       printf( "unpack sz %lu != len %lu\n", sz, examples2[ i ].len );
       return 1;
     }
@@ -87,13 +87,13 @@ main( int, char ** )
                               sizeof( examples[ 0 ] ); i++ ) {
         sz = examples[ i ].len;
         x = m.unpack( examples[ i ].ex, sz, wrk );
-        if ( x != REDIS_MSG_OK || sz != examples[ i ].len )
+        if ( x != DS_MSG_STATUS_OK || sz != examples[ i ].len )
           printf( "unpack sz %lu != len %lu\n", sz, examples[ i ].len );
         /*if ( m.to_json( buf ) )
           printf( "%s\n", buf );*/
         sz = sizeof( buf );
         x = m.pack2( buf, sz );
-        if ( x != REDIS_MSG_OK || sz != examples[ i ].len )
+        if ( x != DS_MSG_STATUS_OK || sz != examples[ i ].len )
           printf( "pack   sz %lu != len %lu\n", sz, examples[ i ].len );
       }
     }
@@ -110,13 +110,13 @@ main( int, char ** )
                               sizeof( examples[ 0 ] ); i++ ) {
         sz = examples[ i ].len;
         x = m.unpack( examples[ i ].ex, sz, wrk );
-        if ( x != REDIS_MSG_OK || sz != examples[ i ].len )
+        if ( x != DS_MSG_STATUS_OK || sz != examples[ i ].len )
           printf( "unpack sz %lu != len %lu\n", sz, examples[ i ].len );
         /*if ( m.to_json( buf ) )
           printf( "%s\n", buf );*/
         sz = m.pack_size();
         m.pack( buf );
-        if ( x != REDIS_MSG_OK || sz != examples[ i ].len )
+        if ( x != DS_MSG_STATUS_OK || sz != examples[ i ].len )
           printf( "pack   sz %lu != len %lu\n", sz, examples[ i ].len );
       }
     }
@@ -128,8 +128,9 @@ main( int, char ** )
           ( end - start ) * 100.0 );
 
   for ( j = 0; j < sizeof( num_str ) / sizeof( num_str[ 0 ] ); j++ ) {
-    if ( (x = RedisMsg::str_to_int( num_str[ j ].str, num_str[ j ].len,
-                                    ival )) == REDIS_MSG_OK ) {
+    x = (RedisMsgStatus) RedisMsg::str_to_int( num_str[ j ].str,
+                                               num_str[ j ].len, ival );
+    if ( x == DS_MSG_STATUS_OK ) {
       if ( ival != num_str[ j ].ival )
         printf( "failed: %s (%ld)\n", num_str[ j ].str, ival );
       else {
@@ -144,7 +145,7 @@ main( int, char ** )
     }
     else {
       printf( "did not parse: %s (%d/%s)\n", num_str[ j ].str,
-              x, redis_msg_status_description( x ) );
+              x, ds_msg_status_description( x ) );
     }
   }
   return 0;

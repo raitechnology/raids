@@ -11,122 +11,115 @@ using namespace rai;
 using namespace ds;
 using namespace kv;
 
+extern "C" {
+
+size_t ds_uint_digits( uint64_t v ) { return uint_digits( v ); }
+size_t ds_int_digits( int64_t v ) { return int_digits( v ); }
+size_t ds_uint_to_string( uint64_t v,  char *buf,  size_t len ) {
+  return uint_to_str( v, buf, len );
+}
+size_t ds_int_to_string( int64_t v,  char *buf,  size_t len ) {
+  return int_to_str( v, buf, len );
+}
+int ds_string_to_int( const char *str,  size_t sz,  int64_t *ival ) {
+  return string_to_int( str, sz, *ival );
+}
+int ds_string_to_uint( const char *str,  size_t sz,  uint64_t *ival ) {
+  return string_to_uint( str, sz, *ival );
+}
+int ds_string_to_dbl( const char *str,  size_t sz,  double *fval ) {
+  return string_to_dbl( str, sz, *fval );
+}
+
 const char *
-rai::ds::redis_msg_status_string( RedisMsgStatus status ) noexcept {
+ds_msg_status_string( ds_msg_status_t status ) {
   switch ( status ) {
-    case REDIS_MSG_OK:             return "OK";
-    case REDIS_MSG_BAD_TYPE:       return "BAD_TYPE";
-    case REDIS_MSG_PARTIAL:        return "PARTIAL";
-    case REDIS_MSG_ALLOC_FAIL:     return "ALLOC_FAIL";
-    case REDIS_MSG_BAD_JSON:       return "BAD_JSON";
-    case REDIS_MSG_BAD_INT:        return "BAD_INT";
-    case REDIS_MSG_INT_OVERFLOW:   return "INT_OVERFLOW";
-    case REDIS_MSG_BAD_FLOAT:      return "BAD_FLOAT";
-    case REDIS_MSG_FLOAT_OVERFLOW: return "FLOAT_OVERFLOW";
+    case DS_MSG_STATUS_OK:             return "OK";
+    case DS_MSG_STATUS_BAD_TYPE:       return "BAD_TYPE";
+    case DS_MSG_STATUS_PARTIAL:        return "PARTIAL";
+    case DS_MSG_STATUS_ALLOC_FAIL:     return "ALLOC_FAIL";
+    case DS_MSG_STATUS_BAD_JSON:       return "BAD_JSON";
+    case DS_MSG_STATUS_BAD_INT:        return "BAD_INT";
+    case DS_MSG_STATUS_INT_OVERFLOW:   return "INT_OVERFLOW";
+    case DS_MSG_STATUS_BAD_FLOAT:      return "BAD_FLOAT";
+    case DS_MSG_STATUS_FLOAT_OVERFLOW: return "FLOAT_OVERFLOW";
   }
   return "UNKNOWN";
 }
 
 const char *
-rai::ds::redis_msg_status_description( RedisMsgStatus status ) noexcept {
+ds_msg_status_description( ds_msg_status_t status ) {
   switch ( status ) {
-    case REDIS_MSG_OK:             return "OK";
-    case REDIS_MSG_BAD_TYPE:       return "Message decoding error, bad type char";
-    case REDIS_MSG_PARTIAL:        return "Partial value";
-    case REDIS_MSG_ALLOC_FAIL:     return "Alloc failed";
-    case REDIS_MSG_BAD_JSON:       return "Unable to parse JSON message";
-    case REDIS_MSG_BAD_INT:        return "Unable to parse integer";
-    case REDIS_MSG_INT_OVERFLOW:   return "Integer overflow";
-    case REDIS_MSG_BAD_FLOAT:      return "Unable to parse float number";
-    case REDIS_MSG_FLOAT_OVERFLOW: return "Float number overflow";
+    case DS_MSG_STATUS_OK:         return "OK";
+    case DS_MSG_STATUS_BAD_TYPE: return "Message decoding error, bad type char";
+    case DS_MSG_STATUS_PARTIAL:    return "Partial value";
+    case DS_MSG_STATUS_ALLOC_FAIL: return "Alloc failed";
+    case DS_MSG_STATUS_BAD_JSON:   return "Unable to parse JSON message";
+    case DS_MSG_STATUS_BAD_INT:    return "Unable to parse integer";
+    case DS_MSG_STATUS_INT_OVERFLOW: return "Integer overflow";
+    case DS_MSG_STATUS_BAD_FLOAT:  return "Unable to parse float number";
+    case DS_MSG_STATUS_FLOAT_OVERFLOW: return "Float number overflow";
   }
   return "Unknown msg status";
 }
 
-template<class T>
-static inline uint32_t data_type_mask( T t ) {
-  uint8_t x = (uint8_t) t - (uint8_t) RedisMsg::BULK_STRING;
-  return x < 32 ? ( 1U << x ) : 0U;
-}
-
-static inline bool is_valid( uint32_t tb ) {
-  return ( RedisMsg::all_data_bits & tb ) != 0;
-}
-
-static inline bool is_simple_type( uint32_t tb ) {
- static const uint32_t valid_bits = DTBit( RedisMsg::SIMPLE_STRING ) |
-                                    DTBit( RedisMsg::ERROR_STRING );
-  return ( valid_bits & tb ) != 0;
-}
-
-static inline bool is_int_type( uint32_t tb ) {
-  static const uint32_t valid_bits = DTBit( RedisMsg::INTEGER_VALUE );
-  return ( valid_bits & tb ) != 0;
-}
-
-static inline bool is_bulk_string( uint32_t tb ) {
-  static const uint32_t valid_bits = DTBit( RedisMsg::BULK_STRING );
-  return ( valid_bits & tb ) != 0;
-}
+} /* extern "C" */
 
 RedisMsgStatus
 RedisMsg::pack2( void *buf,  size_t &buflen ) const noexcept
 {
   char  * ptr = (char *) buf;
   size_t  i;
-  const uint32_t type_bit = data_type_mask<DataType>( this->type );
 
-  if ( ! is_valid( type_bit ) )
-    return REDIS_MSG_BAD_TYPE;
+  if ( this->type == DS_BULK_STRING || this->type == DS_BULK_ARRAY ) {
+    i = int_digits( this->len );
+    if ( i + 2 + ( this->len > 0 ? this->len : 0 ) + 2 >= buflen )
+      return DS_MSG_STATUS_PARTIAL;
+    ptr[ 0 ] = (char) this->type;
+    i = 1 + int_to_str( this->len, &ptr[ 1 ], i );
 
-  if ( 32 >= buflen ) /* int type + 23 digit number + 2 trail = 26 */
-    return REDIS_MSG_PARTIAL;
-
-  ptr[ 0 ] = (char) this->type;
-  if ( is_simple_type( type_bit ) ) {
-    i = 1 + this->len;
-    if ( i + 2 >= buflen )
-      return REDIS_MSG_PARTIAL;
-    ::memcpy( &ptr[ 1 ], this->strval, this->len );
-  }
-  else if ( is_int_type( type_bit ) ) {
-    i = 1 + int_to_str( this->ival, &ptr[ 1 ] );
-  }
-  else {
-    i = 1 + int_to_str( this->len, &ptr[ 1 ] );
-    if ( is_bulk_string( type_bit ) ) {
+    if ( this->type == DS_BULK_STRING ) {
       if ( this->len >= 0 ) {
-        ptr[ i ] = '\r';
-        ptr[ i + 1 ] = '\n';
-        i += 2;
-        if ( i + this->len + 2 >= buflen )
-          return REDIS_MSG_PARTIAL;
+        i = crlf( ptr, i );
         ::memcpy( &ptr[ i ], this->strval, this->len );
         i += this->len;
       }
     }
     else {
+      i = crlf( ptr, i );
       if ( this->len >= 0 ) {
-        ptr[ i ] = '\r';
-        ptr[ i + 1 ] = '\n';
-        i += 2;
         for ( size_t k = 0; k < (size_t) this->len; k++ ) {
           size_t tmp = buflen - i;
-          RedisMsgStatus stat = this->array[ k ].pack2( &ptr[ i ], tmp );
-          if ( stat != REDIS_MSG_OK )
+          RedisMsgStatus stat = this->arr( k ).pack2( &ptr[ i ], tmp );
+          if ( stat != DS_MSG_STATUS_OK )
             return stat;
           i += tmp;
         }
-        goto skip_trailing_crnl;
       }
+      buflen = i;
+      return DS_MSG_STATUS_OK; /* no trailing crlf */
     }
   }
-  ptr[ i ] = '\r';
-  ptr[ i + 1 ] = '\n';
-  i += 2;
-skip_trailing_crnl:;
-  buflen = i;
-  return REDIS_MSG_OK;
+  else if ( this->type == DS_INTEGER_VALUE ) {
+    i = int_digits( this->ival );
+    if ( i + 2 >= buflen )
+      return DS_MSG_STATUS_PARTIAL;
+    ptr[ 0 ] = (char) DS_INTEGER_VALUE;
+    i = 1 + int_to_str( this->ival, &ptr[ 1 ], i );
+  }
+  else if ( this->type == DS_SIMPLE_STRING ||
+            this->type == DS_ERROR_STRING ) {
+    i = 1 + this->len;
+    if ( i + 2 >= buflen )
+      return DS_MSG_STATUS_PARTIAL;
+    ptr[ 0 ] = (char) this->type;
+    ::memcpy( &ptr[ 1 ], this->strval, this->len );
+  }
+  else {
+    return DS_MSG_STATUS_BAD_TYPE;
+  }
+  buflen = crlf( ptr, i );
+  return DS_MSG_STATUS_OK;
 }
 
 size_t
@@ -134,80 +127,73 @@ RedisMsg::pack( void *buf ) const noexcept
 {
   char * ptr = (char *) buf;
   size_t i;
-  const uint32_t type_bit = data_type_mask<DataType>( this->type );
 
-  ptr[ 0 ] = (char) this->type;
-  if ( is_simple_type( type_bit ) ) {
-    i = 1 + this->len;
-    ::memcpy( &ptr[ 1 ], this->strval, this->len );
-  }
-  else if ( is_int_type( type_bit ) ) {
-    i = 1 + int_to_str( this->ival, &ptr[ 1 ] );
-  }
-  else {
+  if ( this->type == DS_BULK_STRING || this->type == DS_BULK_ARRAY ) {
+    ptr[ 0 ] = (char) this->type;
     i = 1 + int_to_str( this->len, &ptr[ 1 ] );
-    if ( is_bulk_string( type_bit ) ) {
+    if ( this->type == DS_BULK_STRING ) {
       if ( this->len >= 0 ) {
-        ptr[ i ] = '\r';
-        ptr[ i + 1 ] = '\n';
-        i += 2;
+        i = crlf( ptr, i );
         ::memcpy( &ptr[ i ], this->strval, this->len );
         i += this->len;
       }
     }
     else {
+      i = crlf( ptr, i );
       if ( this->len >= 0 ) {
-        ptr[ i ] = '\r';
-        ptr[ i + 1 ] = '\n';
-        i += 2;
         for ( size_t k = 0; k < (size_t) this->len; k++ )
-          i += this->array[ k ].pack( &ptr[ i ] );
-        goto skip_trailing_crnl;
+          i += this->arr( k ).pack( &ptr[ i ] );
       }
+      return i; /* no trailing crlf */
     }
   }
-  ptr[ i ] = '\r';
-  ptr[ i + 1 ] = '\n';
-  i += 2;
-skip_trailing_crnl:;
-  return i;
+  else if ( this->type == DS_INTEGER_VALUE ) {
+    ptr[ 0 ] = (char) DS_INTEGER_VALUE;
+    i = 1 + int_to_str( this->ival, &ptr[ 1 ] );
+  }
+  else if ( this->type == DS_SIMPLE_STRING ||
+            this->type == DS_ERROR_STRING ) {
+    ptr[ 0 ] = (char) this->type;
+    i = 1 + this->len;
+    ::memcpy( &ptr[ 1 ], this->strval, this->len );
+  }
+  else {
+    return DS_MSG_STATUS_BAD_TYPE;
+  }
+  return crlf( ptr, i );
 }
 
 size_t
 RedisMsg::pack_size( void ) const noexcept
 {
   size_t i;
-  const uint32_t type_bit = data_type_mask<DataType>( this->type );
-  if ( is_simple_type( type_bit ) ) {
-    i = 1 + this->len;
-  }
-  else if ( is_int_type( type_bit ) ) {
-    i = 1 + int_digits( this->ival );
-  }
-  else {
+
+  if ( this->type == DS_BULK_STRING || this->type == DS_BULK_ARRAY ) {
     i = 1 + int_digits( this->len );
-    if ( is_bulk_string( type_bit ) ) {
+    if ( this->type == DS_BULK_STRING ) {
       if ( this->len >= 0 )
         i += 2 + this->len;
+      return i + 2;
     }
-    else {
-      if ( this->len >= 0 ) {
-        i += 2;
-        for ( size_t k = 0; k < (size_t) this->len; k++ )
-          i += this->array[ k ].pack_size();
-        goto skip_trailing_crnl;
-      }
+    i += 2;
+    if ( this->len >= 0 ) {
+      for ( size_t k = 0; k < (size_t) this->len; k++ )
+        i += this->arr( k ).pack_size();
     }
+    return i;
   }
-  i += 2;
-skip_trailing_crnl:;
-  return i;
+  if ( this->type == DS_INTEGER_VALUE )
+    return 1 + int_digits( this->ival ) + 2;
+
+  if ( this->type == DS_SIMPLE_STRING || this->type == DS_ERROR_STRING )
+    return 1 + this->len + 2;
+  return 0;
 }
 
 bool
 RedisMsg::alloc_array( ScratchMem &wrk,  int64_t sz ) noexcept
 {
-  this->type  = BULK_ARRAY;
+  this->type  = DS_BULK_ARRAY;
   this->array = NULL;
   if ( (this->len = sz) < 0 )
     this->len = -1;
@@ -229,7 +215,7 @@ RedisMsg::string_array( ScratchMem &wrk,  int64_t sz,  ... ) noexcept
     int64_t k = 0;
     va_start( args, sz );
     do {
-      this->array[ k ].type   = BULK_STRING;
+      this->array[ k ].type   = DS_BULK_STRING;
       this->array[ k ].len    = va_arg( args, size_t );
       this->array[ k ].strval = va_arg( args, char * );
     } while ( ++k < sz );
@@ -247,7 +233,7 @@ RedisMsg::split( ScratchMem &wrk ) noexcept
   size_t     cnt = 0;
 
   if ( tmp == NULL )
-    return REDIS_MSG_ALLOC_FAIL;
+    return DS_MSG_STATUS_ALLOC_FAIL;
   for ( ; ; ptr++ ) {
     if ( ptr >= end )
       goto finished;
@@ -257,7 +243,7 @@ RedisMsg::split( ScratchMem &wrk ) noexcept
   tmp[ 0 ].strval = ptr;
   for (;;) {
     if ( ++ptr == end || *ptr <= ' ' ) {
-      tmp[ cnt ].type = BULK_STRING;
+      tmp[ cnt ].type = DS_BULK_STRING;
       tmp[ cnt ].len  = ptr - tmp[ cnt ].strval;
       cnt++;
       while ( ptr < end && *ptr <= ' ' )
@@ -267,7 +253,7 @@ RedisMsg::split( ScratchMem &wrk ) noexcept
       if ( cnt % 4 == 0 ) {
         RedisMsg * tmp2 = (RedisMsg *) wrk.alloc( sizeof( RedisMsg ) * ( cnt + 4 ) );
         if ( tmp2 == NULL )
-          return REDIS_MSG_ALLOC_FAIL;
+          return DS_MSG_STATUS_ALLOC_FAIL;
         ::memcpy( tmp2, tmp, sizeof( RedisMsg ) * cnt );
         tmp = tmp2;
       }
@@ -275,10 +261,10 @@ RedisMsg::split( ScratchMem &wrk ) noexcept
     } 
   }   
 finished:;
-  this->type  = BULK_ARRAY;
+  this->type  = DS_BULK_ARRAY;
   this->len   = cnt;
   this->array = tmp;
-  return REDIS_MSG_OK;
+  return DS_MSG_STATUS_OK;
 }
 /* Split buffer bytes into a message */
 RedisMsgStatus
@@ -299,7 +285,7 @@ RedisMsg::unpack( void *buf,  size_t &buflen,  ScratchMem &wrk ) noexcept
   bsz -= off;
   for ( eol = &ptr[ 1 ]; ; eol++ ) {
     if ( eol >= &ptr[ bsz ] )
-      return REDIS_MSG_PARTIAL;
+      return DS_MSG_STATUS_PARTIAL;
     if ( *eol == '\n' )
       break;
   }
@@ -309,40 +295,20 @@ RedisMsg::unpack( void *buf,  size_t &buflen,  ScratchMem &wrk ) noexcept
   j = i + 2;
   if ( ptr[ i ] == '\r' )
     i--;
-  /* a bitmask of '+', '-', ':', '$', '*' */
-  const uint32_t type_bit = data_type_mask<char>( ptr[ 0 ] );
-  if ( ! is_valid( type_bit ) ) {
-    /* inline command */
-    this->type   = SIMPLE_STRING;
-    this->len    = i + 1;
-    this->strval = ptr;
-    buflen = j + off;
-    return this->split( wrk );
-  }
-  this->type = (DataType) ptr[ 0 ];
+  this->type = (ds_resp_type_t) ptr[ 0 ];
+  if ( this->type == DS_BULK_STRING || this->type == DS_BULK_ARRAY ) {
+    /* a bulk string has lengths */
+    status = (RedisMsgStatus) str_to_int( &ptr[ 1 ], i, this->len );
+    if ( status != DS_MSG_STATUS_OK )
+      return status;
 
-  /* no lengths, simple string or error */
-  if ( is_simple_type( type_bit ) ) {
-    this->len = i;
-    this->strval = &ptr[ 1 ];
-  }
-  /* an int64 */
-  else if ( is_int_type( type_bit ) ) {
-    this->len = 0; /* could set this to i */
-    if ( (status = str_to_int( &ptr[ 1 ], i, this->ival )) != REDIS_MSG_OK )
-      return status;
-  }
-  /* a bulk string or bulk array, both have lengths */
-  else {
-    if ( (status = str_to_int( &ptr[ 1 ], i, this->len )) != REDIS_MSG_OK )
-      return status;
-    if ( is_bulk_string( type_bit ) ) {
+    if ( this->type == DS_BULK_STRING ) {
       /* test length */
       if ( this->len > 0 ) {
         this->strval = &ptr[ j ];
         j += this->len;
         if ( j > bsz )
-          return REDIS_MSG_PARTIAL;
+          return DS_MSG_STATUS_PARTIAL;
       }
       /* if len <= 0, zero length */
       else
@@ -355,19 +321,19 @@ RedisMsg::unpack( void *buf,  size_t &buflen,  ScratchMem &wrk ) noexcept
           j++;
       }
     }
-    /* a bulk array */
     else {
       /* allocate and recursively parse the elements */
       if ( this->len > 0 ) {
         this->array = (RedisMsg *) wrk.alloc( sizeof( RedisMsg ) * this->len );
         if ( this->array == NULL )
-          return REDIS_MSG_ALLOC_FAIL;
+          return DS_MSG_STATUS_ALLOC_FAIL;
         for ( size_t k = 0; k < (size_t) this->len; k++ ) {
           if ( bsz <= j )
-            return REDIS_MSG_PARTIAL;
+            return DS_MSG_STATUS_PARTIAL;
           size_t tmp = bsz - j;
-          RedisMsgStatus stat = this->array[ k ].unpack( &ptr[ j ], tmp, wrk );
-          if ( stat != REDIS_MSG_OK )
+          RedisMsgStatus stat;
+          stat = this->arr( k ).unpack( &ptr[ j ], tmp, wrk );
+          if ( stat != DS_MSG_STATUS_OK )
             return stat;
           j += tmp; /* accumulate the message size */
         }
@@ -377,8 +343,127 @@ RedisMsg::unpack( void *buf,  size_t &buflen,  ScratchMem &wrk ) noexcept
         this->array = NULL;
     }
   }
+  else if ( this->type == DS_INTEGER_VALUE ) {
+    /* an int64 */
+    this->len = 0; /* could set this to i */
+    status = (RedisMsgStatus) str_to_int( &ptr[ 1 ], i, this->ival );
+    if ( status != DS_MSG_STATUS_OK )
+      return status;
+  }
+  else if ( this->type == DS_SIMPLE_STRING ||
+            this->type == DS_ERROR_STRING ) {
+    /* no lengths, simple string or error */
+    this->len = i;
+    this->strval = &ptr[ 1 ];
+  }
+  else {
+    /* inline command */
+    this->type   = DS_SIMPLE_STRING;
+    this->len    = i + 1;
+    this->strval = ptr;
+    buflen = j + off;
+    return this->split( wrk );
+  }
   buflen = j + off;
-  return REDIS_MSG_OK;
+  return DS_MSG_STATUS_OK;
+}
+/* Split buffer bytes into a message */
+RedisMsgStatus
+RedisMsg::unpack2( void *buf,  size_t bsz,  ScratchMem &wrk ) noexcept
+{
+  char  * ptr, * eol;
+  size_t  i, j, off = 0;
+  RedisMsgStatus status;
+
+  /* skip over whitespace */
+  ptr = (char *) buf;
+  for ( off = 0; off < bsz; off++ )
+    if ( (uint8_t) ptr[ off ] > ' ' )
+       break;
+
+  /* find a newline */
+  ptr  = &ptr[ off ];
+  bsz -= off;
+  for ( eol = ptr; ; eol++ ) {
+    if ( eol == &ptr[ bsz ] ) {
+      i = bsz;
+      j = bsz;
+      break;
+    }
+    if ( *eol == '\n' ) {
+      /* i = count of chars without \r\n, j = count of chars to eol */
+      i = eol - &ptr[ 1 ];
+      j = i + 1;
+      if ( ptr[ i ] == '\r' ) {
+        i--;
+        j++;
+      }
+      break;
+    }
+  }
+
+  this->type = (ds_resp_type_t) ptr[ 0 ];
+  if ( this->type == DS_BULK_STRING || this->type == DS_BULK_ARRAY ) {
+    /* a bulk string has lengths */
+    status = (RedisMsgStatus) str_to_int( &ptr[ 1 ], i, this->len );
+    if ( status != DS_MSG_STATUS_OK )
+      return status;
+
+    if ( this->type == DS_BULK_STRING ) {
+      /* test length */
+      if ( this->len > 0 ) {
+        this->strval = &ptr[ j ];
+        j += this->len;
+        if ( j > bsz )
+          return DS_MSG_STATUS_PARTIAL;
+      }
+      /* if len <= 0, zero length */
+      else
+        this->strval = NULL;
+    }
+    else {
+      /* allocate and recursively parse the elements */
+      if ( this->len > 0 ) {
+        this->array = (RedisMsg *) wrk.alloc( sizeof( RedisMsg ) * this->len );
+        if ( this->array == NULL )
+          return DS_MSG_STATUS_ALLOC_FAIL;
+        for ( size_t k = 0; k < (size_t) this->len; k++ ) {
+          if ( bsz <= j )
+            return DS_MSG_STATUS_PARTIAL;
+          size_t tmp = bsz - j;
+          RedisMsgStatus stat;
+          stat = this->arr( k ).unpack( &ptr[ j ], tmp, wrk );
+          if ( stat != DS_MSG_STATUS_OK )
+            return stat;
+          j += tmp; /* accumulate the message size */
+        }
+      }
+      /* if len <= 0, zero length */
+      else
+        this->array = NULL;
+    }
+  }
+  else if ( this->type == DS_INTEGER_VALUE ) {
+    /* an int64 */
+    this->len = 0; /* could set this to i */
+    status = (RedisMsgStatus) str_to_int( &ptr[ 1 ], i, this->ival );
+    if ( status != DS_MSG_STATUS_OK )
+      return status;
+  }
+  else if ( this->type == DS_SIMPLE_STRING ||
+            this->type == DS_ERROR_STRING ) {
+    /* no lengths, simple string or error */
+    this->len = i;
+    this->strval = &ptr[ 1 ];
+  }
+  else {
+    /* inline command */
+    this->type   = DS_SIMPLE_STRING;
+    this->len    = i + 1;
+    this->strval = ptr;
+    return this->split( wrk );
+  }
+  return DS_MSG_STATUS_OK;
 }
 
 RedisMsg *
@@ -396,10 +481,10 @@ RedisMsg::dup2( ScratchMem &wrk,  RedisMsg &cpy ) noexcept
   /* recurse and copy the message into work mem */
   cpy.type = this->type;
   cpy.len  = this->len;
-  if ( this->type == INTEGER_VALUE ) {
+  if ( this->type == DS_INTEGER_VALUE ) {
     cpy.ival = this->ival;
   }
-  else if ( this->type != BULK_ARRAY ) {
+  else if ( this->type != DS_BULK_ARRAY ) {
     if ( this->len < 0 )
       cpy.strval = NULL;
     else {
@@ -418,7 +503,7 @@ RedisMsg::dup2( ScratchMem &wrk,  RedisMsg &cpy ) noexcept
       if ( cpy.array == NULL )
         return NULL;
       for ( size_t i = 0; i < (size_t) this->len; i++ )
-        if ( this->array[ i ].dup2( wrk, cpy.array[ i ] ) == NULL )
+        if ( this->arr( i ).dup2( wrk, cpy.arr( i ) ) == NULL )
           return NULL;
     }
   }
@@ -435,7 +520,7 @@ RedisMsg::match_arg( size_t n,  const char *str,  size_t sz,
 
   size_t k;
   va_list args;
-  const RedisMsg & m = this->array[ n ];
+  const RedisMsg & m = this->arr( n );
 
   if ( ! m.is_string() )
     return 0;
@@ -471,10 +556,10 @@ rai::ds::string_to_int( const char *str,  size_t sz,  int64_t &ival ) noexcept
   bool neg;
 
   if ( sz == 0 )
-    return REDIS_MSG_BAD_INT;
+    return DS_MSG_STATUS_BAD_INT;
   if ( str[ 0 ] == '-' ) {
     if ( --sz == 0 )
-      return REDIS_MSG_BAD_INT;
+      return DS_MSG_STATUS_BAD_INT;
     str++;
     neg = true;
   }
@@ -489,7 +574,7 @@ rai::ds::string_to_int( const char *str,  size_t sz,  int64_t &ival ) noexcept
   sz = j;
   for (;;) {
     if ( str[ j ] < '0' || str[ j ] > '9' )
-      return REDIS_MSG_BAD_INT;
+      return DS_MSG_STATUS_BAD_INT;
     n += (uint64_t) pow10[ i++ ] * ( str[ j++ ] - '0' );
     if ( i == max_pow10 )
       break;
@@ -499,11 +584,11 @@ rai::ds::string_to_int( const char *str,  size_t sz,  int64_t &ival ) noexcept
     if ( sz <= max_pow10 )
       i = max_pow10 - sz;
     else
-      return REDIS_MSG_INT_OVERFLOW;
+      return DS_MSG_STATUS_INT_OVERFLOW;
     uint64_t nn = 0;
     for (;;) {
       if ( str[ j ] < '0' || str[ j ] > '9' )
-        return REDIS_MSG_BAD_INT;
+        return DS_MSG_STATUS_BAD_INT;
       nn += (uint64_t) pow10[ i++ ] * ( str[ j++ ] - '0' );
       if ( i == max_pow10 )
         break;
@@ -515,9 +600,9 @@ rai::ds::string_to_int( const char *str,  size_t sz,  int64_t &ival ) noexcept
       /* test for neg && 6854775808 */
       if ( neg && nn == 922337203 && n == 6854775808 ) {
         ival = 0x8000000000000000LL;
-        return REDIS_MSG_OK;
+        return DS_MSG_STATUS_OK;
       }
-      return REDIS_MSG_INT_OVERFLOW;
+      return DS_MSG_STATUS_INT_OVERFLOW;
     }
     n += (uint64_t) 10 * (uint64_t) pow10[ 0 ] * nn;
   }
@@ -525,7 +610,7 @@ rai::ds::string_to_int( const char *str,  size_t sz,  int64_t &ival ) noexcept
     ival = -(int64_t) n;
   else
     ival = (int64_t) n;
-  return REDIS_MSG_OK;
+  return DS_MSG_STATUS_OK;
 }
 
 int
@@ -539,10 +624,10 @@ rai::ds::string_to_dbl( const char *str,  size_t sz,  double &fval ) noexcept
   buf[ sz ] = '\0';
   fval = ::strtod( buf, &endptr );
   if ( endptr == buf )
-    return REDIS_MSG_BAD_FLOAT;
+    return DS_MSG_STATUS_BAD_FLOAT;
   if ( fval == 0 && errno == ERANGE )
-    return REDIS_MSG_FLOAT_OVERFLOW;
-  return REDIS_MSG_OK;
+    return DS_MSG_STATUS_FLOAT_OVERFLOW;
+  return DS_MSG_STATUS_OK;
 }
 
 int
@@ -560,10 +645,10 @@ rai::ds::string_to_uint( const char *str,  size_t sz,  uint64_t &ival ) noexcept
   bool neg;
 
   if ( sz == 0 )
-    return REDIS_MSG_BAD_INT;
+    return DS_MSG_STATUS_BAD_INT;
   if ( str[ 0 ] == '-' ) {
     if ( --sz == 0 )
-      return REDIS_MSG_BAD_INT;
+      return DS_MSG_STATUS_BAD_INT;
     str++;
     neg = true;
   }
@@ -578,7 +663,7 @@ rai::ds::string_to_uint( const char *str,  size_t sz,  uint64_t &ival ) noexcept
   sz = j;
   for (;;) {
     if ( str[ j ] < '0' || str[ j ] > '9' )
-      return REDIS_MSG_BAD_INT;
+      return DS_MSG_STATUS_BAD_INT;
     n += (uint64_t) pow10[ i++ ] * ( str[ j++ ] - '0' );
     if ( i == max_pow10 )
       break;
@@ -588,11 +673,11 @@ rai::ds::string_to_uint( const char *str,  size_t sz,  uint64_t &ival ) noexcept
     if ( sz <= max_pow10 )
       i = max_pow10 - sz;
     else
-      return REDIS_MSG_INT_OVERFLOW;
+      return DS_MSG_STATUS_INT_OVERFLOW;
     uint64_t nn = 0;
     for (;;) {
       if ( str[ j ] < '0' || str[ j ] > '9' )
-        return REDIS_MSG_BAD_INT;
+        return DS_MSG_STATUS_BAD_INT;
       nn += (uint64_t) pow10[ i++ ] * ( str[ j++ ] - '0' );
       if ( i == max_pow10 )
         break;
@@ -605,9 +690,9 @@ rai::ds::string_to_uint( const char *str,  size_t sz,  uint64_t &ival ) noexcept
         /* test for neg && 6854775808 */
         if ( neg && nn == 922337203 && n == 6854775808 ) {
           ival = 0x8000000000000000LL;
-          return REDIS_MSG_OK;
+          return DS_MSG_STATUS_OK;
         }
-        return REDIS_MSG_INT_OVERFLOW;
+        return DS_MSG_STATUS_INT_OVERFLOW;
       }
     }
     else {
@@ -615,7 +700,7 @@ rai::ds::string_to_uint( const char *str,  size_t sz,  uint64_t &ival ) noexcept
       if ( nn > (uint64_t) 1844674407 ||
            ( nn == (uint64_t) 1844674407 &&
              n > (uint64_t) 3709551615 ) ) {
-        return REDIS_MSG_INT_OVERFLOW;
+        return DS_MSG_STATUS_INT_OVERFLOW;
       }
     }
     n += (uint64_t) 10 * (uint64_t) pow10[ 0 ] * nn;
@@ -624,7 +709,7 @@ rai::ds::string_to_uint( const char *str,  size_t sz,  uint64_t &ival ) noexcept
     ival = (uint64_t) -(int64_t) n;
   else
     ival = n;
-  return REDIS_MSG_OK;
+  return DS_MSG_STATUS_OK;
 }
 
 static size_t
@@ -700,9 +785,9 @@ RedisMsg::to_almost_json( char *buf,  bool be_weird ) const noexcept
   char   q;
 
   switch ( this->type ) {
-    case SIMPLE_STRING: q = '\''; elen = 1; if ( 0 ) {
-    case ERROR_STRING:  q = '`';  elen = 1; if ( 0 ) {
-    case BULK_STRING:   q = '"';  elen = 0; } }
+    case DS_SIMPLE_STRING: q = '\''; elen = 1; if ( 0 ) {
+    case DS_ERROR_STRING:  q = '`';  elen = 1; if ( 0 ) {
+    case DS_BULK_STRING:   q = '"';  elen = 0; } }
       if ( this->len >= 0 ) {
         if ( ! be_weird ) { /* normal quoting */
           buf[ 0 ] = '"';
@@ -725,18 +810,18 @@ RedisMsg::to_almost_json( char *buf,  bool be_weird ) const noexcept
       ::memcpy( buf, "null", 4 );
       return 4;
 
-    case INTEGER_VALUE:
+    case DS_INTEGER_VALUE:
       return int_to_str( this->ival, buf );
 
-    case BULK_ARRAY:
+    case DS_BULK_ARRAY:
       if ( this->len >= 0 ) {
         elen = 1;
         buf[ 0 ] = '[';
         if ( this->len > 0 )
-          elen += this->array[ 0 ].to_almost_json( &buf[ elen ], be_weird );
+          elen += this->arr( 0 ).to_almost_json( &buf[ elen ], be_weird );
         for ( size_t i = 1; i < (size_t) this->len; i++ ) {
           buf[ elen++ ] = ',';
-          elen += this->array[ i ].to_almost_json( &buf[ elen ], be_weird );
+          elen += this->arr( i ).to_almost_json( &buf[ elen ], be_weird );
         }
         buf[ elen ] = ']';
         return elen + 1;
@@ -755,9 +840,9 @@ RedisMsg::to_almost_json_size( bool be_weird ) const noexcept
   size_t elen;
 
   switch ( this->type ) {
-    case SIMPLE_STRING: elen = 1; if ( 0 ) {
-    case ERROR_STRING:  elen = 1; if ( 0 ) {
-    case BULK_STRING:   elen = 0; } }
+    case DS_SIMPLE_STRING: elen = 1; if ( 0 ) {
+    case DS_ERROR_STRING:  elen = 1; if ( 0 ) {
+    case DS_BULK_STRING:   elen = 0; } }
       if ( this->len >= 0 ) {
         if ( be_weird ) /* normal quoting */
           elen = 0;
@@ -768,21 +853,21 @@ RedisMsg::to_almost_json_size( bool be_weird ) const noexcept
         return 3;
       return 4; /* null */
 
-    case INTEGER_VALUE:
+    case DS_INTEGER_VALUE:
       return int_digits( this->ival );
 
-    case BULK_ARRAY:
+    case DS_BULK_ARRAY:
       if ( this->len >= 0 ) {
         size_t sz;
         elen = 1;
         if ( this->len > 0 ) {
-          sz = this->array[ 0 ].to_almost_json_size( be_weird );
+          sz = this->arr( 0 ).to_almost_json_size( be_weird );
           if ( sz == 0 )
             return 0;
           elen += sz;
         }
         for ( size_t i = 1; i < (size_t) this->len; i++ ) {
-          sz = this->array[ i ].to_almost_json_size( be_weird );
+          sz = this->arr( i ).to_almost_json_size( be_weird );
           if ( sz == 0 )
             return 0;
           elen += 1 + sz;
@@ -852,9 +937,9 @@ RedisMsg::unpack_json( const char *json,  size_t &len,
 {
   JsonInput input( wrk, json, 0, len );
   RedisMsgStatus status = this->parse_json( input );
-  if ( status == REDIS_MSG_OK ) {
+  if ( status == DS_MSG_STATUS_OK ) {
     len = input.offset;
-    return REDIS_MSG_OK;
+    return DS_MSG_STATUS_OK;
   }
   return status;
 }
@@ -905,39 +990,39 @@ RedisMsg::parse_json( JsonInput &input ) noexcept
     case '0': case '1': case '2': case '3': case '4': case '5':
     case '6': case '7': case '8': case '9': case '-':
       return this->parse_number( input );
-    case JSON_EOF: return REDIS_MSG_PARTIAL;
+    case JSON_EOF: return DS_MSG_STATUS_PARTIAL;
     case 't': if ( input.match( 't', 'r', 'u', 'e', 0 ) ) {
-                this->type = INTEGER_VALUE;
+                this->type = DS_INTEGER_VALUE;
                 this->len  = 0;
                 this->ival = 1;
                 input.consume( 4 );
-                return REDIS_MSG_OK;
+                return DS_MSG_STATUS_OK;
               if ( 0 ) {
     case 'f': if ( input.match( 'f', 'a', 'l', 's', 'e' ) ) {
-                this->type = INTEGER_VALUE;
+                this->type = DS_INTEGER_VALUE;
                 this->len  = 0;
                 this->ival = 0;
                 input.consume( 5 );
-                return REDIS_MSG_OK;
+                return DS_MSG_STATUS_OK;
               if ( 0 ) {
     case 'n': if ( input.match( 'n', 'u', 'l', 'l', 0 ) ) {
-                this->type  = BULK_ARRAY;
+                this->type  = DS_BULK_ARRAY;
                 this->len   = -1;
                 this->array = NULL;
                 input.consume( 4 );
-                return REDIS_MSG_OK;
+                return DS_MSG_STATUS_OK;
               }
               else if ( input.match( 'n', 'i', 'l', 0, 0 ) ) {
-                this->type   = BULK_STRING;
+                this->type   = DS_BULK_STRING;
                 this->len    = -1;
                 this->strval = NULL;
                 input.consume( 3 );
-                return REDIS_MSG_OK;
+                return DS_MSG_STATUS_OK;
               }
               } } } }
               /* FALLTHRU */
     default:
-      return REDIS_MSG_BAD_JSON;
+      return DS_MSG_STATUS_BAD_JSON;
   }
 }
 
@@ -945,7 +1030,7 @@ RedisMsgStatus
 RedisMsg::parse_object( JsonInput & ) noexcept
 {
   /* no way of representing objects */
-  return REDIS_MSG_BAD_JSON;
+  return DS_MSG_STATUS_BAD_JSON;
 }
 
 RedisMsgStatus
@@ -965,17 +1050,17 @@ RedisMsg::parse_array( JsonInput &input ) noexcept
   input.next(); /* eat '[' */
   int c = input.eat_white();
   while ( c != ']' ) {
-    if ( (status = value.parse_json( input )) != REDIS_MSG_OK )
+    if ( (status = value.parse_json( input )) != DS_MSG_STATUS_OK )
       return status;
 
     if ( tos == 0 || &val[ tos ][ i ] == end[ tos ] ) {
       size_t newsz = ( sz + 2 ) * 3 / 2;
       tos++;
       if ( tos == sizeof( val ) / sizeof( val[ 0 ] ) )
-        return REDIS_MSG_BAD_JSON;
+        return DS_MSG_STATUS_BAD_JSON;
       val[ tos ] = (RedisMsg *) input.alloc( sizeof( RedisMsg ) * newsz );
       if ( val[ tos ] == NULL )
-        return REDIS_MSG_ALLOC_FAIL;
+        return DS_MSG_STATUS_ALLOC_FAIL;
       end[ tos ] = &val[ tos ][ newsz ];
       sz = newsz;
       i  = 0;
@@ -991,14 +1076,14 @@ RedisMsg::parse_array( JsonInput &input ) noexcept
   }
   if ( c != ']' ) {
     if ( c == JSON_EOF )
-      return REDIS_MSG_PARTIAL;
-    return REDIS_MSG_BAD_JSON;
+      return DS_MSG_STATUS_PARTIAL;
+    return DS_MSG_STATUS_BAD_JSON;
   }
   input.next(); /* eat ']' */
 
   if ( tos > 0 ) {
     if ( tos == 1 ) {
-      this->type  = BULK_ARRAY;
+      this->type  = DS_BULK_ARRAY;
       this->len   = i;
       this->array = val[ 1 ];
     }
@@ -1006,11 +1091,11 @@ RedisMsg::parse_array( JsonInput &input ) noexcept
       sz = i;
       for ( j = 1; j < tos; j++ )
         sz += end[ j ] - val[ j ];
-      this->type  = BULK_ARRAY;
+      this->type  = DS_BULK_ARRAY;
       this->len   = sz;
       this->array = (RedisMsg *) input.alloc( sizeof( RedisMsg ) * sz );
       if ( this->array == NULL )
-        return REDIS_MSG_ALLOC_FAIL;
+        return DS_MSG_STATUS_ALLOC_FAIL;
       sz = 0;
       for ( j = 1; j < tos; j++ ) {
         ::memcpy( &this->array[ sz ], val[ j ],
@@ -1021,11 +1106,11 @@ RedisMsg::parse_array( JsonInput &input ) noexcept
     }
   }
   else {
-    this->type  = BULK_ARRAY;
+    this->type  = DS_BULK_ARRAY;
     this->len   = 0;
     this->array = NULL;
   }
-  return REDIS_MSG_OK;
+  return DS_MSG_STATUS_OK;
 }
 
 static inline uint32_t
@@ -1050,17 +1135,17 @@ RedisMsg::parse_string( JsonInput &input ) noexcept
 
   str = this->strval = (char *) input.alloc( 8 );
   if ( str == NULL )
-    return REDIS_MSG_ALLOC_FAIL;
+    return DS_MSG_STATUS_ALLOC_FAIL;
   end = &str[ 8 ];
   quote = input.next(); /* eat '"' */
   for (;;) {
     int c = input.next();
     if ( c == JSON_EOF )
-      return REDIS_MSG_PARTIAL;
+      return DS_MSG_STATUS_PARTIAL;
     if ( str == end ) {
       this->strval = (char *) input.extend( this->strval, sz, 16 );
       if ( this->strval == NULL )
-        return REDIS_MSG_ALLOC_FAIL;
+        return DS_MSG_STATUS_ALLOC_FAIL;
       str = &this->strval[ sz ];
       sz += 16;
       end = &str[ 16 ];
@@ -1068,13 +1153,13 @@ RedisMsg::parse_string( JsonInput &input ) noexcept
     if ( c == quote ) {
       *str = '\0';
       if ( quote == '"' )
-        this->type = BULK_STRING;
+        this->type = DS_BULK_STRING;
       else if ( quote == '\'' )
-        this->type = SIMPLE_STRING;
+        this->type = DS_SIMPLE_STRING;
       else
-        this->type = ERROR_STRING;
+        this->type = DS_ERROR_STRING;
       this->len  = (int64_t) ( str - this->strval );
-      return REDIS_MSG_OK;
+      return DS_MSG_STATUS_OK;
     }
     if ( c != '\\' ) {
       *str++ = (char) c;
@@ -1090,14 +1175,14 @@ RedisMsg::parse_string( JsonInput &input ) noexcept
       case 't': *str++ = '\t'; break;
       default:  *str++ = (char) b; break;
       case JSON_EOF: 
-        return REDIS_MSG_PARTIAL;
+        return DS_MSG_STATUS_PARTIAL;
 
       case 'x': { /* format \xXX where X = hex nibble */
         uint32_t uc_b1, uc_b2;
 
         if ( (uc_b1 = hex_value( input.next() )) == 0xff ||
              (uc_b2 = hex_value( input.next() )) == 0xff )
-          return REDIS_MSG_BAD_JSON;
+          return DS_MSG_STATUS_BAD_JSON;
         *str++ = (char) ( ( uc_b1 << 8 ) | uc_b2 );
         break;
       }
@@ -1109,7 +1194,7 @@ RedisMsg::parse_string( JsonInput &input ) noexcept
              (uc_b2 = hex_value( input.next() )) == 0xff ||
              (uc_b3 = hex_value( input.next() )) == 0xff ||
              (uc_b4 = hex_value( input.next() )) == 0xff )
-          return REDIS_MSG_BAD_JSON;
+          return DS_MSG_STATUS_BAD_JSON;
 
         uint32_t uchar = ( uc_b1 << 12 ) | ( uc_b2 << 8 ) |
                          ( uc_b3 << 4 ) | uc_b4;
@@ -1120,7 +1205,7 @@ RedisMsg::parse_string( JsonInput &input ) noexcept
           if ( &str[ 1 ] == end ) {
             this->strval = (char *) input.extend( this->strval, sz, 16 );
             if ( this->strval == NULL )
-              return REDIS_MSG_ALLOC_FAIL;
+              return DS_MSG_STATUS_ALLOC_FAIL;
             str = &this->strval[ sz ];
             sz += 16;
             end = &str[ 16 ];
@@ -1132,7 +1217,7 @@ RedisMsg::parse_string( JsonInput &input ) noexcept
           if ( &str[ 2 ] >= end ) {
             this->strval = (char *) input.extend( this->strval, sz, 16 );
             if ( this->strval == NULL )
-              return REDIS_MSG_ALLOC_FAIL;
+              return DS_MSG_STATUS_ALLOC_FAIL;
             str = &this->strval[ sz ];
             sz += 16;
             end = &str[ 16 ];
@@ -1166,11 +1251,11 @@ RedisMsg::parse_number( JsonInput &input ) noexcept
     integral = integral * 10 + ( c - '0' );
     c = input.forward(); /* eat digit */
   }
-  this->type = INTEGER_VALUE;
+  this->type = DS_INTEGER_VALUE;
   this->len  = 0;
   if ( ! isneg )
     this->ival = (int64_t) integral;
   else
     this->ival = -(int64_t) integral;
-  return REDIS_MSG_OK;
+  return DS_MSG_STATUS_OK;
 }

@@ -132,51 +132,6 @@ There are some differences with the way *Rai DS* works compared to
 - Many of the memory and latency monitoring commands are different,
   since the basic structures of system are different.
 
-////
-Cluster
--------
-
-[options="header",cols="3,1,1,1,1,1"]
-|===========================================
-| command | arity | first key | last key | step | flags
-| <<cluster>> | -2 | 0 | 0 | 0 | admin
-| <<readonly>> | 1 | 0 | 0 | 0 | admin
-| <<readwrite>> | 1 | 0 | 0 | 0 | admin
-|===========================================
-
-[[cluster]]
-cluster | modify cluster
-~~~~~~~~~~~~~~~~~~~~~~~~
-.Usage
-----
-cluster [addslots | count_failure | countkeysinslot | delslots |
- failover | forget | getkeysinslot | info | keyslot | meet |
- nodes | replicate | reset | saveconfig | set-config-epock |
- setslot | slaves | slots]
-----
-.Description
-cluster commands.
-
-[[readonly]]
-readonly | change to ro
-~~~~~~~~~~~~~~~~~~~~~~~
-.Usage
-----
-readonly
-----
-.Description
-Enable readonly mode.
-
-[[readwrite]]
-readwrite | change to rw
-~~~~~~~~~~~~~~~~~~~~~~~~
-.Usage
-----
-readwrite
-----
-.Description
-Enable readwrite mode.
-////
 Connection
 ----------
 
@@ -289,579 +244,462 @@ db number which is stored with each key.
 .Return
 *OK*.
 ////
-Geo
----
+Server
+------
 
 [options="header",cols="3,1,1,1,1,1"]
 |===========================================
 | command | arity | first key | last key | step | flags
-| <<geoadd>> | -5 | 1 | 1 | 1 | write
-| <<geohash>> | -2 | 1 | 1 | 1 | read
-| <<geopos>> | -2 | 1 | 1 | 1 | read
-| <<geodist>> | -4 | 1 | 1 | 1 | read
-| <<georadius>> | -6 | 1 | 1 | 1 | write movable
-| <<georadiusbymember>> | -5 | 1 | 1 | 1 | write movable
+//| <<bgrewriteaof>> | 1 | 0 | 0 | 0 | admin
+//| <<bgsave>> | -1 | 0 | 0 | 0 | admin
+| <<client>> | -2 | 0 | 0 | 0 | admin
+| <<command>> | -1 | 0 | 0 | 0 |
+| <<config>> | -2 | 0 | 0 | 0 | admin
+| <<dbsize>> | 1 | 0 | 0 | 0 |
+| <<debug>> | -1 | 0 | 0 | 0 | admin
+| <<flushall>> | -1 | 0 | 0 | 0 | admin
+| <<flushdb>> | -1 | 0 | 0 | 0 | admin
+| <<info>> | -1 | 0 | 0 | 0 |
+//| <<lastsave>> | 1 | 0 | 0 | 0 |
+//| <<memory>> | -2 | 0 | 0 | 0 |
+| <<monitor>> | 1 | 0 | 0 | 0 | admin
+//| <<role>> | 1 | 0 | 0 | 0 |
+| <<save>> | 1 | 0 | 0 | 0 | admin
+| <<load>> | 1 | 0 | 0 | 0 | admin
+| <<shutdown>> | -1 | 0 | 0 | 0 | admin
+//| <<slaveof>> | 3 | 0 | 0 | 0 | admin
+//| <<slowlog>> | -2 | 0 | 0 | 0 | admin
+//| <<sync>> | 1 | 0 | 0 | 0 | admin
+| <<time>> | 1 | 0 | 0 | 0 |
 |===========================================
-
-[[geoadd]]
-geoadd | add a pos to key
-~~~~~~~~~~~~~~~~~~~~~~~~~
-.Usage
-----
-geoadd key long lat mem [long lat mem ...]
-----
-.Description
-Add longitude, latitude to key as member by converting the position to
-a *Uber H3* hash and adding it to the set.  The members are ordered by
-hash because hashes closest to eachother are also closest by spatual
-distance.
-
-.Return
-An integer is returned indicating how many members were added which
-did not already exist.
-
-[[geohash]]
-geohash | get hash of members
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-.Usage
-----
-geohash key mem [mem ...]
-----
-.Description
-Get geo hash string by finding the members and converting the *Uber
-H3* hash to an encoded hash string as described in on the geohash wiki
-page: https://en.wikipedia.org/wiki/Geohash
-
-.Return
-An array of geohash strings, which may be *nil* if member is not
-found.
-
-[[geopos]]
-geopos | get pos of members
+////
+[[bgrewriteaof]]
+bgrewriteaof | bg write aof
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 .Usage
 ----
-geopos key [mem ...]
+bgrewriteaof 
 ----
 .Description
-Get geo positions of members as longitude, latitude pairs.
+Asynchronously write append only file (AOF).
+
+[[bgsave]]
+bgsave | bg save
+~~~~~~~~~~~~~~~~
+.Usage
+----
+bgsave 
+----
+.Description
+Async save dataset.
+////
+[[client]]
+client | query connected clients
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+client [setname name | getname | id | kill match | list match |
+        reply state]
+----
+.Example
+----
+> client setname AAA
+'OK'
+----
+.Description
+Set the current connection name.
+
+.Example
+----
+> client getname
+"AAA"
+----
+.Description
+Get the current connection name.
+
+.Example
+----
+> client id
+12
+----
+.Description
+Get the current connection id.
+
+.Example
+----
+> client list type tcp
+id=12 addr=[::1]:58806 fd=14 name=AAA kind=redis age=150 idle=0 rbuf=0 
+  rsz=16384 imsg=7 br=257 wbuf=0 wsz=5120 omsg=6 bs=1082 flags=N db=0 
+  sub=0 psub=0 multi=-1 cmd=client
+id=13 addr=[::1]:58808 fd=15 name= kind=redis age=74 idle=74 rbuf=0 
+  rsz=16384 imsg=0 br=0 wbuf=0 wsz=5120 omsg=0 bs=0 flags=N db=0 
+  sub=0 psub=0 multi=-1 cmd=none
+----
+.Description
+List the clients.  The filters that match the clients which are listed
+are:
+
+- type [ tcp | udp | unix | listen | redis | pubsub | normal | http |
+  nats | capr | rv ] -- filter by connection class.
+- id N -- filter by id number
+- addr IP -- filter by IP address
+- skipme -- skip the current connection
+
+.Example
+----
+> client kill id 13
+1
+> client kill type redis skipme
+0
+----
+.Description
+Kill clients.  The filters that match the clients which are listed the
+same as the filters that list.
+
+.Example
+----
+> client reply skip
+> ping
+> ping
+'PONG'
+> client reply off
+> ping
+> client reply on
+'OK'
+> ping
+'PONG'
+----
+.Description
+Alter the reply behavior of the connection.  If skipped or off, output
+will be muted.
+
+[[command]]
+command | query command info
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+command [count | getkeys <cmd-full> | info [cmd] | help]
+----
+.Example
+----
+> command info get
+[["get",2,['readonly','fast'],1,1,1]]
+> command count
+193
+> command help get
+['GET','key ; Get value']
+----
+.Description
+Get command details and help.
 
 .Return
-An array of positions or *null* if member is not found.
+Array of strings, command info.
 
-[[geodist]]
-geodist | get member distance
+[[config]]
+config | query config
+~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+config [get <param> | rewrite | set <param> <value> | resetstat]
+----
+.Description
+Get, set config parameters.  There is no configuration, so these
+are not functional except get, which returns sane values.
+
+.Return
+Array of config key values.
+
+[[dbsize]]
+dbsize | get number of keys
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+dbsize 
+----
+.Example
+----
+> dbsize
+299999
+----
+.Description
+Get number of keys in db.
+
+.Return
+An integer number of keys.
+
+[[debug]]
+debug | run debug
+~~~~~~~~~~~~~~~~~
+.Usage
+----
+debug [object key | htstats]
+----
+.Example
+----
+> set hello world
+'OK'
+> debug object hello
+key:         "hello"
+hash:        2aa73a1eeb0b2d45:fd102121185ce157
+pos:         [732172]+0.0
+update_time: -4s
+flags:       string-Upd-Ival-Key-Stmp
+db:          0
+val:         0
+seqno:       3
+size:        5
+----
+.Description
+Get debug info about key.
+
+.Example
+----
+> debug htstats
+db_num:  0
+
+-= totals =-
+read:    8896064
+write:   2045184
+spins:   0
+chains:  0
+add:     303
+drop:    2
+expire:  0
+htevict: 0
+afail:   0
+hit:     511040
+miss:    0
+cuckacq: 0
+cuckfet: 0
+cuckmov: 0
+cuckret: 0
+cuckmax: 0
+
+-= self =-
+read:    8896064
+write:   2045184
+spins:   0
+chains:  0
+add:     303
+drop:    2
+expire:  0
+htevict: 0
+afail:   0
+hit:     511040
+miss:    0
+cuckacq: 0
+cuckfet: 0
+cuckmov: 0
+cuckret: 0
+cuckmax: 0
+----
+.Description
+Get information about the hash table counters.
+
+.Return
+A string description of debug info or bad command error.
+
+[[flushall]]
+flushall | remove keys
+~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+flushall [async]
+----
+.Description
+Remove keys from all dbs.
+
+.Return
+*OK* if successful, error otherwise.
+
+[[flushdb]]
+flushdb | remove keys from db
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 .Usage
 ----
-geodist key mem1 mem2 [unit]
+flushdb [async]
 ----
 .Description
-Compute the distance in units between members.  Default unit is
-meters, but km, feet, miles are accepted.
+Remove keys from selected db
 
 .Return
-A decimal string representing the distance or *nil* when member is not
-found.
+*OK* if successful, error otherwise.
 
-[[georadius]]
-georadius | get members in radius
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-.Usage
-----
-georadius key long lat rad m | k | ft | mi [withcoord] [withdist]
- [withhash] [count n] [asc | desc] [storedist key]
-----
-.Description
-Get all members within a radius of position.  This iterates through
-the set using the hash of longitude latitude as the starting point.
-When the endpoints are found, the members are returned or stored.
-When storedist is used, then the distance and members are stored in a
-sorted set.
-
-.Return
-An array of members with optional distance, hash, and/or coordinates.
-The hash is an integer used by the *Uber H3* library.
-
-[[georadiusbymember]]
-georadiusbymember | get members
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-.Usage
-----
-georadiusbymember key member rad m | k | ft | mi [withcoord]
- [withdist] [withhash] [count n] [asc | desc] [storedist key]
-----
-.Description
-Similar to georadius, get all members within a radius of an existing
-member.  This iterates through the set using the named member as the
-starting point.  When the endpoints are found, the members are
-returned or stored.  When storedist is used, then the distance and
-members are stored in a sorted set.
-
-.Return
-An array of members with optional distance, hash, and/or coordinates.
-The hash is an integer used by the *Uber H3* library.
-
-Hash
-----
-
-[options="header",cols="3,1,1,1,1,1"]
-|===========================================
-| command | arity | first key | last key | step | flags
-| <<happend>> | -4 | 1 | 1 | 1 | write
-| <<hdel>> | -3 | 1 | 1 | 1 | write
-| <<hexists>> | 3 | 1 | 1 | 1 | read
-| <<hget>> | 3 | 1 | 1 | 1 | read
-| <<hgetall>> | 2 | 1 | 1 | 1 | read
-| <<hincrby>> | 4 | 1 | 1 | 1 | write
-| <<hincrbyfloat>> | 4 | 1 | 1 | 1 | write
-| <<hkeys>> | 2 | 1 | 1 | 1 | read
-| <<hlen>> | 2 | 1 | 1 | 1 | read
-| <<hmget>> | -3 | 1 | 1 | 1 | read
-| <<hmset>> | -4 | 1 | 1 | 1 | write
-| <<hset>> | -4 | 1 | 1 | 1 | write
-| <<hsetnx>> | 4 | 1 | 1 | 1 | write
-| <<hstrlen>> | 3 | 1 | 1 | 1 | read
-| <<hvals>> | 2 | 1 | 1 | 1 | read
-| <<hscan>> | -3 | 1 | 1 | 1 | read
-|===========================================
-
-[[happend]]
-happend | append a value
-~~~~~~~~~~~~~~~~~~~~~~~~
-.Usage
-----
-happend key field val [val ...]
-----
-.Example
-----
-> happend h f v
-1
-> happend h f w
-0
-> hgetall h
-["f","vw"]
-----
-.Description
-Append a string to a field value.
-
-.Return
-An integer 1 or 0 indicating whether the field was created.
-
-[[hdel]]
-hdel | delete fields
-~~~~~~~~~~~~~~~~~~~~
-.Usage
-----
-hdel key field [field ...]
-----
-.Example
-----
-> hmset h f 1 g 2
-'OK'
-> hdel h f g
-2
-----
-.Description
-Remove one or more fields from a hash set.
-
-.Return
-An integer indicating how many fields were removed.
-
-[[hexists]]
-hexists | if field exists
+[[info]]
+info | query server stats
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 .Usage
 ----
-hexists key field
+info [server | clients | memory | persistence | stats |
+      replication | cpu | commandstats | cluster | keyspace]
 ----
 .Example
 ----
-> hmset h f 1 g 2
-'OK'
-> hexists h f
-1
-> hexists h h
-0
+> info server
+raids_version:        1.0.0-11
+raids_git:            fee49cdd
+gcc_version:          9.1.1
+process_id:           32167
+> info clients
+redis_clients:        1
+pubsub_clients:       0
+> info memory
+vm_peak:              8204MB
+vm_size:              8204MB
+> info stats
+ht_operations:        505M
+ht_chains:            1.0
+ht_read:              505M
+ht_write:             287
+> info cpu
+used_cpu_sys:         0.069951
+used_cpu_user:        1.445196
+used_cpu_total:       1.515147
 ----
 .Description
-Test whether field exists in hash.
+Get version info and counters.
 
 .Return
-An integer *1* indicating the field exists or *0* when it doesn't.
-
-[[hget]]
-hget | get a field value
-~~~~~~~~~~~~~~~~~~~~~~~~
-.Usage
-----
-hget key field
-----
-.Example
-----
-> hmset h f 1 g 2
-'OK'
-> hget h f
-"1"
-> hget h h
-nil
-----
-.Description
-Get the value associated with field.
-
-.Return
-A string value or *nil* when the field does not exist.
-
-[[hgetall]]
-hgetall | get all field values
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-.Usage
-----
-hgetall key
-----
-.Example
-----
-> hmset h f 1 g 2
-'OK'
-> hgetall h
-["f","1","g","2"]
-----
-.Description
-Get all of the fields and values associated with the hash stored at
-key.
-
-.Return
-An array of field value pairs.  An empty array when key doesn't exist.
-
-[[hincrby]]
-hincrby | incr field
-~~~~~~~~~~~~~~~~~~~~
-.Usage
-----
-hincrby key field int
-----
-.Example
-----
-> hmset h f 1 g 2
-'OK'
-> hincrby h f 10
-11
-----
-.Description
-Add an integer value to field.
-
-.Return
-The integer value after incrementing the integer or an error if the
-value stored in field is not an integer.
-
-[[hincrbyfloat]]
-hincrbyfloat | incr field
+A text string with newlines that has the requested info.
+////
+[[lastsave]]
+lastsave | last save time
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 .Usage
 ----
-hincrbyfloat key field num
-----
-.Example
-----
-> hmset h f 1 g 2
-'OK'
-> hincrbyfloat h f 123456.66
-"123457.66"
+lastsave 
 ----
 .Description
-Add a numeric value to field.  This uses 128 bit decimal arithmetic
-which has a 34 digit range and an exponent from -6143 to +6144.
-https://en.wikipedia.org/wiki/Decimal128_floating-point_format
+Get the unix timestamp of the last save
 
-.Return
-A string numeric value after incrementing the number or an error if
-the value stored in field is not a number.
-
-[[hkeys]]
-hkeys | get all field keys
+[[memory]]
+memory | memory usage
+~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+memory [doctor | help | malloc-stats | purge | stats | usage]
+----
+.Description
+Memory statistics.
+////
+[[monitor]]
+monitor | monitor commands
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 .Usage
 ----
-hkeys key
+monitor 
 ----
 .Example
 ----
-> hmset h f 1 g 2
-'OK'
-> hkeys h
-["f","g"]
+> monitor
+["pmessage","__monitor_@*","__monitor_@0__:127.0.0.1:60646",
+[["get","k"],"value","1580125101.975300"]]
 ----
 .Description
-Get all field keys in the hash.
+Monitor commands executed by server from all clients.  This is an
+alias for `psubscribe _monitor_@*`.  Running once enables, running
+twice disables the monitor.  In order to monitor just one client, or
+just one ip address, use a pattern that includes the address:
+`psubscribe _monitor_@0__:127.0.0.1*`
 
 .Return
-An array of field names.
-
-[[hlen]]
-hlen | get number of fields
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
+An array which indicates the db number and client connected address
+(`"__monitor_@0__:127.0.0.1:60646"`), the command executed
+(`["get","k"]`), and the result of executing the command (`"value"`).
+////
+[[role]]
+role | replication role
+~~~~~~~~~~~~~~~~~~~~~~~
 .Usage
 ----
-hlen key
-----
-.Example
-----
-> hmset h f 1 g 2
-'OK'
-> hlen h
-2
+role 
 ----
 .Description
-Get the number field value pairs in the hash.
-
-.Return
-An integer count of the number of fields.
-
-[[hmget]]
-hmget | get multiple field vals
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+What is role of the instance for replication.
+////
+[[save]]
+save | sync save
+~~~~~~~~~~~~~~~~
 .Usage
 ----
-hmget key field [field ...]
-----
-.Example
-----
-> hmset h f 1 g 2
-'OK'
-> hmget h f g h
-["1","2",nil]
+save 
 ----
 .Description
-Get multiple values from a hash.  If a field doesn't exist, a *nil* is
-returned.
+Synchronously save to rdb format file.
 
 .Return
-An array of values or *nil*.
+*OK* or error if save fails.
 
-[[hmset]]
-hmset | set multiple field vals
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[[load]]
+load | sync load
+~~~~~~~~~~~~~~~~
 .Usage
 ----
-hmset key field value [field value ...]
-----
-.Example
-----
-> hmset h f 1 g 2
-'OK'
-> hmset h g 3 tree 50
-'OK'
-> hgetall h
-["f","1","g","3","tree","50"]
+load
 ----
 .Description
-Set multiple field value pairs in the hash.
+Synchronously load from rdb format file.
 
 .Return
-*OK*.
+*OK* or error if load fails.
 
-[[hset]]
-hset | set a field value
-~~~~~~~~~~~~~~~~~~~~~~~~
+[[shutdown]]
+shutdown | shutdown server
+~~~~~~~~~~~~~~~~~~~~~~~~~~
 .Usage
 ----
-hset key value [field value ...]
-----
-.Example
-----
-> hset h f 1 g 2
-2
-> hset h g 3 tree 50
-1
-> hgetall h
-["f","1","g","3","tree","50"]
+shutdown
 ----
 .Description
-Set multiple field value pairs in the hash.  Preexisting fields will
-be overwritten, and new fields will be added to the hash.
-
-.Return
-An integer indicating number of fields created.
-
-[[hsetnx]]
-hsetnx | set if not present
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Shutdown server.  This will cause the connected instance to quit.
+////
+[[slaveof]]
+slaveof | set slave
+~~~~~~~~~~~~~~~~~~~
 .Usage
 ----
-hsetnx key field value
-----
-.Example
-----
-> hmset h f 1 g 2
-'OK'
-> hsetnx h tree 50
-1
-> hsetnx h g 3
-0
-> hgetall h
-["f","1","g","2","tree","50"]
+slaveof host port
 ----
 .Description
-Set a field in a hash only when it does not exist.
+Make server a slave.
 
-.Return
-An integer *1* or *0* indicating success.
-
-[[hstrlen]]
-hstrlen | get strlen of field val
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[[slowlog]]
+slowlog | wtf sucking
+~~~~~~~~~~~~~~~~~~~~~
 .Usage
 ----
-hstrlen key field
-----
-.Example
-----
-> hsetnx h tree 50
-1
-> hstrlen h tree
-2
+slowlog subcmd [arg]
 ----
 .Description
-Get the string length of value stored with field, *0* if field does
-not exist.
+Manage slow queries log.
 
-.Return
-An integer string length, which is the count of the 8 bit characters
-in the value.
-
-[[hvals]]
-hvals | get all values
+[[sync]]
+sync | replication sync
+~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+sync 
+----
+.Description
+Internal cmd for replication.
+////
+[[time]]
+time | get server time
 ~~~~~~~~~~~~~~~~~~~~~~
 .Usage
 ----
-hvals key
+time 
 ----
 .Example
 ----
-> hmset h f 1 g 2
-'OK'
-> hvals h
-["f","1","g","2"]
+> time
+["1580125969","562228"]
 ----
 .Description
-Get all of the values stored in the hash.
+Get server time.
 
 .Return
-An array of all the values or *nil* when hash does not exist.
-
-[[hscan]]
-hscan | iterate fields
-~~~~~~~~~~~~~~~~~~~~~~
-.Usage
-----
-hscan key cursor [match pattern] [count int]
-----
-.Example
-----
-> hset h abc 1 abb 2 abd 3 xyz 4 zzz 5
-5
-> hscan h 0 match a* count 1
-["2",["abc","1"]]
-> hscan h 2 match a* count 1
-["3",["abb","2"]]
-> hscan h 3 match a* count 1
-["4",["abd","3"]]
-> hscan h 4 match a* count 1
-["0",[]]
-> hscan h 0
-["0",["abc","1","abb","2","abd","3","xyz","4","zzz","5"]]
-> hscan h 5 match a* count 1
-["0",[]]
-----
-.Description
-Get the fields and values which match a pattern.  The cursor is the
-offset into the scan where the results will start.  If the cursor is
-equal to 3, then the match will start at the 3rd field in the hash.
-
-.Return
-An array within an array.  The outer array is the cursor counter, the
-inner array is the fields and values.
-
-Hyperloglog
------------
-
-[options="header",cols="3,1,1,1,1,1"]
-|===========================================
-| command | arity | first key | last key | step | flags
-| <<pfadd>> | -2 | 1 | 1 | 1 | write
-| <<pfcount>> | -2 | 1 | -1 | 1 | read
-| <<pfmerge>> | -2 | 1 | -1 | 1 | write
-|===========================================
-
-[[pfadd]]
-pfadd | add elems to hlog
-~~~~~~~~~~~~~~~~~~~~~~~~~
-.Usage
-----
-pfadd key elem [elem ...]
-----
-.Example
-----
-> pfadd hl 1 2 3 4 5 6
-1
-----
-.Description
-Add elems to hyperloglog table.
-
-.Return
-The integer *1* is returned when new elements are added, *0* is
-returned when all elements are collisions or duplicates.
-
-[[pfcount]]
-pfcount | get hlog cardinality
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-.Usage
-----
-pfcount key [key ...]
-----
-.Example
-----
-> pfadd hl 1 2 3 4 5 6
-1
-> pfcount hl
-6
-----
-.Description
-Get approximate cardinality of hyperloglog table.
-
-.Return
-An integer count of the cardinality estimate.
-
-[[pfmerge]]
-pfmerge | merge multiple hlogs
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-.Usage
-----
-pfmerge dkey skey [skey ...]
-----
-.Example
-----
-> pfadd hl 1 2 3 4 5 6 10
-1
-> pfcount hl
-7
-> pfadd hl2 1 2 3 4 5 6 7
-1
-> pfcount hl2
-7
-> pfmerge hl2 hl hl2
-'OK'
-> pfcount hl2
-8
-----
-.Description
-Merge multiple hyperloglog tables and write them to the destination.
-The dest key is not merged, it written to.  A dest key can be used as
-a source key, but the original data in the source will be overwritten
-with the merged data.
-
-.Return
-*OK*.
+An array, UTC seconds and microseconds (1 usec = 1/1000000 second).
 
 Key
 ---
@@ -1350,7 +1188,688 @@ in the key hash.
 An array within an array.  The outer array is the cursor counter, the
 inner array is the keys matched.
 
+String
+------
 
+[options="header",cols="3,1,1,1,1,1"]
+|===========================================
+| command | arity | first key | last key | step | flags
+| <<append>> | 3 | 1 | 1 | 1 | write
+| <<bitcount>> | -2 | 1 | 1 | 1 | read
+| <<bitfield>> | -2 | 1 | 1 | 1 | write
+| <<bitop>> | -4 | 2 | -1 | 1 | write
+| <<bitpos>> | -3 | 1 | 1 | 1 | read
+| <<decr>> | 2 | 1 | 1 | 1 | write
+| <<decrby>> | 3 | 1 | 1 | 1 | write
+| <<get>> | 2 | 1 | 1 | 1 | read
+| <<getbit>> | 3 | 1 | 1 | 1 | read
+| <<getrange>> | 4 | 1 | 1 | 1 | read
+| <<getset>> | 3 | 1 | 1 | 1 | write
+| <<incr>> | 2 | 1 | 1 | 1 | write
+| <<incrby>> | 3 | 1 | 1 | 1 | write
+| <<incrbyfloat>> | 3 | 1 | 1 | 1 | write
+| <<mget>> | -2 | 1 | -1 | 1 | read
+| <<mset>> | -3 | 1 | -1 | 2 | write
+| <<msetnx>> | -3 | 1 | -1 | 2 | write
+| <<psetex>> | 4 | 1 | 1 | 1 | write
+| <<set>> | -3 | 1 | 1 | 1 | write
+| <<setbit>> | 4 | 1 | 1 | 1 | write
+| <<setex>> | 4 | 1 | 1 | 1 | write
+| <<setnx>> | 3 | 1 | 1 | 1 | write
+| <<setrange>> | 4 | 1 | 1 | 1 | write
+| <<strlen>> | 2 | 1 | 1 | 1 | read
+|===========================================
+
+[[append]]
+append | append to value
+~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+append key value
+----
+.Example
+----
+> append s string
+5
+> append s value
+9
+> get s
+"stringvalue"
+----
+.Description
+Append value to key.
+
+.Return
+The integer strlen of the key after value appended.
+
+[[bitcount]]
+bitcount | count bits
+~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+bitcount key [start end]
+----
+.Example
+----
+> set s string
+'OK'
+> bitcount s 0 0
+5
+> bitfield s get u8 0
+115
+> getrange s 0 0
+"s"
+----
+.Description
+Count the bits in string from byte offset start to offset end,
+inclusive.
+
+.Return
+An integer count of bits set in the byte range.
+
+[[bitfield]]
+bitfield | manipulate bits
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+bitfield key [get type off] [set type off value]
+ [incrby type off incr] [overflow wrap | sat | fail]
+----
+.Example
+----
+> bitfield bf set u8 0 1 set u8 8 2 set u8 16 3 set u8 24 4
+[0,0,0,0]
+----
+.Description
+Set integer value at bit offset off as type, where type is signed (iN)
+or unsigned (uN) with bit size *1* through *63*, *64* for signed.
+
+.Return
+An array of the integers that existed before setting the new values.
+
+.Example
+----
+> bitfield bf get u8 0 get u8 8 get u8 16 get u8 24
+[1,2,3,4]
+----
+.Description
+Get integer value at bit offset, using signed or unsigned type.
+
+.Return
+An array of integers that are requested.
+
+.Example
+----
+> bitfield bf incrby u8 0 1 incrby u8 8 1 incrby u8 16 1 incrby u8 24 1
+[2,3,4,5]
+> bitfield bf incrby u8 0 255 overflow wrap
+[1]
+> bitfield bf incrby u8 8 255 overflow sat
+[255]
+> bitfield bf incrby u8 16 255 overflow fail
+[nil]
+----
+.Description
+Increment integer values at bit offsets.  The overflow arument
+modifies the behavior of increment in the case that the result wraps
+around zero.  Wrap is the default, saturate (sat) caps the value at
+the highest and lowest point, fail discards the new value and uses the
+old value, returning *nil*.
+
+.Return
+An array of the integers after incrementing.
+
+[[bitop]]
+bitop | bitwise operator
+~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+bitop (and | or | xor | not) dest src [src src ...]
+----
+.Example
+----
+> bitfield i set u8 0 3
+[0]
+> bitfield j set u8 0 1
+[0]
+> bitop xor k j i
+1
+> bitfield k get u8 0
+[2]
+----
+.Description
+Bitwise store to dest from srcs by performing logical operations on
+each bit.
+
+.Return
+The number of bytes stored in dest, which is the minimum size of i and
+j, since the trailing zeros are not stored.
+
+[[bitpos]]
+bitpos | find a bit
+~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+bitpos key bit [start end]
+----
+.Example
+----
+> bitfield k set u8 0 16
+[0]
+> bitpos k 1 0 1
+4
+> bitpos k 0 0 1
+0
+----
+.Description
+Find first bit set or clear between start offset and end offset.
+
+.Return
+The position of the bit set or clear, or *-1* when not found.
+
+[[decr]]
+decr | decr by one
+~~~~~~~~~~~~~~~~~~
+.Usage
+----
+decr key
+----
+.Example
+----
+> set k 10
+'OK'
+> decr k
+9
+> decr k
+8
+----
+.Description
+Decrement integer at key by one.
+
+.Return
+The value after decrementing it.  If key is created, then it is
+initialized to *-1*.
+
+[[decrby]]
+decrby | decr by integer
+~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+decrby key int
+----
+.Example
+----
+> set k 10
+'OK'
+> decrby k -1
+11
+> decrby k 10
+1
+----
+.Description
+Decrement integer at key by the integer argument.
+
+.Return
+The value after decrementing it.  If key is created, then it is
+initialized to the negative of the integer argument.
+
+[[get]]
+get | get key value
+~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+get key
+----
+.Example
+----
+> set k val
+'OK'
+> get k
+"val"
+> del k
+1
+> get k
+nil
+----
+.Description
+Get the key value.
+
+.Return
+The string value or *nil* when not found.
+
+[[getbit]]
+getbit | git bit at offset
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+getbit key off
+----
+.Example
+----
+> bitfield k set u8 0 16
+[0]
+> getbit k 0
+0
+> getbit k 3
+0
+> getbit k 4
+1
+----
+.Description
+Get value at bit offset in the string stored at the key.
+
+.Return
+A *1* if the bit is set, a *0* if not set or not found.
+
+[[getrange]]
+getrange | get range in string
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+getrange key start end
+----
+.Example
+----
+> set k 0123456789
+'OK'
+> getrange k 3 7
+"34567"
+> getrange k 12 13
+""
+> getrange k 7 -3
+"7"
+> getrange k 0 -1
+"0123456789"
+----
+.Description
+Get a substring of the string value at key.  Start and/or end may be
+negative to index from the end of the string.
+
+.Return
+A string with the characters in the range start to end, inclusive.
+
+[[getset]]
+getset | swap values
+~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+getset key value
+----
+.Example
+----
+> getset k 2
+nil
+> getset k 3
+"2"
+----
+.Description
+Swap new value with current value and return it.
+
+.Return
+The value currently stored with the key, or *nil* if the key is
+created.
+
+[[incr]]
+incr | incr by one
+~~~~~~~~~~~~~~~~~~
+.Usage
+----
+incr key
+----
+.Example
+----
+> incr k
+4
+> incr k
+5
+> del k
+1
+> incr k
+1
+----
+.Description
+Increment integer at key by one.
+
+.Return
+The value after it is incremented.  If key is created, then it is
+initialized to *1*.
+
+[[incrby]]
+incrby | incr by integer
+~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+incrby key int
+----
+.Example
+----
+> del k
+1
+> incrby k 100
+100
+> incrby k 100
+200
+----
+.Description
+Increment integer at key by the integer argument.
+
+.Return
+The value after it is incremented.  If key is created, then it is
+initialized to the integer argument.
+
+[[incrbyfloat]]
+incrbyfloat | incr by decimal
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+incrbyfloat key decimal
+----
+.Example
+----
+> incrbyfloat n 1.1
+"1.1"
+> incrbyfloat n 1.1
+"2.2"
+> incrbyfloat n 1.1
+"3.3"
+----
+.Description
+Increment number at key by decimal value.  This uses 128 bit decimal
+arithmetic which has a 34 digit range and an exponent from -6143 to
++6144.  https://en.wikipedia.org/wiki/Decimal128_floating-point_format
+
+.Return
+The number after it is incremented.  If key is created, then it is
+initialized to the decimal argument.
+
+[[mget]]
+mget | get multiple values
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+mget key [key ...]
+----
+.Example
+----
+> mset j 1 k 2 l 3 m 4
+'OK'
+> mget j k l m mm
+["1","2","3","4",nil]
+----
+.Description
+Get the values of multiple keys.
+
+.Return
+An array of values or nil when key doesn't exist or is not a string
+type.
+
+[[mset]]
+mset | set multiple values
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+mset key val [key val ...]
+----
+.Example
+----
+> mset j 1 k 2 l 3 m 4
+'OK'
+----
+.Description
+Set the values of multiple keys.
+
+.Return
+*OK*.
+
+[[msetnx]]
+msetnx | set if not exist
+~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+msetnx key val [key val ...]
+----
+.Example
+----
+> del j k l m
+4
+> msetnx j 1 k 2 l 3 m 4
+1
+> msetnx j 1 k 2 l 3 m 4
+0
+----
+.Description
+Set the values of keys if all keys do not exist.
+
+.Return
+If all keys are created a *1* is returned, otherwise no kesy are
+created and a *0* is returnd;
+
+[[psetex]]
+psetex | set with expiration
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+psetex key ms val
+----
+.Example
+----
+> psetex k 1580166892000 hello
+'OK'
+> ttl k
+80
+> psetex k 15000 hello
+'OK'
+> ttl k
+13
+> pttl k
+11991
+----
+.Description
+Set the value with expiration of key in milliseconds.  The expiration
+argument is either stamp or relative time.
+
+.Return
+*OK*.
+
+[[set]]
+set | set value
+~~~~~~~~~~~~~~~
+.Usage
+----
+set key val [ex secs] [px ms] [nx | xx]
+----
+.Example
+----
+> set k one
+'OK'
+> set k one xx
+'OK'
+> set k one nx
+nil
+> set k one px 15000 xx
+'OK'
+> ttl k
+11
+> pttl k
+4260
+----
+.Description
+Set the key value optionally with expiration and *nx* or *xx* test.
+The *nx* option tests that the key does not exist before setting.  The
+*xx* tests that the key does exist before setting.
+
+.Return
+*OK* on success, *nil* when failed.
+
+[[setbit]]
+setbit | set bits
+~~~~~~~~~~~~~~~~~
+.Usage
+----
+setbit key off 1 | 0
+----
+.Example
+----
+> setbit k 0 1
+0
+> setbit k 1 1
+0
+> setbit k 1 0
+1
+> getbit k 0
+1
+> getbit k 1
+0
+----
+.Description
+Swap the value at bit offset in string with the new bit value.
+
+.Return
+A *1* or *0* is returned, the previous value held by bit.
+
+[[setex]]
+setex | set with expiration
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+setex key secs val
+----
+.Example
+----
+> setex k 1580166892 hello
+'OK'
+> ttl k
+80
+> setex k 15 hello
+'OK'
+> ttl k
+13
+> pttl k
+11991
+----
+.Description
+Set the value with expiration of key in seconds.  The expiration
+argument is either stamp or relative time.
+
+.Return
+*OK*.
+
+[[setnx]]
+setnx | set if not exist
+~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+setnx key val
+----
+.Example
+----
+> del k
+1
+> setnx k value
+'OK'
+> setnx k value
+nil
+----
+.Description
+Set the value if key does not exist.
+
+.Return
+*OK* if success, *nil* if key already exists.
+
+[[setrange]]
+setrange | set value range
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+setrange key off val
+----
+.Example
+----
+> del k
+1
+> setrange k 5 waterbuffalo
+17
+> get k
+"\u0000\u0000\u0000\u0000\u0000waterbuffalo"
+----
+.Description
+Overwrite or create a range in a string stored with the key at the
+offset specified.  The data implicitly created by the setrange is zero
+padded.
+
+.Return
+The length of key after modification.
+
+[[strlen]]
+strlen | get strlen
+~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+strlen key
+----
+.Example
+----
+> del k
+1
+> setrange k 5 waterbuffalo
+17
+> strlen k
+17
+> get k
+"\u0000\u0000\u0000\u0000\u0000waterbuffalo"
+----
+.Description
+Get length of value, which is the maximum extent, not the strlen
+function.
+
+.Return
+The length of value, which could be *0* if the key does not exist.
+
+////
+Cluster
+-------
+
+[options="header",cols="3,1,1,1,1,1"]
+|===========================================
+| command | arity | first key | last key | step | flags
+| <<cluster>> | -2 | 0 | 0 | 0 | admin
+| <<readonly>> | 1 | 0 | 0 | 0 | admin
+| <<readwrite>> | 1 | 0 | 0 | 0 | admin
+|===========================================
+
+[[cluster]]
+cluster | modify cluster
+~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+cluster [addslots | count_failure | countkeysinslot | delslots |
+ failover | forget | getkeysinslot | info | keyslot | meet |
+ nodes | replicate | reset | saveconfig | set-config-epock |
+ setslot | slaves | slots]
+----
+.Description
+cluster commands.
+
+[[readonly]]
+readonly | change to ro
+~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+readonly
+----
+.Description
+Enable readonly mode.
+
+[[readwrite]]
+readwrite | change to rw
+~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+readwrite
+----
+.Description
+Enable readwrite mode.
+////
 List
 ----
 
@@ -1760,663 +2279,385 @@ Right push elements to the list only if it exists.
 .Return
 The length of the list after elements are added.
 
-Pubsub
-------
+Hash
+----
 
 [options="header",cols="3,1,1,1,1,1"]
 |===========================================
 | command | arity | first key | last key | step | flags
-| <<psubscribe>> | -2 | 0 | 0 | 0 |
-| <<pubsub>> | -2 | 0 | 0 | 0 |
-| <<publish>> | 3 | 0 | 0 | 0 |
-| <<punsubscribe>> | -1 | 0 | 0 | 0 |
-| <<subscribe>> | -2 | 0 | 0 | 0 |
-| <<unsubscribe>> | -1 | 0 | 0 | 0 |
+| <<happend>> | -4 | 1 | 1 | 1 | write
+| <<hdel>> | -3 | 1 | 1 | 1 | write
+| <<hexists>> | 3 | 1 | 1 | 1 | read
+| <<hget>> | 3 | 1 | 1 | 1 | read
+| <<hgetall>> | 2 | 1 | 1 | 1 | read
+| <<hincrby>> | 4 | 1 | 1 | 1 | write
+| <<hincrbyfloat>> | 4 | 1 | 1 | 1 | write
+| <<hkeys>> | 2 | 1 | 1 | 1 | read
+| <<hlen>> | 2 | 1 | 1 | 1 | read
+| <<hmget>> | -3 | 1 | 1 | 1 | read
+| <<hmset>> | -4 | 1 | 1 | 1 | write
+| <<hset>> | -4 | 1 | 1 | 1 | write
+| <<hsetnx>> | 4 | 1 | 1 | 1 | write
+| <<hstrlen>> | 3 | 1 | 1 | 1 | read
+| <<hvals>> | 2 | 1 | 1 | 1 | read
+| <<hscan>> | -3 | 1 | 1 | 1 | read
 |===========================================
 
-[[psubscribe]]
-psubscribe | pattern subscribe
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[[happend]]
+happend | append a value
+~~~~~~~~~~~~~~~~~~~~~~~~
 .Usage
 ----
-psubscribe pat [pat ...]
+happend key field val [val ...]
 ----
 .Example
 ----
-> psubscribe p* q*
-executing: ["psubscribe","p*","q*"]
-["psubscribe","p*",1]
-["psubscribe","q*",2]
-["pmessage","p*","publius","friend"]
-["pmessage","q*","qQq","OoO"]
-----
-.Description
-Subscribe to patterns.  The messages published to channels which match
-the pattern will be forwarded to the client.  A message may be
-forwarded to the same client more than once if its channel matches
-multiple patterns.  It is also possible to be forwarded the message
-again if the channel matches a subscription.
-
-.Return
-An array with the subscription and an integer which is a count of the
-subscriptions open.
-
-[[pubsub]]
-pubsub | query pubsub info
-~~~~~~~~~~~~~~~~~~~~~~~~~~
-.Usage
-----
-pubsub [channels [pattern] | numsub channel | numpat]
-----
-.Example
-----
-> pubsub channels
-["two","five","seven","six","one","three","four"]
-> pubsub channels t*
-["two","three"]
-> pubsub channels x*
-[]
-----
-.Description
-Get the channels that are in use which match a pattern.
-
-.Example
-----
-> pubsub numsub one two three
-["one",1,"two",1,"three",1]
-----
-.Description
-Get the number of subscription on each channel.
-
-.Example
-----
-> pubsub numpat
-3
-----
-.Description
-Display the number of pattern subscriptions open.
-
-[[publish]]
-publish | publish msg to channel
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-.Usage
-----
-publish channel msg
-----
-.Example
-----
-> publish one two
+> happend h f v
 1
+> happend h f w
+0
+> hgetall h
+["f","vw"]
 ----
 .Description
-Publish msg to channel.
+Append a string to a field value.
 
 .Return
-A count of the times the message is forwarded to a client.
+An integer 1 or 0 indicating whether the field was created.
 
-[[punsubscribe]]
-punsubscribe | pattern unsubscribe
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[[hdel]]
+hdel | delete fields
+~~~~~~~~~~~~~~~~~~~~
 .Usage
 ----
-punsubscribe [pat ...]
+hdel key field [field ...]
 ----
 .Example
 ----
-> psubscribe x*
-["psubscribe","x*",1]
-> punsubscribe x*
-["punsubscribe","x*",0]
-----
-.Description
-Unsubscribe patterns.  This cancels interest in the patterns
-previously subscribed.  If no patterns are named, all patterns are
-unsubscribed.
-
-.Return
-An array with the punsubscribe and an integer count of the number of
-subscriptions that the client has open.
-
-[[subscribe]]
-subscribe | subscribe channel
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-.Usage
-----
-subscribe chan [chan ...]
-----
-.Example
-----
-> subscribe x
-["subscribe","x",1]
-----
-.Description
-Subscribe to channels.  The messages published to the channels that
-are subscribed will be forwarded to the client.
-
-.Return
-An array with the subscription and an integer which is a count of the
-subscriptions open.
-
-[[unsubscribe]]
-unsubscribe | unsubscribe channel
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-.Usage
-----
-unsubscribe [chan ...]
-----
-.Example
-----
-> subscribe x
-["subscribe","x",1]
-> unsubscribe x
-["unsubscribe","x",0]
-----
-.Description
-Unsubscribe channels.  This cancels interest in the channels
-previously subscribed.  If no channels are named, all channels are
-unsubscribed.
-
-.Return
-An array with the unsubscribe and an integer count of the number of
-subscriptions that the client has open.
-////
-Script
-------
-
-[options="header",cols="3,1,1,1,1,1"]
-|===========================================
-| command | arity | first key | last key | step | flags
-| <<eval>> | -3 | 0 | 0 | 0 | movable
-| <<evalsha>> | -3 | 0 | 0 | 0 | movable
-| <<script>> | -2 | 0 | 0 | 0 |
-|===========================================
-
-[[eval]]
-eval | run script
-~~~~~~~~~~~~~~~~~
-.Usage
-----
-eval script num key [key ...]
-----
-.Description
-Execute a Lua script.
-
-[[evalsha]]
-evalsha | run script by hash
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-.Usage
-----
-evalsha sha1 num key [key ...]
-----
-.Description
-Execute a serverside Lua script.
-
-[[script]]
-script | modify script
-~~~~~~~~~~~~~~~~~~~~~~
-.Usage
-----
-script [debug | exists | flush | kill | load]
-----
-.Description
-Script ops.
-////
-Server
-------
-
-[options="header",cols="3,1,1,1,1,1"]
-|===========================================
-| command | arity | first key | last key | step | flags
-//| <<bgrewriteaof>> | 1 | 0 | 0 | 0 | admin
-//| <<bgsave>> | -1 | 0 | 0 | 0 | admin
-| <<client>> | -2 | 0 | 0 | 0 | admin
-| <<command>> | -1 | 0 | 0 | 0 |
-| <<config>> | -2 | 0 | 0 | 0 | admin
-| <<dbsize>> | 1 | 0 | 0 | 0 |
-| <<debug>> | -1 | 0 | 0 | 0 | admin
-| <<flushall>> | -1 | 0 | 0 | 0 | admin
-| <<flushdb>> | -1 | 0 | 0 | 0 | admin
-| <<info>> | -1 | 0 | 0 | 0 |
-//| <<lastsave>> | 1 | 0 | 0 | 0 |
-//| <<memory>> | -2 | 0 | 0 | 0 |
-| <<monitor>> | 1 | 0 | 0 | 0 | admin
-//| <<role>> | 1 | 0 | 0 | 0 |
-| <<save>> | 1 | 0 | 0 | 0 | admin
-| <<load>> | 1 | 0 | 0 | 0 | admin
-| <<shutdown>> | -1 | 0 | 0 | 0 | admin
-//| <<slaveof>> | 3 | 0 | 0 | 0 | admin
-//| <<slowlog>> | -2 | 0 | 0 | 0 | admin
-//| <<sync>> | 1 | 0 | 0 | 0 | admin
-| <<time>> | 1 | 0 | 0 | 0 |
-|===========================================
-////
-[[bgrewriteaof]]
-bgrewriteaof | bg write aof
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
-.Usage
-----
-bgrewriteaof 
-----
-.Description
-Asynchronously write append only file (AOF).
-
-[[bgsave]]
-bgsave | bg save
-~~~~~~~~~~~~~~~~
-.Usage
-----
-bgsave 
-----
-.Description
-Async save dataset.
-////
-[[client]]
-client | query connected clients
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-.Usage
-----
-client [setname name | getname | id | kill match | list match |
-        reply state]
-----
-.Example
-----
-> client setname AAA
+> hmset h f 1 g 2
 'OK'
+> hdel h f g
+2
 ----
 .Description
-Set the current connection name.
+Remove one or more fields from a hash set.
 
+.Return
+An integer indicating how many fields were removed.
+
+[[hexists]]
+hexists | if field exists
+~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+hexists key field
+----
 .Example
 ----
-> client getname
-"AAA"
-----
-.Description
-Get the current connection name.
-
-.Example
-----
-> client id
-12
-----
-.Description
-Get the current connection id.
-
-.Example
-----
-> client list type tcp
-id=12 addr=[::1]:58806 fd=14 name=AAA kind=redis age=150 idle=0 rbuf=0 
-  rsz=16384 imsg=7 br=257 wbuf=0 wsz=5120 omsg=6 bs=1082 flags=N db=0 
-  sub=0 psub=0 multi=-1 cmd=client
-id=13 addr=[::1]:58808 fd=15 name= kind=redis age=74 idle=74 rbuf=0 
-  rsz=16384 imsg=0 br=0 wbuf=0 wsz=5120 omsg=0 bs=0 flags=N db=0 
-  sub=0 psub=0 multi=-1 cmd=none
-----
-.Description
-List the clients.  The filters that match the clients which are listed
-are:
-
-- type [ tcp | udp | unix | listen | redis | pubsub | normal | http |
-  nats | capr | rv ] -- filter by connection class.
-- id N -- filter by id number
-- addr IP -- filter by IP address
-- skipme -- skip the current connection
-
-.Example
-----
-> client kill id 13
+> hmset h f 1 g 2
+'OK'
+> hexists h f
 1
-> client kill type redis skipme
+> hexists h h
 0
 ----
 .Description
-Kill clients.  The filters that match the clients which are listed the
-same as the filters that list.
+Test whether field exists in hash.
 
+.Return
+An integer *1* indicating the field exists or *0* when it doesn't.
+
+[[hget]]
+hget | get a field value
+~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+hget key field
+----
 .Example
 ----
-> client reply skip
-> ping
-> ping
-'PONG'
-> client reply off
-> ping
-> client reply on
+> hmset h f 1 g 2
 'OK'
-> ping
-'PONG'
+> hget h f
+"1"
+> hget h h
+nil
 ----
 .Description
-Alter the reply behavior of the connection.  If skipped or off, output
-will be muted.
+Get the value associated with field.
 
-[[command]]
-command | query command info
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Return
+A string value or *nil* when the field does not exist.
+
+[[hgetall]]
+hgetall | get all field values
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 .Usage
 ----
-command [count | getkeys <cmd-full> | info [cmd] | help]
+hgetall key
 ----
 .Example
 ----
-> command info get
-[["get",2,['readonly','fast'],1,1,1]]
-> command count
-193
-> command help get
-['GET','key ; Get value']
+> hmset h f 1 g 2
+'OK'
+> hgetall h
+["f","1","g","2"]
 ----
 .Description
-Get command details and help.
+Get all of the fields and values associated with the hash stored at
+key.
 
 .Return
-Array of strings, command info.
+An array of field value pairs.  An empty array when key doesn't exist.
 
-[[config]]
-config | query config
-~~~~~~~~~~~~~~~~~~~~~
+[[hincrby]]
+hincrby | incr field
+~~~~~~~~~~~~~~~~~~~~
 .Usage
 ----
-config [get <param> | rewrite | set <param> <value> | resetstat]
+hincrby key field int
+----
+.Example
+----
+> hmset h f 1 g 2
+'OK'
+> hincrby h f 10
+11
 ----
 .Description
-Get, set config parameters.  There is no configuration, so these
-are not functional except get, which returns sane values.
+Add an integer value to field.
 
 .Return
-Array of config key values.
+The integer value after incrementing the integer or an error if the
+value stored in field is not an integer.
 
-[[dbsize]]
-dbsize | get number of keys
+[[hincrbyfloat]]
+hincrbyfloat | incr field
+~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+hincrbyfloat key field num
+----
+.Example
+----
+> hmset h f 1 g 2
+'OK'
+> hincrbyfloat h f 123456.66
+"123457.66"
+----
+.Description
+Add a numeric value to field.  This uses 128 bit decimal arithmetic
+which has a 34 digit range and an exponent from -6143 to +6144.
+https://en.wikipedia.org/wiki/Decimal128_floating-point_format
+
+.Return
+A string numeric value after incrementing the number or an error if
+the value stored in field is not a number.
+
+[[hkeys]]
+hkeys | get all field keys
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+hkeys key
+----
+.Example
+----
+> hmset h f 1 g 2
+'OK'
+> hkeys h
+["f","g"]
+----
+.Description
+Get all field keys in the hash.
+
+.Return
+An array of field names.
+
+[[hlen]]
+hlen | get number of fields
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 .Usage
 ----
-dbsize 
+hlen key
 ----
 .Example
 ----
-> dbsize
-299999
-----
-.Description
-Get number of keys in db.
-
-.Return
-An integer number of keys.
-
-[[debug]]
-debug | run debug
-~~~~~~~~~~~~~~~~~
-.Usage
-----
-debug [object key | htstats]
-----
-.Example
-----
-> set hello world
+> hmset h f 1 g 2
 'OK'
-> debug object hello
-key:         "hello"
-hash:        2aa73a1eeb0b2d45:fd102121185ce157
-pos:         [732172]+0.0
-update_time: -4s
-flags:       string-Upd-Ival-Key-Stmp
-db:          0
-val:         0
-seqno:       3
-size:        5
+> hlen h
+2
 ----
 .Description
-Get debug info about key.
-
-.Example
-----
-> debug htstats
-db_num:  0
-
--= totals =-
-read:    8896064
-write:   2045184
-spins:   0
-chains:  0
-add:     303
-drop:    2
-expire:  0
-htevict: 0
-afail:   0
-hit:     511040
-miss:    0
-cuckacq: 0
-cuckfet: 0
-cuckmov: 0
-cuckret: 0
-cuckmax: 0
-
--= self =-
-read:    8896064
-write:   2045184
-spins:   0
-chains:  0
-add:     303
-drop:    2
-expire:  0
-htevict: 0
-afail:   0
-hit:     511040
-miss:    0
-cuckacq: 0
-cuckfet: 0
-cuckmov: 0
-cuckret: 0
-cuckmax: 0
-----
-.Description
-Get information about the hash table counters.
+Get the number field value pairs in the hash.
 
 .Return
-A string description of debug info or bad command error.
+An integer count of the number of fields.
 
-[[flushall]]
-flushall | remove keys
+[[hmget]]
+hmget | get multiple field vals
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+hmget key field [field ...]
+----
+.Example
+----
+> hmset h f 1 g 2
+'OK'
+> hmget h f g h
+["1","2",nil]
+----
+.Description
+Get multiple values from a hash.  If a field doesn't exist, a *nil* is
+returned.
+
+.Return
+An array of values or *nil*.
+
+[[hmset]]
+hmset | set multiple field vals
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+hmset key field value [field value ...]
+----
+.Example
+----
+> hmset h f 1 g 2
+'OK'
+> hmset h g 3 tree 50
+'OK'
+> hgetall h
+["f","1","g","3","tree","50"]
+----
+.Description
+Set multiple field value pairs in the hash.
+
+.Return
+*OK*.
+
+[[hset]]
+hset | set a field value
+~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+hset key field value [field value ...]
+----
+.Example
+----
+> hset h f 1 g 2
+2
+> hset h g 3 tree 50
+1
+> hgetall h
+["f","1","g","3","tree","50"]
+----
+.Description
+Set multiple field value pairs in the hash.  Preexisting fields will
+be overwritten, and new fields will be added to the hash.
+
+.Return
+An integer indicating number of fields created.
+
+[[hsetnx]]
+hsetnx | set if not present
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+hsetnx key field value
+----
+.Example
+----
+> hmset h f 1 g 2
+'OK'
+> hsetnx h tree 50
+1
+> hsetnx h g 3
+0
+> hgetall h
+["f","1","g","2","tree","50"]
+----
+.Description
+Set a field in a hash only when it does not exist.
+
+.Return
+An integer *1* or *0* indicating success.
+
+[[hstrlen]]
+hstrlen | get strlen of field val
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+hstrlen key field
+----
+.Example
+----
+> hsetnx h tree 50
+1
+> hstrlen h tree
+2
+----
+.Description
+Get the string length of value stored with field, *0* if field does
+not exist.
+
+.Return
+An integer string length, which is the count of the 8 bit characters
+in the value.
+
+[[hvals]]
+hvals | get all values
 ~~~~~~~~~~~~~~~~~~~~~~
 .Usage
 ----
-flushall [async]
-----
-.Description
-Remove keys from all dbs.
-
-.Return
-*OK* if successful, error otherwise.
-
-[[flushdb]]
-flushdb | remove keys from db
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-.Usage
-----
-flushdb [async]
-----
-.Description
-Remove keys from selected db
-
-.Return
-*OK* if successful, error otherwise.
-
-[[info]]
-info | query server stats
-~~~~~~~~~~~~~~~~~~~~~~~~~
-.Usage
-----
-info [server | clients | memory | persistence | stats |
-      replication | cpu | commandstats | cluster | keyspace]
+hvals key
 ----
 .Example
 ----
-> info server
-raids_version:        1.0.0-11
-raids_git:            fee49cdd
-gcc_version:          9.1.1
-process_id:           32167
-> info clients
-redis_clients:        1
-pubsub_clients:       0
-> info memory
-vm_peak:              8204MB
-vm_size:              8204MB
-> info stats
-ht_operations:        505M
-ht_chains:            1.0
-ht_read:              505M
-ht_write:             287
-> info cpu
-used_cpu_sys:         0.069951
-used_cpu_user:        1.445196
-used_cpu_total:       1.515147
+> hmset h f 1 g 2
+'OK'
+> hvals h
+["f","1","g","2"]
 ----
 .Description
-Get version info and counters.
+Get all of the values stored in the hash.
 
 .Return
-A text string with newlines that has the requested info.
-////
-[[lastsave]]
-lastsave | last save time
-~~~~~~~~~~~~~~~~~~~~~~~~~
-.Usage
-----
-lastsave 
-----
-.Description
-Get the unix timestamp of the last save
+An array of all the values or *nil* when hash does not exist.
 
-[[memory]]
-memory | memory usage
-~~~~~~~~~~~~~~~~~~~~~
-.Usage
-----
-memory [doctor | help | malloc-stats | purge | stats | usage]
-----
-.Description
-Memory statistics.
-////
-[[monitor]]
-monitor | monitor commands
-~~~~~~~~~~~~~~~~~~~~~~~~~~
-.Usage
-----
-monitor 
-----
-.Example
-----
-> monitor
-["pmessage","__monitor_@*","__monitor_@0__:127.0.0.1:60646",
-[["get","k"],"value","1580125101.975300"]]
-----
-.Description
-Monitor commands executed by server from all clients.  This is an
-alias for `psubscribe _monitor_@*`.  Running once enables, running
-twice disables the monitor.  In order to monitor just one client, or
-just one ip address, use a pattern that includes the address:
-`psubscribe _monitor_@0__:127.0.0.1*`
-
-.Return
-An array which indicates the db number and client connected address
-(`"__monitor_@0__:127.0.0.1:60646"`), the command executed
-(`["get","k"]`), and the result of executing the command (`"value"`).
-////
-[[role]]
-role | replication role
-~~~~~~~~~~~~~~~~~~~~~~~
-.Usage
-----
-role 
-----
-.Description
-What is role of the instance for replication.
-////
-[[save]]
-save | sync save
-~~~~~~~~~~~~~~~~
-.Usage
-----
-save 
-----
-.Description
-Synchronously save to rdb format file.
-
-.Return
-*OK* or error if save fails.
-
-[[load]]
-load | sync load
-~~~~~~~~~~~~~~~~
-.Usage
-----
-load
-----
-.Description
-Synchronously load from rdb format file.
-
-.Return
-*OK* or error if load fails.
-
-[[shutdown]]
-shutdown | shutdown server
-~~~~~~~~~~~~~~~~~~~~~~~~~~
-.Usage
-----
-shutdown
-----
-.Description
-Shutdown server.  This will cause the connected instance to quit.
-////
-[[slaveof]]
-slaveof | set slave
-~~~~~~~~~~~~~~~~~~~
-.Usage
-----
-slaveof host port
-----
-.Description
-Make server a slave.
-
-[[slowlog]]
-slowlog | wtf sucking
-~~~~~~~~~~~~~~~~~~~~~
-.Usage
-----
-slowlog subcmd [arg]
-----
-.Description
-Manage slow queries log.
-
-[[sync]]
-sync | replication sync
-~~~~~~~~~~~~~~~~~~~~~~~
-.Usage
-----
-sync 
-----
-.Description
-Internal cmd for replication.
-////
-[[time]]
-time | get server time
+[[hscan]]
+hscan | iterate fields
 ~~~~~~~~~~~~~~~~~~~~~~
 .Usage
 ----
-time 
+hscan key cursor [match pattern] [count int]
 ----
 .Example
 ----
-> time
-["1580125969","562228"]
+> hset h abc 1 abb 2 abd 3 xyz 4 zzz 5
+5
+> hscan h 0 match a* count 1
+["2",["abc","1"]]
+> hscan h 2 match a* count 1
+["3",["abb","2"]]
+> hscan h 3 match a* count 1
+["4",["abd","3"]]
+> hscan h 4 match a* count 1
+["0",[]]
+> hscan h 0
+["0",["abc","1","abb","2","abd","3","xyz","4","zzz","5"]]
+> hscan h 5 match a* count 1
+["0",[]]
 ----
 .Description
-Get server time.
+Get the fields and values which match a pattern.  The cursor is the
+offset into the scan where the results will start.  If the cursor is
+equal to 3, then the match will start at the 3rd field in the hash.
 
 .Return
-An array, UTC seconds and microseconds (1 usec = 1/1000000 second).
+An array within an array.  The outer array is the cursor counter, the
+inner array is the fields and values.
 
 Set
 ---
@@ -3491,643 +3732,401 @@ them.  Wait indefinitely when timeout is zero.
 An array with the zset name and the member with scores.  If timeout
 occurs, then null is returned.
 
-String
+Geo
+---
+
+[options="header",cols="3,1,1,1,1,1"]
+|===========================================
+| command | arity | first key | last key | step | flags
+| <<geoadd>> | -5 | 1 | 1 | 1 | write
+| <<geohash>> | -2 | 1 | 1 | 1 | read
+| <<geopos>> | -2 | 1 | 1 | 1 | read
+| <<geodist>> | -4 | 1 | 1 | 1 | read
+| <<georadius>> | -6 | 1 | 1 | 1 | write movable
+| <<georadiusbymember>> | -5 | 1 | 1 | 1 | write movable
+|===========================================
+
+[[geoadd]]
+geoadd | add a pos to key
+~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+geoadd key long lat mem [long lat mem ...]
+----
+.Description
+Add longitude, latitude to key as member by converting the position to
+a *Uber H3* hash and adding it to the set.  The members are ordered by
+hash because hashes closest to eachother are also closest by spatual
+distance.
+
+.Return
+An integer is returned indicating how many members were added which
+did not already exist.
+
+[[geohash]]
+geohash | get hash of members
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+geohash key mem [mem ...]
+----
+.Description
+Get geo hash string by finding the members and converting the *Uber
+H3* hash to an encoded hash string as described in on the geohash wiki
+page: https://en.wikipedia.org/wiki/Geohash
+
+.Return
+An array of geohash strings, which may be *nil* if member is not
+found.
+
+[[geopos]]
+geopos | get pos of members
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+geopos key [mem ...]
+----
+.Description
+Get geo positions of members as longitude, latitude pairs.
+
+.Return
+An array of positions or *null* if member is not found.
+
+[[geodist]]
+geodist | get member distance
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+geodist key mem1 mem2 [unit]
+----
+.Description
+Compute the distance in units between members.  Default unit is
+meters, but km, feet, miles are accepted.
+
+.Return
+A decimal string representing the distance or *nil* when member is not
+found.
+
+[[georadius]]
+georadius | get members in radius
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+georadius key long lat rad m | k | ft | mi [withcoord] [withdist]
+ [withhash] [count n] [asc | desc] [storedist key]
+----
+.Description
+Get all members within a radius of position.  This iterates through
+the set using the hash of longitude latitude as the starting point.
+When the endpoints are found, the members are returned or stored.
+When storedist is used, then the distance and members are stored in a
+sorted set.
+
+.Return
+An array of members with optional distance, hash, and/or coordinates.
+The hash is an integer used by the *Uber H3* library.
+
+[[georadiusbymember]]
+georadiusbymember | get members
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+georadiusbymember key member rad m | k | ft | mi [withcoord]
+ [withdist] [withhash] [count n] [asc | desc] [storedist key]
+----
+.Description
+Similar to georadius, get all members within a radius of an existing
+member.  This iterates through the set using the named member as the
+starting point.  When the endpoints are found, the members are
+returned or stored.  When storedist is used, then the distance and
+members are stored in a sorted set.
+
+.Return
+An array of members with optional distance, hash, and/or coordinates.
+The hash is an integer used by the *Uber H3* library.
+
+Hyperloglog
+-----------
+
+[options="header",cols="3,1,1,1,1,1"]
+|===========================================
+| command | arity | first key | last key | step | flags
+| <<pfadd>> | -2 | 1 | 1 | 1 | write
+| <<pfcount>> | -2 | 1 | -1 | 1 | read
+| <<pfmerge>> | -2 | 1 | -1 | 1 | write
+|===========================================
+
+[[pfadd]]
+pfadd | add elems to hlog
+~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+pfadd key elem [elem ...]
+----
+.Example
+----
+> pfadd hl 1 2 3 4 5 6
+1
+----
+.Description
+Add elems to hyperloglog table.
+
+.Return
+The integer *1* is returned when new elements are added, *0* is
+returned when all elements are collisions or duplicates.
+
+[[pfcount]]
+pfcount | get hlog cardinality
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+pfcount key [key ...]
+----
+.Example
+----
+> pfadd hl 1 2 3 4 5 6
+1
+> pfcount hl
+6
+----
+.Description
+Get approximate cardinality of hyperloglog table.
+
+.Return
+An integer count of the cardinality estimate.
+
+[[pfmerge]]
+pfmerge | merge multiple hlogs
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.Usage
+----
+pfmerge dkey skey [skey ...]
+----
+.Example
+----
+> pfadd hl 1 2 3 4 5 6 10
+1
+> pfcount hl
+7
+> pfadd hl2 1 2 3 4 5 6 7
+1
+> pfcount hl2
+7
+> pfmerge hl2 hl hl2
+'OK'
+> pfcount hl2
+8
+----
+.Description
+Merge multiple hyperloglog tables and write them to the destination.
+The dest key is not merged, it written to.  A dest key can be used as
+a source key, but the original data in the source will be overwritten
+with the merged data.
+
+.Return
+*OK*.
+
+Pubsub
 ------
 
 [options="header",cols="3,1,1,1,1,1"]
 |===========================================
 | command | arity | first key | last key | step | flags
-| <<append>> | 3 | 1 | 1 | 1 | write
-| <<bitcount>> | -2 | 1 | 1 | 1 | read
-| <<bitfield>> | -2 | 1 | 1 | 1 | write
-| <<bitop>> | -4 | 2 | -1 | 1 | write
-| <<bitpos>> | -3 | 1 | 1 | 1 | read
-| <<decr>> | 2 | 1 | 1 | 1 | write
-| <<decrby>> | 3 | 1 | 1 | 1 | write
-| <<get>> | 2 | 1 | 1 | 1 | read
-| <<getbit>> | 3 | 1 | 1 | 1 | read
-| <<getrange>> | 4 | 1 | 1 | 1 | read
-| <<getset>> | 3 | 1 | 1 | 1 | write
-| <<incr>> | 2 | 1 | 1 | 1 | write
-| <<incrby>> | 3 | 1 | 1 | 1 | write
-| <<incrbyfloat>> | 3 | 1 | 1 | 1 | write
-| <<mget>> | -2 | 1 | -1 | 1 | read
-| <<mset>> | -3 | 1 | -1 | 2 | write
-| <<msetnx>> | -3 | 1 | -1 | 2 | write
-| <<psetex>> | 4 | 1 | 1 | 1 | write
-| <<set>> | -3 | 1 | 1 | 1 | write
-| <<setbit>> | 4 | 1 | 1 | 1 | write
-| <<setex>> | 4 | 1 | 1 | 1 | write
-| <<setnx>> | 3 | 1 | 1 | 1 | write
-| <<setrange>> | 4 | 1 | 1 | 1 | write
-| <<strlen>> | 2 | 1 | 1 | 1 | read
+| <<psubscribe>> | -2 | 0 | 0 | 0 |
+| <<pubsub>> | -2 | 0 | 0 | 0 |
+| <<publish>> | 3 | 0 | 0 | 0 |
+| <<punsubscribe>> | -1 | 0 | 0 | 0 |
+| <<subscribe>> | -2 | 0 | 0 | 0 |
+| <<unsubscribe>> | -1 | 0 | 0 | 0 |
 |===========================================
 
-[[append]]
-append | append to value
-~~~~~~~~~~~~~~~~~~~~~~~~
-.Usage
-----
-append key value
-----
-.Example
-----
-> append s string
-5
-> append s value
-9
-> get s
-"stringvalue"
-----
-.Description
-Append value to key.
-
-.Return
-The integer strlen of the key after value appended.
-
-[[bitcount]]
-bitcount | count bits
-~~~~~~~~~~~~~~~~~~~~~
-.Usage
-----
-bitcount key [start end]
-----
-.Example
-----
-> set s string
-'OK'
-> bitcount s 0 0
-5
-> bitfield s get u8 0
-115
-> getrange s 0 0
-"s"
-----
-.Description
-Count the bits in string from byte offset start to offset end,
-inclusive.
-
-.Return
-An integer count of bits set in the byte range.
-
-[[bitfield]]
-bitfield | manipulate bits
-~~~~~~~~~~~~~~~~~~~~~~~~~~
-.Usage
-----
-bitfield key [get type off] [set type off value]
- [incrby type off incr] [overflow wrap | sat | fail]
-----
-.Example
-----
-> bitfield bf set u8 0 1 set u8 8 2 set u8 16 3 set u8 24 4
-[0,0,0,0]
-----
-.Description
-Set integer value at bit offset off as type, where type is signed (iN)
-or unsigned (uN) with bit size *1* through *63*, *64* for signed.
-
-.Return
-An array of the integers that existed before setting the new values.
-
-.Example
-----
-> bitfield bf get u8 0 get u8 8 get u8 16 get u8 24
-[1,2,3,4]
-----
-.Description
-Get integer value at bit offset, using signed or unsigned type.
-
-.Return
-An array of integers that are requested.
-
-.Example
-----
-> bitfield bf incrby u8 0 1 incrby u8 8 1 incrby u8 16 1 incrby u8 24 1
-[2,3,4,5]
-> bitfield bf incrby u8 0 255 overflow wrap
-[1]
-> bitfield bf incrby u8 8 255 overflow sat
-[255]
-> bitfield bf incrby u8 16 255 overflow fail
-[nil]
-----
-.Description
-Increment integer values at bit offsets.  The overflow arument
-modifies the behavior of increment in the case that the result wraps
-around zero.  Wrap is the default, saturate (sat) caps the value at
-the highest and lowest point, fail discards the new value and uses the
-old value, returning *nil*.
-
-.Return
-An array of the integers after incrementing.
-
-[[bitop]]
-bitop | bitwise operator
-~~~~~~~~~~~~~~~~~~~~~~~~
-.Usage
-----
-bitop (and | or | xor | not) dest src [src src ...]
-----
-.Example
-----
-> bitfield i set u8 0 3
-[0]
-> bitfield j set u8 0 1
-[0]
-> bitop xor k j i
-1
-> bitfield k get u8 0
-[2]
-----
-.Description
-Bitwise store to dest from srcs by performing logical operations on
-each bit.
-
-.Return
-The number of bytes stored in dest, which is the minimum size of i and
-j, since the trailing zeros are not stored.
-
-[[bitpos]]
-bitpos | find a bit
-~~~~~~~~~~~~~~~~~~~
-.Usage
-----
-bitpos key bit [start end]
-----
-.Example
-----
-> bitfield k set u8 0 16
-[0]
-> bitpos k 1 0 1
-4
-> bitpos k 0 0 1
-0
-----
-.Description
-Find first bit set or clear between start offset and end offset.
-
-.Return
-The position of the bit set or clear, or *-1* when not found.
-
-[[decr]]
-decr | decr by one
-~~~~~~~~~~~~~~~~~~
-.Usage
-----
-decr key
-----
-.Example
-----
-> set k 10
-'OK'
-> decr k
-9
-> decr k
-8
-----
-.Description
-Decrement integer at key by one.
-
-.Return
-The value after decrementing it.  If key is created, then it is
-initialized to *-1*.
-
-[[decrby]]
-decrby | decr by integer
-~~~~~~~~~~~~~~~~~~~~~~~~
-.Usage
-----
-decrby key int
-----
-.Example
-----
-> set k 10
-'OK'
-> decrby k -1
-11
-> decrby k 10
-1
-----
-.Description
-Decrement integer at key by the integer argument.
-
-.Return
-The value after decrementing it.  If key is created, then it is
-initialized to the negative of the integer argument.
-
-[[get]]
-get | get key value
-~~~~~~~~~~~~~~~~~~~
-.Usage
-----
-get key
-----
-.Example
-----
-> set k val
-'OK'
-> get k
-"val"
-> del k
-1
-> get k
-nil
-----
-.Description
-Get the key value.
-
-.Return
-The string value or *nil* when not found.
-
-[[getbit]]
-getbit | git bit at offset
-~~~~~~~~~~~~~~~~~~~~~~~~~~
-.Usage
-----
-getbit key off
-----
-.Example
-----
-> bitfield k set u8 0 16
-[0]
-> getbit k 0
-0
-> getbit k 3
-0
-> getbit k 4
-1
-----
-.Description
-Get value at bit offset in the string stored at the key.
-
-.Return
-A *1* if the bit is set, a *0* if not set or not found.
-
-[[getrange]]
-getrange | get range in string
+[[psubscribe]]
+psubscribe | pattern subscribe
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 .Usage
 ----
-getrange key start end
+psubscribe pat [pat ...]
 ----
 .Example
 ----
-> set k 0123456789
-'OK'
-> getrange k 3 7
-"34567"
-> getrange k 12 13
-""
-> getrange k 7 -3
-"7"
-> getrange k 0 -1
-"0123456789"
+> psubscribe p* q*
+executing: ["psubscribe","p*","q*"]
+["psubscribe","p*",1]
+["psubscribe","q*",2]
+["pmessage","p*","publius","friend"]
+["pmessage","q*","qQq","OoO"]
 ----
 .Description
-Get a substring of the string value at key.  Start and/or end may be
-negative to index from the end of the string.
+Subscribe to patterns.  The messages published to channels which match
+the pattern will be forwarded to the client.  A message may be
+forwarded to the same client more than once if its channel matches
+multiple patterns.  It is also possible to be forwarded the message
+again if the channel matches a subscription.
 
 .Return
-A string with the characters in the range start to end, inclusive.
+An array with the subscription and an integer which is a count of the
+subscriptions open.
 
-[[getset]]
-getset | swap values
-~~~~~~~~~~~~~~~~~~~~
+[[pubsub]]
+pubsub | query pubsub info
+~~~~~~~~~~~~~~~~~~~~~~~~~~
 .Usage
 ----
-getset key value
+pubsub [channels [pattern] | numsub channel | numpat]
 ----
 .Example
 ----
-> getset k 2
-nil
-> getset k 3
-"2"
+> pubsub channels
+["two","five","seven","six","one","three","four"]
+> pubsub channels t*
+["two","three"]
+> pubsub channels x*
+[]
 ----
 .Description
-Swap new value with current value and return it.
+Get the channels that are in use which match a pattern.
 
-.Return
-The value currently stored with the key, or *nil* if the key is
-created.
+.Example
+----
+> pubsub numsub one two three
+["one",1,"two",1,"three",1]
+----
+.Description
+Get the number of subscription on each channel.
 
-[[incr]]
-incr | incr by one
-~~~~~~~~~~~~~~~~~~
+.Example
+----
+> pubsub numpat
+3
+----
+.Description
+Display the number of pattern subscriptions open.
+
+[[publish]]
+publish | publish msg to channel
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 .Usage
 ----
-incr key
+publish channel msg
 ----
 .Example
 ----
-> incr k
-4
-> incr k
-5
-> del k
-1
-> incr k
+> publish one two
 1
 ----
 .Description
-Increment integer at key by one.
+Publish msg to channel.
 
 .Return
-The value after it is incremented.  If key is created, then it is
-initialized to *1*.
+A count of the times the message is forwarded to a client.
 
-[[incrby]]
-incrby | incr by integer
-~~~~~~~~~~~~~~~~~~~~~~~~
+[[punsubscribe]]
+punsubscribe | pattern unsubscribe
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 .Usage
 ----
-incrby key int
+punsubscribe [pat ...]
 ----
 .Example
 ----
-> del k
-1
-> incrby k 100
-100
-> incrby k 100
-200
+> psubscribe x*
+["psubscribe","x*",1]
+> punsubscribe x*
+["punsubscribe","x*",0]
 ----
 .Description
-Increment integer at key by the integer argument.
+Unsubscribe patterns.  This cancels interest in the patterns
+previously subscribed.  If no patterns are named, all patterns are
+unsubscribed.
 
 .Return
-The value after it is incremented.  If key is created, then it is
-initialized to the integer argument.
+An array with the punsubscribe and an integer count of the number of
+subscriptions that the client has open.
 
-[[incrbyfloat]]
-incrbyfloat | incr by decimal
+[[subscribe]]
+subscribe | subscribe channel
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 .Usage
 ----
-incrbyfloat key decimal
+subscribe chan [chan ...]
 ----
 .Example
 ----
-> incrbyfloat n 1.1
-"1.1"
-> incrbyfloat n 1.1
-"2.2"
-> incrbyfloat n 1.1
-"3.3"
+> subscribe x
+["subscribe","x",1]
 ----
 .Description
-Increment number at key by decimal value.  This uses 128 bit decimal
-arithmetic which has a 34 digit range and an exponent from -6143 to
-+6144.  https://en.wikipedia.org/wiki/Decimal128_floating-point_format
+Subscribe to channels.  The messages published to the channels that
+are subscribed will be forwarded to the client.
 
 .Return
-The number after it is incremented.  If key is created, then it is
-initialized to the decimal argument.
+An array with the subscription and an integer which is a count of the
+subscriptions open.
 
-[[mget]]
-mget | get multiple values
-~~~~~~~~~~~~~~~~~~~~~~~~~~
+[[unsubscribe]]
+unsubscribe | unsubscribe channel
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 .Usage
 ----
-mget key [key ...]
+unsubscribe [chan ...]
 ----
 .Example
 ----
-> mset j 1 k 2 l 3 m 4
-'OK'
-> mget j k l m mm
-["1","2","3","4",nil]
+> subscribe x
+["subscribe","x",1]
+> unsubscribe x
+["unsubscribe","x",0]
 ----
 .Description
-Get the values of multiple keys.
+Unsubscribe channels.  This cancels interest in the channels
+previously subscribed.  If no channels are named, all channels are
+unsubscribed.
 
 .Return
-An array of values or nil when key doesn't exist or is not a string
-type.
+An array with the unsubscribe and an integer count of the number of
+subscriptions that the client has open.
+////
+Script
+------
 
-[[mset]]
-mset | set multiple values
-~~~~~~~~~~~~~~~~~~~~~~~~~~
-.Usage
-----
-mset key val [key val ...]
-----
-.Example
-----
-> mset j 1 k 2 l 3 m 4
-'OK'
-----
-.Description
-Set the values of multiple keys.
+[options="header",cols="3,1,1,1,1,1"]
+|===========================================
+| command | arity | first key | last key | step | flags
+| <<eval>> | -3 | 0 | 0 | 0 | movable
+| <<evalsha>> | -3 | 0 | 0 | 0 | movable
+| <<script>> | -2 | 0 | 0 | 0 |
+|===========================================
 
-.Return
-*OK*.
-
-[[msetnx]]
-msetnx | set if not exist
-~~~~~~~~~~~~~~~~~~~~~~~~~
-.Usage
-----
-msetnx key val [key val ...]
-----
-.Example
-----
-> del j k l m
-4
-> msetnx j 1 k 2 l 3 m 4
-1
-> msetnx j 1 k 2 l 3 m 4
-0
-----
-.Description
-Set the values of keys if all keys do not exist.
-
-.Return
-If all keys are created a *1* is returned, otherwise no kesy are
-created and a *0* is returnd;
-
-[[psetex]]
-psetex | set with expiration
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-.Usage
-----
-psetex key ms val
-----
-.Example
-----
-> psetex k 1580166892000 hello
-'OK'
-> ttl k
-80
-> psetex k 15000 hello
-'OK'
-> ttl k
-13
-> pttl k
-11991
-----
-.Description
-Set the value with expiration of key in milliseconds.  The expiration
-argument is either stamp or relative time.
-
-.Return
-*OK*.
-
-[[set]]
-set | set value
-~~~~~~~~~~~~~~~
-.Usage
-----
-set key val [ex secs] [px ms] [nx | xx]
-----
-.Example
-----
-> set k one
-'OK'
-> set k one xx
-'OK'
-> set k one nx
-nil
-> set k one px 15000 xx
-'OK'
-> ttl k
-11
-> pttl k
-4260
-----
-.Description
-Set the key value optionally with expiration and *nx* or *xx* test.
-The *nx* option tests that the key does not exist before setting.  The
-*xx* tests that the key does exist before setting.
-
-.Return
-*OK* on success, *nil* when failed.
-
-[[setbit]]
-setbit | set bits
+[[eval]]
+eval | run script
 ~~~~~~~~~~~~~~~~~
 .Usage
 ----
-setbit key off 1 | 0
-----
-.Example
-----
-> setbit k 0 1
-0
-> setbit k 1 1
-0
-> setbit k 1 0
-1
-> getbit k 0
-1
-> getbit k 1
-0
+eval script num key [key ...]
 ----
 .Description
-Swap the value at bit offset in string with the new bit value.
+Execute a Lua script.
 
-.Return
-A *1* or *0* is returned, the previous value held by bit.
-
-[[setex]]
-setex | set with expiration
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[[evalsha]]
+evalsha | run script by hash
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 .Usage
 ----
-setex key secs val
-----
-.Example
-----
-> setex k 1580166892 hello
-'OK'
-> ttl k
-80
-> setex k 15 hello
-'OK'
-> ttl k
-13
-> pttl k
-11991
+evalsha sha1 num key [key ...]
 ----
 .Description
-Set the value with expiration of key in seconds.  The expiration
-argument is either stamp or relative time.
+Execute a serverside Lua script.
 
-.Return
-*OK*.
-
-[[setnx]]
-setnx | set if not exist
-~~~~~~~~~~~~~~~~~~~~~~~~
+[[script]]
+script | modify script
+~~~~~~~~~~~~~~~~~~~~~~
 .Usage
 ----
-setnx key val
-----
-.Example
-----
-> del k
-1
-> setnx k value
-'OK'
-> setnx k value
-nil
+script [debug | exists | flush | kill | load]
 ----
 .Description
-Set the value if key does not exist.
-
-.Return
-*OK* if success, *nil* if key already exists.
-
-[[setrange]]
-setrange | set value range
-~~~~~~~~~~~~~~~~~~~~~~~~~~
-.Usage
-----
-setrange key off val
-----
-.Example
-----
-> del k
-1
-> setrange k 5 waterbuffalo
-17
-> get k
-"\u0000\u0000\u0000\u0000\u0000waterbuffalo"
-----
-.Description
-Overwrite or create a range in a string stored with the key at the
-offset specified.  The data implicitly created by the setrange is zero
-padded.
-
-.Return
-The length of key after modification.
-
-[[strlen]]
-strlen | get strlen
-~~~~~~~~~~~~~~~~~~~
-.Usage
-----
-strlen key
-----
-.Example
-----
-> del k
-1
-> setrange k 5 waterbuffalo
-17
-> strlen k
-17
-> get k
-"\u0000\u0000\u0000\u0000\u0000waterbuffalo"
-----
-.Description
-Get length of value, which is the maximum extent, not the strlen
-function.
-
-.Return
-The length of value, which could be *0* if the key does not exist.
-
+Script ops.
+////
 Transaction
 -----------
 

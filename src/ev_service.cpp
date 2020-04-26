@@ -12,6 +12,7 @@
 #include <netinet/tcp.h>
 #include <raids/ev_service.h>
 #include <raids/ev_tcp.h>
+#include <raids/ev_unix.h>
 
 using namespace rai;
 using namespace ds;
@@ -20,6 +21,12 @@ using namespace kv;
 EvRedisListen::EvRedisListen( EvPoll &p ) noexcept
              : EvTcpListen( p, this->ops ),
                timer_id( (uint64_t) EV_REDIS_SOCK << 56 )
+{
+}
+
+EvRedisUnixListen::EvRedisUnixListen( EvPoll &p ) noexcept
+                 : EvUnixListen( p, this->ops ),
+                   timer_id( (uint64_t) EV_REDIS_SOCK << 48 )
 {
 }
 
@@ -59,8 +66,7 @@ EvRedisListen::accept( void ) noexcept
 
   ::fcntl( sock, F_SETFL, O_NONBLOCK | ::fcntl( sock, F_GETFL ) );
   c->PeerData::init_peer( sock, (struct sockaddr *) &addr, "redis" );
-  c->sub_id   = sock;
-  c->timer_id = ++this->timer_id;
+  c->setup_ids( sock, ++this->timer_id );
 
   if ( this->poll.add_sock( c ) < 0 ) {
     ::close( sock );
@@ -88,10 +94,10 @@ EvRedisService::process( void ) noexcept
       break;
     }
     mstatus = this->msg.unpack( &this->recv[ this->off ], buflen, strm.tmp );
-    if ( mstatus != REDIS_MSG_OK ) {
-      if ( mstatus != REDIS_MSG_PARTIAL ) {
+    if ( mstatus != DS_MSG_STATUS_OK ) {
+      if ( mstatus != DS_MSG_STATUS_PARTIAL ) {
         fprintf( stderr, "protocol error(%d/%s), ignoring %lu bytes\n",
-                 mstatus, redis_msg_status_string( mstatus ), buflen );
+                 mstatus, ds_msg_status_string( mstatus ), buflen );
         this->off = this->len;
         /*this->pushpop( EV_CLOSE, EV_PROCESS );*/
         this->pop( EV_PROCESS );

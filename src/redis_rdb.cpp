@@ -93,10 +93,10 @@ RedisExec::exec_save( void ) noexcept
   this->cmd_state |= CMD_STATE_SAVE;
   /* update crc */
   EvKeyCtx key( this->kctx.ht );
-  key.ival = rdbparser::jones_crc64( 0, ver, 9 );
-  key.ival = rdbparser::jones_crc64( key.ival, ctime_aux, ctime_sz );
-  key.ival = rdbparser::jones_crc64( key.ival, aof_aux, aof_sz );
-  key.ival = rdbparser::jones_crc64( key.ival, db_select, db_sz );
+  key.ival = jones_crc64( 0, ver, 9 );
+  key.ival = jones_crc64( key.ival, ctime_aux, ctime_sz );
+  key.ival = jones_crc64( key.ival, aof_aux, aof_sz );
+  key.ival = jones_crc64( key.ival, db_select, db_sz );
   /* for each position in ht, convert key to rdb format */
   for ( pos = 0; pos < ht_size; pos++ ) {
     for (;;) {
@@ -132,7 +132,7 @@ RedisExec::exec_save( void ) noexcept
   nbytes = this->strm.pending() - this->strm_start;
   if ( nbytes > 0 ) {
     static const uint8_t eof = 0xff;
-    key.ival = rdbparser::jones_crc64( key.ival, &eof, 1 );
+    key.ival = jones_crc64( key.ival, &eof, 1 );
     this->strm.flush();
     if ( ::writev( fd, &this->strm.iov[ strm_idx ],
                    this->strm.idx - strm_idx ) != (ssize_t) nbytes ||
@@ -215,7 +215,7 @@ RdbDumpGeom::frame_dump_result( char *p ) noexcept
     }
     p[ off++ ] = this->type;
     this->rdb.str_encode( &p[ off ], this->key->u.buf );
-    this->crc = rdbparser::jones_crc64( this->crc, p, this->sz );
+    this->crc = jones_crc64( this->crc, p, this->sz );
   }
   else {
     size_t off = this->start - 1;
@@ -226,8 +226,7 @@ RdbDumpGeom::frame_dump_result( char *p ) noexcept
     size_t i = this->trail;
     p[ i++ ] = 9;
     p[ i++ ] = 0;
-    rdbparser::le<uint64_t>( (uint8_t *) &p[ i ],
-      rdbparser::jones_crc64( 0, &p[ off ], i - off ) );
+    le<uint64_t>( (uint8_t *) &p[ i ], jones_crc64( 0, &p[ off ], i - off ) );
     crlf( p, i + 8 );
   }
   return this->crc;

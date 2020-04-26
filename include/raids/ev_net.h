@@ -42,12 +42,13 @@ enum EvSockType {
   EV_CAPR_SOCK      = 6, /* capr pub/sub protocol */
   EV_RV_SOCK        = 7, /* rv pub/sub protocol */
   EV_KV_PUBSUB      = 8, /* route between processes */
-  EV_SHM_SOCK       = 9, /* local shm client */
-  EV_TIMER_QUEUE    = 10,/* event timers */
-  EV_SHM_SVC        = 11,/* pubsub service */
-  EV_MEMCACHED_SOCK = 12,/* memcached protocol */
-  EV_MEMUDP_SOCK    = 13,/* memcached udp protocol */
-  EV_CLIENTUDP_SOCK = 14 /* udp client */
+  EV_SHM_SOCK       = 9, /* local shm client (used with terminal) */
+  EV_SHM_API        = 10,/* local shm api client */
+  EV_TIMER_QUEUE    = 11,/* event timers */
+  EV_SHM_SVC        = 12,/* pubsub service */
+  EV_MEMCACHED_SOCK = 13,/* memcached protocol */
+  EV_MEMUDP_SOCK    = 14,/* memcached udp protocol */
+  EV_CLIENTUDP_SOCK = 15 /* udp client */
 };
 
 /* vtable dispatch, without vtable, this allows compiler to inline the
@@ -64,6 +65,7 @@ enum EvSockType {
     case EV_RV_SOCK:        static_cast<EvRvService *>( S )->F; break; \
     case EV_KV_PUBSUB:      static_cast<KvPubSub *>( S )->F; break; \
     case EV_SHM_SOCK:       static_cast<EvShmClient *>( S )->F; break; \
+    case EV_SHM_API:        static_cast<EvShmApi *>( S )->F; break; \
     case EV_TIMER_QUEUE:    static_cast<EvTimerQueue *>( S )->F; break; \
     case EV_SHM_SVC:        static_cast<EvShmSvc *>( S )->F; break; \
     case EV_MEMCACHED_SOCK: static_cast<EvMemcachedService *>( S )->F; break; \
@@ -82,6 +84,7 @@ enum EvSockType {
     case EV_RV_SOCK:        R = static_cast<EvRvService *>( S )->F; break; \
     case EV_KV_PUBSUB:      R = static_cast<KvPubSub *>( S )->F; break; \
     case EV_SHM_SOCK:       R = static_cast<EvShmClient *>( S )->F; break; \
+    case EV_SHM_API:        R = static_cast<EvShmApi *>( S )->F; break; \
     case EV_TIMER_QUEUE:    R = static_cast<EvTimerQueue *>( S )->F; break; \
     case EV_SHM_SVC:        R = static_cast<EvShmSvc *>( S )->F; break; \
     case EV_MEMCACHED_SOCK: R = static_cast<EvMemcachedService *>(S)->F;break; \
@@ -260,6 +263,8 @@ struct EvPoll : public RoutePublish {
     c->pop_free_list();
     return c;
   }
+  void * operator new( size_t, void *ptr ) { return ptr; }
+  void operator delete( void *ptr ) { ::free( ptr ); }
 
   EvPoll()
     : sock( 0 ), ev( 0 ), map( 0 ), prefetch_queue( 0 ), pubsub( 0 ),
@@ -281,7 +286,8 @@ struct EvPoll : public RoutePublish {
   void del_route( const char *sub,  size_t sub_len,  uint32_t hash,
                   uint32_t fd ) noexcept;
   int wait( int ms ) noexcept;            /* call epoll() with ms timeout */
-  bool dispatch( void ) noexcept;         /* process any sock in the queues */
+  enum { DISPATCH_IDLE = 0, POLL_NEEDED = 1, DISPATCH_BUSY = 2 };
+  int dispatch( void ) noexcept;          /* process any sock in the queues */
   void drain_prefetch( void ) noexcept;   /* process prefetches */
   bool publish_one( EvPublish &pub,  uint32_t *rcount_total,
                     RoutePublishData &rpd ) noexcept;

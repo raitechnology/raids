@@ -71,7 +71,7 @@ RedisExec::exec_auth( void ) noexcept
 ExecStatus
 RedisExec::exec_echo( void ) noexcept
 {
-  this->send_msg( this->msg.array[ 1 ] );
+  this->send_msg( this->msg.arr( 1 ) );
   return EXEC_OK;
 }
 
@@ -79,7 +79,7 @@ ExecStatus
 RedisExec::exec_ping( void ) noexcept
 {
   if ( this->argc > 1 ) {
-    this->send_msg( this->msg.array[ 1 ] );
+    this->send_msg( this->msg.arr( 1 ) );
   }
   else {
     static char pong[] = "+PONG\r\n";
@@ -419,7 +419,7 @@ RedisExec::exec_command( void ) noexcept
   size_t       j = 0, len;
   char         tmp[ 8 * 80 ];
 
-  this->mstatus = REDIS_MSG_OK;
+  this->mstatus = DS_MSG_STATUS_OK;
   switch ( this->msg.match_arg( 1, MARG( "info" ),
                                    MARG( "getkeys" ),
                                    MARG( "count" ),
@@ -431,8 +431,8 @@ RedisExec::exec_command( void ) noexcept
         return ERR_ALLOC_FAIL;
       for ( size_t i = 1; i < REDIS_CMD_DB_SIZE; i++ ) {
         get_cmd_info( (RedisCmd) i, tmp, sizeof( tmp ) );
-        this->mstatus = m.array[ j++ ].unpack_json( tmp, this->strm.tmp );
-        if ( this->mstatus != REDIS_MSG_OK )
+        this->mstatus = m.arr( j++ ).unpack_json( tmp, this->strm.tmp );
+        if ( this->mstatus != DS_MSG_STATUS_OK )
           break;
       }
       m.len = j;
@@ -445,7 +445,7 @@ RedisExec::exec_command( void ) noexcept
         for ( int i = 2; this->msg.get_arg( i, name, len ); i++ ) {
           get_cmd_info( get_redis_cmd( get_redis_cmd_hash( name, len ) ),
                         tmp, sizeof( tmp ) );
-          m.array[ j++ ].unpack_json( tmp, this->strm.tmp );
+          m.arr( j++ ).unpack_json( tmp, this->strm.tmp );
         }
         m.len = j;
       }
@@ -462,13 +462,13 @@ RedisExec::exec_command( void ) noexcept
       for ( int i = 2; this->msg.get_arg( i, name, len ); i++ ) {
         RedisCmd cmd = get_redis_cmd( get_redis_cmd_hash( name, len ) );
         get_cmd_usage( cmd, tmp, sizeof( tmp ) );
-        m.array[ j++ ].set_simple_string( (char *) cmd_db[ cmd ].name );
-        m.array[ j++ ].set_simple_string( tmp );
+        m.arr( j++ ).set_simple_string( (char *) cmd_db[ cmd ].name );
+        m.arr( j++ ).set_simple_string( tmp );
       }
       if ( j == 0 ) {
         get_cmd_usage( COMMAND_CMD, tmp, sizeof( tmp ) );
-        m.array[ j++ ].set_simple_string( (char *) cmd_db[ COMMAND_CMD ].name );
-        m.array[ j++ ].set_simple_string( tmp );
+        m.arr( j++ ).set_simple_string( (char *) cmd_db[ COMMAND_CMD ].name );
+        m.arr( j++ ).set_simple_string( tmp );
       }
       m.len = j;
       break;
@@ -476,14 +476,14 @@ RedisExec::exec_command( void ) noexcept
     default:
       return ERR_BAD_ARGS;
   }
-  if ( this->mstatus == REDIS_MSG_OK ) {
+  if ( this->mstatus == DS_MSG_STATUS_OK ) {
     size_t sz  = m.pack_size();
     void * buf = this->strm.alloc_temp( sz );
     if ( buf == NULL )
       return ERR_ALLOC_FAIL;
     this->strm.append_iov( buf, m.pack( buf ) );
   }
-  if ( this->mstatus != REDIS_MSG_OK )
+  if ( this->mstatus != DS_MSG_STATUS_OK )
     return ERR_MSG_STATUS;
   return EXEC_OK;
 }
@@ -506,14 +506,14 @@ RedisExec::exec_config( void ) noexcept
         case 1:
           if ( ! m.alloc_array( this->strm.tmp, 2 ) )
             return ERR_ALLOC_FAIL;
-          m.array[ 0 ].set_bulk_string( (char *) MARG( "appendonly" ) );
-          m.array[ 1 ].set_bulk_string( (char *) MARG( "no" ) );
+          m.arr( 0 ).set_bulk_string( (char *) MARG( "appendonly" ) );
+          m.arr( 1 ).set_bulk_string( (char *) MARG( "no" ) );
           break;
         case 2:
           if ( ! m.alloc_array( this->strm.tmp, 2 ) )
             return ERR_ALLOC_FAIL;
-          m.array[ 0 ].set_bulk_string( (char *) MARG( "save" ) );
-          m.array[ 1 ].set_bulk_string( (char *) MARG( "" ) );
+          m.arr( 0 ).set_bulk_string( (char *) MARG( "save" ) );
+          m.arr( 1 ).set_bulk_string( (char *) MARG( "" ) );
           break;
       }
       sz  = m.pack_size();
@@ -1157,9 +1157,9 @@ RedisExec::exec_role( void ) noexcept
   RedisMsg m;
   if ( m.alloc_array( this->strm.tmp, 3 ) ) {
     static char master[] = "master";
-    m.array[ 0 ].set_bulk_string( master, sizeof( master ) - 1 );
-    m.array[ 1 ].set_int( 0 );
-    m.array[ 2 ].set_mt_array();
+    m.arr( 0 ).set_bulk_string( master, sizeof( master ) - 1 );
+    m.arr( 1 ).set_int( 0 );
+    m.arr( 2 ).set_mt_array();
     this->send_msg( m );
     return EXEC_OK;
   }

@@ -14,10 +14,46 @@ using namespace ds;
 using namespace kv;
 
 int
-EvShm::open( const char *mn,  uint8_t db_num ) noexcept
+EvShm::open( const char *map_name,  uint8_t db_num ) noexcept
 {
   HashTabGeom geom;
-  this->map = HashTab::attach_map( mn, 0, geom );
+  this->map = HashTab::attach_map( map_name, 0, geom );
+  if ( this->map != NULL ) {
+    this->ctx_id = map->attach_ctx( ::getpid() );
+    if ( this->ctx_id != MAX_CTX_ID ) {
+      this->dbx_id = map->attach_db( this->ctx_id, db_num );
+      return 0;
+    }
+  }
+  return -1;
+}
+
+int
+EvShm::create( const char *map_name,  uint8_t db_num,  uint64_t map_size,
+               double entry_ratio,  uint64_t max_value_size ) noexcept
+{
+  HashTabGeom geom;
+  uint64_t value_size;
+  if ( entry_ratio < 0.0 || entry_ratio > 1.0 )
+    return -1;
+  geom.map_size = map_size;
+  value_size    = (uint64_t) ( (double) map_size * ( 1.0 - entry_ratio ) );
+  if ( max_value_size > 0 && max_value_size < value_size / 3 )
+    geom.max_value_size = max_value_size;
+  else {
+    uint64_t d = 8; /* 8 = 512MB/64MB, 8 = 1G/128MB, 16 = 2G/256G */
+    max_value_size = value_size / d;
+    while ( d < 128 && max_value_size / 2 > (uint64_t) 256 * 1024 * 1024 ) {
+      max_value_size /= 2;
+      d *= 2;
+    }
+    geom.max_value_size = max_value_size;
+  }
+  geom.hash_entry_size  = 64;
+  geom.hash_value_ratio = entry_ratio;
+  geom.cuckoo_buckets   = 2;
+  geom.cuckoo_arity     = 4;
+  this->map = HashTab::create_map( map_name, 0, geom );
   if ( this->map != NULL ) {
     this->ctx_id = map->attach_ctx( ::getpid() );
     if ( this->ctx_id != MAX_CTX_ID ) {
@@ -71,10 +107,10 @@ EvShmClient::init_exec( void ) noexcept
     return -1;
   if ( ::pipe2( this->pfd, O_NONBLOCK ) < 0 )
     return -1;
-  this->PeerData::init_peer( this->pfd[ 0 ], NULL, "shm" );
+  this->PeerData::init_ctx( this->pfd[ 0 ], this->ctx_id, "shm_client" );
   this->exec = new ( e ) RedisExec( *this->map, this->ctx_id, this->dbx_id,
                                     *this, this->poll.sub_route, *this );
-  this->exec->sub_id = this->fd;
+  this->exec->setup_ids( this->fd, (uint64_t) EV_SHM_SOCK << 56 );
   this->poll.add_sock( this );
   return 0;
 }
@@ -85,7 +121,7 @@ EvShmClient::on_msg( EvPublish &pub ) noexcept
   RedisContinueMsg * cm = NULL;
   int status = this->exec->do_pub( pub, cm );
   if ( ( status & RPUB_FORWARD_MSG ) != 0 )
-    this->stream_to_msg();
+    this->data_callback();
   if ( ( status & RPUB_CONTINUE_MSG ) != 0 )
     this->exec->push_continue_list( cm );
   return true;
@@ -102,7 +138,7 @@ EvShmClient::send_data( char *buf,  size_t size ) noexcept
 {
   ExecStatus status;
 
-  if ( this->exec->msg.unpack( buf, size, this->tmp ) != REDIS_MSG_OK )
+  if ( this->exec->msg.unpack( buf, size, this->tmp ) != DS_MSG_STATUS_OK )
     return;
   if ( (status = this->exec->exec( NULL, NULL )) == EXEC_OK )
     if ( this->alloc_fail )
@@ -121,31 +157,15 @@ EvShmClient::send_data( char *buf,  size_t size ) noexcept
     case EXEC_DEBUG:
       break;
   }
-  this->stream_to_msg();
+  this->data_callback();
 }
 
 void
-EvShmClient::stream_to_msg( void ) noexcept
+EvShmClient::data_callback( void ) noexcept
 {
-  if ( this->sz > 0 )
-    this->flush();
-  if ( this->idx >= 1 ) {
+  if ( this->concat_iov() ) {
     void * buf = this->iov[ 0 ].iov_base;
     size_t len = this->iov[ 0 ].iov_len;
-    if ( this->idx > 1 ) {
-      size_t i;
-      for ( i = 1; i < this->idx; i++ )
-        len += this->iov[ i ].iov_len;
-      buf = this->alloc_temp( len );
-      len = 0;
-      if ( buf != NULL ) {
-        for ( i = 0; i < this->idx; i++ ) {
-          size_t add = this->iov[ i ].iov_len;
-          ::memcpy( &((char *) buf)[ len ], this->iov[ i ].iov_base, add );
-          len += add;
-        }
-      }
-    }
     for ( size_t off = 0; ; ) {
       size_t buflen = len - off;
       if ( buflen == 0 )

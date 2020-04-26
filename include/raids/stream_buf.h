@@ -115,7 +115,7 @@ struct StreamBuf {
   size_t pending( void ) const { /* how much is read to send */
     return this->wr_pending + this->sz;
   }
-  void reset( void ) {
+  void reset_pending( void ) {
     this->iov        = this->iovbuf;
     this->vlen       = sizeof( this->iovbuf ) / sizeof( this->iovbuf[ 0 ] );
     this->wr_pending = 0;
@@ -124,6 +124,9 @@ struct StreamBuf {
     this->idx        = 0;
     this->woff       = 0;
     this->alloc_fail = false;
+  }
+  void reset( void ) {
+    this->reset_pending();
     this->tmp.reset();
   }
   void expand_iov( void ) noexcept;
@@ -172,6 +175,17 @@ struct StreamBuf {
       }
     }
   }
+  bool concat_iov( void ) {
+    if ( this->sz > 0 )
+      this->flush();
+    if ( this->idx == 0 )
+      return false;
+    if ( this->idx > 1 )
+      this->merge_iov();
+    return this->idx > 0;
+  }
+  void merge_iov( void ) noexcept;
+
   char *alloc_temp( size_t amt ) noexcept;
 
   uint8_t *alloc_bytes( size_t amt ) {
@@ -181,7 +195,7 @@ struct StreamBuf {
     if ( this->out_buf != NULL && this->sz + amt > BUFSIZE )
       this->flush();
     if ( this->out_buf == NULL ) {
-      this->out_buf = (char *) this->alloc_temp( amt < BUFSIZE ? BUFSIZE : amt );
+      this->out_buf = (char *) this->alloc_temp( amt < BUFSIZE ? BUFSIZE : amt);
       if ( this->out_buf == NULL )
         return NULL;
     }

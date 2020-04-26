@@ -178,8 +178,8 @@ main( int, char ** )
       mstatus = msg.unpack_json( buf, cmdlen, wrk );
     else
       mstatus = msg.unpack( buf, cmdlen, wrk );
-    if ( mstatus != REDIS_MSG_OK ) {
-      printf( "error %d/%s\n", mstatus, redis_msg_status_string( mstatus ) );
+    if ( mstatus != DS_MSG_STATUS_OK ) {
+      printf( "error %d/%s\n", mstatus, ds_msg_status_string( mstatus ) );
       continue;
     }
     cmdbuf = msg.command( cmdlen, argcount );

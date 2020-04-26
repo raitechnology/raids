@@ -80,7 +80,8 @@ EvRedisUnixListen::accept( void ) noexcept
   }
   ::fcntl( sock, F_SETFL, O_NONBLOCK | ::fcntl( sock, F_GETFL ) );
   this->PeerData::init_peer( sock, (struct sockaddr *) &sunaddr, "redis" );
-  c->sub_id = sock;
+  c->setup_ids( sock, ++this->timer_id );
+
   if ( this->poll.add_sock( c ) < 0 ) {
     ::close( sock );
     c->push_free_list();

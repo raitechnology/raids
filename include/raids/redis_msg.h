@@ -1,6 +1,69 @@
 #ifndef __rai_raids__redis_msg_h__
 #define __rai_raids__redis_msg_h__
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+typedef enum {
+  DS_BULK_STRING   = '$', /* 36 */
+  DS_BULK_ARRAY    = '*', /* 42 */
+  DS_SIMPLE_STRING = '+', /* 43 */
+  DS_ERROR_STRING  = '-', /* 45 */
+  DS_INTEGER_VALUE = ':'  /* 58 */
+} ds_resp_type_t;
+
+typedef struct ds_msg_s ds_msg_t;
+
+struct ds_msg_s {
+  ds_resp_type_t type;
+  int32_t len;  /* no value for ints, -1 nil (bulkstr) and null (bulkarr) */
+  union {
+    char     * strval;
+    int64_t    ival;
+    ds_msg_t * array;
+  };
+};
+
+static inline ds_msg_t *mk_str( ds_msg_t *s,  const void *buf,  int32_t len ) {
+  s->type   = DS_BULK_STRING;
+  s->len    = len;
+  s->strval = (char *) buf;
+  return s;
+}
+
+static inline ds_msg_t *mk_int( ds_msg_t *n,  int64_t i ) {
+  n->type = DS_INTEGER_VALUE;
+  n->len  = 0;
+  n->ival = i;
+  return n;
+}
+
+static inline ds_msg_t *mk_arr( ds_msg_t *a,  int32_t len,  ds_msg_t *ar ) {
+  a->type  = DS_BULK_ARRAY;
+  a->len   = len;
+  a->array = ar;
+  return a;
+}
+
+typedef enum {
+  DS_MSG_STATUS_OK = 0,
+  DS_MSG_STATUS_INT_OVERFLOW,
+  DS_MSG_STATUS_BAD_INT,
+  DS_MSG_STATUS_FLOAT_OVERFLOW,
+  DS_MSG_STATUS_BAD_FLOAT,
+  DS_MSG_STATUS_BAD_TYPE,
+  DS_MSG_STATUS_PARTIAL,
+  DS_MSG_STATUS_ALLOC_FAIL,
+  DS_MSG_STATUS_BAD_JSON
+} ds_msg_status_t;
+
+const char *ds_msg_status_string( ds_msg_status_t status );
+const char *ds_msg_status_description( ds_msg_status_t status );
+
+#ifdef __cplusplus
+}
+
 #include <raikv/util.h>
 #include <raikv/work.h>
 #include <raids/int_str.h>
@@ -8,85 +71,52 @@
 namespace rai {
 namespace ds {
 
-enum RedisMsgStatus {
-  REDIS_MSG_OK             = 0,
-  REDIS_MSG_INT_OVERFLOW   = STR_CVT_INT_OVERFLOW,
-  REDIS_MSG_BAD_INT        = STR_CVT_BAD_INT,
-  REDIS_MSG_FLOAT_OVERFLOW = STR_CVT_FLOAT_OVERFLOW,
-  REDIS_MSG_BAD_FLOAT      = STR_CVT_BAD_FLOAT,
-  REDIS_MSG_BAD_TYPE,
-  REDIS_MSG_PARTIAL,
-  REDIS_MSG_ALLOC_FAIL,
-  REDIS_MSG_BAD_JSON
-};
-
-const char *redis_msg_status_string( RedisMsgStatus status ) noexcept;
-const char *redis_msg_status_description( RedisMsgStatus status ) noexcept;
-
+typedef ds_msg_status_t RedisMsgStatus;
 struct JsonInput;
 
-struct RedisMsg {
-  enum DataType {
-    SIMPLE_STRING = '+', /* 43 */
-    ERROR_STRING  = '-', /* 45 */
-    INTEGER_VALUE = ':', /* 58 */
-    BULK_STRING   = '$', /* 36 */
-    BULK_ARRAY    = '*'  /* 42 */
-  };
-  DataType type;
-  int64_t  len;   /* size of string or array, no value for ints */
+struct RedisMsg : public ds_msg_s {
 
-  union {
-    char     * strval;   /* simple, bulk string */
-    int64_t    ival;     /* integer */
-    RedisMsg * array;    /* bulk array */
-  };
-
-#define DTBit( t ) ( 1U << ( (uint8_t) t - (uint8_t) RedisMsg::BULK_STRING ) )
-  static const uint32_t string_bits = DTBit( SIMPLE_STRING ) |
-                                      DTBit( BULK_STRING );
-  bool is_string( void ) const {
-    return ( DTBit( this->type ) & string_bits ) != 0;
+  RedisMsg &arr( size_t i ) const {
+    return (RedisMsg &) this->array[ i ];
   }
-  static const uint32_t all_data_bits = string_bits |
-                                        DTBit( ERROR_STRING ) |
-                                        DTBit( INTEGER_VALUE ) |
-                                        DTBit( BULK_ARRAY );
+  bool is_string( void ) const {
+    return ( this->type == DS_SIMPLE_STRING || this->type == DS_BULK_STRING );
+  }
   static inline bool valid_type_char( char b ) {
-    return b >= '$' && b <= '$' + 31 && ( DTBit( b ) & all_data_bits ) != 0;
+    switch ( b ) {
+      case '$': case '*': case '+': case '-': case ':': return true;
+      default: return false;
+    }
+  }
+  static inline bool is_valid( ds_resp_type_t t ) {
+    return valid_type_char( (char) t );
   }
   /* copy msg reference */
   void ref( RedisMsg &m ) {
     this->type = m.type;
     this->len  = m.len;
-    if ( m.type == INTEGER_VALUE )
+    if ( m.type == DS_INTEGER_VALUE )
       this->ival = m.ival;
-    else if ( m.type == BULK_ARRAY )
+    else if ( m.type == DS_BULK_ARRAY )
       this->array = m.array;
     else
       this->strval = m.strval;
   }
+  RedisMsg *get_arg( int n ) const {
+    const ds_msg_t *m = this;
+    if ( m->type == DS_BULK_ARRAY ) {
+      if ( n >= m->len )
+        return NULL;
+      m = &this->array[ n ];
+    }
+    return (RedisMsg *) m;
+  }
   /* get the first string in an array: ["command"] */
   const char * command( size_t &length,  size_t &argc ) const {
-    const RedisMsg *m = this;
-    if ( m->type == BULK_ARRAY ) {
-      if ( m->len > 0 ) {
-        argc = (size_t) m->len;
-        m = &m->array[ 0 ];
-      }
-      else
-        goto no_cmd;
-    }
-    else {
-      argc = 1;
-    }
-    if ( m->is_string() ) {
-      length = m->len;
-      return m->strval;
-    }
-  no_cmd:
-    length = 0;
-    argc = 0;
+    const char * str;
+    argc = ( this->type == DS_BULK_ARRAY ) ? this->len : 1;
+    if ( this->get_arg( 0, str, length ) )
+      return str;
     return NULL;
   }
   const char * command( size_t &length ) const {
@@ -95,27 +125,30 @@ struct RedisMsg {
   }
   /* get a string argument and length */
   bool get_arg( int n,  const char *&str,  size_t &sz ) const {
-    if ( n < this->len && this->array[ n ].is_string() ) {
-      if ( this->array[ n ].len >= 0 ) {
-        str = this->array[ n ].strval;
-        sz  = this->array[ n ].len;
-        return true;
+    RedisMsg *m = this->get_arg( n );
+    if ( m != NULL ) {
+      if ( m->type == DS_BULK_STRING || m->type == DS_SIMPLE_STRING ) {
+        if ( m->len > 0 ) {
+          str = m->strval;
+          sz  = m->len;
+          return true;
+        }
       }
     }
+    str = NULL;
+    sz  = 0;
     return false;
   }
   /* get an integer argument */
   bool get_arg( int n,  int64_t &i ) const {
-    if ( n < this->len ) {
-      if ( this->array[ n ].is_string() ) {
-        if ( this->array[ n ].len > 0 ) {
-          const char * str = this->array[ n ].strval;
-          size_t       sz  = this->array[ n ].len;
-          return str_to_int( str, sz, i ) == REDIS_MSG_OK;
-        }
+    RedisMsg *m = this->get_arg( n );
+    if ( m != NULL ) {
+      if ( m->type == DS_BULK_STRING || m->type == DS_SIMPLE_STRING ) {
+        if ( m->len > 0 )
+          return str_to_int( m->strval, m->len, i ) == 0;
       }
-      else if ( this->array[ n ].type == INTEGER_VALUE ) {
-        i = this->array[ n ].ival;
+      else if ( m->type == DS_INTEGER_VALUE ) {
+        i = m->ival;
         return true;
       }
     }
@@ -123,16 +156,14 @@ struct RedisMsg {
   }
   /* get an double argument */
   bool get_arg( int n,  double &f ) const {
-    if ( n < this->len ) {
-      if ( this->array[ n ].is_string() ) {
-        if ( this->array[ n ].len > 0 ) {
-          const char * str = this->array[ n ].strval;
-          size_t       sz  = this->array[ n ].len;
-          return str_to_dbl( str, sz, f ) == REDIS_MSG_OK;
-        }
+    RedisMsg *m = this->get_arg( n );
+    if ( m != NULL ) {
+      if ( m->type == DS_BULK_STRING || m->type == DS_SIMPLE_STRING ) {
+        if ( m->len > 0 )
+          return str_to_dbl( m->strval, m->len, f ) == 0;
       }
-      else if ( this->array[ n ].type == INTEGER_VALUE ) {
-        f = (double) this->array[ n ].ival;
+      else if ( m->type == DS_INTEGER_VALUE ) {
+        f = (double) m->ival;
         return true;
       }
     }
@@ -149,48 +180,52 @@ struct RedisMsg {
   size_t match_arg( size_t n,  const char *str,  size_t sz,
                     ... ) const noexcept;
   /* str length sz to int */
-  static RedisMsgStatus str_to_int( const char *str,  size_t sz,
-                                    int64_t &ival ) {
-    return (RedisMsgStatus) rai::ds::string_to_int( str, sz, ival );
+  static int str_to_int( const char *str,  size_t sz,  int64_t &ival ) {
+    return rai::ds::string_to_int( str, sz, ival );
+  }
+  static int str_to_int( const char *str,  size_t sz,  int32_t &ival ) {
+    int64_t j;
+    int status;
+    if ( (status = rai::ds::string_to_int( str, sz, j )) == 0 )
+      ival = (int32_t) j;
+    return status;
   }
   /* str length sz to uint */
-  static RedisMsgStatus str_to_uint( const char *str,  size_t sz,
-                                     uint64_t &ival ) {
-    return (RedisMsgStatus) rai::ds::string_to_uint( str, sz, ival );
+  static int str_to_uint( const char *str,  size_t sz,  uint64_t &ival ) {
+    return rai::ds::string_to_uint( str, sz, ival );
   }
   /* str length sz to double */
-  static RedisMsgStatus str_to_dbl( const char *str,  size_t sz,
-                                    double &fval ) {
-    return (RedisMsgStatus) rai::ds::string_to_dbl( str, sz, fval );
+  static int str_to_dbl( const char *str,  size_t sz,  double &fval ) {
+    return rai::ds::string_to_dbl( str, sz, fval );
   }
   /* various simple encodings used by redis */
   void set_nil( void ) {
-    this->type   = BULK_STRING;
+    this->type   = DS_BULK_STRING;
     this->len    = -1;
     this->strval = NULL;
   }
   void set_null( void ) {
-    this->type  = BULK_ARRAY;
+    this->type  = DS_BULK_ARRAY;
     this->len   = -1;
     this->array = NULL;
   }
   void set_mt_array( void ) {
-    this->type  = BULK_ARRAY;
+    this->type  = DS_BULK_ARRAY;
     this->len   = 0;
     this->array = NULL;
   }
   void set_simple_string( char *s,  size_t sz = 0 ) {
-    this->type   = SIMPLE_STRING;
+    this->type   = DS_SIMPLE_STRING;
     this->len    = ( sz == 0 ? ::strlen( s ) : sz );
     this->strval = s;
   }
   void set_bulk_string( char *s,  size_t sz = 0 ) {
-    this->type   = BULK_STRING;
+    this->type   = DS_BULK_STRING;
     this->len    = ( sz == 0 ? ::strlen( s ) : sz );
     this->strval = s;
   }
   void set_int( int64_t i ) {
-    this->type = INTEGER_VALUE;
+    this->type = DS_INTEGER_VALUE;
     this->len  = 0;
     this->ival = i;
   }
@@ -205,6 +240,9 @@ struct RedisMsg {
   /* try to decode one message, length of data decoded is returned in len */
   RedisMsgStatus unpack( void *buf,  size_t &len,
                          kv::ScratchMem &wrk ) noexcept;
+  /* same as above, but allow string based cmds without nl/cr */
+  RedisMsgStatus unpack2( void *buf,  size_t len,
+                          kv::ScratchMem &wrk ) noexcept;
   /* copy message into scratch mem */
   RedisMsg *dup( kv::ScratchMem &wrk ) noexcept;
   RedisMsg *dup2( kv::ScratchMem &wrk,  RedisMsg &cpy ) noexcept;
@@ -229,4 +267,5 @@ struct RedisMsg {
 
 }
 }
+#endif /* __cplusplus */
 #endif

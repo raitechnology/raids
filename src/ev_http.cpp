@@ -16,6 +16,12 @@
 using namespace rai;
 using namespace ds;
 
+EvHttpListen::EvHttpListen( EvPoll &p ) noexcept
+             : EvTcpListen( p, this->ops ),
+               timer_id( (uint64_t) EV_HTTP_SOCK << 56 )
+{
+}
+
 bool
 EvHttpListen::accept( void ) noexcept
 {
@@ -49,7 +55,7 @@ EvHttpListen::accept( void ) noexcept
     perror( "warning: TCP_NODELAY" );
   ::fcntl( sock, F_SETFL, O_NONBLOCK | ::fcntl( sock, F_GETFL ) );
   c->PeerData::init_peer( sock, (struct sockaddr *) &addr, "http" );
-  c->sub_id = sock;
+  c->setup_ids( sock, ++this->timer_id );
   c->initialize_state();
   if ( this->poll.add_sock( c ) < 0 ) {
     ::close( sock );
@@ -122,11 +128,11 @@ EvHttpService::process( void ) noexcept
         p  = &inptr[ inoff ];
         switch ( p[ 0 ] ) {
           default:
-          case RedisMsg::SIMPLE_STRING: /* + */
-          case RedisMsg::ERROR_STRING:  /* - */
-          case RedisMsg::INTEGER_VALUE: /* : */
-          case RedisMsg::BULK_STRING:   /* $ */
-          case RedisMsg::BULK_ARRAY:    /* * */
+          case DS_SIMPLE_STRING: /* + */
+          case DS_ERROR_STRING:  /* - */
+          case DS_INTEGER_VALUE: /* : */
+          case DS_BULK_STRING:   /* $ */
+          case DS_BULK_ARRAY:    /* * */
             status = this->msg.unpack( p, sz, strm.tmp );
             break;
           case '\n':
@@ -146,17 +152,17 @@ EvHttpService::process( void ) noexcept
             status = this->msg.unpack_json( p, sz, strm.tmp );
             break;
         }
-        if ( status != REDIS_MSG_OK ) {
+        if ( status != DS_MSG_STATUS_OK ) {
           if ( status < 0 ) {
             inoff += sz;
             continue;
           }
-          if ( status == REDIS_MSG_PARTIAL ) {
+          if ( status == DS_MSG_STATUS_PARTIAL ) {
             /*printf( "partial [%.*s]\n", (int)sz, p );*/
             break;
           }
           fprintf( stderr, "protocol error(%d/%s), ignoring %lu bytes\n",
-                   status, redis_msg_status_string( (RedisMsgStatus) status ),
+                   status, ds_msg_status_string( (RedisMsgStatus) status ),
                    inlen - inoff );
           inoff = inlen;
           break;
@@ -476,7 +482,7 @@ EvHttpService::frame_websock2( void ) noexcept
     }
     else {
       mstatus = msg.unpack( &buf[ bufoff ], msgsize, this->strm.tmp );
-      if ( mstatus != REDIS_MSG_OK )
+      if ( mstatus != DS_MSG_STATUS_OK )
         return false;
       sz = msg.to_almost_json_size( false );
       sz += eol_size;

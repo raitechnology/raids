@@ -14,8 +14,9 @@ struct EvUnixListen : public EvListen {
 };
 
 struct EvRedisUnixListen : public EvUnixListen {
+  uint64_t timer_id;
   EvListenOps ops;
-  EvRedisUnixListen( EvPoll &p ) : EvUnixListen( p, this->ops ) {}
+  EvRedisUnixListen( EvPoll &p ) noexcept;
   virtual bool accept( void ) noexcept;
   int listen( const char *sock ) {
     return this->EvUnixListen::listen( sock, "unix_listen" );

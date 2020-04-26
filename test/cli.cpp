@@ -95,8 +95,8 @@ struct MyClient {
     }
     else {
       this->term.printf( "%s err: %d+%s;%s\n", w, status,
-              redis_msg_status_string( (RedisMsgStatus) status ),
-              redis_msg_status_description( (RedisMsgStatus) status ) );
+              ds_msg_status_string( (RedisMsgStatus) status ),
+              ds_msg_status_description( (RedisMsgStatus) status ) );
     }
   }
   int process_msg( char *buf,  size_t &buflen );
@@ -110,11 +110,11 @@ MyClient::process_msg( char *buf,  size_t &buflen )
   this->wrk.reset();
   switch ( buf[ 0 ] ) {
     default:
-    case RedisMsg::SIMPLE_STRING: /* + */
-    case RedisMsg::ERROR_STRING:  /* - */
-    case RedisMsg::INTEGER_VALUE: /* : */
-    case RedisMsg::BULK_STRING:   /* $ */
-    case RedisMsg::BULK_ARRAY:    /* * */
+    case DS_SIMPLE_STRING: /* + */
+    case DS_ERROR_STRING:  /* - */
+    case DS_INTEGER_VALUE: /* : */
+    case DS_BULK_STRING:   /* $ */
+    case DS_BULK_ARRAY:    /* * */
       return this->msg.unpack( buf, buflen, this->wrk );
     case ' ':
     case '\t':
@@ -160,7 +160,7 @@ MyClient::process_mc_res( char *buf,  size_t &buflen )
 void
 TermCallback::on_msg( RedisMsg &msg )
 {
-  if ( msg.type == RedisMsg::BULK_ARRAY &&
+  if ( msg.type == DS_BULK_ARRAY &&
        msg.len == 1 &&
        msg.match_arg( 0, "q", 1, NULL ) == 1 ) {
     this->me.poll.quit = 1;
@@ -211,10 +211,10 @@ TermCallback::on_data( char *buf,  size_t &buflen ) noexcept
   }
   else {
     status = this->me.process_msg( buf, buflen );
-    if ( status != REDIS_MSG_OK ) {
+    if ( status != DS_MSG_STATUS_OK ) {
       if ( status < 0 )
         return true;
-      if ( status == REDIS_MSG_PARTIAL )
+      if ( status == DS_MSG_STATUS_PARTIAL )
         return false;
       this->on_err( buf, buflen, status );
     }
@@ -241,7 +241,7 @@ void
 ClientCallback::on_msg( RedisMsg &msg )
 {
   /* if bulk string with newline termination, just print it */
-  if ( msg.type == RedisMsg::BULK_STRING &&
+  if ( msg.type == DS_BULK_STRING &&
        msg.len > 0 &&
        msg.strval[ msg.len - 1 ] == '\n' ) {
     this->me.term.printf( "%.*s\n", (int) msg.len, msg.strval );
@@ -282,10 +282,10 @@ ClientCallback::on_data( char *buf,  size_t &buflen ) noexcept
   }
   else {
     status = this->me.process_msg( buf, buflen );
-    if ( status != REDIS_MSG_OK ) {
+    if ( status != DS_MSG_STATUS_OK ) {
       if ( status < 0 )
         return true;
-      if ( status == REDIS_MSG_PARTIAL )
+      if ( status == DS_MSG_STATUS_PARTIAL )
         return false;
       this->on_err( buf, buflen, status );
     }

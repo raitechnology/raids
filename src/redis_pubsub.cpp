@@ -204,7 +204,7 @@ RedisExec::do_pub( EvPublish &pub,  RedisContinueMsg *&cm ) noexcept
   int status = 0;
   /* don't publish to self ?? (redis does not allow pub w/sub on same conn) */
   if ( (uint32_t) this->sub_id == pub.src_route )
-    return false;
+    return 0;
   uint32_t pub_cnt = 0;
   for ( uint8_t cnt = 0; cnt < pub.prefix_cnt; cnt++ ) {
     if ( pub.subj_hash == pub.hash[ cnt ] ) {
@@ -315,6 +315,7 @@ RedisExec::pop_continue_tab( RedisContinueMsg *cm ) noexcept
                                       cm->ptr[ i ].len,
                                       this->sub_id, rcnt, 'R' );
   }
+  this->msg_route_cnt++;
 }
 
 void
@@ -456,6 +457,7 @@ RedisExec::exec_publish( void ) noexcept
   EvPublish pub( subj, subj_len, NULL, 0, msg, msg_len,
                  this->sub_id, h, NULL, 0, MD_STRING, 'p' );
   this->sub_route.rte.forward_msg( pub, &rcount, 0, NULL );
+  this->msg_route_cnt += rcount;
   rte_digits = uint_digits( rcount );
   buf = this->strm.alloc( rte_digits + 3 ); 
   if ( buf == NULL )
@@ -498,6 +500,7 @@ RedisExec::do_subscribe( const char *sub,  size_t len ) noexcept
   if ( this->sub_tab.put( h, sub, len ) == REDIS_SUB_OK ) {
     rcnt = this->sub_route.add_route( h, this->sub_id );
     this->sub_route.rte.notify_sub( h, sub, len, this->sub_id, rcnt, 'R' );
+    this->msg_route_cnt++;
     return EXEC_OK;
   }
   return ERR_KEY_EXISTS;
@@ -514,8 +517,8 @@ RedisExec::do_unsubscribe( const char *sub,  size_t len ) noexcept
     /* check for duplicate hashes */
     if ( this->sub_tab.tab.find_by_hash( h ) == NULL )
       rcnt = this->sub_route.del_route( h, this->sub_id );
-    this->sub_route.rte.notify_unsub( h, sub, len, this->sub_id,
-                                      rcnt, 'R' );
+    this->sub_route.rte.notify_unsub( h, sub, len, this->sub_id, rcnt, 'R' );
+    this->msg_route_cnt++;
     return EXEC_OK;
   }
   return ERR_KEY_DOESNT_EXIST;
@@ -554,6 +557,7 @@ RedisExec::do_psubscribe( const char *sub,  size_t len ) noexcept
                                                   cvt.prefixlen );
         this->sub_route.rte.notify_psub( h, buf, cvt.off, sub, cvt.prefixlen,
                                          this->sub_id, rcnt, 'R' );
+        this->msg_route_cnt++;
         return EXEC_OK;
       }
     }
@@ -587,6 +591,7 @@ RedisExec::do_punsubscribe( const char *sub,  size_t len ) noexcept
                                                 cvt.prefixlen );
       this->sub_route.rte.notify_punsub( h, buf, cvt.off, sub, cvt.prefixlen,
                                          this->sub_id, rcnt, 'R' );
+      this->msg_route_cnt++;
       return EXEC_OK;
     }
   }
@@ -810,6 +815,7 @@ RedisExec::save_blocked_cmd( int64_t timeout_val ) noexcept
     /* subscribe to the continuation notification (the keyspace subject) */
     rcnt = this->sub_route.add_route( h, this->sub_id );
     this->sub_route.rte.notify_sub( h, sub, len, this->sub_id, rcnt, 'R' );
+    this->msg_route_cnt++;
     if ( this->continue_tab.put( h, sub, len, rt ) == REDIS_SUB_OK ) {
       rt->continue_msg = cm; /* continue msg and ptrs to other subject keys */
       rt->keynum = i;
@@ -863,7 +869,7 @@ RedisExec::drain_continuations( EvSocket *svc ) noexcept
     if ( ( cm->state & CM_PUB_HIT ) != 0 )
       this->blk_state |= RBLK_CMD_KEY_CHANGE;
     mstatus = this->msg.unpack( cm->msg, cm->msglen, this->strm.tmp );
-    if ( mstatus == REDIS_MSG_OK ) {
+    if ( mstatus == DS_MSG_STATUS_OK ) {
       if ( (status = this->exec( svc, NULL )) == EXEC_OK )
         if ( this->strm.alloc_fail )
           status = ERR_ALLOC_FAIL;

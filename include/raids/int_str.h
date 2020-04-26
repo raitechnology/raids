@@ -1,6 +1,21 @@
 #ifndef __rai_raids__int_str_h__
 #define __rai_raids__int_str_h__
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+size_t ds_uint_digits( uint64_t v );
+size_t ds_int_digits( int64_t v );
+size_t ds_uint_to_string( uint64_t v,  char *buf,  size_t len );
+size_t ds_int_to_string( int64_t v,  char *buf,  size_t len );
+int ds_string_to_int( const char *str,  size_t sz,  int64_t *ival );
+int ds_string_to_uint( const char *str,  size_t sz,  uint64_t *ival );
+int ds_string_to_dbl( const char *str,  size_t sz,  double *fval );
+
+#ifdef __cplusplus
+}
+
 #include <raikv/util.h>
 #include <raikv/work.h>
 
@@ -69,4 +84,5 @@ static inline size_t crlf( char *b,  size_t i ) {
 
 }
 }
+#endif /* __cplusplus */
 #endif

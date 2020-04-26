@@ -149,8 +149,8 @@ main( int, char ** )
       mstatus = msg.unpack_json( buf, cmdlen, tmp );
     else
       mstatus = msg.unpack( buf, cmdlen, tmp );
-    if ( mstatus != REDIS_MSG_OK ) {
-      printf( "error %d/%s\n", mstatus, redis_msg_status_string( mstatus ) );
+    if ( mstatus != DS_MSG_STATUS_OK ) {
+      printf( "error %d/%s\n", mstatus, ds_msg_status_string( mstatus ) );
       continue;
     }
     cmdbuf = msg.command( cmdlen, argcount );
@@ -278,8 +278,8 @@ main( int, char ** )
             sz   = lv.concat( ibuf, sizeof( ibuf ) );
             data = ibuf;
           }
-          mstatus = RedisMsg::str_to_int( data, sz, jval );
-          if ( mstatus == REDIS_MSG_OK )
+          mstatus = (RedisMsgStatus) RedisMsg::str_to_int( data, sz, jval );
+          if ( mstatus == DS_MSG_STATUS_OK )
             ival += jval;
         }
         sz = int_to_str( ival, ibuf );

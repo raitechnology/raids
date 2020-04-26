@@ -509,7 +509,7 @@ RedisExec::do_hwrite( EvKeyCtx &ctx,  int flags ) noexcept
             idata = ibuf;
           }
           int64_t jval;
-          if ( RedisMsg::str_to_int( idata, sz, jval ) == REDIS_MSG_OK )
+          if ( string_to_int( idata, sz, jval ) == 0 )
             ival += jval;
         }
         str = this->strm.alloc( 32 );

@@ -100,7 +100,8 @@ sock_type_string( EvSockType t )
     case EV_CAPR_SOCK:      return "capr";
     case EV_RV_SOCK:        return "rv";
     case EV_KV_PUBSUB:      return "kv_pubsub";
-    case EV_SHM_SOCK:       return "shm";
+    case EV_SHM_SOCK:       return "shm_sock";
+    case EV_SHM_API:        return "shm_api";
     case EV_TIMER_QUEUE:    return "timer";
     case EV_SHM_SVC:        return "svc";
     case EV_MEMCACHED_SOCK: return "memcached";
@@ -222,23 +223,30 @@ EvPoll::current_coarse_ns( void ) const noexcept
   return current_realtime_coarse_ns();
 }
 
-bool
+int
 EvPoll::dispatch( void ) noexcept
 {
   EvSocket * s;
   uint64_t busy_ns = this->timer_queue->busy_delta(),
            curr_ns = this->current_coarse_ns();
   uint64_t start   = this->prio_tick;
-  int      state;
+  int      state,
+           ret     = DISPATCH_IDLE;
 
   if ( this->quit )
     this->process_quit();
   for (;;) {
   next_tick:;
-    if ( start + 1000 < this->prio_tick ) /* run poll() at least every 1000 */
-      break;
-    if ( busy_ns == 0 ) /* if a timer may expire, run poll() */
-      break;
+    if ( start + 1000 < this->prio_tick ) { /* run poll() at least every 1000 */
+      ret |= POLL_NEEDED | DISPATCH_BUSY;
+      return ret;
+    }
+    if ( busy_ns == 0 ) { /* if a timer may expire, run poll() */
+      ret |= POLL_NEEDED;
+      if ( start != this->prio_tick )
+        ret |= DISPATCH_BUSY;
+      return ret;
+    }
     if ( this->queue.is_empty() ) {
       if ( this->prefetch_pending > 0 ) {
       do_prefetch:;
@@ -247,7 +255,9 @@ EvPoll::dispatch( void ) noexcept
         if ( ! this->queue.is_empty() )
           goto next_tick;
       }
-      break;
+      if ( start != this->prio_tick )
+        ret |= DISPATCH_BUSY;
+      return ret;
     }
     s     = this->queue.heap[ 0 ];
     state = __builtin_ffs( s->state ) - 1;
@@ -298,7 +308,6 @@ EvPoll::dispatch( void ) noexcept
       this->queue.push( s );
     }
   }
-  return start == this->prio_tick;
 }
 
 /* different publishers for different size route matches, one() is the most

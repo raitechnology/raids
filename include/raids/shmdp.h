@@ -87,12 +87,12 @@ struct QueuePoll : public EvCallback {
   EvShmClient shm;
   QueueFd  ** fds;
   FdMap       pending;
-  int         fds_size;
-  bool        idle,
-              inprogress;
+  int         fds_size,
+              idle;
+  bool        inprogress;
 
   QueuePoll() : shm( this->poll, *this ), fds( 0 ),
-                fds_size( 0 ), idle( true ), inprogress( false ) {
+                fds_size( 0 ), idle( 0 ), inprogress( false ) {
     ::memset( &this->pending, 0, sizeof( this->pending ) );
   }
   void unlink( QueueFd *p ) noexcept;

@@ -409,21 +409,33 @@ RedisExec::calc_key_count( void ) noexcept
 inline ExecStatus
 RedisExec::prepare_exec_command( void ) noexcept
 {
-  const char * arg0;
-  size_t       arg0len;
+  RedisMsg * arg0 = this->msg.get_arg( 0 );
+
   /* get command string, hash it, check cmd args geometry */
-  arg0 = this->msg.command( arg0len, this->argc );
-  /* max command len is 17 (GEORADIUSBYMEMBER) */
-  if ( arg0len >= MAX_CMD_LEN )
+  if ( arg0 == NULL )
+    return ERR_BAD_CMD;
+  this->argc = ( this->msg.type == DS_BULK_ARRAY ? this->msg.len : 1 );
+  if ( arg0->type == DS_BULK_STRING || arg0->type == DS_SIMPLE_STRING ) {
+    /* max command len is 17 (GEORADIUSBYMEMBER) */
+    if ( arg0->len <= 0 || (size_t) arg0->len >= MAX_CMD_LEN )
+      return ERR_BAD_CMD;
+
+    uint32_t h = get_redis_cmd_hash( arg0->strval, arg0->len );
+    this->cmd  = get_redis_cmd( h );
+    const RedisCmdData &c = cmd_db[ this->cmd ];
+    this->setup_cmd( c );
+    if ( c.hash != h )
+      return ERR_BAD_CMD;
+  }
+  else if ( arg0->type == DS_INTEGER_VALUE ) {
+    if ( arg0->ival <= 0 || arg0->ival > (int64_t) REDIS_CMD_DB_SIZE )
+      return ERR_BAD_CMD;
+    this->cmd = (RedisCmd) arg0->ival;
+    this->setup_cmd( cmd_db[ this->cmd ] );
+  }
+  else
     return ERR_BAD_CMD;
 
-  uint32_t h = get_redis_cmd_hash( arg0, arg0len );
-  this->cmd  = get_redis_cmd( h );
-
-  const RedisCmdData &c = cmd_db[ this->cmd ];
-  this->setup_cmd( c );
-  if ( c.hash != h )
-    return ERR_BAD_CMD;
   if ( this->arity > 0 ) {
     if ( (size_t) this->arity != this->argc )
       return ERR_BAD_ARGS;
@@ -504,6 +516,10 @@ RedisExec::exec( EvSocket *svc,  EvPrefetchQueue *q ) noexcept
   }
   /* cmd has no key when first == 0 */
   status = this->exec_nokeys();
+  /* does this go here for EKF_MONITOR? */
+  if ( ( this->key_flags & this->sub_route.rte.key_flags ) != 0 )
+    RedisKeyspace::pub_keyspace_events( *this );
+  /* if "client reply skip" cmd run, this eats the result and turns of skip */
   if ( status != EXEC_SKIP &&
        ( this->cmd_state & ( CMD_STATE_CLIENT_REPLY_OFF |
                              CMD_STATE_CLIENT_REPLY_SKIP ) ) != 0 ) {
@@ -947,8 +963,9 @@ RedisExec::exec_key_continue( EvKeyCtx &ctx ) noexcept
     if ( ctx.status != ERR_KV_STATUS || ctx.kstatus != KEY_MUTATED ||
          ( ctx.flags & EKF_IS_READ_ONLY ) == 0 )
       break;
-  }
-  /* if command is done */
+  } /* for(;;) - keep trying key */
+
+  /* key is done, check if command is done */
   if ( ++this->key_done == this->key_cnt ) {
     /* if all keys are blocked, waiting for some event */
     if ( ctx.status == EXEC_BLOCKED ) {
@@ -977,13 +994,14 @@ RedisExec::exec_key_continue( EvKeyCtx &ctx ) noexcept
       }
     }
   }
-  /* command continues to next key */
+  /* more keys left, command continues */
   else {
     /* if status is still good, continue to process next key */
     if ( ctx.status <= EXEC_BLOCKED )
       return EXEC_CONTINUE;
-    /* other status values finish the command */
+    /* other status values finish the command (ERR, ABORT, SEND_DATA) */
     for ( uint32_t i = 0; i < this->key_cnt; i++ )
+      /* if keys are in a prefetch queue, set status to prevent exec */
       this->keys[ i ]->status = ctx.status;
   }
   /* if ctx.status outputs data */
@@ -994,21 +1012,24 @@ RedisExec::exec_key_continue( EvKeyCtx &ctx ) noexcept
       goto success;
     case EXEC_OK:      break;
     case EXEC_BLOCKED: break;
-    default: this->send_status( (ExecStatus) ctx.status, ctx.kstatus ); break;
+    default:
+      this->send_status( (ExecStatus) ctx.status, ctx.kstatus );
+      break;
   }
   /* wait for the last key to be run */
   if ( this->key_done < this->key_cnt )
     return EXEC_CONTINUE;
 success:;
-  /* publish keyspace events */
-  /*printf( "kf %x rte kf %x\n", this->key_flags, this->sub_route.rte.key_flags );*/
+  /* publish keyspace events (maybe "client reply skip" mutes monitor?) */
   if ( ( this->key_flags & this->sub_route.rte.key_flags ) != 0 )
     RedisKeyspace::pub_keyspace_events( *this );
 
+  /* if "client reply skip" cmd run, this eats the result and turns of skip */
   if ( ( this->cmd_state & ( CMD_STATE_CLIENT_REPLY_OFF |
                              CMD_STATE_CLIENT_REPLY_SKIP ) ) != 0 ) {
     this->cmd_state &= ~CMD_STATE_CLIENT_REPLY_SKIP;
     this->strm.truncate( this->strm_start );
+    ctx.status = EXEC_OK;
   }
   return EXEC_SUCCESS;
 }
@@ -1170,8 +1191,8 @@ RedisExec::send_err_string( ExecStatus stat,  KeyStatus kstat ) noexcept
       case ERR_MSG_STATUS: {
         RedisMsgStatus mstat = this->mstatus;
         bsz  = ::snprintf( buf, bsz, "-ERR message %d/%s %s",
-                           mstat, redis_msg_status_string( mstat ),
-                           redis_msg_status_description( mstat ) );
+                           mstat, ds_msg_status_string( mstat ),
+                           ds_msg_status_description( mstat ) );
         break;
       }
     }

@@ -160,9 +160,10 @@ RedisExec::exec_bitfield( EvKeyCtx &ctx ) noexcept
            type_sz < 2 || off_sz < 1 )
       return ERR_BAD_ARGS;
     /* parse type, ex: u8 */
-    type_char  = toupper( type[ 0 ] ); /* I or U */
-    this->mstatus    = RedisMsg::str_to_int( &type[ 1 ], type_sz - 1, val );
-    if ( this->mstatus != REDIS_MSG_OK )
+    type_char = toupper( type[ 0 ] ); /* I or U */
+    this->mstatus = (RedisMsgStatus)
+                    string_to_int( &type[ 1 ], type_sz - 1, val );
+    if ( this->mstatus != DS_MSG_STATUS_OK )
       return ERR_BAD_ARGS;
     if ( type_char == 'I' ) {
       if ( val < 2 || val > 64 )
@@ -178,10 +179,12 @@ RedisExec::exec_bitfield( EvKeyCtx &ctx ) noexcept
     type_width = (uint8_t) val;
     /* offset may be bit num or #element num */
     if ( off[ 0 ] == '#' )
-      this->mstatus = RedisMsg::str_to_int( &off[ 1 ], off_sz - 1, val );
+      this->mstatus = (RedisMsgStatus)
+                      string_to_int( &off[ 1 ], off_sz - 1, val );
     else
-      this->mstatus = RedisMsg::str_to_int( off, off_sz, val );
-    if ( this->mstatus != REDIS_MSG_OK )
+      this->mstatus = (RedisMsgStatus)
+                      string_to_int( off, off_sz, val );
+    if ( this->mstatus != DS_MSG_STATUS_OK )
       return ERR_BAD_ARGS;
     type_off = (uint64_t) val;
     if ( off[ 0 ] == '#' )
@@ -797,7 +800,8 @@ RedisExec::do_add( EvKeyCtx &ctx,  int64_t incr ) noexcept /* incr/decr value */
       if ( ctx.kstatus != KEY_OK )
         return ERR_KV_STATUS;
       if ( size > 0 ) {
-        this->mstatus = RedisMsg::str_to_int( (char *) data, size, ctx.ival );
+        this->mstatus = (RedisMsgStatus)
+                        string_to_int( (char *) data, size, ctx.ival );
         /*if ( this->mstatus != REDIS_MSG_OK )
           return ERR_MSG_STATUS;*/
       }

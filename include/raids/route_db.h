@@ -171,7 +171,22 @@ struct PeerData {
   PeerData( PeerOps &o ) : next( 0 ), back( 0 ), op( o ) {
     this->init_peer( -1, NULL, NULL );
   }
-
+  /* no address, attached directly to shm */
+  void init_ctx( int fildes,  uint32_t ctx_id,  const char *k ) {
+    this->init_peer( fildes, NULL, k );
+    ::memcpy( this->peer_address, "ctx:", 4 );
+    int i = 4;
+    if ( ctx_id >= 1000 )
+      this->peer_address[ i++ ] = ( ctx_id / 1000 ) % 10 + '0';
+    if ( ctx_id >= 100 )
+      this->peer_address[ i++ ] = ( ctx_id / 100 ) % 10 + '0';
+    if ( ctx_id >= 10 )
+      this->peer_address[ i++ ] = ( ctx_id / 10 ) % 10 + '0';
+    this->peer_address[ i++ ] = ctx_id % 10 + '0';
+    this->peer_address[ i ] = '\0';
+    this->peer_address[ 63 ] = (char) i;
+  }
+  /* connected via ip address */
   void init_peer( int fildes,  const sockaddr *sa,  const char *k ) {
     this->fd = fildes;
     this->id = 0;

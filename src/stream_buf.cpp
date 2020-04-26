@@ -29,6 +29,30 @@ StreamBuf::expand_iov( void ) noexcept
   this->vlen *= 2;
 }
 
+void
+StreamBuf::merge_iov( void ) noexcept
+{
+  size_t i, len = 0;
+  void * buf;
+  for ( i = 0; i < this->idx; i++ )
+    len += this->iov[ i ].iov_len;
+  buf = this->alloc_temp( len );
+  len = 0;
+  if ( buf == NULL ) {
+    this->reset_pending();
+    this->alloc_fail = true;
+    return;
+  }
+  for ( i = 0; i < this->idx; i++ ) {
+    size_t add = this->iov[ i ].iov_len;
+    ::memcpy( &((char *) buf)[ len ], this->iov[ i ].iov_base, add );
+    len += add;
+  }
+  this->iov[ 0 ].iov_base = buf;
+  this->iov[ 0 ].iov_len  = len;
+  this->idx = 1;
+}
+
 static inline size_t
 crlf( char *b,  size_t i ) {
   b[ i ] = '\r'; b[ i + 1 ] = '\n'; return i + 2;
