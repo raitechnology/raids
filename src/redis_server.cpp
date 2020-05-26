@@ -334,7 +334,7 @@ RedisExec::client_list( char *buf,  size_t buflen ) noexcept
      u: the client is unblocked
      U: the client is connected via a Unix domain socket
      x: the client is in a MULTI/EXEC context                    x  */
-  if ( this->continue_tab.continue_count() > 0 )
+  if ( this->continue_tab.sub_count() > 0 )
     flags[ i++ ] = 'b'; /* blocking operation in progress */
   if ( ( this->cmd_state & CMD_STATE_MONITOR ) != 0 )
     flags[ i++ ] = 'O'; /* subscribed to monitor */

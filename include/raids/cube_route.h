@@ -92,6 +92,22 @@ struct CubeRoute {
       this->w[ j++ ] = 0;
   }
 
+  uint8_t fold8( void ) const {
+    uint64_t x = 0;
+    for ( size_t j = 0; j < BITS_W; j++ )
+      x ^= this->w[ j ];
+    uint32_t y = (uint32_t) ( x >> 32 ) ^ (uint32_t) x;
+    uint16_t z = (uint16_t) ( y >> 16 ) ^ (uint16_t) y;
+    return (uint8_t) ( z >> 8 ) ^ (uint8_t) z;
+  }
+
+  bool equals( const CubeRoute &b ) const {
+    for ( size_t j = 0; j < BITS_W; j++ )
+      if ( this->w[ j ] != b.w[ j ] )
+        return false;
+    return true;
+  }
+
   bool test_bits( const CubeRoute &b ) const {
     for ( size_t j = 0; j < BITS_W; j++ )
       if ( ( this->w[ j ] & b.w[ j ] ) != 0 )
@@ -231,33 +247,40 @@ struct CubeRoute {
       shft = 0;
     }
   }
+
+  void clip( size_t start,  size_t end ) {
+    if ( start > 0 || end < BITS ) {
+      if ( start < end ) { /* clip bits to the center */
+        if ( start > 0 )
+          this->not_mask( start );
+        if ( end < BITS )
+          this->and_mask( end + 1 );
+      }
+      else {               /* clip bits to the edges */
+        CubeRoute x;
+        x.mask( start - ( end + 1 ) );
+        x.shift_left( end + 1 );
+        this->not_bits( x );
+      }
+    }
+  }
   /* Return count * 2 of ranges[] of nodes to visit, [ {start, end}, ... ],
    * start and end are inclusive.  This chooses ranges which do not intersect
    * with node so that a cycle is not possible and a traversal of all nodes
    * will occur if the graph doesn't change.  If the graph changes, the
    * traversal will include all original nodes still present and may or may not
    * include new nodes */
-  size_t branch4( size_t node,  size_t start,  size_t end,  RangeType *range ) {
+  size_t branch4( size_t node,  size_t start,  size_t end,
+                  RangeType *range ) const {
     if ( node == start && node == end )
       return 0;
-
     CubeRoute b = *this;
-    size_t i, j, pop, cnt;
+    b.clip( start, end );
+    return branch4x( node, b, range );
+  }
 
-    if ( start > 0 || end < BITS ) {
-      if ( start < end ) { /* clip bits to the center */
-        if ( start > 0 )
-          b.not_mask( start );
-        if ( end < BITS )
-          b.and_mask( end + 1 );
-      }
-      else {               /* clip bits to the edges */
-        CubeRoute x;
-        x.mask( start - ( end + 1 ) );
-        x.shift_left( end + 1 );
-        b.not_bits( x );
-      }
-    }
+  static size_t branch4x( size_t node,  CubeRoute &b,  RangeType *range ) {
+    size_t i, j, pop, cnt;
     b.rotate_right( node ); /* shift the node to the origin, bit 0 */
     b.clear( 0 );           /* already visited node */
     pop = b.popcount();     /* nodes left to visit */

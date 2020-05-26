@@ -163,7 +163,7 @@ struct PingTest : public EvShmSvc, public KvSubNotifyList {
   }
   /* a timer expires every ns_ival, send messages */
   virtual bool timer_expire( uint64_t, uint64_t ) noexcept {
-    uint64_t now = this->poll.timer_queue->now;
+    uint64_t now = this->poll.timer_queue->epoch;
     if ( this->last_time == 0 ) {
       this->last_time = now;
       return true;

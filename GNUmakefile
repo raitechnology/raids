@@ -463,6 +463,16 @@ test_api_lnk   := $(raids_dlnk)
 $(bind)/test_api: $(test_api_objs) $(test_api_libs)
 $(bind)/test_api.static: $(test_api_objs) $(ds_lib) $(lnk_lib)
 
+pubsub_api_files := pubsub_api
+pubsub_api_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(pubsub_api_files)))
+pubsub_api_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(pubsub_api_files)))
+pubsub_api_libs  := $(raids_dlib)
+pubsub_api_static_lnk := $(ds_lib) $(lnk_lib) -lpcre2-32 -lpcre2-8 -lcrypto -llzf 
+pubsub_api_lnk   := $(raids_dlnk)
+
+$(bind)/pubsub_api: $(pubsub_api_objs) $(pubsub_api_libs)
+$(bind)/pubsub_api.static: $(pubsub_api_objs) $(ds_lib) $(lnk_lib)
+
 all_exes    += $(bind)/client $(bind)/test_msg $(bind)/test_mcmsg \
                $(bind)/redis_cmd $(bind)/test_cmd $(bind)/test_list \
 	       $(bind)/test_hash $(bind)/test_set $(bind)/test_zset \
@@ -471,7 +481,8 @@ all_exes    += $(bind)/client $(bind)/test_msg $(bind)/test_mcmsg \
 	       $(bind)/test_decimal $(bind)/test_cr $(bind)/test_rtht \
 	       $(bind)/test_subht $(bind)/test_wild $(bind)/test_timer \
 	       $(bind)/test_ping $(bind)/test_sub $(bind)/test_pub \
-	       $(bind)/test_stream $(bind)/test_api $(bind)/test_api.static
+	       $(bind)/test_stream $(bind)/test_api $(bind)/test_api.static \
+               $(bind)/pubsub_api $(bind)/pubsub_api.static
 all_depends += $(client_deps) $(test_msg_deps) $(test_mcmsg_deps) \
                $(redis_cmd_deps) $(test_cmd_deps) $(test_list_deps) \
 	       $(test_hash_deps) $(test_set_deps) $(test_zset_deps) \
@@ -480,7 +491,7 @@ all_depends += $(client_deps) $(test_msg_deps) $(test_mcmsg_deps) \
 	       $(test_decimal_deps) $(test_cr_deps) $(test_rtht_deps) \
 	       $(test_subht_deps) $(test_wild_deps) $(test_timer_deps) \
 	       $(test_ping_deps) $(test_sub_deps) $(test_pub_deps) \
-	       $(test_stream_deps) $(test_api_deps)
+	       $(test_stream_deps) $(test_api_deps) $(pubsub_api_deps)
 
 all_dirs := $(bind) $(libd) $(objd) $(dependd)
 

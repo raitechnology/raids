@@ -39,6 +39,7 @@ main( int argc, char ** )
 
   if ( argc == 1 ) {
     RedisSubMap map;
+    RedisSubRoute * rt;
     for ( i = 0; i < 100; i++ ) {
       const char *s = str[ i % 16 ];
       size_t l = ::strlen( s );
@@ -50,7 +51,7 @@ main( int argc, char ** )
       const char *s = str[ i % 16 ];
       size_t l = ::strlen( s );
       uint32_t h = kv_crc_c( s, l, 0 );
-      if ( map.updcnt( h, s, l ) == REDIS_SUB_OK )
+      if ( map.updcnt( h, s, l, rt ) == REDIS_SUB_OK )
         cnt++;
     }
   }

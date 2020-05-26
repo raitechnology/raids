@@ -30,17 +30,17 @@ struct EvTimerEvent {
 };
 
 struct EvTimerQueue : public EvSocket {
-  static const uint64_t MAX_DELTA = 100 * 1000; /* 100 us */
+  static const int64_t MAX_DELTA = 100 * 1000; /* 100 us */
 
   void * operator new( size_t, void *ptr ) { return ptr; }
   void operator delete( void *ptr ) { ::free( ptr ); }
   kv::PrioQueue<EvTimerEvent, EvTimerEvent::is_greater> queue;
-  uint64_t last, now, delta;
+  uint64_t last, epoch, delta, real;
   EvSocketOps ops;
 
   EvTimerQueue( EvPoll &p )
     : EvSocket( p, EV_TIMER_QUEUE, this->ops ),
-      last( 0 ), now( 0 ), delta( 0 ) {}
+      last( 0 ), epoch( 0 ), delta( 0 ), real( 0 ) {}
   /* add timer that expires in ival seconds */
   bool add_timer_seconds( int id,  uint32_t ival,  uint64_t timer_id,
                           uint64_t event_id ) {
@@ -63,8 +63,23 @@ struct EvTimerQueue : public EvSocket {
   bool hash_to_sub( uint32_t, char *, size_t & ) { return false; }
   bool on_msg( EvPublish & ) { return true; }
   void process_shutdown( void ) {}
-  uint64_t busy_delta( void ) {
-    return this->delta > MAX_DELTA ? MAX_DELTA : this->delta;
+  uint64_t busy_delta( uint64_t curr_ns ) {
+    if ( this->delta > 0 ) {
+      uint64_t d = this->delta, sav = curr_ns;
+      curr_ns -= this->real;
+      /* coarse real time expires, adjust monotonic time */
+      if ( d <= curr_ns ) {
+        uint64_t mon_ns = kv::current_monotonic_time_ns();
+        if ( mon_ns >= this->epoch + d )
+          return 0;
+        this->real -= ( this->epoch + d ) - mon_ns;
+        curr_ns = sav - this->real;
+      }
+      curr_ns = d - curr_ns;
+      if ( curr_ns < MAX_DELTA )
+        return curr_ns;
+    }
+    return MAX_DELTA;
   }
   void process_close( void ) {}
 

@@ -33,8 +33,9 @@ EvTimerQueue::create_timer_queue( EvPoll &p ) noexcept
   EvTimerQueue * q = new ( m ) EvTimerQueue( p );
   q->PeerData::init_peer( tfd, NULL, "timer" );
   q->last   = current_monotonic_time_ns();
-  q->now    = q->last;
-  q->delta  = MAX_DELTA;
+  q->epoch  = q->last;
+  q->delta  = 0;
+  q->real   = p.current_coarse_ns();
   if ( p.add_sock( q ) < 0 ) {
     printf( "failed to add timer %d\n", tfd );
     ::close( tfd );
@@ -83,7 +84,7 @@ EvTimerQueue::repost( void ) noexcept
   do {
     el.next_expire += (uint64_t) ( el.ival >> 2 ) *
                       (uint64_t) to_ns[ el.ival & 3 ];
-  } while ( el.next_expire <= this->now );
+  } while ( el.next_expire <= this->epoch );
   this->queue.push( el );
 }
 
@@ -133,19 +134,22 @@ EvTimerQueue::set_timer( void ) noexcept
 void
 EvTimerQueue::process( void ) noexcept
 {
-  this->last = this->now;
-  this->now  = current_monotonic_time_ns();
+  this->last  = this->epoch;
+  this->epoch = current_monotonic_time_ns();
+  this->real  = this->poll.current_coarse_ns();
 
   while ( ! this->queue.is_empty() ) {
     EvTimerEvent &ev = this->queue.heap[ 0 ];
-    if ( ev.next_expire <= this->now ) { /* timers are ready to fire */
+    if ( ev.next_expire <= this->epoch ) { /* timers are ready to fire */
       if ( this->poll.timer_expire( ev ) )
         this->repost();    /* next timer interval */
       else
         this->queue.pop(); /* remove timer */
     }
     else {
-      this->delta = ev.next_expire - this->now;
+      this->delta = ev.next_expire - this->epoch;
+      /*printf( "delta %lu.%lu\n", this->delta / (uint64_t) 1000000000,
+                                 this->delta % (uint64_t) 1000000000 );*/
       if ( ! this->set_timer() )
         return; /* probably need to exit, this retries later */
       break;

@@ -66,27 +66,39 @@ RedisExec::rem_all_sub( void ) noexcept
 }
 
 void
-RedisPatternMap::release( void ) noexcept
+RedisPatternRoute::release( void )
+{
+  if ( this->md != NULL ) {
+    pcre2_match_data_free( this->md );
+    this->md = NULL;
+  }
+  if ( this->re != NULL ) {
+    pcre2_code_free( this->re );
+    this->re = NULL;
+  }
+}
+
+template <>
+void RedisPatDataMap<RedisPatternRoute>::release( void ) noexcept
 {
   RedisPatternRoutePos ppos;
 
   if ( this->first( ppos ) ) {
     do {
-      if ( ppos.rt->md != NULL ) {
-        pcre2_match_data_free( ppos.rt->md );
-        ppos.rt->md = NULL;
-      }
-      if ( ppos.rt->re != NULL ) {
-        pcre2_code_free( ppos.rt->re );
-        ppos.rt->re = NULL;
-      }
+      ppos.rt->release();
     } while ( this->next( ppos ) );
   }
   this->tab.release();
 }
 
-void
-RedisContinueMap::release( void ) noexcept
+template <>
+void RedisDataMap<RedisSubRoute>::release( void ) noexcept
+{
+  this->tab.release();
+}
+
+template <>
+void RedisDataMap<RedisContinue>::release( void ) noexcept
 {
   kv::DLinkList<RedisContinueMsg> list;
   RedisContinueMsg *cm;
@@ -208,11 +220,33 @@ RedisExec::do_pub( EvPublish &pub,  RedisContinueMsg *&cm ) noexcept
   uint32_t pub_cnt = 0;
   for ( uint8_t cnt = 0; cnt < pub.prefix_cnt; cnt++ ) {
     if ( pub.subj_hash == pub.hash[ cnt ] ) {
-      RedisSubStatus ret;
-      ret = this->sub_tab.updcnt( pub.subj_hash, pub.subject, pub.subject_len );
+      RedisSubRoute * rt;;
+      RedisSubStatus  ret;
+      ret = this->sub_tab.updcnt( pub.subj_hash, pub.subject, pub.subject_len,
+                                  rt );
       if ( ret == REDIS_SUB_OK ) {
-        this->pub_message( pub, NULL );
         pub_cnt++;
+        if ( rt->callback == NULL ) {
+          this->pub_message( pub, NULL );
+        }
+        else {
+          ds_event_t event;
+          ds_msg_t   sub, reply, msg;
+
+          sub.strval   = (char *) pub.subject;
+          sub.len      = pub.subject_len;
+          sub.type     = DS_BULK_STRING;
+          reply.strval = (char *) pub.reply;
+          reply.len    = pub.reply_len;
+          reply.type   = DS_BULK_STRING;
+          msg.strval   = (char *) pub.msg;
+          msg.len      = pub.msg_len;
+          msg.type     = DS_BULK_STRING;
+          event.subject      = &sub;
+          event.subscription = &sub;
+          event.reply        = &reply;
+          rt->callback( &event, &msg, rt->closure );
+        }
       }
       if ( pub.subject_len > 10 && pub.subject[ 0 ] == '_' &&
            ! this->continue_tab.is_null() ) {
@@ -263,7 +297,7 @@ RedisExec::do_pub( EvPublish &pub,  RedisContinueMsg *&cm ) noexcept
           break;
         if ( pcre2_match( rt->re, (const uint8_t *) pub.subject,
                           pub.subject_len, 0, 0, rt->md, 0 ) == 1 ) {
-          rt->msg_cnt++;
+          rt->incr();
           this->pub_message( pub, rt );
           pub_cnt++;
         }
@@ -458,6 +492,11 @@ RedisExec::exec_publish( void ) noexcept
                  this->sub_id, h, NULL, 0, MD_STRING, 'p' );
   this->sub_route.rte.forward_msg( pub, &rcount, 0, NULL );
   this->msg_route_cnt += rcount;
+  if ( rcount <= 1 ) {
+    if ( rcount == 0 )
+      return EXEC_SEND_ZERO;
+    return EXEC_SEND_ONE;
+  }
   rte_digits = uint_digits( rcount );
   buf = this->strm.alloc( rte_digits + 3 ); 
   if ( buf == NULL )
@@ -522,6 +561,25 @@ RedisExec::do_unsubscribe( const char *sub,  size_t len ) noexcept
     return EXEC_OK;
   }
   return ERR_KEY_DOESNT_EXIST;
+}
+
+ExecStatus
+RedisExec::do_subscribe_cb( const char *sub,  size_t len,
+                            ds_on_msg_t cb,  void *cl ) noexcept
+{
+  RedisSubRoute * rt;
+  uint32_t h, rcnt;
+
+  h = kv_crc_c( sub, len, 0 );
+  if ( this->sub_tab.put( h, sub, len, rt ) == REDIS_SUB_OK ) {
+    rt->callback = cb;
+    rt->closure  = cl;
+    rcnt = this->sub_route.add_route( h, this->sub_id );
+    this->sub_route.rte.notify_sub( h, sub, len, this->sub_id, rcnt, 'R' );
+    this->msg_route_cnt++;
+    return EXEC_OK;
+  }
+  return ERR_KEY_EXISTS;
 }
 
 ExecStatus

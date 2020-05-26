@@ -1,21 +1,38 @@
 #ifndef __rai_raids__redis_pubsub_h__
 #define __rai_raids__redis_pubsub_h__
 
+#ifdef __cplusplus
 extern "C" {
-  struct pcre2_real_code_8;
-  struct pcre2_real_match_data_8;
+#endif
+
+struct pcre2_real_code_8;
+struct pcre2_real_match_data_8;
+
+#ifdef __cplusplus
 }
 
+#include <raids/redis_api.h>
 #include <raids/route_ht.h>
 
 namespace rai {
 namespace ds {
 
 struct RedisSubRoute {
-  uint64_t msg_cnt;
-  uint32_t hash;
-  uint16_t len;
-  char     value[ 2 ];
+  ds_on_msg_t callback;
+  void      * closure;
+  uint64_t    msg_cnt;
+  uint32_t    hash;
+  uint16_t    len;
+  char        value[ 2 ];
+
+  void zero( void ) {
+    this->callback = NULL;
+    this->closure  = NULL;
+    this->msg_cnt  = 0;
+  }
+  void incr( void ) {
+    this->msg_cnt++;
+  }
   bool equals( const void *s,  uint16_t l ) const {
     return l == this->len && ::memcmp( s, this->value, l ) == 0;
   }
@@ -24,8 +41,9 @@ struct RedisSubRoute {
   }
 };
 
-struct RedisSubRoutePos {
-  RedisSubRoute * rt;
+template <class RedisData>
+struct RedisDataRoutePos {
+  RedisData * rt;
   uint32_t v;
   uint16_t off;
 };
@@ -36,39 +54,51 @@ enum RedisSubStatus {
   REDIS_SUB_NOT_FOUND = 2
 };
 
-struct RedisSubMap {
-  RouteVec<RedisSubRoute> tab;
+template <class RedisData>
+struct RedisDataMap {
+  RouteVec<RedisData> tab;
 
   bool is_null( void ) const {
     return this->tab.vec_size == 0;
   }
-
   size_t sub_count( void ) const {
     return this->tab.pop_count();
   }
-  void release( void ) {
-    this->tab.release();
+  void release( void ) noexcept;
+
+  RedisSubStatus put( uint32_t h,  const char *sub,  size_t len ) {
+    RedisData *rt;
+    return this->put( h, sub, len, rt );
   }
   /* put in new sub
    * tab[ sub ] => {cnt} */
-  RedisSubStatus put( uint32_t h,  const char *sub,  size_t len ) {
+  RedisSubStatus put( uint32_t h,  const char *sub,  size_t len,
+                      RedisData *&rt ) {
     RouteLoc loc;
-    RedisSubRoute * rt = this->tab.upsert( h, sub, len, loc );
+    rt = this->tab.upsert( h, sub, len, loc );
     if ( rt == NULL )
       return REDIS_SUB_NOT_FOUND;
     if ( loc.is_new ) {
-      rt->msg_cnt = 0;
+      rt->zero();
       return REDIS_SUB_OK;
     }
     return REDIS_SUB_EXISTS;
   }
   /* update cnt for sub
    * tab[ sub ] => {cnt++} */
-  RedisSubStatus updcnt( uint32_t h,  const char *sub,  size_t len ) const {
-    RedisSubRoute * rt = this->tab.find( h, sub, len );
+  RedisSubStatus updcnt( uint32_t h,  const char *sub,  size_t len,
+                         RedisData *&rt ) const {
+    rt = this->tab.find( h, sub, len );
     if ( rt == NULL )
       return REDIS_SUB_NOT_FOUND;
-    rt->msg_cnt++;
+    rt->incr();
+    return REDIS_SUB_OK;
+  }
+  RedisSubStatus find( uint32_t h,  const char *sub,  size_t len,
+                       RedisData *&rt,  RouteLoc &loc ) {
+    rt = this->tab.find( h, sub, len, loc );
+    if ( rt == NULL )
+      return REDIS_SUB_NOT_FOUND;
     return REDIS_SUB_OK;
   }
   /* remove tab[ sub ] */
@@ -78,16 +108,19 @@ struct RedisSubMap {
     return REDIS_SUB_OK;
   }
   /* iterate first tab[ sub ] */
-  bool first( RedisSubRoutePos &pos ) {
+  bool first( RedisDataRoutePos< RedisData > &pos ) {
     pos.rt = this->tab.first( pos.v, pos.off );
     return pos.rt != NULL;
   }
   /* iterate next tab[ sub ] */
-  bool next( RedisSubRoutePos &pos ) {
+  bool next( RedisDataRoutePos< RedisData > &pos ) {
     pos.rt = this->tab.next( pos.v, pos.off );
     return pos.rt != NULL;
   }
 };
+
+typedef RedisDataRoutePos< RedisSubRoute > RedisSubRoutePos;
+typedef RedisDataMap< RedisSubRoute >      RedisSubMap;
 
 struct RedisPatternRoute {
   pcre2_real_code_8       * re;
@@ -97,27 +130,30 @@ struct RedisPatternRoute {
   uint16_t                  len;
   char                      value[ 2 ];
 
+  void zero( void ) {
+    this->re = NULL;
+    this->md = NULL;
+    this->msg_cnt = 0;
+  }
+  void incr( void ) {
+    this->msg_cnt++;
+  }
   bool equals( const void *s,  uint16_t l ) const {
     return l == this->len && ::memcmp( s, this->value, l ) == 0;
   }
   void copy( const void *s,  uint16_t l ) {
     ::memcpy( this->value, s, l );
   }
+  void release( void );
 };
 
-struct RedisPatternRoutePos {
-  RedisPatternRoute * rt;
-  uint32_t v;
-  uint16_t off;
-};
-
-struct RedisPatternMap {
-  RouteVec<RedisPatternRoute> tab;
+template <class RedisPatData>
+struct RedisPatDataMap {
+  RouteVec<RedisPatData> tab;
 
   bool is_null( void ) const {
     return this->tab.vec_size == 0;
   }
-
   size_t sub_count( void ) const {
     return this->tab.pop_count();
   }
@@ -125,31 +161,31 @@ struct RedisPatternMap {
   /* put in new sub
    * tab[ sub ] => {cnt} */
   RedisSubStatus put( uint32_t h,  const char *sub,  size_t len,
-                      RedisPatternRoute *&rt ) {
+                      RedisPatData *&rt ) {
     RouteLoc loc;
     rt = this->tab.upsert( h, sub, len, loc );
     if ( rt == NULL )
       return REDIS_SUB_NOT_FOUND;
     if ( loc.is_new ) {
-      rt->msg_cnt = 0;
-      rt->re = NULL;
-      rt->md = NULL;
+      rt->zero();
       return REDIS_SUB_OK;
     }
     return REDIS_SUB_EXISTS;
   }
-
   /* iterate first tab[ sub ] */
-  bool first( RedisPatternRoutePos &pos ) {
+  bool first( RedisDataRoutePos< RedisPatternRoute > &pos ) {
     pos.rt = this->tab.first( pos.v, pos.off );
     return pos.rt != NULL;
   }
   /* iterate next tab[ sub ] */
-  bool next( RedisPatternRoutePos &pos ) {
+  bool next( RedisDataRoutePos< RedisPatternRoute > &pos ) {
     pos.rt = this->tab.next( pos.v, pos.off );
     return pos.rt != NULL;
   }
 };
+
+typedef RedisDataRoutePos< RedisPatternRoute > RedisPatternRoutePos;
+typedef RedisPatDataMap< RedisPatternRoute >   RedisPatternMap;
 
 struct RedisContinuePtr {
   uint32_t hash;     /* hash of this subject */
@@ -191,6 +227,13 @@ struct RedisContinue {
                      keycnt;       /* total keys */
   uint16_t           len;          /* length of key subject */
   char               value[ 2 ];   /* subject */
+
+  void zero( void ) {
+    this->continue_msg = NULL;
+    this->keynum = 0;
+    this->keycnt = 1;
+  }
+  void incr( void ) {}
   bool equals( const void *s,  uint16_t l ) const {
     return l == this->len && ::memcmp( s, this->value, l ) == 0;
   }
@@ -199,59 +242,10 @@ struct RedisContinue {
   }
 };
 
-struct RedisContinuePos {
-  RedisContinue * rt;
-  uint32_t v;
-  uint16_t off;
-};
-
-struct RedisContinueMap {
-  RouteVec<RedisContinue> tab;
-
-  bool is_null( void ) const {
-    return this->tab.vec_size == 0;
-  }
-  size_t continue_count( void ) const {
-    return this->tab.pop_count();
-  }
-  void release( void ) noexcept;
-  /* put in new sub
-   * tab[ sub ] => {cnt} */
-  RedisSubStatus put( uint32_t h,  const char *sub,  size_t len,
-                      RedisContinue *&rt ) {
-    RouteLoc loc;
-    rt = this->tab.upsert( h, sub, len, loc );
-    if ( rt == NULL )
-      return REDIS_SUB_NOT_FOUND;
-    if ( loc.is_new ) {
-      rt->continue_msg = NULL;
-      rt->keynum = 0;
-      rt->keycnt = 1;
-      return REDIS_SUB_OK;
-    }
-    return REDIS_SUB_EXISTS;
-  }
-  /* remove tab[ sub ] */
-  RedisSubStatus find( uint32_t h,  const char *sub,  size_t len,
-                       RedisContinue *&rt,  RouteLoc &loc ) {
-    rt = this->tab.find( h, sub, len, loc );
-    if ( rt == NULL )
-      return REDIS_SUB_NOT_FOUND;
-    return REDIS_SUB_OK;
-  }
-  /* iterate first tab[ sub ] */
-  bool first( RedisContinuePos &pos ) {
-    pos.rt = this->tab.first( pos.v, pos.off );
-    return pos.rt != NULL;
-  }
-  /* iterate next tab[ sub ] */
-  bool next( RedisContinuePos &pos ) {
-    pos.rt = this->tab.next( pos.v, pos.off );
-    return pos.rt != NULL;
-  }
-};
+typedef RedisDataRoutePos< RedisContinue > RedisContinuePos;
+typedef RedisDataMap< RedisContinue >      RedisContinueMap;
 
 }
 }
-
+#endif
 #endif

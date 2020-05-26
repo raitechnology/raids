@@ -131,9 +131,6 @@ struct RedisExec {
                     step;      /* incr between keys */
   uint64_t          step_mask; /* step key mask */
   size_t            argc;      /* count of args in cmd msg */
-  RedisSubMap       sub_tab;   /* pub/sub subscription table */
-  RedisPatternMap   pat_tab;   /* pub/sub pattern sub table */
-  RedisContinueMap  continue_tab; /* blocked continuations */
   RouteDB         & sub_route; /* map subject to sub_id */
   PeerData        & peer;      /* name and address of this peer */
   uint64_t          timer_id;  /* timer id of this service */
@@ -141,6 +138,9 @@ struct RedisExec {
   uint64_t          msg_route_cnt; /* count of msgs forwarded */
   uint32_t          sub_id,    /* fd, set this after accept() */
                     next_event_id; /* next event id for timers */
+  RedisSubMap       sub_tab;   /* pub/sub subscription table */
+  RedisPatternMap   pat_tab;   /* pub/sub pattern sub table */
+  RedisContinueMap  continue_tab; /* blocked continuations */
 
   RedisExec( kv::HashTab &map,  uint32_t ,  uint32_t dbx_id,
              StreamBuf &s,  RouteDB &rdb,  PeerData &pd ) :
@@ -352,6 +352,8 @@ struct RedisExec {
   ExecStatus exec_unsubscribe( void ) noexcept;
   ExecStatus do_subscribe( const char *sub,  size_t len ) noexcept;
   ExecStatus do_unsubscribe( const char *sub,  size_t len ) noexcept;
+  ExecStatus do_subscribe_cb( const char *sub,  size_t len,
+                              ds_on_msg_t cb,  void *cl ) noexcept;
   ExecStatus do_psubscribe( const char *sub,  size_t len ) noexcept;
   ExecStatus do_punsubscribe( const char *sub,  size_t len ) noexcept;
   ExecStatus do_sub( int flags ) noexcept;

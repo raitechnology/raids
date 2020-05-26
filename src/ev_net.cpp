@@ -79,8 +79,10 @@ EvPoll::wait( int ms ) noexcept
   }
   for ( int i = 0; i < n; i++ ) {
     EvSocket *s = this->sock[ this->ev[ i ].data.fd ];
-    if ( ( this->ev[ i ].events & ( EPOLLIN | EPOLLRDHUP ) ) != 0 )
-      s->idle_push( s->type != EV_LISTEN_SOCK ? EV_READ : EV_READ_HI );
+    if ( ( this->ev[ i ].events & ( EPOLLIN | EPOLLRDHUP ) ) != 0 ) {
+      EvState ev = ( s->type > EV_TIMER_QUEUE ? EV_READ : EV_READ_HI );
+      s->idle_push( ev );
+    }
     if ( ( this->ev[ i ].events & ( EPOLLOUT ) ) != 0 )
       s->idle_push( EV_WRITE );
   }
@@ -91,9 +93,10 @@ const char *
 sock_type_string( EvSockType t )
 {
   switch ( t ) {
+    case EV_LISTEN_SOCK:    return "listen"; /* virtual accept */
+    case EV_TIMER_QUEUE:    return "timer";
     case EV_REDIS_SOCK:     return "redis";
     case EV_HTTP_SOCK:      return "http";
-    case EV_LISTEN_SOCK:    return "listen"; /* virtual accept */
     case EV_CLIENT_SOCK:    return "client";
     case EV_TERMINAL:       return "term";
     case EV_NATS_SOCK:      return "nats";
@@ -102,7 +105,6 @@ sock_type_string( EvSockType t )
     case EV_KV_PUBSUB:      return "kv_pubsub";
     case EV_SHM_SOCK:       return "shm_sock";
     case EV_SHM_API:        return "shm_api";
-    case EV_TIMER_QUEUE:    return "timer";
     case EV_SHM_SVC:        return "svc";
     case EV_MEMCACHED_SOCK: return "memcached";
     case EV_MEMUDP_SOCK:    return "memcached_udp";
@@ -186,7 +188,7 @@ EvPoll::drain_prefetch( void ) noexcept
         }
         else { /* push back into queue if has an event for read or write */
           if ( s->state != 0 )
-            this->queue.push( s );
+            this->push_event_queue( s );
         }
         break;
       case EK_DEPENDS:   /* incomplete, depends on another key */
@@ -227,9 +229,10 @@ int
 EvPoll::dispatch( void ) noexcept
 {
   EvSocket * s;
-  uint64_t busy_ns = this->timer_queue->busy_delta(),
-           curr_ns = this->current_coarse_ns();
-  uint64_t start   = this->prio_tick;
+  uint64_t start   = this->prio_tick,
+           curr_ns = this->current_coarse_ns(),
+           busy_ns = this->timer_queue->busy_delta( curr_ns ),
+           used_ns = 0;
   int      state,
            ret     = DISPATCH_IDLE;
 
@@ -237,34 +240,49 @@ EvPoll::dispatch( void ) noexcept
     this->process_quit();
   for (;;) {
   next_tick:;
-    if ( start + 1000 < this->prio_tick ) { /* run poll() at least every 1000 */
+    if ( start + 300 < this->prio_tick ) { /* run poll() at least every 300 */
       ret |= POLL_NEEDED | DISPATCH_BUSY;
       return ret;
     }
-    if ( busy_ns == 0 ) { /* if a timer may expire, run poll() */
-      ret |= POLL_NEEDED;
-      if ( start != this->prio_tick )
-        ret |= DISPATCH_BUSY;
-      return ret;
+    if ( used_ns >= busy_ns ) { /* if a timer may expire, run poll() */
+      if ( used_ns > 0 ) {
+        /* the real time is updated at coarse intervals (10 to 100 us) */
+        curr_ns = this->current_coarse_ns();
+        /* how much busy work before timer expires */
+        busy_ns = this->timer_queue->busy_delta( curr_ns );
+      }
+      if ( busy_ns == 0 ) {
+        /* if timer is already an event (in_queue=true), dispatch that first */
+        if ( ! this->timer_queue->in_queue ) {
+          ret |= POLL_NEEDED;
+          if ( start != this->prio_tick )
+            ret |= DISPATCH_BUSY;
+          return ret;
+        }
+      }
+      used_ns = 0;
     }
-    if ( this->queue.is_empty() ) {
+    used_ns += 300; /* guess 300 ns is needed for dispatching event */
+    if ( this->ev_queue.is_empty() ) {
       if ( this->prefetch_pending > 0 ) {
       do_prefetch:;
         this->prefetch_pending = 0;
         this->drain_prefetch(); /* run prefetch */
-        if ( ! this->queue.is_empty() )
+        if ( ! this->ev_queue.is_empty() )
           goto next_tick;
       }
+
       if ( start != this->prio_tick )
         ret |= DISPATCH_BUSY;
       return ret;
     }
-    s     = this->queue.heap[ 0 ];
+    s     = this->ev_queue.heap[ 0 ];
     state = __builtin_ffs( s->state ) - 1;
     this->prio_tick++;
     if ( state > EV_PREFETCH && this->prefetch_pending > 0 )
       goto do_prefetch;
-    this->queue.pop();
+    s->in_queue = false;
+    this->ev_queue.pop();
     /*printf( "dispatch %u %u (%x)\n", s->type, state, s->state );*/
     switch ( state ) {
       case EV_READ:
@@ -295,17 +313,19 @@ EvPoll::dispatch( void ) noexcept
         break;
       case EV_BUSY_POLL:
         if ( s->type == EV_KV_PUBSUB ) {
-          uint64_t ns = ( busy_ns > 300 ? 300 : busy_ns );
-          if ( ! ((KvPubSub *) s)->busy_poll( ns ) )
-            busy_ns -= ns;
-          else
-            busy_ns = 0;
+          if ( ((KvPubSub *) s)->read_inbox( false ) == 0 ) {
+            s->prio_cnt = this->prio_tick;
+            this->push_event_queue( s );
+            if ( start + 1 != this->prio_tick )
+              ret |= DISPATCH_BUSY;
+            return ret;
+          }
         }
         break;
     }
     if ( s->state != 0 ) {
       s->prio_cnt = this->prio_tick;
-      this->queue.push( s );
+      this->push_event_queue( s );
     }
   }
 }
@@ -665,12 +685,14 @@ EvPoll::process_quit( void ) noexcept
     /* wait for socks to flush data for up to 5 interations */
     do {
       if ( this->quit >= 5 ) {
-        if ( s->state != 0 ) {
-          this->queue.remove( s ); /* close state */
-          s->popall();
+        if ( s->in_queue ) {
+          s->in_queue = false;
+          this->ev_queue.remove( s ); /* close state */
         }
+        if ( s->state != 0 )
+          s->popall();
         s->push( EV_CLOSE );
-        this->queue.push( s );
+        this->push_event_queue( s );
       }
       else if ( ! s->test( EV_SHUTDOWN | EV_CLOSE ) ) {
         s->idle_push( EV_SHUTDOWN );
@@ -831,10 +853,12 @@ EvSocketOps::client_kill( PeerData &pd ) noexcept
   EvSocket &s = (EvSocket &) pd;
   /* if already shutdown, close up immediately */
   if ( s.test( EV_SHUTDOWN ) != 0 ) {
-    if ( s.state != 0 ) {
-      s.poll.queue.remove( &s ); /* close state */
-      s.popall();
+    if ( s.in_queue ) {
+      s.in_queue = false;
+      s.poll.ev_queue.remove( &s ); /* close state */
     }
+    if ( s.state != 0 )
+      s.popall();
     s.idle_push( EV_CLOSE );
   }
   else { /* close after writing pending data */
@@ -978,7 +1002,7 @@ EvPoll::add_sock( EvSocket *s ) noexcept
   /* if sock starts in write mode, add it to the queue */
   s->prio_cnt = this->prio_tick;
   if ( s->state != 0 )
-    this->queue.push( s );
+    this->push_event_queue( s );
   uint64_t ns = this->current_coarse_ns();
   s->start_ns   = ns;
   s->active_ns  = ns;
@@ -1338,14 +1362,17 @@ EvSocket::idle_push( EvState s ) noexcept
     this->push( s );
     /*printf( "idle_push %d %x\n", this->type, this->state );*/
     this->prio_cnt = this->poll.prio_tick;
-    this->poll.queue.push( this );
+    this->poll.push_event_queue( this );
   }
   else { /* check if added state requires queue to be rearranged */
     int x1 = __builtin_ffs( this->state ),
         x2 = __builtin_ffs( this->state | ( 1 << s ) );
     if ( x1 > x2 ) {
       /*printf( "remove %d\n", this->type );*/
-      this->poll.queue.remove( this );
+      if ( this->in_queue ) {
+        this->in_queue = false;
+        this->poll.ev_queue.remove( this );
+      }
       goto do_push;
     }
     else {

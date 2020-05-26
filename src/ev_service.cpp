@@ -251,8 +251,8 @@ EvRedisService::debug( void ) noexcept
       printf( "[%ld]: %lu\n", i, this->poll.prefetch_cnt[ i ] );
   }
   printf( "heap: " );
-  for ( i = 0; i < this->poll.queue.num_elems; i++ ) {
-    s = this->poll.queue.heap[ i ];
+  for ( i = 0; i < this->poll.ev_queue.num_elems; i++ ) {
+    s = this->poll.ev_queue.heap[ i ];
     if ( s->type != EV_LISTEN_SOCK ) {
       addrlen = sizeof( addr );
       getpeername( s->fd, (struct sockaddr*) &addr, &addrlen );

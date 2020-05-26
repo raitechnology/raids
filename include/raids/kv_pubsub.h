@@ -14,37 +14,123 @@ namespace ds {
 struct EvPublish;
 struct RouteDB;
 
-struct KvMsgQueue {
-  uint64_t        hash1,          /* hash of inbox name */
-                  hash2,
-                  src_session_id, /* src session id */
-                  ibx_seqno,      /* recv msg list seqno, out-lives session */
-                  src_seqno;      /* src sender seqno */
-  kv::KeyFragment kbuf;
-  
+struct KvBacklog {
+  KvBacklog      * next, * back;
+  size_t           cnt;
+  void          ** vec;
+  kv::msg_size_t * siz;
+  uint64_t         vec_size;
+
   void * operator new( size_t, void *ptr ) { return ptr; }
-  KvMsgQueue( kv::KeyCtx &kctx,  const char *name,  uint16_t namelen )
-    : src_session_id( 0 ), ibx_seqno( 0 ), src_seqno( 0 ) {
+  KvBacklog( size_t n,  void **v,  kv::msg_size_t *sz,  uint64_t vsz )
+    : next( 0 ), back( 0 ), cnt( n ), vec( v ), siz( sz ), vec_size( vsz ) {}
+};
+
+struct KvMcastKey {
+  uint64_t        hash1, /* hash of mcast name: _SYS.MC */
+                  hash2;
+  kv::KeyFragment kbuf;  /* the key name (_SYS.MC) */
+
+  void * operator new( size_t, void *ptr ) { return ptr; }
+  KvMcastKey( kv::KeyCtx &kctx,  const char *name,  uint16_t namelen ) {
     this->kbuf.keylen = namelen;
     ::memcpy( this->kbuf.u.buf, name, namelen );
     kv::HashSeed hs;
     kctx.ht.hdr.get_hash_seed( kctx.db_num, hs );
     hs.hash( this->kbuf, this->hash1, this->hash2 );
-  } 
+  }
+};
+
+struct KvMsgQueue {
+  KvMsgQueue    * next, * back;     /* links when have backlog msgs */
+  /*kv::ValueCtr    ibx_value_ctr;    * the value serial ctr, track change */
+  uint64_t        ibx_pos,          /* hash position of the inbox */
+                  hash1,            /* hash of inbox name */
+                  hash2,
+                  src_session_id,   /* src session id */
+                  ibx_seqno,        /* recv msg list seqno, out-lives session */
+                  src_seqno,        /* src sender seqno */
+                  high_water_size,  /* current high water send size */
+                  pub_size,         /* total size sent */
+                  pub_cnt,          /* total msg vectors sent */
+                  pub_msg,          /* total msgs sent */
+                  read_cnt,         /* total msg vectors read */
+                  read_msg,         /* total msgs read */
+                  read_size,        /* total size read */
+                  backlog_size,     /* size of messages in backlog */
+                  backlog_cnt,      /* count of messages in backlog */
+                  backlog_progress, /* if backlog cleared some msgs */
+                  signal_cnt;       /* number of signals sent */
+  uint32_t        ibx_hot;
+  uint16_t        ibx_num;
+  bool            need_signal;      /* need to kill() recver to wake them */
+  kv::DLinkList<KvBacklog> backlog; /* backlog for this queue */
+  kv::WorkAllocT< 4096 > tmp;       /* msg queue mem when overflow */
+  kv::KeyFragment kbuf;             /* the inbox name (_SYS.XX) XX=ctx_id hex */
+  
+  void * operator new( size_t, void *ptr ) { return ptr; }
+  KvMsgQueue( kv::KeyCtx &kctx,  const char *name,  uint16_t namelen,
+              uint16_t n )
+    : next( 0 ), back( 0 ), ibx_pos( 0 ), src_session_id( 0 ), ibx_seqno( 0 ),
+      src_seqno( 0 ), high_water_size( 128 * 1024 ), pub_size( 0 ),
+      pub_cnt( 0 ), pub_msg( 0 ), read_cnt( 0 ), read_msg( 0 ), read_size( 0 ),
+      backlog_size( 0 ), backlog_cnt( 0 ), signal_cnt( 0 ),
+      ibx_hot( 0 ), ibx_num( n ), need_signal( true ) {
+    /*this->ibx_value_ctr.zero();*/
+    this->kbuf.keylen = namelen;
+    ::memcpy( this->kbuf.u.buf, name, namelen );
+    kv::HashSeed hs;
+    kctx.ht.hdr.get_hash_seed( kctx.db_num, hs );
+    hs.hash( this->kbuf, this->hash1, this->hash2 );
+  }
+};
+
+enum KvMsgType {
+  KV_MSG_HELLO = 0,
+  KV_MSG_BYE,
+  KV_MSG_STATUS,
+  KV_MSG_SUB,
+  KV_MSG_UNSUB,
+  KV_MSG_PSUB,
+  KV_MSG_PUNSUB,
+  KV_MSG_PUBLISH
 };
 
 struct KvMsg {
-  uint64_t session_id, /* session at src */
-           seqno;      /* seqno at src */
-  uint32_t size;       /* size including header */
-  uint8_t  src,        /* src = ctx_id */
-           dest_start, /* the recipient */
-           dest_end,   /* if > start, forward msg to others */
-           msg_type;   /* what class of message (sub, unsub, pub) */
+  uint32_t session_id_w[ 2 ], /* session at src (4 byte aligned) */
+           seqno_w[ 2 ];      /* seqno at src */
+  uint32_t size;              /* size including header */
+  uint8_t  src,               /* src = ctx_id */
+           dest_start,        /* the recipient */
+           dest_end,          /* if > start, forward msg to others */
+           msg_type;          /* what class of message (sub, unsub, pub) */
 
   static const char * msg_type_string( uint8_t msg_type ) noexcept;
   const char * msg_type_string( void ) const noexcept;
   void print( void ) noexcept;
+  void print_sub( void ) noexcept;
+
+  uint64_t session_id( void ) const {
+    uint64_t sid;
+    ::memcpy( &sid, this->session_id_w, sizeof( sid ) );
+    return sid;
+  }
+  uint64_t seqno( void ) const {
+    uint64_t seq;
+    ::memcpy( &seq, this->seqno_w, sizeof( seq ) );
+    return seq;
+  }
+  void set_session_id( uint64_t sid ) {
+    ::memcpy( this->session_id_w, &sid, sizeof( sid ) );
+  }
+  void set_seqno( uint64_t seq ) {
+    ::memcpy( this->seqno_w, &seq, sizeof( seq ) );
+  }
+  bool is_valid( uint32_t sz ) const {
+    return sz == this->size &&
+           this->msg_type <= KV_MSG_PUBLISH &&
+           ( this->src | this->dest_start | this->dest_end ) < KV_MAX_CTX_ID;
+  }
 };
 
 typedef union {
@@ -52,10 +138,23 @@ typedef union {
   uint64_t w;
 } range_t;
 
+struct KvRouteCache {
+  CubeRoute128 cr;
+  range_t range;
+  size_t cnt;
+};
+
 struct KvMsgList {
   KvMsgList * next, * back;
   range_t     range;
+  uint32_t    off, cnt;
   KvMsg       msg;
+
+  void init_route( void ) {
+    this->range.w = 0;
+    this->off     = 0;
+    this->cnt     = 0;
+  }
 };
 
 struct KvPrefHash {
@@ -77,18 +176,34 @@ struct KvSubMsg : public KvMsg {
            msg_size; /* size of message data */
   uint16_t sublen,   /* length of subject, not including null char */
            replylen; /* length of reply, not including null char */
-  uint8_t  code,
-           msg_enc,
-           pad1,
-           pad2;
-  char     buf[ 4 ];
+  uint8_t  code,     /* 'K' */
+           msg_enc;  /* MD msg encoding type */
+  char     buf[ 2 ]; /* subject\0\reply\0 */
 
+/* 00   03 9a eb 63  51 d7 c0 1c <- session
+        02 00 00 00  00 00 00 00 <- seqno
+   10   40 00 00 00              <- size
+        02 01 01 07              <- src, dstart, dend, type (7 = publish)
+        22 6d 9d ef              <- hash
+        04 00 00 00              <- msg size
+   20   04 00                    <- sublen
+   22   00 00                    <- replylen
+   24   70 02                    <- code, msg_enc
+   26   70 69 6e 67  00          <- ping
+   2B   00                       <- reply
+   2C   4b                       <- src type (K)
+   2D   01                       <- prefix cnt
+   2E   40                       <- prefix 64 = full (0-63 = partial)
+   2F   22 6d 9d ef              <- hash of prefix (dup of hash)
+   33   00                       <- align
+   34   01 00 00 00              <- msg_data (4 byte aligned) */
   char * subject( void ) {
     return this->buf;
   }
   char * reply( void ) {
     return &this->buf[ this->sublen + 1 ];
   }
+  /* src type + prefix hashes + msg data */
   uint8_t * trail( void ) {
     return (uint8_t *) &this->buf[ this->sublen + 1 + this->replylen + 1 ];
   }
@@ -129,22 +244,11 @@ struct KvSubMsg : public KvMsg {
   static size_t calc_size( size_t sublen,  size_t replylen,  size_t msg_size,
                            uint8_t pref_cnt ) {
     return kv::align<size_t>(
-      sizeof( KvSubMsg ) - 4 + sublen + 1 + replylen + 1
+      sizeof( KvSubMsg ) - 2 + sublen + 1 + replylen + 1
       + 1 /* src */ + 1 /* pref_cnt */
       + (size_t) pref_cnt * 5 /* pref + hash */, sizeof( uint32_t ) )
       + kv::align<size_t>( msg_size, sizeof( uint32_t ) );
   }
-};
-
-enum KvMsgType {
-  KV_MSG_HELLO = 0,
-  KV_MSG_BYE,
-  KV_MSG_STATUS,
-  KV_MSG_SUB,
-  KV_MSG_UNSUB,
-  KV_MSG_PSUB,
-  KV_MSG_PUNSUB,
-  KV_MSG_PUBLISH
 };
 
 static inline bool is_kv_bcast( uint8_t msg_type ) {
@@ -166,24 +270,6 @@ struct KvSubRoute {
 
 typedef RouteVec<KvSubRoute> KvSubTab;
 
-struct KvLast {
-  uint8_t start, end, cnt;
-
-  void set( uint8_t start, uint8_t end, uint8_t cnt ) {
-    this->start = start; this->end = end; this->cnt = cnt;
-  }
-  bool equals( uint8_t start,  uint8_t end,  KvSubMsg &submsg,
-               KvMsgList *l ) const {
-    if ( start == this->start && end == this->end ) {
-      KvSubMsg &sub = (KvSubMsg &) l->msg;
-      return sub.hash == submsg.hash &&
-             sub.sublen == submsg.sublen &&
-             ::memcmp( sub.subject(), submsg.subject(), sub.sublen ) == 0;
-    }
-    return false;
-  }
-};
-
 struct KvSubNotifyList {
   KvSubNotifyList * next, * back;
   bool in_list;
@@ -192,40 +278,71 @@ struct KvSubNotifyList {
 };
 
 enum KvPubSubFlag {
-  KV_DO_NOTIFY = 1 /* whether to notify external processes of inbox msgs */
+  KV_DO_NOTIFY     = 1, /* whether to notify external processes of inbox msgs */
+  KV_INITIAL_SCAN  = 2, /* set after initial scan is complete */
+  KV_READ_INBOX    = 4  /* set when reading inbox */
 };
 
 struct KvPubSub : public EvSocket {
   uint16_t     ctx_id,                 /* my endpoint */
                flags;                  /* KvPubSubFlags above */
   uint32_t     dbx_id;                 /* db xref */
-  uint64_t     session_id,             /* session id of the my endpoint */
-               next_seqno;             /* next seqno of msg sent */
   kv::HashSeed hs;                     /* seed for db */
+  uint64_t     session_id,             /* session id of the my endpoint */
+               next_seqno,             /* next seqno of msg sent */
+               timer_id,               /* my timer id */
+               timer_cnt,              /* count of timer expires */
+               time_ns,                /* current coarse time */
+               send_size,              /* amount sent to other inboxes */
+               send_cnt,               /* count of msgs sent, includes sendq */
+               route_size,             /* size of msgs routed from send queue */
+               route_cnt,              /* count of msgs routed from send queue*/
+               mc_pos;                 /* hash position of the mcast route */
+  kv::ValueCtr mc_value_ctr;           /* the value serial ctr, track change */
+  CubeRoute128 mc_cr;                  /* the current mcast route */
+  range_t      mc_range;               /* the range of current mcast */
+  size_t       mc_cnt;                 /* count of bits in mc_range */
+  KvRouteCache rte_cache[ 256 ];       /* cache of cube routes */
 
   KvSubTab     sub_tab;                /* subject route table to shm */
   kv::KeyCtx   kctx,                   /* a kv context for send/recv msgs */
-               rt_kctx;                /* a kv context for route lookup */
+               rt_kctx,                /* a kv context for route lookup */
+               ib_kctx;                /* a kv context for inbox read/write */
 
-  KvMsgQueue * inbox[ KV_MAX_CTX_ID ], /* _SYS.IBX.xx : inbox of each context */
-             & mcast;                  /* _SYS.MC : ctx_ids to shm network */
+  EvSocketOps  ops;
+  CubeRoute128 dead_cr;                /* clean up old route inboxes */
 
-  kv::WorkAllocT< 1024 >   wrk,        /* wrk for kctx */
-                           rt_wrk,     /* wrk for rt_kctx kv */
-                           wrkq;       /* for pending sends to shm */
-  kv::DLinkList<KvMsgList> sendq;      /* sendq is to the network */
+  KvMsgQueue * inbox[ KV_MAX_CTX_ID ]; /* _SYS.IBX.xx : inbox of each context */
+  KvMcastKey & mcast;                  /* _SYS.MC : ctx_ids to shm network */
+
+  kv::DLinkList<KvMsgList>       sendq;       /* sendq is to the network */
   kv::DLinkList<KvSubNotifyList> sub_notifyq; /* notify for subscribes */
-  EvSocketOps              ops;
-  CubeRoute128             dead_cr;
+  kv::DLinkList<KvMsgQueue>      backlogq;    /* ibx which have pending sends */
+
+  kv::WorkAllocT< 4096 > ib_wrk,     /* wrk for ib_kctx */ 
+                         wrk,        /* wrk for kctx */
+                         rt_wrk,     /* wrk for rt_kctx kv */
+                         wrkq;       /* for pending sends to shm */
 
   void * operator new( size_t, void *ptr ) { return ptr; }
   KvPubSub( EvPoll &p,  int sock,  void *mcptr,  const char *mc,  size_t mclen,
-            uint32_t xid ) : EvSocket( p, EV_KV_PUBSUB, this->ops ),
-      ctx_id( p.ctx_id ), flags( KV_DO_NOTIFY ), 
-      dbx_id( xid ), session_id( 0 ), next_seqno( 0 ),
-      kctx( *p.map, xid ),
-      rt_kctx( *p.map, xid ),
-      mcast( *(new ( mcptr ) KvMsgQueue( this->kctx, mc, mclen )) ) {
+            uint32_t xid )
+      : EvSocket( p, EV_KV_PUBSUB, this->ops ),
+        ctx_id( p.ctx_id ), flags( KV_DO_NOTIFY ), 
+        dbx_id( xid ), session_id( 0 ), next_seqno( 0 ),
+        timer_id( (uint64_t) EV_KV_PUBSUB << 56 ), timer_cnt( 0 ),
+        time_ns( p.current_coarse_ns() ),
+        send_size( 0 ), send_cnt( 0 ), route_size( 0 ), route_cnt( 0 ),
+        mc_pos( 0 ), mc_cnt( 0 ),
+        kctx( *p.map, xid ),
+        rt_kctx( *p.map, xid ),
+        ib_kctx( *p.map, xid ),
+        mcast( *(new ( mcptr ) KvMcastKey( this->kctx, mc, mclen )) ) {
+    this->mc_value_ctr.zero();
+    this->mc_cr.zero();
+    this->mc_range.w = 0;
+    ::memset( (void *) this->rte_cache, 0, sizeof( this->rte_cache ) );
+    this->dead_cr.zero();
     ::memset( this->inbox, 0, sizeof( this->inbox ) );
     this->PeerData::init_peer( sock, NULL, "kv" );
     this->session_id = p.map->ctx[ p.ctx_id ].rng.next();
@@ -233,15 +350,19 @@ struct KvPubSub : public EvSocket {
   }
 
   static KvPubSub *create( EvPoll &p,  uint8_t db_num ) noexcept;
+  void print_backlog( void ) noexcept;
   bool register_mcast( void ) noexcept;
   bool clear_mcast_dead_routes( void ) noexcept;
   bool unregister_mcast( void ) noexcept;
   enum UpdateEnum { DEACTIVATE = 0, ACTIVATE = 1, USE_FIND = 2 };
   bool update_mcast_sub( const char *sub,  size_t len,  int flags ) noexcept;
-  bool get_mcast_route( CubeRoute128 &cr ) noexcept;
+  bool update_mcast_route( void ) noexcept;
+  bool push_backlog( KvMsgQueue &ibx,  size_t cnt,  void **vec,
+                     kv::msg_size_t *siz,  uint64_t vec_size ) noexcept;
+  bool clear_backlog( KvMsgQueue &ibx ) noexcept;
   bool send_msg( KvMsg &msg ) noexcept;
-  bool send_vec( size_t cnt,  void *vec,  uint64_t *siz,
-                 size_t dest ) noexcept;
+  bool send_vec( size_t cnt,  void **vec,  kv::msg_size_t *siz,
+                 size_t dest,  uint64_t vec_size ) noexcept;
   KvMsg *create_kvmsg( KvMsgType mtype,  size_t sz ) noexcept;
   KvSubMsg *create_kvpublish( uint32_t h,  const char *sub,  size_t len,
                               const uint8_t *pref,  const uint32_t *hash,
@@ -268,18 +389,21 @@ struct KvPubSub : public EvSocket {
                   uint32_t sub_id,  uint32_t rcnt,  char src_type ) noexcept;
   void forward_sub( KvSubMsg &submsg ) noexcept;
   void process( void ) noexcept;
+  void scan_ht( void ) noexcept;
   void exec_key_prefetch( EvKeyCtx & ) {}
   int exec_key_continue( EvKeyCtx & ) { return 0; }
-  bool timer_expire( uint64_t, uint64_t ) { return false; }
+  bool timer_expire( uint64_t tid, uint64_t ) noexcept;
   void release( void ) {}
   void process_shutdown( void ) noexcept;
   void process_close( void ) noexcept;
+  void write_send_queue( CubeRoute128 &used ) noexcept;
+  void notify_peers( CubeRoute128 &used ) noexcept;
   void write( void ) noexcept;
   bool get_sub_mcast( const char *sub,  size_t len,
                       CubeRoute128 &cr ) noexcept;
   void route_msg_from_shm( KvMsg &msg ) noexcept;
   void read( void ) noexcept;
-  bool busy_poll( uint64_t time_ns ) noexcept;
+  size_t read_inbox( bool read_until_empty ) noexcept;
   bool on_msg( EvPublish &pub ) noexcept;
   void publish_status( KvMsgType mtype ) noexcept;
   bool hash_to_sub( uint32_t h,  char *key,  size_t &keylen ) noexcept;

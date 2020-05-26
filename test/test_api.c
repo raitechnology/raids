@@ -415,7 +415,55 @@ print_time( const char *cmd,  double secs,  size_t nrequests )
   printf( "\n" );
 }
 
-static void print_help( const char *argv0 );
+static void
+run_ping_busy_loop( ds_t *h,  double total )
+{
+  for (;;) {
+    double t1 = kv_current_monotonic_time_s(), t2;
+    int i;
+    for ( i = 0; i < 10000; i++ ) {
+      ds_ping( h, NULL, NULL );
+      ds_release_mem( h );
+    }
+    t2 = kv_current_monotonic_time_s();
+    total -= t2 - t1;
+    if ( total < 0.0 )
+      break;
+  }
+}
+
+static int
+set_affinity( int cpu )
+{
+  cpu_set_t set;
+  if ( cpu >= 0 ) {
+    CPU_ZERO( &set );
+    CPU_SET( cpu, &set );
+    if ( sched_setaffinity( 0, sizeof( cpu_set_t ), &set ) == 0 )
+      return cpu;
+  }
+  return -1;
+}
+
+static void
+warm_up_cpu( ds_t *h,  const char *affinity )
+{
+  int cpu = -1;
+  /* warm up */
+  if ( affinity != NULL ) {
+    cpu = set_affinity( atoi( affinity ) );
+    if ( cpu >= 0 )
+      run_ping_busy_loop( h, 0.1 /* 100ms */ );
+  }
+  if ( cpu < 0 ) { /* let kernel choose the cpu */
+    run_ping_busy_loop( h, 0.1 /* 100ms */ );
+    cpu = sched_getcpu();
+    if ( cpu >= 0 )
+      cpu = set_affinity( cpu );
+  }
+  if ( cpu >= 0 )
+    printf( "cpu affinity %d\n", cpu );
+}
 
 static const char *
 get_arg( int argc, char *argv[], int b, const char *f, const char *def )
@@ -439,7 +487,7 @@ print_help( const char *argv0 )
   "   -P num_req  : Pipeline requests (default 1)\n"
   "   -l          : Loop, run forever\n"
   "   -t tests    : Only run the comma list of tests\n"
-  "   -a cpu      : Set affinity to cpu (default 1)\n"
+  "   -a cpu      : Set affinity to cpu (default linux)\n"
   "   -C 0|1      : Delete keys if 1, don't clean if 0 (default 1)\n",
   argv0, (int) strlen( argv0 ), "" );
 }
@@ -496,8 +544,9 @@ main( int argc,  char *argv[] )
              * pi = get_arg( argc, argv, 0, "-P", NULL ), /* pipeline */
              * lo = get_arg( argc, argv, 0, "-l", NULL ), /* loop */
              * te = get_arg( argc, argv, 1, "-t", NULL ), /* tests */
-             * af = get_arg( argc, argv, 1, "-a", "1" ),  /* cpu */
+             * af = get_arg( argc, argv, 1, "-a", NULL ), /* cpu */
              * cl = get_arg( argc, argv, 1, "-C", "1" ),  /* clean keys */
+             * bu = get_arg( argc, argv, 0, "-b", NULL ), /* busy */
              * he = get_arg( argc, argv, 0, "-h", NULL ); /* help */
 
   size_t    nrequests = strtol( nr, NULL, 0 ),
@@ -505,11 +554,8 @@ main( int argc,  char *argv[] )
             randomcnt = ( ra == NULL ? 0 : strtol( ra, NULL, 0 ) );
   char    * data = malloc( size ); /* alloc size bytes to set */
   ds_t    * h;      /* handle for shm kv */
-  double    t1, t2, /* timers in seconds */
-            total;
-  cpu_set_t set;
-  int       cpu = atoi( af ),
-            clean_keys = atoi( cl ),
+  double    t1, t2; /* timers in seconds */
+  int       clean_keys = atoi( cl ),
             status;
   uint32_t  fl = parse_tests( te ); /* bit mask of tests */
 
@@ -523,31 +569,17 @@ main( int argc,  char *argv[] )
   }
   memset( data, 'x', size );
   if ( cr != NULL )
-    status = ds_create( &h, mn, 0, 0, 0, 0 );
+    status = ds_create( &h, mn, 0, bu != NULL, 0, 0, 0 );
   else
-    status = ds_open( &h, mn, 0 );
+    status = ds_open( &h, mn, 0, bu != NULL );
 
   if ( status != 0 ) {
     fprintf( stderr, "failed to %s map %s\n",
              cr ? "create" : "open", mn );
     return 3;
   }
-  /* warm up */
-  if ( cpu >= 0 ) {
-    CPU_ZERO( &set );
-    CPU_SET( cpu, &set );
-    sched_setaffinity( 0, sizeof( cpu_set_t ), &set );
+  warm_up_cpu( h, af );
 
-    total = 0;
-    for (;;) {
-      t1 = kv_current_monotonic_time_s();
-      test_ping( h, 10000 );
-      t2 = kv_current_monotonic_time_s();
-      total += t2 - t1;
-      if ( total >= 0.1 ) /* ping for 100ms */
-        break;
-    }
-  }
   signal( SIGHUP, sighndlr );
   signal( SIGINT, sighndlr );
   signal( SIGTERM, sighndlr );

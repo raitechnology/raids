@@ -8,6 +8,7 @@
 #include <raids/redis_api.h>
 #include <raids/ev_client.h>
 #include <raids/redis_exec.h>
+#include <raids/kv_pubsub.h>
 
 using namespace rai;
 using namespace ds;
@@ -19,14 +20,15 @@ namespace {
 struct ds_internal : public ds_s, public EvShmApi {
   void * operator new( size_t, void *ptr ) { return ptr; }
 
-  ds_internal( EvPoll &p ) : EvShmApi( p ) {}
+  uint64_t msg_cnt;
+  ds_internal( EvPoll &p ) : EvShmApi( p ), msg_cnt( 0 ) {}
 };
 }
 
 extern "C" {
 
 int
-ds_create( ds_t **h,  const char *map_name,  uint8_t db_num,
+ds_create( ds_t **h,  const char *map_name,  uint8_t db_num,  int use_busy_poll,
            uint64_t map_size,  double entry_ratio,  uint64_t max_value_size )
 {
   size_t        sz   = align<size_t>( sizeof( ds_internal ), 64 );
@@ -48,9 +50,15 @@ ds_create( ds_t **h,  const char *map_name,  uint8_t db_num,
     if ( status == 0 )
       status = poll->init_shm( *ds );
     status = ds->init_exec();
-    if ( status == 0 )
-      while ( ds_dispatch( ds, 0, NULL ) != 0 )
+    if ( status == 0 ) {
+      /*poll->pubsub->flags &= ~KV_DO_NOTIFY;*/
+      while ( ds_dispatch( ds, 0 ) != 0 )
         ;
+    }
+    if ( use_busy_poll ) {
+      poll->pubsub->idle_push( EV_BUSY_POLL );
+      poll->pubsub->flags &= ~KV_DO_NOTIFY;
+    }
   }
   if ( status != 0 ) {
     ds_close( ds );
@@ -62,7 +70,8 @@ ds_create( ds_t **h,  const char *map_name,  uint8_t db_num,
 }
 
 int
-ds_open( ds_t **h,  const char *map_name,  uint8_t db_num )
+ds_open( ds_t **h,  const char *map_name,  uint8_t db_num,
+         int use_busy_poll )
 {
   size_t        sz   = align<size_t>( sizeof( ds_internal ), 64 );
   void        * m    = aligned_malloc( sz + sizeof( EvPoll ) );
@@ -81,9 +90,15 @@ ds_open( ds_t **h,  const char *map_name,  uint8_t db_num )
     if ( status == 0 )
       status = poll->init_shm( *ds );
     status = ds->init_exec();
-    if ( status == 0 )
-      while ( ds_dispatch( ds, 0, NULL ) != 0 )
+    if ( status == 0 ) {
+      /*poll->pubsub->flags &= ~KV_DO_NOTIFY;*/
+      while ( ds_dispatch( ds, 0 ) != 0 )
         ;
+    }
+    if ( use_busy_poll ) {
+      poll->pubsub->idle_push( EV_BUSY_POLL );
+      poll->pubsub->flags &= ~KV_DO_NOTIFY;
+    }
   }
   if ( status != 0 ) {
     ds_close( ds );
@@ -99,6 +114,8 @@ ds_close( ds_t *h )
 {
   ds_internal & ds = *(ds_internal *) h;
   ds.poll.quit++;
+  if ( ds.poll.pubsub != NULL )
+    ds.poll.pubsub->print_backlog();
   for (;;) {
     if ( ds.poll.quit >= 5 )
       break;
@@ -109,6 +126,13 @@ ds_close( ds_t *h )
   ds.close();
   ::free( &ds );
   return 0;
+}
+
+int
+ds_get_ctx_id( ds_t *h )
+{
+  ds_internal & ds = *(ds_internal *) h;
+  return (int) ds.poll.ctx_id;
 }
 
 static void
@@ -183,12 +207,15 @@ int
 ds_run_cmd( ds_t *h,  ds_msg_t *result,  ds_msg_t *cmd )
 {
   ds_internal & ds = *(ds_internal *) h;
-  uint64_t      msg_cnt;
   ExecStatus    status;
-
+#if 0
+  if ( ds.exec->msg_route_cnt > ds.msg_cnt + 10000 ) {
+    if ( ds_dispatch( h, 0 ) == 0 )
+      ds.msg_cnt = ds.exec->msg_route_cnt;
+  }
+#endif
   ds.reset_pending();
   ds.exec->msg.ref( (RedisMsg &) *cmd );
-  msg_cnt = ds.exec->msg_route_cnt;
   /* no key cmds are run directly */
   if ( (status = ds.exec->exec( NULL, NULL )) == EXEC_OK )
     if ( ds.alloc_fail )
@@ -222,7 +249,7 @@ ds_run_cmd( ds_t *h,  ds_msg_t *result,  ds_msg_t *cmd )
       break;
   }
   if ( result != NULL ) {
-    if ( ds_dispatch( h, 0, result ) == 1 )
+    if ( ds_result( h, result ) )
       goto success;
     result->type = DS_INTEGER_VALUE;
     result->len  = 0;
@@ -230,43 +257,50 @@ ds_run_cmd( ds_t *h,  ds_msg_t *result,  ds_msg_t *cmd )
     return -1;
   }
 success:;
-  if ( msg_cnt != ds.exec->msg_route_cnt ) /* flush msgs */
-    ds_dispatch( h, 0, NULL );
+  /*if ( msg_cnt != ds.exec->msg_route_cnt )
+    ds_dispatch( h, 0 );*/
   return 0;
 }
 
 int
-ds_dispatch( ds_t *h,  int ms,  ds_msg_t *result )
+ds_result( ds_t *h,  ds_msg_t *result )
+{
+  ds_internal & ds = *(ds_internal *) h;
+  if ( ds.concat_iov() ) {
+    void * buf  = ds.iov[ 0 ].iov_base;
+    size_t len  = ds.iov[ 0 ].iov_len,
+           len2 = len;
+    /* this should be optimized, pack and unpack wastes cycles */
+    if ( ((RedisMsg *) result)->unpack( buf, len, ds.tmp ) ==
+         DS_MSG_STATUS_OK ) {
+      ds.wr_pending       -= len;
+      ds.iov[ 0 ].iov_len -= len;
+      if ( len == len2 )
+        ds.idx = 0;
+      else
+        ds.iov[ 0 ].iov_base = &((char *) buf)[ len ];
+      return 1;
+    }
+  }
+  return 0;
+}
+
+int
+ds_dispatch( ds_t *h,  int ms )
 {
   ds_internal & ds = *(ds_internal *) h;
   int status;
-  if ( result != NULL ) {
-    if ( ds.concat_iov() ) {
-      void * buf  = ds.iov[ 0 ].iov_base;
-      size_t len  = ds.iov[ 0 ].iov_len,
-             len2 = len;
-      /* this should be optimized, pack and unpack wastes cycles */
-      if ( ((RedisMsg *) result)->unpack( buf, len, ds.tmp ) ==
-           DS_MSG_STATUS_OK ) {
-        if ( len == len2 )
-          ds.idx = 0;
-        else {
-          ds.iov[ 0 ].iov_len -= len;
-          ds.iov[ 0 ].iov_base = &((char *) buf)[ len ];
-        }
-        return 1;
-      }
-    }
-    *result = NULL;
-  }
+
   status = ds.poll.dispatch();
-  if ( status == EvPoll::DISPATCH_IDLE )
+  if ( status == EvPoll::DISPATCH_IDLE ) {
     ds.poll.wait( ms );
+    return 0;
+  }
   if ( ( status & EvPoll::POLL_NEEDED ) != 0 ) {
     ds.poll.wait( 0 );
     status = ds.poll.dispatch();
   }
-  return ( status != EvPoll::DISPATCH_IDLE ) ? 1 : 0;
+  return status != EvPoll::DISPATCH_IDLE;
 }
 
 void *
@@ -315,6 +349,21 @@ ds_msg_to_json( ds_t *h,  ds_msg_t *msg,  ds_msg_t *json )
 
   return 0;
 }
+
+int
+ds_subscribe_with_cb( ds_t *h,  const ds_msg_t *subject,
+                      ds_on_msg_t cb,  void *cl )
+{
+  ds_internal  & ds = *(ds_internal *) h;
+  ExecStatus status = ds.exec->do_subscribe_cb( subject->strval, subject->len,
+                                                cb, cl );
+  if ( status == EXEC_OK )
+    return 0;
+  if ( status == ERR_KEY_EXISTS )
+    return 1;
+  return -1;
+}
+
 } /* extern "C" */
 
 int

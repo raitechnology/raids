@@ -33,18 +33,18 @@ struct EvTerminal;         /* terminal line editor */
 struct EvKeyCtx;           /* a key operand, an expr may have multiple keys */
 
 enum EvSockType {
-  EV_REDIS_SOCK     = 0, /* redis protocol */
-  EV_HTTP_SOCK      = 1, /* http / websock protocol */
-  EV_LISTEN_SOCK    = 2, /* any type of listener (tcp or unix sock stream) */
-  EV_CLIENT_SOCK    = 3, /* redis client protocol */
-  EV_TERMINAL       = 4, /* redis terminal (converts redis proto to json) */
-  EV_NATS_SOCK      = 5, /* nats pub/sub protocol */
-  EV_CAPR_SOCK      = 6, /* capr pub/sub protocol */
-  EV_RV_SOCK        = 7, /* rv pub/sub protocol */
-  EV_KV_PUBSUB      = 8, /* route between processes */
-  EV_SHM_SOCK       = 9, /* local shm client (used with terminal) */
-  EV_SHM_API        = 10,/* local shm api client */
-  EV_TIMER_QUEUE    = 11,/* event timers */
+  EV_LISTEN_SOCK    = 0, /* any type of listener (tcp or unix sock stream) */
+  EV_TIMER_QUEUE    = 1 ,/* event timers ( read_hi events ^--^ ) */
+  EV_REDIS_SOCK     = 2, /* redis protocol */
+  EV_HTTP_SOCK      = 3, /* http / websock protocol */
+  EV_CLIENT_SOCK    = 4, /* redis client protocol */
+  EV_TERMINAL       = 5, /* redis terminal (converts redis proto to json) */
+  EV_NATS_SOCK      = 6, /* nats pub/sub protocol */
+  EV_CAPR_SOCK      = 7, /* capr pub/sub protocol */
+  EV_RV_SOCK        = 8, /* rv pub/sub protocol */
+  EV_KV_PUBSUB      = 9, /* route between processes */
+  EV_SHM_SOCK       = 10,/* local shm client (used with terminal) */
+  EV_SHM_API        = 11,/* local shm api client */
   EV_SHM_SVC        = 12,/* pubsub service */
   EV_MEMCACHED_SOCK = 13,/* memcached protocol */
   EV_MEMUDP_SOCK    = 14,/* memcached udp protocol */
@@ -55,9 +55,10 @@ enum EvSockType {
  * functions and discard the empty ones (how a final qualifier should work) */
 #define SOCK_CALL( S, F ) \
   switch ( S->type ) { \
+    case EV_LISTEN_SOCK:    static_cast<EvListen *>( S )->F; break; \
+    case EV_TIMER_QUEUE:    static_cast<EvTimerQueue *>( S )->F; break; \
     case EV_REDIS_SOCK:     static_cast<EvRedisService *>( S )->F; break; \
     case EV_HTTP_SOCK:      static_cast<EvHttpService *>( S )->F; break; \
-    case EV_LISTEN_SOCK:    static_cast<EvListen *>( S )->F; break; \
     case EV_CLIENT_SOCK:    static_cast<EvNetClient *>( S )->F; break; \
     case EV_TERMINAL:       static_cast<EvTerminal *>( S )->F; break; \
     case EV_NATS_SOCK:      static_cast<EvNatsService *>( S )->F; break; \
@@ -66,7 +67,6 @@ enum EvSockType {
     case EV_KV_PUBSUB:      static_cast<KvPubSub *>( S )->F; break; \
     case EV_SHM_SOCK:       static_cast<EvShmClient *>( S )->F; break; \
     case EV_SHM_API:        static_cast<EvShmApi *>( S )->F; break; \
-    case EV_TIMER_QUEUE:    static_cast<EvTimerQueue *>( S )->F; break; \
     case EV_SHM_SVC:        static_cast<EvShmSvc *>( S )->F; break; \
     case EV_MEMCACHED_SOCK: static_cast<EvMemcachedService *>( S )->F; break; \
     case EV_MEMUDP_SOCK:    static_cast<EvMemcachedUdp *>( S )->F; break; \
@@ -74,9 +74,10 @@ enum EvSockType {
   }
 #define SOCK_CALL2( R, S, F ) \
   switch ( S->type ) { \
+    case EV_LISTEN_SOCK:    R = static_cast<EvListen *>( S )->F; break; \
+    case EV_TIMER_QUEUE:    R = static_cast<EvTimerQueue *>( S )->F; break; \
     case EV_REDIS_SOCK:     R = static_cast<EvRedisService *>( S )->F; break; \
     case EV_HTTP_SOCK:      R = static_cast<EvHttpService *>( S )->F; break; \
-    case EV_LISTEN_SOCK:    R = static_cast<EvListen *>( S )->F; break; \
     case EV_CLIENT_SOCK:    R = static_cast<EvNetClient *>( S )->F; break; \
     case EV_TERMINAL:       R = static_cast<EvTerminal *>( S )->F; break; \
     case EV_NATS_SOCK:      R = static_cast<EvNatsService *>( S )->F; break; \
@@ -85,7 +86,6 @@ enum EvSockType {
     case EV_KV_PUBSUB:      R = static_cast<KvPubSub *>( S )->F; break; \
     case EV_SHM_SOCK:       R = static_cast<EvShmClient *>( S )->F; break; \
     case EV_SHM_API:        R = static_cast<EvShmApi *>( S )->F; break; \
-    case EV_TIMER_QUEUE:    R = static_cast<EvTimerQueue *>( S )->F; break; \
     case EV_SHM_SVC:        R = static_cast<EvShmSvc *>( S )->F; break; \
     case EV_MEMCACHED_SOCK: R = static_cast<EvMemcachedService *>(S)->F;break; \
     case EV_MEMUDP_SOCK:    R = static_cast<EvMemcachedUdp *>( S )->F; break; \
@@ -112,11 +112,12 @@ enum EvListFlag {
 };
 
 struct EvSocket : public PeerData /* fd and address of peer */ {
-  EvPoll   & poll;     /* the parent container */
-  uint64_t   prio_cnt; /* timeslice each socket for a slot to run */
-  uint32_t   state;    /* bit mask of states, the queues the sock is in */
-  EvSockType type;     /* listen or cnnection */
-  EvListFlag listfl;   /* in active list or free list */
+  EvPoll   & poll;       /* the parent container */
+  uint64_t   prio_cnt;   /* timeslice each socket for a slot to run */
+  uint32_t   state;      /* bit mask of states, the queues the sock is in */
+  EvSockType type;       /* listen or cnnection */
+  EvListFlag listfl;     /* in active list or free list */
+  bool       in_queue;   /* if in prio queue */
   uint64_t   bytes_recv, /* stat counters for bytes and msgs */
              bytes_sent,
              msgs_recv,
@@ -124,7 +125,7 @@ struct EvSocket : public PeerData /* fd and address of peer */ {
 
   EvSocket( EvPoll &p,  EvSockType t,  PeerOps &o )
     : PeerData( o ), poll( p ), prio_cnt( 0 ),
-      state( 0 ), type( t ), listfl( IN_NO_LIST ),
+      state( 0 ), type( t ), listfl( IN_NO_LIST ), in_queue( false ),
       bytes_recv( 0 ), bytes_sent( 0 ), msgs_recv( 0 ), msgs_sent( 0 ) {}
 
   /* priority queue states */
@@ -191,7 +192,14 @@ static inline void *aligned_malloc( size_t sz ) {
  *   publishers may not need to see EvPoll, only RoutePublish, that is why it
  *   is a sepearate structure */
 struct EvPoll : public RoutePublish {
-  kv::PrioQueue<EvSocket *, EvSocket::is_greater> queue;
+  kv::PrioQueue<EvSocket *, EvSocket::is_greater> ev_queue;
+  void push_event_queue( EvSocket *s ) {
+    if ( ! s->in_queue ) {
+      s->in_queue = true;
+      this->ev_queue.push( s );
+    }
+  }
+
   EvSocket          ** sock;            /* sock array indexed by fd */
   struct epoll_event * ev;              /* event array used by epoll() */
   kv::HashTab        * map;             /* the data store */
