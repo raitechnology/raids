@@ -175,7 +175,7 @@ do_latency( ds_t *h,  const char *ping,  const char *pong,  int reflect,
         cl.sent++;
       }
       while ( ! was_signaled && cl.trigger == 0 ) { /* wait for reply */
-        if ( ! ds_dispatch( h, 0 ) ) /* returns 0 when nothing is happening */
+        if ( ! ds_dispatch( h, 1 ) ) /* returns 0 when nothing is happening */
           break;
       }
       if ( nrequests > 0 && cl.recv >= nrequests )
@@ -196,7 +196,7 @@ do_latency( ds_t *h,  const char *ping,  const char *pong,  int reflect,
         cl.sum = 0;
       }
       /* dispatch events until none left */
-      while ( ! was_signaled && ds_dispatch( h, 0 ) )
+      while ( ! was_signaled && ds_dispatch( h, 1 ) )
         ;
       if ( nrequests > 0 && cl.recv >= nrequests )
         break;
@@ -252,7 +252,7 @@ do_throughput( ds_t *h,  const char *subject,  int sub,  size_t nrequests )
     ds_subscribe_with_cb( h, &pub, throughput_cb, &cl );
     ds_release_mem( h );
     while ( ! was_signaled ) {
-      while ( ! was_signaled && ds_dispatch( h, 0 ) )
+      while ( ! was_signaled && ds_dispatch( h, 1 ) )
         ;
       if ( cl.i >= j + 100000 ) {
         t2 = kv_current_monotonic_time_s();
@@ -284,7 +284,7 @@ do_throughput( ds_t *h,  const char *subject,  int sub,  size_t nrequests )
       ctr++;
       i++;
       if ( i >= k + 256 ) {
-        ds_dispatch( h, 0 );
+        ds_dispatch( h, 1 );
         k = i;
       }
       if ( i >= j + 100000 ) {
@@ -298,7 +298,7 @@ do_throughput( ds_t *h,  const char *subject,  int sub,  size_t nrequests )
       if ( i > 0 && i == nrequests )
         break;
     }
-    while ( ! was_signaled && ds_dispatch( h, 0 ) )
+    while ( ! was_signaled && ds_dispatch( h, 1 ) )
       ;
     if ( i > j ) {
       t2 = kv_current_monotonic_time_s();

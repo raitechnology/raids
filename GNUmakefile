@@ -141,30 +141,56 @@ malloc_lib  :=
 .PHONY: everything
 everything: $(kv_lib) $(rdb_lib) $(h3_lib) $(dec_lib) $(md_lib) $(lc_lib) all
 
+clean_subs :=
+
 # build submodules if have them
 ifeq (yes,$(have_kv_submodule))
 $(kv_lib):
 	$(MAKE) -C raikv
+.PHONY: clean_kv
+clean_kv:
+	$(MAKE) -C raikv clean
+clean_subs += clean_kv
 endif
 ifeq (yes,$(have_lc_submodule))
 $(lc_lib):
 	$(MAKE) -C linecook
+.PHONY: clean_lc
+clean_lc:
+	$(MAKE) -C linecook clean
+clean_subs += clean_lc
 endif
 ifeq (yes,$(have_dec_submodule))
 $(dec_lib):
 	$(MAKE) -C raimd/libdecnumber
+.PHONY: clean_dec
+clean_dec:
+	$(MAKE) -C raimd/libdecnumber clean
+clean_subs += clean_dec
 endif
 ifeq (yes,$(have_md_submodule))
 $(md_lib):
 	$(MAKE) -C raimd
+.PHONY: clean_md
+clean_md:
+	$(MAKE) -C raimd clean
+clean_subs += clean_md
 endif
 ifeq (yes,$(have_h3_submodule))
 $(h3_lib):
 	$(MAKE) -C h3
+.PHONY: clean_h3
+clean_h3:
+	$(MAKE) -C h3 clean
+clean_subs += clean_h3
 endif
 ifeq (yes,$(have_rdb_submodule))
 $(rdb_lib):
 	$(MAKE) -C rdbparser
+.PHONY: clean_rdb
+clean_rdb:
+	$(MAKE) -C rdbparser clean
+clean_subs += clean_rdb
 endif
 
 # copr/fedora build (with version env vars)
@@ -513,7 +539,7 @@ $(dependd):
 
 # remove target bins, objs, depends
 .PHONY: clean
-clean:
+clean: $(clean_subs)
 	rm -r -f $(bind) $(libd) $(objd) $(dependd)
 	if [ "$(build_dir)" != "." ] ; then rmdir $(build_dir) ; fi
 

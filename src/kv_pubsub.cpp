@@ -226,7 +226,24 @@ KvPubSub::timer_expire( uint64_t tid,  uint64_t ) noexcept
     return false;
   /*printf( "timer %lu\n", this->timer_cnt );*/
   this->timer_cnt++;
-  /*this->idle_push( EV_READ_LO );*/
+  if ( ( this->poll.map->ctx[ this->ctx_id ].ctx_flags & KV_NO_SIGUSR ) != 0 ) {
+    if ( this->inbox_msg_cnt < 100 )
+      this->poll.map->ctx[ this->ctx_id ].ctx_flags &= ~KV_NO_SIGUSR;
+  }
+  else {
+    if ( this->test( EV_BUSY_POLL ) ) {
+      if ( this->inbox_msg_cnt < 100 ) {
+        this->pop( EV_BUSY_POLL );
+        this->idle_push( EV_READ_LO );
+      }
+      else
+        this->poll.map->ctx[ this->ctx_id ].ctx_flags |= KV_NO_SIGUSR;
+    }
+  }
+  this->sigusr_recv_cnt = 0;
+  this->inbox_msg_cnt = 0;
+  if ( this->test( EV_BUSY_POLL | EV_READ_LO ) == 0 )
+    this->idle_push( EV_READ_LO );
   return true;
 }
 
@@ -474,8 +491,8 @@ KvPubSub::create_kvpublish( uint32_t h,  const char *sub,  size_t len,
   msg->msg_enc = msg_enc;
   msg->set_subject( sub, len );
   msg->set_reply( reply, rlen );
-  msg->src_type() = src_type;
-  msg->prefix_cnt() = pref_cnt;
+  msg->set_src_type( src_type );
+  msg->set_prefix_cnt( pref_cnt );
   for ( uint8_t i = 0; i < pref_cnt; i++ ) {
     KvPrefHash &pf = msg->prefix_hash( i );
     pf.pref = pref[ i ];
@@ -499,8 +516,8 @@ KvPubSub::create_kvsubmsg( uint32_t h,  const char *sub,  size_t len,
   msg->msg_enc  = 0;
   msg->set_subject( sub, len );
   msg->set_reply( rep, rlen );
-  msg->src_type() = src_type;
-  msg->prefix_cnt() = 0;
+  msg->set_src_type( src_type );
+  msg->set_prefix_cnt( 0 );
   return msg;
 }
 
@@ -518,8 +535,8 @@ KvPubSub::create_kvpsubmsg( uint32_t h,  const char *pattern,  size_t len,
   msg->msg_enc  = 0;
   msg->set_subject( pattern, len );
   msg->set_reply( prefix, prefix_len );
-  msg->src_type() = src_type;
-  msg->prefix_cnt() = 1;
+  msg->set_src_type( src_type );
+  msg->set_prefix_cnt( 1 );
   KvPrefHash & ph = msg->prefix_hash( 0 );
   ph.pref = prefix_len;
   ph.set_hash( h );
@@ -659,16 +676,16 @@ KvPubSub::scan_ht( void ) noexcept
                   is_sys_wild = false;
           uint8_t prefixlen   = 0;
           size_t  plen        = sizeof( SYS_WILD_PREFIX ) - 1;
+          const char * key    = (const char *) kp->u.buf;
           /* is it a wildcard? */
-          if ( ::memcmp( kp->u.buf, "_SYS.", 5 ) == 0 ) {
-            if ( ::memcmp( kp->u.buf, SYS_WILD_PREFIX, plen ) == 0 &&
-                 kp->u.buf[ plen ] >= '0' && kp->u.buf[ plen ] <= '9' ) {
+          if ( ::memcmp( key, "_SYS.", 5 ) == 0 ) {
+            if ( ::memcmp( key, SYS_WILD_PREFIX, plen ) == 0 &&
+                 key[ plen ] >= '0' && key[ plen ] <= '9' ) {
               is_sys_wild = true;
-              prefixlen = kp->u.buf[ plen ] - '0';
-              if ( kp->u.buf[ plen + 1 ] >= '0' &&
-                   kp->u.buf[ plen + 1 ] <= '9' ) {
+              prefixlen = key[ plen ] - '0';
+              if ( key[ plen + 1 ] >= '0' && key[ plen + 1 ] <= '9' ) {
                 plen += 1;
-                prefixlen = prefixlen * 10 + ( kp->u.buf[ plen ] - '0' );
+                prefixlen = prefixlen * 10 + ( key[ plen ] - '0' );
               }
               plen += 2; /* skip N. in _SYS.WN.prefix */
             }
@@ -682,7 +699,7 @@ KvPubSub::scan_ht( void ) noexcept
               if ( have_dead_routes ) {
                 /* if some routes are bad, fix them */
                 if ( cr.test_bits( this->dead_cr ) ) {
-                  printf( "fixkey: %.*s\n", kp->keylen, kp->u.buf );
+                  printf( "fixkey: %.*s\n", kp->keylen, key );
                   for (;;) {
                     status = scan_kctx.try_acquire_position( pos );
                     if ( status != KEY_BUSY )
@@ -697,7 +714,7 @@ KvPubSub::scan_ht( void ) noexcept
                       cr2.clear( this->ctx_id );
                       cr.copy_from( val );
                       if ( cr.is_empty() ) {
-                        printf( "emptykey: %.*s\n", kp->keylen, kp->u.buf );
+                        printf( "emptykey: %.*s\n", kp->keylen, key );
                         scan_kctx.tombstone();
                       }
                     }
@@ -711,15 +728,15 @@ KvPubSub::scan_ht( void ) noexcept
               cr.clear( this->ctx_id );
               if ( ! cr.is_empty() && kp->keylen > 0 ) {
               /*printf( "addkey: %.*s\r\n", kp->keylen, kp->u.buf );*/
-                uint32_t hash = kv_crc_c( kp->u.buf, kp->keylen - 1, 0 );
+                uint32_t hash = kv_crc_c( key, kp->keylen - 1, 0 );
                 KvSubRoute * rt;
-                rt = this->sub_tab.upsert( hash, kp->u.buf, kp->keylen - 1 );
+                rt = this->sub_tab.upsert( hash, key, kp->keylen - 1 );
                 cr.copy_to( rt->rt_bits );
                 if ( ! is_sys_wild )
-                  this->poll.add_route( kp->u.buf, kp->keylen - 1, hash,
+                  this->poll.add_route( key, kp->keylen - 1, hash,
                                         this->fd );
                 else
-                  this->poll.add_pattern_route( &kp->u.buf[ plen ], prefixlen,
+                  this->poll.add_pattern_route( &key[ plen ], prefixlen,
                                                 hash, this->fd );
               }
             }
@@ -1088,12 +1105,13 @@ KvPubSub::notify_peers( CubeRoute128 &used ) noexcept
         KvMsgQueue & ibx = *this->inbox[ dest ];
         if ( ibx.need_signal ) {
           ibx.need_signal = false;
-          ibx.signal_cnt++;
           uint32_t pid = this->poll.map->ctx[ dest ].ctx_pid;
-          if ( pid > 0 ) {
+          uint16_t fl  = this->poll.map->ctx[ dest ].ctx_flags;
+          if ( pid > 0 && ( fl & KV_NO_SIGUSR ) == 0 ) {
             if ( this->poll.quit )
               printf( "quit, notify %d ctx %ld\n", pid, dest );
             ::kill( pid, kv_msg_signal );
+            ibx.signal_cnt++;
           }
         }
       } while ( used.next_set( dest ) );
@@ -1311,14 +1329,20 @@ KvPubSub::route_msg_from_shm( KvMsg &msg ) noexcept /* inbound from shm */
 void
 KvPubSub::read( void ) noexcept
 {
+  bool until_empty = false;
   if ( this->test( EV_READ ) ) {
     struct signalfd_siginfo fdsi;
     while ( ::read( this->fd, &fdsi, sizeof( fdsi ) ) > 0 )
-      ;
-  /*printf( "reqd signal %u %.8f\n", fdsi.ssi_signo, kv_current_realtime_s() )*/
+      this->sigusr_recv_cnt++;
+    if ( this->sigusr_recv_cnt > 250 ) {
+      this->poll.map->ctx[ this->ctx_id ].ctx_flags |= KV_NO_SIGUSR;
+      this->push( EV_BUSY_POLL );
+    }
+    /* when signal read() and not busy, then read until empty */
+    until_empty = ( this->test( EV_BUSY_POLL ) == 0 );
   }
   this->pop3( EV_READ, EV_READ_LO, EV_READ_HI );
-  this->read_inbox( true );
+  this->read_inbox( until_empty );
 }
 
 size_t
@@ -1340,30 +1364,26 @@ KvPubSub::read_inbox( bool read_until_empty ) noexcept
   if ( this->ib_kctx.kbuf != &ibx.kbuf ) {
     this->ib_kctx.set_key( ibx.kbuf );
     this->ib_kctx.set_hash( ibx.hash1, ibx.hash2 );
+    if ( this->ib_kctx.acquire( &this->ib_wrk ) == KEY_IS_NEW ) {
+      uint8_t b = 0;
+      this->ib_kctx.append_msg( &b, 1, ibx.high_water_size );
+    }
+    this->ib_kctx.release();
   }
   for (;;) {
     bool retry = false;
     if ( ibx.ibx_pos == 0 ) {
       status = this->ib_kctx.find( &this->ib_wrk );
-      if ( status == KEY_OK )
-        ibx.ibx_pos = this->ib_kctx.pos;
     }
     else {
-#if 0
-      if ( ibx.ibx_hot < 10000 ) {
-        if ( this->ib_kctx.if_value_equals( ibx.ibx_pos, ibx.ibx_value_ctr ) ) {
-          this->flags &= ~KV_READ_INBOX;
-          ibx.ibx_hot++;
-          this->push( EV_READ_LO );
-          return;
-        }
+      if ( ! read_until_empty ) {
+        if ( this->ib_kctx.if_value_equals( ibx.ibx_pos, ibx.ibx_value_ctr ) )
+          break;
       }
-      ibx.ibx_hot = 0;
-#endif
       status = this->ib_kctx.fetch( &this->ib_wrk, ibx.ibx_pos );
     }
+
     if ( status == KEY_OK ) {
-      uint64_t start = ibx.ibx_seqno;
       for (;;) {
         size_t   j;
         uint64_t seqno  = ibx.ibx_seqno,
@@ -1379,17 +1399,15 @@ KvPubSub::read_inbox( bool read_until_empty ) noexcept
         ibx.read_cnt  += 1;
         ibx.read_msg  += j;
         for ( size_t i = 0; i < j; i++ ) {
-          KvMsg &msg = *(KvMsg *) data[ i ];
-          ibx.read_size += data_sz[ i ];
-          if ( msg.is_valid( data_sz[ i ] ) ) {
-            /* check these, make sure messages are in order ?? */
-            this->inbox[ msg.src ]->src_session_id = msg.session_id();
-            this->inbox[ msg.src ]->src_seqno      = msg.seqno();
-            this->route_msg_from_shm( msg );
-          }
-          else {
-            printf("bad msg (%lu) %u start=%lu seqno=%lu seqno2=%lu sess=%lx\n",
-                    i, data_sz[ i ], start, seqno, seqno2, this->session_id );
+          if ( data_sz[ i ] >= sizeof( KvMsg ) ) {
+            KvMsg &msg = *(KvMsg *) data[ i ];
+            ibx.read_size += data_sz[ i ];
+            if ( msg.is_valid( data_sz[ i ] ) ) {
+              /* check these, make sure messages are in order ?? */
+              this->inbox[ msg.src ]->src_session_id = msg.session_id();
+              this->inbox[ msg.src ]->src_seqno      = msg.seqno();
+              this->route_msg_from_shm( msg );
+            }
           }
 #if 0
           else {
@@ -1413,21 +1431,16 @@ KvPubSub::read_inbox( bool read_until_empty ) noexcept
         }
         count += j;
         if ( j != veclen ) { /* didn't fill entire array, find() again */
-#if 0
-          this->ib_kctx.get_pos_value_ctr( ibx.ibx_pos, ibx.ibx_value_ctr );
-#endif
           break;
         }
       }
     }
-    else {
-      if ( status == KEY_MUTATED )
+    else if ( status == KEY_MUTATED )
+      retry = true;
+    else if ( status == KEY_NOT_FOUND ) {
+      if ( ibx.ibx_pos == 0 ) {
+        ibx.ibx_pos = 0;
         retry = true;
-      else if ( status == KEY_NOT_FOUND ) {
-        if ( ibx.ibx_pos != 0 ) {
-          ibx.ibx_pos = 0;
-          retry = true;
-        }
       }
     }
     /* remove msgs consumed */
@@ -1435,17 +1448,20 @@ KvPubSub::read_inbox( bool read_until_empty ) noexcept
       if ( this->ib_kctx.acquire( &this->ib_wrk ) <= KEY_IS_NEW ) {
         this->ib_kctx.trim_msg( ibx.ibx_seqno );
 
-        if ( this->ib_kctx.entry->test( FL_IMMEDIATE_VALUE ) == 0 )
+        if ( this->ib_kctx.entry->test( FL_IMMEDIATE_VALUE ) != 0 )
+          this->ib_kctx.get_pos_value_ctr( ibx.ibx_pos, ibx.ibx_value_ctr );
+        else
           retry = true;
         this->ib_kctx.release();
       }
       total = count;
     }
-    if ( ! retry || ! read_until_empty ) {
-      this->flags &= ~KV_READ_INBOX;
-      return total;
-    }
+    if ( ! retry || ! read_until_empty )
+      break;
   }
+  this->flags &= ~KV_READ_INBOX;
+  this->inbox_msg_cnt += total;
+  return total;
 }
 
 bool

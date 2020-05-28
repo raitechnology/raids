@@ -38,7 +38,7 @@ RedisExec::multi_key_fetch( EvKeyCtx &ctx,  bool force_read ) noexcept
   RedisMultiExec & mul  = *this->multi;
   KeyCtx         * kptr = mul.mm_iter->kptr[ ctx.key_idx ];
 
-  ::memcpy( &this->kctx, kptr, sizeof( this->kctx ) );
+  ::memcpy( (void *) &this->kctx, kptr, sizeof( this->kctx ) );
   this->key = &ctx;
   if ( kptr == &mul.mm_iter->karr[ ctx.key_idx ] ) {
     if ( ( this->cmd_flags & CMD_READ_FLAG ) != 0 || force_read ) {

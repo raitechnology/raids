@@ -298,7 +298,8 @@ RedisExec::exec_bitfield( EvKeyCtx &ctx ) noexcept
     upd_val = 0;
     for ( j = 0; off < size; ) {
       upd_val.b[ j++ ] = ((uint8_t *) data)[ off++ ];
-      if ( (w += 8) >= width + shift ) /* if have enough bits for iN type */
+      /* if have enough bits for IN type */
+      if ( j == 9 || (w += 8) >= width + shift )
         break;
     }
     /* the current value at bit offset */
@@ -363,7 +364,7 @@ RedisExec::exec_bitfield( EvKeyCtx &ctx ) noexcept
       msk_val   = (uint64_t) bf[ i ].val & mask;
       msk_val <<= shift;
       upd_val  |= msk_val;/* upd_val = upd_val | ( ( ival & mask ) << shift ) */
-      for ( j = 0; start < off; ) {
+      for ( j = 0; j < 9 && start < off; ) {
         ((uint8_t *) data)[ start++ ] = upd_val.b[ j++ ];
       }
     }

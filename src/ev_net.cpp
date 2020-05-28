@@ -313,6 +313,7 @@ EvPoll::dispatch( void ) noexcept
         break;
       case EV_BUSY_POLL:
         if ( s->type == EV_KV_PUBSUB ) {
+          ret |= BUSY_POLL;
           if ( ((KvPubSub *) s)->read_inbox( false ) == 0 ) {
             s->prio_cnt = this->prio_tick;
             this->push_event_queue( s );

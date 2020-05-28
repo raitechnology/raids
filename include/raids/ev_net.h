@@ -294,7 +294,12 @@ struct EvPoll : public RoutePublish {
   void del_route( const char *sub,  size_t sub_len,  uint32_t hash,
                   uint32_t fd ) noexcept;
   int wait( int ms ) noexcept;            /* call epoll() with ms timeout */
-  enum { DISPATCH_IDLE = 0, POLL_NEEDED = 1, DISPATCH_BUSY = 2 };
+  enum { /* dispatch return bits */
+    DISPATCH_IDLE = 0, /* no events dispatched */
+    POLL_NEEDED   = 1, /* a timer is about to expire */
+    DISPATCH_BUSY = 2, /* some event occured */
+    BUSY_POLL     = 4  /* kv pubsub is busy looping */
+  };
   int dispatch( void ) noexcept;          /* process any sock in the queues */
   void drain_prefetch( void ) noexcept;   /* process prefetches */
   bool publish_one( EvPublish &pub,  uint32_t *rcount_total,

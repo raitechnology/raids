@@ -300,7 +300,7 @@ ds_dispatch( ds_t *h,  int ms )
     ds.poll.wait( 0 );
     status = ds.poll.dispatch();
   }
-  return status != EvPoll::DISPATCH_IDLE;
+  return ( status & EvPoll::DISPATCH_BUSY ) != 0;
 }
 
 void *

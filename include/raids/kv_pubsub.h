@@ -43,7 +43,7 @@ struct KvMcastKey {
 
 struct KvMsgQueue {
   KvMsgQueue    * next, * back;     /* links when have backlog msgs */
-  /*kv::ValueCtr    ibx_value_ctr;    * the value serial ctr, track change */
+  kv::ValueCtr    ibx_value_ctr;    /* the value serial ctr, track change */
   uint64_t        ibx_pos,          /* hash position of the inbox */
                   hash1,            /* hash of inbox name */
                   hash2,
@@ -76,7 +76,7 @@ struct KvMsgQueue {
       pub_cnt( 0 ), pub_msg( 0 ), read_cnt( 0 ), read_msg( 0 ), read_size( 0 ),
       backlog_size( 0 ), backlog_cnt( 0 ), signal_cnt( 0 ),
       ibx_hot( 0 ), ibx_num( n ), need_signal( true ) {
-    /*this->ibx_value_ctr.zero();*/
+    this->ibx_value_ctr.zero();
     this->kbuf.keylen = namelen;
     ::memcpy( this->kbuf.u.buf, name, namelen );
     kv::HashSeed hs;
@@ -205,7 +205,10 @@ struct KvSubMsg : public KvMsg {
   }
   /* src type + prefix hashes + msg data */
   uint8_t * trail( void ) {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Warray-bounds"
     return (uint8_t *) &this->buf[ this->sublen + 1 + this->replylen + 1 ];
+#pragma GCC diagnostic pop
   }
   void set_subject( const char *s,  uint16_t len ) {
     this->sublen = len;
@@ -217,9 +220,13 @@ struct KvSubMsg : public KvMsg {
     ::memcpy( &this->buf[ this->sublen + 1 ], s, len );
     this->buf[ this->sublen + 1 + len ] = '\0';
   }
-  char & src_type( void ) {
+  char src_type( void ) {
     char * ptr = (char *) this->trail();
     return ptr[ 0 ];
+  }
+  void set_src_type( char t ) {
+    char * ptr = (char *) this->trail();
+    ptr[ 0 ] = t;
   }
   void * msg_data( void ) {
     uint32_t off = kv::align<uint32_t>( this->msg_size, sizeof( uint32_t ) );
@@ -230,9 +237,16 @@ struct KvSubMsg : public KvMsg {
     this->msg_size = len;
     ::memcpy( &((char *) (void *) this)[ this->size - off ], p, len );
   }
-  uint8_t & prefix_cnt( void ) {
+  uint8_t prefix_cnt( void ) {
     uint8_t * ptr = this->trail();
     return ptr[ 1 ];
+  }
+  void set_prefix_cnt( uint8_t cnt ) {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wstringop-overflow"
+    uint8_t * ptr = this->trail();
+    ptr[ 1 ] = cnt;
+#pragma GCC diagnostic pop
   }
   KvPrefHash * prefix_array( void ) {
     uint8_t * ptr = this->trail();
@@ -284,6 +298,7 @@ enum KvPubSubFlag {
 };
 
 struct KvPubSub : public EvSocket {
+  static const uint16_t KV_NO_SIGUSR = 1;
   uint16_t     ctx_id,                 /* my endpoint */
                flags;                  /* KvPubSubFlags above */
   uint32_t     dbx_id;                 /* db xref */
@@ -297,6 +312,8 @@ struct KvPubSub : public EvSocket {
                send_cnt,               /* count of msgs sent, includes sendq */
                route_size,             /* size of msgs routed from send queue */
                route_cnt,              /* count of msgs routed from send queue*/
+               sigusr_recv_cnt,
+               inbox_msg_cnt,
                mc_pos;                 /* hash position of the mcast route */
   kv::ValueCtr mc_value_ctr;           /* the value serial ctr, track change */
   CubeRoute128 mc_cr;                  /* the current mcast route */
@@ -333,7 +350,7 @@ struct KvPubSub : public EvSocket {
         timer_id( (uint64_t) EV_KV_PUBSUB << 56 ), timer_cnt( 0 ),
         time_ns( p.current_coarse_ns() ),
         send_size( 0 ), send_cnt( 0 ), route_size( 0 ), route_cnt( 0 ),
-        mc_pos( 0 ), mc_cnt( 0 ),
+        sigusr_recv_cnt( 0 ), inbox_msg_cnt( 0 ), mc_pos( 0 ), mc_cnt( 0 ),
         kctx( *p.map, xid ),
         rt_kctx( *p.map, xid ),
         ib_kctx( *p.map, xid ),

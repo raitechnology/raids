@@ -49,8 +49,11 @@ struct NatsStr {
   }
 
   size_t copy( char *out ) const {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wstringop-overflow"
     ::memcpy( out, &this->len, sizeof( uint16_t ) );
     ::memcpy( &out[ sizeof( uint16_t ) ], this->str, this->len );
+#pragma GCC diagnostic pop
     return this->len + sizeof( uint16_t );
   }
 
