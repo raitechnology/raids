@@ -123,6 +123,8 @@ typedef RedisDataRoutePos< RedisSubRoute > RedisSubRoutePos;
 typedef RedisDataMap< RedisSubRoute >      RedisSubMap;
 
 struct RedisPatternRoute {
+  ds_on_msg_t               callback;
+  void                    * closure;
   pcre2_real_code_8       * re;
   pcre2_real_match_data_8 * md;
   uint64_t                  msg_cnt;
@@ -131,9 +133,11 @@ struct RedisPatternRoute {
   char                      value[ 2 ];
 
   void zero( void ) {
-    this->re = NULL;
-    this->md = NULL;
-    this->msg_cnt = 0;
+    this->callback = NULL;
+    this->closure  = NULL;
+    this->re       = NULL;
+    this->md       = NULL;
+    this->msg_cnt  = 0;
   }
   void incr( void ) {
     this->msg_cnt++;

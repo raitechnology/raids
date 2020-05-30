@@ -1142,7 +1142,7 @@ RedisExec::exec_monitor( void ) noexcept
    * 1339518087.877697 [0 127.0.0.1:60866] "dbsize" */
   if ( ( this->cmd_state & CMD_STATE_MONITOR ) == 0 ) {
     this->cmd_state |= CMD_STATE_MONITOR;
-    return this->do_psubscribe( "__monitor_@*", 12 );
+    return this->do_psubscribe_cb( "__monitor_@*", 12 );
   }
   this->cmd_state &= ~CMD_STATE_MONITOR;
   return this->do_punsubscribe( "__monitor_@*", 12 );

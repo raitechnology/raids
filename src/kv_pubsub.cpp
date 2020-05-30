@@ -21,6 +21,10 @@
 
 /* signal other processes that a message available */
 static const int kv_msg_signal = SIGUSR2;
+static const uint64_t kv_timer_ival_ms  = 250; /* 4 times a second */
+                          /* 20000 per sec / ivals per sec = rate / ival
+                           *  if msg rate is above 1 per 50 usecs */
+static const uint64_t kv_busy_loop_rate = 20000 / ( 1000 / kv_timer_ival_ms );
 
 using namespace rai;
 using namespace kv;
@@ -227,12 +231,12 @@ KvPubSub::timer_expire( uint64_t tid,  uint64_t ) noexcept
   /*printf( "timer %lu\n", this->timer_cnt );*/
   this->timer_cnt++;
   if ( ( this->poll.map->ctx[ this->ctx_id ].ctx_flags & KV_NO_SIGUSR ) != 0 ) {
-    if ( this->inbox_msg_cnt < 100 )
+    if ( this->inbox_msg_cnt < kv_busy_loop_rate )
       this->poll.map->ctx[ this->ctx_id ].ctx_flags &= ~KV_NO_SIGUSR;
   }
   else {
     if ( this->test( EV_BUSY_POLL ) ) {
-      if ( this->inbox_msg_cnt < 100 ) {
+      if ( this->inbox_msg_cnt < kv_busy_loop_rate ) {
         this->pop( EV_BUSY_POLL );
         this->idle_push( EV_READ_LO );
       }
@@ -649,7 +653,7 @@ KvPubSub::process( void ) noexcept
   if ( ( this->flags & KV_INITIAL_SCAN ) == 0 ) {
     this->flags |= KV_INITIAL_SCAN;
     this->scan_ht();
-    this->poll.add_timer_millis( fd, 500, this->timer_id, 0 );
+    this->poll.add_timer_millis( fd, kv_timer_ival_ms, this->timer_id, 0 );
   }
   this->pop( EV_PROCESS );
 }
@@ -1334,7 +1338,7 @@ KvPubSub::read( void ) noexcept
     struct signalfd_siginfo fdsi;
     while ( ::read( this->fd, &fdsi, sizeof( fdsi ) ) > 0 )
       this->sigusr_recv_cnt++;
-    if ( this->sigusr_recv_cnt > 250 ) {
+    if ( this->sigusr_recv_cnt > kv_busy_loop_rate ) {
       this->poll.map->ctx[ this->ctx_id ].ctx_flags |= KV_NO_SIGUSR;
       this->push( EV_BUSY_POLL );
     }

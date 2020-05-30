@@ -331,12 +331,12 @@ ds_parse_msg( ds_t *h,  ds_msg_t *result,  const char *str )
 }
 
 int
-ds_msg_to_json( ds_t *h,  ds_msg_t *msg,  ds_msg_t *json )
+ds_msg_to_json( ds_t *h,  const ds_msg_t *msg,  ds_msg_t *json )
 {
-  ds_internal & ds = *(ds_internal *) h;
-  RedisMsg    & m  = *(RedisMsg *) msg;
-  size_t        sz = m.to_almost_json_size();
-  char        * b  = (char *) ds.alloc( sz + 1 );
+  ds_internal    & ds = *(ds_internal *) h;
+  const RedisMsg & m  = *(const RedisMsg *) msg;
+  size_t           sz = m.to_almost_json_size();
+  char           * b  = (char *) ds.alloc( sz + 1 );
 
   if ( b == NULL )
     return -1;
@@ -357,6 +357,20 @@ ds_subscribe_with_cb( ds_t *h,  const ds_msg_t *subject,
   ds_internal  & ds = *(ds_internal *) h;
   ExecStatus status = ds.exec->do_subscribe_cb( subject->strval, subject->len,
                                                 cb, cl );
+  if ( status == EXEC_OK )
+    return 0;
+  if ( status == ERR_KEY_EXISTS )
+    return 1;
+  return -1;
+}
+
+int
+ds_psubscribe_with_cb( ds_t *h,  const ds_msg_t *subject,
+                       ds_on_msg_t cb,  void *cl )
+{
+  ds_internal  & ds = *(ds_internal *) h;
+  ExecStatus status = ds.exec->do_psubscribe_cb( subject->strval, subject->len,
+                                                 cb, cl );
   if ( status == EXEC_OK )
     return 0;
   if ( status == ERR_KEY_EXISTS )

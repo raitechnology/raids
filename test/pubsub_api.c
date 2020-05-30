@@ -28,42 +28,64 @@ print_time( const char *cmd,  double secs,  size_t nrequests )
   }
   printf( "\n" );
 }
-#if 0
-static size_t
-get_msg_data( const ds_msg_t *msg,  void *p,  int64_t n )
+
+struct subscribe_closure {
+  ds_t * h;
+  size_t i;
+};
+
+static void
+subscribe_cb( const ds_event_t *event,  const ds_msg_t *msg,
+              void *closure )
 {
-  if ( msg->type == DS_BULK_ARRAY &&
-       msg->len >= 3 &&
-       msg->array[ 2 ].type == DS_BULK_STRING &&
-       msg->array[ 2 ].len == n ) {
-    memcpy( p, msg->array[ 2 ].strval, n );
-    return n;
+  double t1;
+  struct subscribe_closure * cl = (struct subscribe_closure *) closure;
+  ds_msg_t json;
+
+  (void) event;
+  cl->i += 1;
+  t1 = kv_current_monotonic_time_s();
+  if ( ds_msg_to_json( cl->h, msg, &json ) == 0 ) {
+    printf( "%.6f %.*s <- %.*s\n", t1,
+      (int) event->subject.len, event->subject.strval,
+      (int) json.len, json.strval );
   }
-  return 0;
+  ds_release_mem( cl->h );
 }
-#endif
+
 static void
 do_subscribe( ds_t *h,  const char *subject,  size_t nrequests )
 {
-  ds_msg_t subscr, msg, json;
-  size_t   i;
+  ds_msg_t subscr;
+  struct subscribe_closure cl;
 
+  cl.h = h;
+  cl.i = 0;
   mk_str( &subscr, subject, strlen( subject ) );
-  ds_subscribe( h, NULL, &subscr, NULL );
+  ds_subscribe_with_cb( h, &subscr, subscribe_cb, &cl );
   ds_release_mem( h );
-  for ( i = 0; ! was_signaled; ) {
-    while ( ds_dispatch( h, 1 ) ) {
-      while ( ds_result( h, &msg ) ) {
-        double t1 = kv_current_monotonic_time_s();
-        if ( ds_msg_to_json( h, &msg, &json ) == 0 ) {
-          printf( "%.6f %.*s\n", t1, (int) json.len, json.strval );
-          i++;
-        }
-      }
-      ds_release_mem( h );
-    }
-    if ( i > 0 && i == nrequests )
-      break;
+  while ( ! was_signaled ) {
+    if ( ds_dispatch( h, 1 ) )
+      if ( nrequests > 0 && cl.i >= nrequests )
+        break;
+  }
+}
+
+static void
+do_psubscribe( ds_t *h,  const char *pattern,  size_t nrequests )
+{
+  ds_msg_t subscr;
+  struct subscribe_closure cl;
+
+  cl.h = h;
+  cl.i = 0;
+  mk_str( &subscr, pattern, strlen( pattern ) );
+  ds_psubscribe_with_cb( h, &subscr, subscribe_cb, &cl );
+  ds_release_mem( h );
+  while ( ! was_signaled ) {
+    if ( ds_dispatch( h, 1 ) )
+      if ( nrequests > 0 && cl.i >= nrequests )
+        break;
   }
 }
 
@@ -71,7 +93,7 @@ static void
 do_publish( ds_t *h,  const char *subject,  const char *data,
             size_t nrequests )
 {
-  ds_msg_t publish, msg;
+  ds_msg_t publish, msg, res, json;
   size_t   i;
   double   t1, t2;
 
@@ -84,8 +106,11 @@ do_publish( ds_t *h,  const char *subject,  const char *data,
     t2 = kv_current_monotonic_time_s();
     if ( t2 - t1 >= 1.0 ) {
       t1 += 1.0;
-      printf( "%.6f publish %s <- %s\n", t2, subject, data );
-      ds_publish( h, NULL, &publish, &msg );
+      printf( "%.6f publish %s <- %s", t2, subject, data );
+      ds_publish( h, &res, &publish, &msg );
+      if ( ds_msg_to_json( h, &res, &json ) == 0 ) {
+        printf( " : %.*s\n", (int) json.len, json.strval );
+      }
       ds_release_mem( h );
       i++;
       if ( i > 0 && i == nrequests )
@@ -378,6 +403,7 @@ print_help( const char *argv0 )
   "   -r          : Reverse listen and publish, reflect\n"
   "   -l          : Latency test, ping/pong (default throughput ping)\n"
   "   -s string   : Subject to subscribe or publish\n"
+  "   -p pattern  : Pattern to subscribe\n"
   "   -d data     : String data to publish to subject\n"
   "   -a cpu      : Set affinity to cpu (default linux)\n",
   argv0 );
@@ -393,6 +419,7 @@ main( int argc,  char *argv[] )
              * la = get_arg( argc, argv, 0, "-l", NULL ),     /* reflect */
              * da = get_arg( argc, argv, 1, "-d", NULL ),     /* send data */
              * su = get_arg( argc, argv, 1, "-s", NULL ),     /* subject */
+             * pa = get_arg( argc, argv, 1, "-p", NULL ),     /* pattern */
              * af = get_arg( argc, argv, 1, "-a", NULL ),     /* cpu */
              * bu = get_arg( argc, argv, 0, "-b", NULL ),     /* busy */
              * he = get_arg( argc, argv, 0, "-h", NULL );     /* help */
@@ -425,8 +452,10 @@ main( int argc,  char *argv[] )
   signal( SIGINT, sighndlr );
   signal( SIGTERM, sighndlr );
 
-  if ( su != NULL ) {
-    if ( da != NULL )
+  if ( su != NULL || pa != NULL ) {
+    if ( pa != NULL )
+      do_psubscribe( h, pa, nrequests );
+    else if ( da != NULL )
       do_publish( h, su, da, nrequests );
     else
       do_subscribe( h, su, nrequests );

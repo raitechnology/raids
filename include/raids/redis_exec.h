@@ -350,11 +350,11 @@ struct RedisExec {
   ExecStatus exec_punsubscribe( void ) noexcept;
   ExecStatus exec_subscribe( void ) noexcept;
   ExecStatus exec_unsubscribe( void ) noexcept;
-  ExecStatus do_subscribe( const char *sub,  size_t len ) noexcept;
   ExecStatus do_unsubscribe( const char *sub,  size_t len ) noexcept;
   ExecStatus do_subscribe_cb( const char *sub,  size_t len,
-                              ds_on_msg_t cb,  void *cl ) noexcept;
-  ExecStatus do_psubscribe( const char *sub,  size_t len ) noexcept;
+                             ds_on_msg_t cb = NULL,  void *cl = NULL ) noexcept;
+  ExecStatus do_psubscribe_cb( const char *sub,  size_t len,
+                             ds_on_msg_t cb = NULL,  void *cl = NULL ) noexcept;
   ExecStatus do_punsubscribe( const char *sub,  size_t len ) noexcept;
   ExecStatus do_sub( int flags ) noexcept;
   bool pub_message( EvPublish &pub,  RedisPatternRoute *rt ) noexcept;

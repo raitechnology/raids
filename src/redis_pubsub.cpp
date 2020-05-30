@@ -231,20 +231,17 @@ RedisExec::do_pub( EvPublish &pub,  RedisContinueMsg *&cm ) noexcept
         }
         else {
           ds_event_t event;
-          ds_msg_t   sub, reply, msg;
 
-          sub.strval   = (char *) pub.subject;
-          sub.len      = pub.subject_len;
-          sub.type     = DS_BULK_STRING;
-          reply.strval = (char *) pub.reply;
-          reply.len    = pub.reply_len;
-          reply.type   = DS_BULK_STRING;
-          msg.strval   = (char *) pub.msg;
-          msg.len      = pub.msg_len;
-          msg.type     = DS_BULK_STRING;
-          event.subject      = &sub;
-          event.subscription = &sub;
-          event.reply        = &reply;
+          event.subject.strval = (char *) pub.subject;
+          event.subject.len    = pub.subject_len;
+          event.subject.type   = DS_BULK_STRING;
+          event.subscription   = event.subject;
+          event.reply.strval   = (char *) pub.reply;
+          event.reply.len      = pub.reply_len;
+          event.reply.type     = DS_BULK_STRING;
+          msg.strval           = (char *) pub.msg;
+          msg.len              = pub.msg_len;
+          msg.type             = DS_BULK_STRING;
           rt->callback( &event, &msg, rt->closure );
         }
       }
@@ -298,8 +295,27 @@ RedisExec::do_pub( EvPublish &pub,  RedisContinueMsg *&cm ) noexcept
         if ( pcre2_match( rt->re, (const uint8_t *) pub.subject,
                           pub.subject_len, 0, 0, rt->md, 0 ) == 1 ) {
           rt->incr();
-          this->pub_message( pub, rt );
           pub_cnt++;
+          if ( rt->callback == NULL ) {
+            this->pub_message( pub, rt );
+          }
+          else {
+            ds_event_t event;
+
+            event.subject.strval      = (char *) pub.subject;
+            event.subject.len         = pub.subject_len;
+            event.subject.type        = DS_BULK_STRING;
+            event.subscription.strval = rt->value;
+            event.subscription.len    = rt->len;
+            event.subscription.type   = DS_BULK_STRING;
+            event.reply.strval        = (char *) pub.reply;
+            event.reply.len           = pub.reply_len;
+            event.reply.type          = DS_BULK_STRING;
+            msg.strval                = (char *) pub.msg;
+            msg.len                   = pub.msg_len;
+            msg.type                  = DS_BULK_STRING;
+            rt->callback( &event, &msg, rt->closure );
+          }
         }
         rt = this->pat_tab.tab.find_next_by_hash( pub.hash[ cnt ], loc );
       }
@@ -531,21 +547,6 @@ RedisExec::exec_unsubscribe( void ) noexcept
 
 
 ExecStatus
-RedisExec::do_subscribe( const char *sub,  size_t len ) noexcept
-{
-  uint32_t h, rcnt;
-
-  h = kv_crc_c( sub, len, 0 );
-  if ( this->sub_tab.put( h, sub, len ) == REDIS_SUB_OK ) {
-    rcnt = this->sub_route.add_route( h, this->sub_id );
-    this->sub_route.rte.notify_sub( h, sub, len, this->sub_id, rcnt, 'R' );
-    this->msg_route_cnt++;
-    return EXEC_OK;
-  }
-  return ERR_KEY_EXISTS;
-}
-
-ExecStatus
 RedisExec::do_unsubscribe( const char *sub,  size_t len ) noexcept
 {
   uint32_t h, rcnt;
@@ -583,7 +584,8 @@ RedisExec::do_subscribe_cb( const char *sub,  size_t len,
 }
 
 ExecStatus
-RedisExec::do_psubscribe( const char *sub,  size_t len ) noexcept
+RedisExec::do_psubscribe_cb( const char *sub,  size_t len,
+                             ds_on_msg_t cb,  void *cl ) noexcept
 {
   RedisPatternRoute * rt;
   char       buf[ 1024 ];
@@ -596,6 +598,8 @@ RedisExec::do_psubscribe( const char *sub,  size_t len ) noexcept
     if ( this->pat_tab.put( h, sub, len, rt ) == REDIS_SUB_OK ) {
       size_t erroff;
       int    error;
+      rt->callback = cb;
+      rt->closure  = cl;
       rt->re = pcre2_compile( (uint8_t *) buf, cvt.off, 0, &error, &erroff, 0 );
       if ( rt->re == NULL ) {
         fprintf( stderr, "re failed\n" );
@@ -739,7 +743,7 @@ RedisExec::do_sub( int flags ) noexcept
       last = true;
     else {
       if ( ( flags & DO_SUBSCRIBE ) != 0 ) {
-        if ( this->do_subscribe( sub[ j ], len[ j ] ) == EXEC_OK )
+        if ( this->do_subscribe_cb( sub[ j ], len[ j ] ) == EXEC_OK )
           cnt++;
       }
       else if ( ( flags & DO_UNSUBSCRIBE ) != 0 ) {
@@ -747,7 +751,7 @@ RedisExec::do_sub( int flags ) noexcept
           cnt--;
       }
       else if ( ( flags & DO_PSUBSCRIBE ) != 0 ) {
-        if ( this->do_psubscribe( sub[ j ], len[ j ] ) == EXEC_OK )
+        if ( this->do_psubscribe_cb( sub[ j ], len[ j ] ) == EXEC_OK )
           cnt++;
       }
       else /*if ( ( flags & DO_PUNSUBSCRIBE ) != 0 )*/ {

@@ -11,9 +11,9 @@ extern "C" {
 typedef struct ds_s ds_t;
 
 struct ds_event_s {
-  const ds_msg_t * subject,      /* subject */
-                 * subscription, /* pat matched, subject subscribed, or ibx */
-                 * reply;        /* reply if rpc */
+  ds_msg_t subject,      /* subject */
+           subscription, /* pat matched, subject subscribed, or ibx */
+           reply;        /* reply if rpc */
 };
 typedef struct ds_event_s ds_event_t;
 
@@ -43,7 +43,7 @@ int ds_run_cmd( ds_t *h,  ds_msg_t *result,  ds_msg_t *cmd );
 /* parse string, which can be RESP format or just command string */
 int ds_parse_msg( ds_t *h,  ds_msg_t *result,  const char *str );
 /* convert msg into json string */
-int ds_msg_to_json( ds_t *h,  ds_msg_t *msg,  ds_msg_t *json );
+int ds_msg_to_json( ds_t *h,  const ds_msg_t *msg,  ds_msg_t *json );
 /* allocate space in temporary mem, released by ds_release_mem() */
 void *ds_alloc_mem( ds_t *h,  size_t sz );
 /* release temprary mem used by all of the above functions, after ds_close() */
@@ -51,6 +51,9 @@ int ds_release_mem( ds_t *h );
 /* subscribe using callback */
 int ds_subscribe_with_cb( ds_t *h,  const ds_msg_t *subject,
                           ds_on_msg_t cb,  void *cl );
+/* subscribe using callback */
+int ds_psubscribe_with_cb( ds_t *h,  const ds_msg_t *subject,
+                           ds_on_msg_t cb,  void *cl );
 
 #ifdef __cplusplus
 }
