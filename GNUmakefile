@@ -1,6 +1,6 @@
 # defines a directory for build, for example, RH6_x86_64
 lsb_dist     := $(shell if [ -x /usr/bin/lsb_release ] ; then lsb_release -is ; else echo Linux ; fi)
-lsb_dist_ver := $(shell if [ -x /usr/bin/lsb_release ] ; then lsb_release -rs | sed 's/[.].*//' ; fi)
+lsb_dist_ver := $(shell if [ -x /usr/bin/lsb_release ] ; then lsb_release -rs | sed 's/[.].*//' ; else uname -r | sed 's/[-].*//' ; fi)
 uname_m      := $(shell uname -m)
 
 short_dist_lc := $(patsubst CentOS,rh,$(patsubst RedHatEnterprise,rh,\
@@ -71,12 +71,17 @@ have_rdb_submodule := $(shell if [ -d ./rdbparser ]; then echo yes; else echo no
 
 lnk_lib     :=
 dlnk_lib    :=
+lnk_dep     :=
+dlnk_dep    :=
 
 # if building submodules, reference them rather than the libs installed
 ifeq (yes,$(have_kv_submodule))
 kv_lib      := raikv/$(libd)/libraikv.a
+kv_dll      := raikv/$(libd)/libraikv.so
 lnk_lib     += $(kv_lib)
+lnk_dep     += $(kv_lib)
 dlnk_lib    += -Lraikv/$(libd) -lraikv
+dlnk_dep    += $(kv_dll)
 rpath1       = ,-rpath,$(pwd)/raikv/$(libd)
 else
 lnk_lib     += -lraikv
@@ -85,8 +90,11 @@ endif
 
 ifeq (yes,$(have_lc_submodule))
 lc_lib      := linecook/$(libd)/liblinecook.a
+lc_dll      := linecook/$(libd)/liblinecook.so
 lnk_lib     += $(lc_lib)
+lnk_dep     += $(lc_lib)
 dlnk_lib    += -Llinecook/$(libd) -llinecook
+dlnk_dep    += $(lc_dll)
 rpath2       = ,-rpath,$(pwd)/linecook/$(libd)
 else
 lnk_lib     += -llinecook
@@ -95,8 +103,11 @@ endif
 
 ifeq (yes,$(have_md_submodule))
 md_lib      := raimd/$(libd)/libraimd.a
+md_dll      := raimd/$(libd)/libraimd.so
 lnk_lib     += $(md_lib)
+lnk_dep     += $(md_lib)
 dlnk_lib    += -Lraimd/$(libd) -lraimd
+dlnk_dep    += $(md_dll)
 rpath3       = ,-rpath,$(pwd)/raimd/$(libd)
 else
 lnk_lib     += -lraimd
@@ -105,8 +116,11 @@ endif
 
 ifeq (yes,$(have_h3_submodule))
 h3_lib      := h3/$(libd)/libh3.a
+h3_dll      := h3/$(libd)/libh3.so
 lnk_lib     += $(h3_lib)
+lnk_dep     += $(h3_lib)
 dlnk_lib    += -Lh3/$(libd) -lh3
+dlnk_dep    += $(h3_dll)
 rpath4       = ,-rpath,$(pwd)/h3/$(libd)
 else
 lnk_lib     += -lh3
@@ -115,8 +129,11 @@ endif
 
 ifeq (yes,$(have_dec_submodule))
 dec_lib     := raimd/libdecnumber/$(libd)/libdecnumber.a
+dec_dll     := raimd/libdecnumber/$(libd)/libdecnumber.so
 lnk_lib     += $(dec_lib)
+lnk_dep     += $(dec_lib)
 dlnk_lib    += -Lraimd/libdecnumber/$(libd) -ldecnumber
+dlnk_dep    += $(dec_dll)
 rpath5       = ,-rpath,$(pwd)/raimd/libdecnumber/$(libd)
 else
 lnk_lib     += -ldecnumber
@@ -125,8 +142,11 @@ endif
 
 ifeq (yes,$(have_rdb_submodule))
 rdb_lib      := rdbparser/$(libd)/librdbparser.a
+rdb_dll      := rdbparser/$(libd)/librdbparser.so
 lnk_lib     += $(rdb_lib)
+lnk_dep     += $(rdb_lib)
 dlnk_lib    += -Lrdbparser/$(libd) -lrdbparser
+dlnk_dep    += $(rdb_dll)
 rpath6       = ,-rpath,$(pwd)/rdbparser/$(libd)
 else
 lnk_lib     += -lrdbparser
@@ -142,10 +162,12 @@ malloc_lib  :=
 everything: $(kv_lib) $(rdb_lib) $(h3_lib) $(dec_lib) $(md_lib) $(lc_lib) all
 
 clean_subs :=
+dlnk_dll_depend :=
+dlnk_lib_depend :=
 
 # build submodules if have them
 ifeq (yes,$(have_kv_submodule))
-$(kv_lib):
+$(kv_lib) $(kv_dll):
 	$(MAKE) -C raikv
 .PHONY: clean_kv
 clean_kv:
@@ -153,7 +175,7 @@ clean_kv:
 clean_subs += clean_kv
 endif
 ifeq (yes,$(have_lc_submodule))
-$(lc_lib):
+$(lc_lib) $(lc_dll):
 	$(MAKE) -C linecook
 .PHONY: clean_lc
 clean_lc:
@@ -161,7 +183,7 @@ clean_lc:
 clean_subs += clean_lc
 endif
 ifeq (yes,$(have_dec_submodule))
-$(dec_lib):
+$(dec_lib) $(dec_dll):
 	$(MAKE) -C raimd/libdecnumber
 .PHONY: clean_dec
 clean_dec:
@@ -169,7 +191,7 @@ clean_dec:
 clean_subs += clean_dec
 endif
 ifeq (yes,$(have_md_submodule))
-$(md_lib):
+$(md_lib) $(md_dll):
 	$(MAKE) -C raimd
 .PHONY: clean_md
 clean_md:
@@ -177,7 +199,7 @@ clean_md:
 clean_subs += clean_md
 endif
 ifeq (yes,$(have_h3_submodule))
-$(h3_lib):
+$(h3_lib) $(h3_dll):
 	$(MAKE) -C h3
 .PHONY: clean_h3
 clean_h3:
@@ -185,7 +207,7 @@ clean_h3:
 clean_subs += clean_h3
 endif
 ifeq (yes,$(have_rdb_submodule))
-$(rdb_lib):
+$(rdb_lib) $(rdb_dll):
 	$(MAKE) -C rdbparser
 .PHONY: clean_rdb
 clean_rdb:
@@ -233,7 +255,7 @@ libraids_spec  := $(version)-$(build_num)
 libraids_ver   := $(major_num).$(minor_num)
 
 $(libd)/libraids.a: $(libraids_objs)
-$(libd)/libraids.so: $(libraids_dbjs)
+$(libd)/libraids.so: $(libraids_dbjs) $(dlnk_dep)
 
 all_libs    += $(libd)/libraids.a $(libd)/libraids.so
 all_depends += $(libraids_deps)
@@ -262,7 +284,7 @@ ds_server_static_lnk := $(ds_lib) $(lnk_lib) -lpcre2-32 -lpcre2-8 -lcrypto -llzf
 ds_server_lnk        := $(raids_dlnk)
 
 $(bind)/ds_server: $(ds_server_objs) $(ds_server_libs)
-$(bind)/ds_server.static: $(ds_server_objs) $(ds_lib) $(lnk_lib)
+$(bind)/ds_server.static: $(ds_server_objs) $(ds_lib) $(lnk_dep)
 
 all_exes    += $(bind)/ds_server $(bind)/ds_server.static
 all_depends += $(ds_server_deps)
@@ -487,7 +509,7 @@ test_api_static_lnk := $(ds_lib) $(lnk_lib) -lpcre2-32 -lpcre2-8 -lcrypto -llzf
 test_api_lnk   := $(raids_dlnk)
 
 $(bind)/test_api: $(test_api_objs) $(test_api_libs)
-$(bind)/test_api.static: $(test_api_objs) $(ds_lib) $(lnk_lib)
+$(bind)/test_api.static: $(test_api_objs) $(ds_lib) $(lnk_dep)
 
 pubsub_api_files := pubsub_api
 pubsub_api_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(pubsub_api_files)))
@@ -497,7 +519,7 @@ pubsub_api_static_lnk := $(ds_lib) $(lnk_lib) -lpcre2-32 -lpcre2-8 -lcrypto -llz
 pubsub_api_lnk   := $(raids_dlnk)
 
 $(bind)/pubsub_api: $(pubsub_api_objs) $(pubsub_api_libs)
-$(bind)/pubsub_api.static: $(pubsub_api_objs) $(ds_lib) $(lnk_lib)
+$(bind)/pubsub_api.static: $(pubsub_api_objs) $(ds_lib) $(lnk_dep)
 
 all_exes    += $(bind)/client $(bind)/test_msg $(bind)/test_mcmsg \
                $(bind)/redis_cmd $(bind)/test_cmd $(bind)/test_list \
@@ -532,6 +554,10 @@ gen_files += include/raids/redis_cmd.h
 # the default targets
 .PHONY: all
 all: $(gen_files) $(all_libs) $(all_dlls) $(all_exes)
+
+.PHONE: rpm_depend
+rpm_depend:
+	sudo dnf -y install redhat-lsb openssl-devel pcre2-devel liblzf-devel hwloc-gui
 
 # create directories
 $(dependd):

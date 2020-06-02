@@ -3,6 +3,7 @@
 #include <string.h>
 #include <stdint.h>
 #include <unistd.h>
+#include <raikv/shm_ht.h>
 
 static const char *
 get_arg( int argc, char *argv[], int b, const char *f, const char *def )
@@ -22,7 +23,7 @@ main( int argc, char *argv[] )
   int           i;
 
   const char * pt = get_arg( argc, argv, 1, "-p", "8888" ),
-             * ma = get_arg( argc, argv, 1, "-m", "sysv2m:shm.test" ),
+             * ma = get_arg( argc, argv, 1, "-m", KV_DEFAULT_SHM ),
              * cm = get_arg( argc, argv, 1, "-c", NULL ),
              * he = get_arg( argc, argv, 0, "-h", 0 );
   if ( he != NULL || cm == NULL ) {
@@ -62,6 +63,7 @@ main( int argc, char *argv[] )
   ::setenv( "RAIDS_PORT", pt, 1 );
   ::setenv( "LD_PRELOAD", libshmdp, 1 );
   ::execvp( argv[ i ], &argv[ i ] );
+  ::perror( argv[ i ] );
 
   return 102;
 }

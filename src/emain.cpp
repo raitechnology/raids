@@ -38,7 +38,7 @@ main( int argc, char *argv[] )
   EvShm         shm;
   int           status = 0;
 
-  const char * mn = get_arg( argc, argv, 1, "-m", "sysv2m:shm.test" ),
+  const char * mn = get_arg( argc, argv, 1, "-m", KV_DEFAULT_SHM ),
              * pt = get_arg( argc, argv, 1, "-p", "7379" ),  /* redis */
              * mc = get_arg( argc, argv, 1, "-d", "21211" ), /* memcached */
              * sn = get_arg( argc, argv, 1, "-u", "/tmp/raids.sock" ),/* unix */
@@ -57,7 +57,7 @@ main( int argc, char *argv[] )
     printf( "%s"
 " [-m map] [-p redis] [-d memcd] [-u unix] [-w web] [-n nats] [-c capr]"
 " [-x mfd] [-f pre] [-b]\n" /*"[-s sin]\n"*/
-      "  map   = kv shm map name       (sysv2m:shm.test)\n"
+      "  map   = kv shm map name       (" KV_DEFAULT_SHM ")\n"
       "  redis = listen redis port     (7379)\n"
       "  memcd = listen memcached port (21211)\n"
       "  unix  = listen unix name      (/tmp/raids.sock)\n"
