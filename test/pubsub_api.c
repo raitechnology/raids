@@ -277,8 +277,7 @@ do_throughput( ds_t *h,  const char *subject,  int sub,  size_t nrequests )
     ds_subscribe_with_cb( h, &pub, throughput_cb, &cl );
     ds_release_mem( h );
     while ( ! was_signaled ) {
-      while ( ! was_signaled && ds_dispatch( h, 1 ) )
-        ;
+      ds_dispatch( h, 1 );
       if ( cl.i >= j + 100000 ) {
         t2 = kv_current_monotonic_time_s();
         if ( t2 - t1 >= 1.0 ) {
@@ -309,7 +308,7 @@ do_throughput( ds_t *h,  const char *subject,  int sub,  size_t nrequests )
       ctr++;
       i++;
       if ( i >= k + 256 ) {
-        ds_dispatch( h, 1 );
+        ds_dispatch( h, 0 );
         k = i;
       }
       if ( i >= j + 100000 ) {
@@ -323,7 +322,7 @@ do_throughput( ds_t *h,  const char *subject,  int sub,  size_t nrequests )
       if ( i > 0 && i == nrequests )
         break;
     }
-    while ( ! was_signaled && ds_dispatch( h, 1 ) )
+    while ( ! was_signaled && ds_dispatch( h, 0 ) )
       ;
     if ( i > j ) {
       t2 = kv_current_monotonic_time_s();

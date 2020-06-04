@@ -37,38 +37,40 @@ static const uint16_t KV_CTX_BYTES = KV_MAX_CTX_ID / 8;
   static_assert( 5 == sizeof( KvPrefHash ), "KvPrefHash" );
 #endif
 
-static inline char hdigit( uint8_t h ) {
-  if ( h < 10 )
-    return '0' + h;
-  return 'a' + ( h - 10 );
-}
-
 static const char   sys_mc[]  = "_SYS.MC",
                     sys_ibx[] = "_SYS.";
 static const size_t mc_name_size  = sizeof( sys_mc ),
                     ibx_name_size = sizeof( sys_ibx ) + 2;
 /* 8 byte inbox size is the limit for msg list with immediate key */
 
-static void
-make_ibx( char *ibname,  uint16_t ctx_id )
+/*static const char b64[] =
+ "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";*/
+
+static char
+b64( uint8_t n )
 {
+  if ( n <= 'Z' - 'A' )
+    return 'A' + n;
+  n -= ( 'Z' - 'A' ) + 1;
+  if ( n <= 'z' - 'a' )
+    return 'a' + n;
+  n -= ( 'z' - 'a' ) + 1;
+  if ( n <= '9' - '0' )
+    return '0' + n;
+  n -= ( '9' - '0' ) + 1;
+  return n == 0 ? '+' : '/';
+}
+
+static void
+make_ibx( char *ibname,  uint16_t ctx_id,  uint16_t ibx_num )
+{
+  uint32_t n = (uint32_t) ctx_id * KV_CTX_INBOX_COUNT + (uint32_t) ibx_num;
   ::strcpy( ibname, sys_ibx );
-  ibname[ ibx_name_size - 3 ] = hdigit( ( ctx_id >> 4 ) & 0xf );
-  ibname[ ibx_name_size - 2 ] = hdigit( ctx_id & 0xf );
+  ibname[ ibx_name_size - 3 ] = b64( ( n >> 6 ) & 63 );
+  ibname[ ibx_name_size - 2 ] = b64( n & 63 );
   ibname[ ibx_name_size - 1 ] = '\0';
 }
-#if 0
-static inline size_t
-make_dsunix_sockname( struct sockaddr_un &un,  uint32_t id )
-{
-  static const char path[] = "/tmp/dsXX.sock";
-  un.sun_family = AF_UNIX;
-  ::memcpy( un.sun_path, path, sizeof( path ) );
-  un.sun_path[ 7 ] = hdigit( ( id >> 4 ) & 0xf );
-  un.sun_path[ 8 ] = hdigit( id & 0xf );
-  return sizeof( path ) - 1 + offsetof( struct sockaddr_un, sun_path );
-}
-#endif
+
 const char *
 KvMsg::msg_type_string( uint8_t msg_type ) noexcept
 {
@@ -157,9 +159,10 @@ KvPubSub::create( EvPoll &poll,  uint8_t db_num ) noexcept
 {
   KvPubSub * ps;
   void     * p,
-           * ibptr,
-           * mcptr;
-  size_t     i, kvsz, mcsz, ibsz, n;
+           * mqptr,
+           * mcptr,
+           * ibptr;
+  size_t     i, kvsz, mcsz, mqsz, ibsz, n;
   char       ibname[ 12 ];
   sigset_t   mask;
   int        fd;
@@ -183,18 +186,35 @@ KvPubSub::create( EvPoll &poll,  uint8_t db_num ) noexcept
   }
   kvsz = align<size_t>( sizeof( KvPubSub ), 64 );
   mcsz = align<size_t>( sizeof( KvMcastKey ) + 8, 64 );
-  ibsz = align<size_t>( sizeof( KvMsgQueue ) + 8, 64 );
-  n    = kvsz + mcsz + ibsz * MAX_CTX_ID;
+  mqsz = align<size_t>( sizeof( KvMsgQueue ) + 8, 64 );
+  ibsz = align<size_t>( sizeof( KvInboxKey ) + 8, 64 );
+
+  n = kvsz + mcsz +
+      mqsz * ( MAX_CTX_ID - 1 ) + /* size of send queues (minus myself) */
+      ibsz * KV_CTX_INBOX_COUNT;     /* size of recv queues */
   if ( (p = aligned_malloc( n )) == NULL )
     return NULL;
   mcptr = (void *) &((uint8_t *) p)[ kvsz ];
-  ibptr = (void *) &((uint8_t *) mcptr)[ mcsz ];
+  mqptr = (void *) &((uint8_t *) mcptr)[ mcsz ];
+  ibptr = (void *) &((uint8_t *) mqptr)[ mqsz * ( MAX_CTX_ID - 1 ) ];
   ps = new ( p ) KvPubSub( poll, fd, mcptr, sys_mc, mc_name_size, dbx_id );
   /* for each ctx_id create queue */
   for ( i = 0; i < MAX_CTX_ID; i++ ) {
-    make_ibx( ibname, i );
-    ps->inbox[ i ] =
-      new ( ibptr ) KvMsgQueue( ps->kctx, ibname, ibx_name_size, i );
+    if ( poll.ctx_id != i ) {
+      uint16_t id = poll.ctx_id & ( KV_CTX_INBOX_COUNT - 1 );
+      make_ibx( ibname, i, id );
+      ps->snd_inbox[ i ] =
+        new ( mqptr ) KvMsgQueue( ps->kctx, ibname, ibx_name_size, i );
+      mqptr = &((uint8_t *) mqptr)[ mqsz ];
+    }
+    else {
+      ps->snd_inbox[ i ] = NULL;
+    }
+  }
+  for ( i = 0; i < KV_CTX_INBOX_COUNT; i++ ) {
+    make_ibx( ibname, poll.ctx_id, i );
+    ps->rcv_inbox[ i ] =
+      new ( ibptr ) KvInboxKey( ps->kctx, ibname, ibx_name_size );
     ibptr = &((uint8_t *) ibptr)[ ibsz ];
   }
   if ( ! ps->register_mcast() || poll.add_sock( ps ) < 0 ) {
@@ -211,14 +231,15 @@ KvPubSub::print_backlog( void ) noexcept
 {
   size_t i;
   for ( i = 0; i < MAX_CTX_ID; i++ ) {
-    KvMsgQueue & ibx = *this->inbox[ i ];
-    if ( ( ibx.pub_size | ibx.read_size ) != 0 ) {
-      printf( "[ %lu ] psize=%lu pcnt=%lu mcnt=%lu rsize=%lu "
-              "rcnt=%lu rmsg=%lu bsize=%lu bcnt=%lu sig=%lu high=%lu\n", i,
-              ibx.pub_size, ibx.pub_cnt, ibx.pub_msg,
-              ibx.read_size, ibx.read_cnt, ibx.read_msg,
-              ibx.backlog_size, ibx.backlog_cnt,
-              ibx.signal_cnt, ibx.high_water_size );
+    if ( this->snd_inbox[ i ] != NULL ) {
+      KvMsgQueue & ibx = *this->snd_inbox[ i ];
+      if ( ( ibx.pub_size | ibx.backlog_size ) != 0 ) {
+        printf( "[ %lu ] pub_size=%lu pub_cnt=%lu pub_msg=%lu "
+                "back_size=%lu back_cnt=%lu sig=%lu high=%lu\n", i,
+                ibx.pub_size, ibx.pub_cnt, ibx.pub_msg,
+                ibx.backlog_size, ibx.backlog_cnt,
+                ibx.signal_cnt, ibx.high_water_size );
+      }
     }
   }
 }
@@ -327,14 +348,16 @@ KvPubSub::clear_mcast_dead_routes( void ) noexcept
     size_t i;
     if ( this->dead_cr.first_set( i ) ) {
       do {
-        KvMsgQueue & ibx = *this->inbox[ i ];
-        this->kctx.set_key( ibx.kbuf );
-        this->kctx.set_hash( ibx.hash1, ibx.hash2 );
-        if ( (status = this->kctx.acquire( &this->wrk )) == KEY_OK ) {
-          fprintf( stderr, "drop kv inbox %lu\n", i );
-          this->kctx.tombstone();
+        if ( this->snd_inbox[ i ] != NULL ) {
+          KvMsgQueue & ibx = *this->snd_inbox[ i ];
+          this->kctx.set_key( ibx.kbuf );
+          this->kctx.set_hash( ibx.hash1, ibx.hash2 );
+          if ( (status = this->kctx.acquire( &this->wrk )) == KEY_OK ) {
+            fprintf( stderr, "drop kv inbox %lu\n", i );
+            this->kctx.tombstone();
+          }
+          this->kctx.release();
         }
-        this->kctx.release();
       } while ( this->dead_cr.next_set( i ) );
       this->dead_cr.zero();
     }
@@ -904,9 +927,12 @@ inline bool
 KvPubSub::send_msg( KvMsg &msg ) noexcept
 {
   KeyStatus status = KEY_OK;
-  KvMsgQueue & ibx = *this->inbox[ msg.dest_start ];
+  KvMsgQueue & ibx = *this->snd_inbox[ msg.dest_start ];
 
   if ( ibx.backlog.hd == NULL ) {
+  /*msg.print();
+  printf( "send_msg %.*s %lx %lx\n", (int) ibx.kbuf.keylen,
+           (char *) ibx.kbuf.u.buf, ibx.hash1, ibx.hash2 );*/
     this->kctx.set_key( ibx.kbuf );
     this->kctx.set_hash( ibx.hash1, ibx.hash2 );
     if ( (status = this->kctx.acquire( &this->wrk )) <= KEY_IS_NEW ) {
@@ -941,7 +967,7 @@ KvPubSub::send_vec( size_t cnt,  void **vec,  msg_size_t *siz,
                     size_t dest,  uint64_t vec_size ) noexcept
 {
   KeyStatus status = KEY_OK;
-  KvMsgQueue & ibx = *this->inbox[ dest ];
+  KvMsgQueue & ibx = *this->snd_inbox[ dest ];
 
   if ( ibx.backlog.hd == NULL ) {
     this->kctx.set_key( ibx.kbuf );
@@ -1106,7 +1132,7 @@ KvPubSub::notify_peers( CubeRoute128 &used ) noexcept
     /* notify each dest fd through poll() */
     if ( used.first_set( dest ) ) {
       do {
-        KvMsgQueue & ibx = *this->inbox[ dest ];
+        KvMsgQueue & ibx = *this->snd_inbox[ dest ];
         if ( ibx.need_signal ) {
           ibx.need_signal = false;
           uint32_t pid = this->poll.map->ctx[ dest ].ctx_pid;
@@ -1352,39 +1378,53 @@ KvPubSub::read( void ) noexcept
 size_t
 KvPubSub::read_inbox( bool read_until_empty ) noexcept
 {
-  static const size_t veclen = 4 * 1024;
-  void       * data[ veclen ];
-  msg_size_t   data_sz[ veclen ];
-  KvMsgQueue & ibx = *this->inbox[ this->ctx_id ];
-  size_t       count = 0, total = 0;
-  KeyStatus    status;
-
   /* guard against reentrant calls */
   if ( ( this->flags & KV_READ_INBOX ) != 0 ) {
     this->push( EV_READ_LO );
     return 0;
   }
   this->flags |= KV_READ_INBOX;
-  if ( this->ib_kctx.kbuf != &ibx.kbuf ) {
-    this->ib_kctx.set_key( ibx.kbuf );
-    this->ib_kctx.set_hash( ibx.hash1, ibx.hash2 );
-    if ( this->ib_kctx.acquire( &this->ib_wrk ) == KEY_IS_NEW ) {
+
+  size_t n = 0;
+  for ( size_t i = 0; i < KV_CTX_INBOX_COUNT; i++ )
+    n += this->read_inbox2( *this->rcv_inbox[ i ], read_until_empty );
+
+  this->inbox_msg_cnt += n;
+  this->flags &= ~KV_READ_INBOX;
+  return n;
+}
+
+size_t
+KvPubSub::read_inbox2( KvInboxKey &ibx,  bool read_until_empty ) noexcept
+{
+  static const size_t veclen = 4 * 1024;
+  void       * data[ veclen ];
+  msg_size_t   data_sz[ veclen ];
+  KeyStatus    status;
+  size_t       count = 0, total = 0;
+
+  if ( ibx.kbuf != &ibx.ibx_kbuf ) {
+    ibx.set_key( ibx.ibx_kbuf );
+    ibx.set_hash( ibx.hash1, ibx.hash2 );
+    if ( ibx.acquire( &this->ib_wrk ) == KEY_IS_NEW ) {
       uint8_t b = 0;
-      this->ib_kctx.append_msg( &b, 1, ibx.high_water_size );
+      ibx.append_msg( &b, 1, 0 );
     }
-    this->ib_kctx.release();
+    ibx.release();
   }
+  /*printf( "read_inbox %.*s %lx %lx\n", (int) ibx.ibx_kbuf.keylen,
+           (char *) ibx.ibx_kbuf.u.buf, ibx.hash1, ibx.hash2 );*/
   for (;;) {
     bool retry = false;
     if ( ibx.ibx_pos == 0 ) {
-      status = this->ib_kctx.find( &this->ib_wrk );
+      status = ibx.find( &this->ib_wrk );
     }
     else {
       if ( ! read_until_empty ) {
-        if ( this->ib_kctx.if_value_equals( ibx.ibx_pos, ibx.ibx_value_ctr ) )
+        if ( ibx.if_value_equals( ibx.ibx_pos, ibx.ibx_value_ctr ) )
           break;
       }
-      status = this->ib_kctx.fetch( &this->ib_wrk, ibx.ibx_pos );
+      status = ibx.fetch( &this->ib_wrk, ibx.ibx_pos );
     }
 
     if ( status == KEY_OK ) {
@@ -1392,8 +1432,8 @@ KvPubSub::read_inbox( bool read_until_empty ) noexcept
         size_t   j;
         uint64_t seqno  = ibx.ibx_seqno,
                  seqno2 = seqno + veclen;
-        if ( (status = this->ib_kctx.msg_value( seqno, seqno2, data,
-                                                data_sz )) != KEY_OK ) {
+        if ( (status = ibx.msg_value( seqno, seqno2, data,
+                                      data_sz )) != KEY_OK ) {
           if ( status == KEY_MUTATED )
             retry = true;
           break;
@@ -1407,31 +1447,14 @@ KvPubSub::read_inbox( bool read_until_empty ) noexcept
             KvMsg &msg = *(KvMsg *) data[ i ];
             ibx.read_size += data_sz[ i ];
             if ( msg.is_valid( data_sz[ i ] ) ) {
+#if 0
               /* check these, make sure messages are in order ?? */
-              this->inbox[ msg.src ]->src_session_id = msg.session_id();
-              this->inbox[ msg.src ]->src_seqno      = msg.seqno();
+              this->snd_inbox[ msg.src ]->src_session_id = msg.session_id();
+              this->snd_inbox[ msg.src ]->src_seqno      = msg.seqno();
+#endif
               this->route_msg_from_shm( msg );
             }
           }
-#if 0
-          else {
-            printf( "bad (%lu) %u start=%lu seqno=%lu seqno2=%lu sess=%lx\n",
-                    i, data_sz[ i ], start, seqno, seqno2, this->session_id );
-            printf( "&data[ i ] %lx data[ i ] %lx\n", (long) (void *) &data[ i ],
-                    (long) (void *) data[ i ] );
-            dump_hex( data[ i ], 256 );
-            size_t k = 0;
-            while ( i > 0 ) {
-              i -= 1;
-            printf( "&data[ i ] %lx data[ i ] %lx\n", (long) (void *) &data[ i ],
-                    (long) (void *) data[ i ] );
-              dump_hex( data[ i ], 256 );
-              if ( ++k == 3 )
-                break;
-            }
-            assert( 0 );
-          }
-#endif
         }
         count += j;
         if ( j != veclen ) { /* didn't fill entire array, find() again */
@@ -1449,22 +1472,20 @@ KvPubSub::read_inbox( bool read_until_empty ) noexcept
     }
     /* remove msgs consumed */
     if ( count > total ) {
-      if ( this->ib_kctx.acquire( &this->ib_wrk ) <= KEY_IS_NEW ) {
-        this->ib_kctx.trim_msg( ibx.ibx_seqno );
+      if ( ibx.acquire( &this->ib_wrk ) <= KEY_IS_NEW ) {
+        ibx.trim_msg( ibx.ibx_seqno );
 
-        if ( this->ib_kctx.entry->test( FL_IMMEDIATE_VALUE ) != 0 )
-          this->ib_kctx.get_pos_value_ctr( ibx.ibx_pos, ibx.ibx_value_ctr );
+        if ( ibx.entry->test( FL_IMMEDIATE_VALUE ) != 0 )
+          ibx.get_pos_value_ctr( ibx.ibx_pos, ibx.ibx_value_ctr );
         else
           retry = true;
-        this->ib_kctx.release();
+        ibx.release();
       }
       total = count;
     }
     if ( ! retry || ! read_until_empty )
       break;
   }
-  this->flags &= ~KV_READ_INBOX;
-  this->inbox_msg_cnt += total;
   return total;
 }
 

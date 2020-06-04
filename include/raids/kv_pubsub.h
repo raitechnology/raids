@@ -14,6 +14,8 @@ namespace ds {
 struct EvPublish;
 struct RouteDB;
 
+static const uint32_t KV_CTX_INBOX_COUNT = 4;
+
 struct KvBacklog {
   KvBacklog      * next, * back;
   size_t           cnt;
@@ -41,42 +43,57 @@ struct KvMcastKey {
   }
 };
 
-struct KvMsgQueue {
-  KvMsgQueue    * next, * back;     /* links when have backlog msgs */
-  kv::ValueCtr    ibx_value_ctr;    /* the value serial ctr, track change */
-  uint64_t        ibx_pos,          /* hash position of the inbox */
-                  hash1,            /* hash of inbox name */
+struct KvInboxKey : public kv::KeyCtx {
+  uint64_t        hash1,            /* hash of inbox name */
                   hash2,
-                  src_session_id,   /* src session id */
-                  ibx_seqno,        /* recv msg list seqno, out-lives session */
-                  src_seqno,        /* src sender seqno */
-                  high_water_size,  /* current high water send size */
-                  pub_size,         /* total size sent */
-                  pub_cnt,          /* total msg vectors sent */
-                  pub_msg,          /* total msgs sent */
-                  read_cnt,         /* total msg vectors read */
-                  read_msg,         /* total msgs read */
-                  read_size,        /* total size read */
-                  backlog_size,     /* size of messages in backlog */
-                  backlog_cnt,      /* count of messages in backlog */
-                  backlog_progress, /* if backlog cleared some msgs */
-                  signal_cnt;       /* number of signals sent */
-  uint32_t        ibx_hot;
-  uint16_t        ibx_num;
-  bool            need_signal;      /* need to kill() recver to wake them */
+                  ibx_pos,
+                  ibx_seqno,
+                  read_cnt,
+                  read_msg,
+                  read_size;
+  kv::ValueCtr    ibx_value_ctr;    /* the value serial ctr, track change */
+  kv::KeyFragment ibx_kbuf;         /* the inbox name (_SYS.XX) XX=ctx_id hex */
+
+  KvInboxKey( kv::KeyCtx &kctx,  const char *name,  uint16_t namelen )
+    : kv::KeyCtx( kctx ), hash1( 0 ), hash2( 0 ),
+      ibx_pos( 0 ), ibx_seqno( 0 ), read_cnt( 0 ), read_msg( 0 ),
+      read_size( 0 ) {
+    this->ibx_value_ctr.zero();
+    this->ibx_kbuf.keylen = namelen;
+    ::memcpy( this->ibx_kbuf.u.buf, name, namelen );
+    kv::HashSeed hs;
+    kctx.ht.hdr.get_hash_seed( kctx.db_num, hs );
+    hs.hash( this->ibx_kbuf, this->hash1, this->hash2 );
+  }
+};
+
+struct KvMsgQueue {
+  KvMsgQueue * next, * back;     /* links when have backlog msgs */
+  uint64_t     hash1,            /* hash of inbox name */
+               hash2,
+               high_water_size,  /* current high water send size */
+               src_session_id,   /* src session id */
+               src_seqno,        /* src sender seqno */
+               pub_size,         /* total size sent */
+               pub_cnt,          /* total msg vectors sent */
+               pub_msg,          /* total msgs sent */
+               backlog_size,     /* size of messages in backlog */
+               backlog_cnt,      /* count of messages in backlog */
+               backlog_progress, /* if backlog cleared some msgs */
+               signal_cnt;       /* number of signals sent */
+  uint32_t     ibx_num;
+  bool         need_signal;      /* need to kill() recver to wake them */
   kv::DLinkList<KvBacklog> backlog; /* backlog for this queue */
   kv::WorkAllocT< 4096 > tmp;       /* msg queue mem when overflow */
   kv::KeyFragment kbuf;             /* the inbox name (_SYS.XX) XX=ctx_id hex */
   
   void * operator new( size_t, void *ptr ) { return ptr; }
   KvMsgQueue( kv::KeyCtx &kctx,  const char *name,  uint16_t namelen,
-              uint16_t n )
-    : next( 0 ), back( 0 ), ibx_pos( 0 ), src_session_id( 0 ), ibx_seqno( 0 ),
-      src_seqno( 0 ), high_water_size( 128 * 1024 ), pub_size( 0 ),
-      pub_cnt( 0 ), pub_msg( 0 ), read_cnt( 0 ), read_msg( 0 ), read_size( 0 ),
-      backlog_size( 0 ), backlog_cnt( 0 ), signal_cnt( 0 ),
-      ibx_hot( 0 ), ibx_num( n ), need_signal( true ) {
-    this->ibx_value_ctr.zero();
+              uint32_t n )
+    : next( 0 ), back( 0 ), high_water_size( 128 * 1024 ),
+      src_session_id( 0 ), src_seqno( 0 ), pub_size( 0 ),
+      pub_cnt( 0 ), pub_msg( 0 ), backlog_size( 0 ), backlog_cnt( 0 ),
+      signal_cnt( 0 ), ibx_num( n ), need_signal( true ) {
     this->kbuf.keylen = namelen;
     ::memcpy( this->kbuf.u.buf, name, namelen );
     kv::HashSeed hs;
@@ -323,22 +340,22 @@ struct KvPubSub : public EvSocket {
 
   KvSubTab     sub_tab;                /* subject route table to shm */
   kv::KeyCtx   kctx,                   /* a kv context for send/recv msgs */
-               rt_kctx,                /* a kv context for route lookup */
-               ib_kctx;                /* a kv context for inbox read/write */
+               rt_kctx;                /* a kv context for route lookup */
 
   EvSocketOps  ops;
   CubeRoute128 dead_cr;                /* clean up old route inboxes */
 
-  KvMsgQueue * inbox[ KV_MAX_CTX_ID ]; /* _SYS.IBX.xx : inbox of each context */
+  KvInboxKey * rcv_inbox[ KV_CTX_INBOX_COUNT ];
+  KvMsgQueue * snd_inbox[ KV_MAX_CTX_ID ]; /* _SYS.IBX.xx : ctx send queues */
   KvMcastKey & mcast;                  /* _SYS.MC : ctx_ids to shm network */
 
   kv::DLinkList<KvMsgList>       sendq;       /* sendq is to the network */
   kv::DLinkList<KvSubNotifyList> sub_notifyq; /* notify for subscribes */
   kv::DLinkList<KvMsgQueue>      backlogq;    /* ibx which have pending sends */
 
-  kv::WorkAllocT< 4096 > ib_wrk,     /* wrk for ib_kctx */ 
-                         wrk,        /* wrk for kctx */
-                         rt_wrk,     /* wrk for rt_kctx kv */
+  kv::WorkAllocT< 256 >  rt_wrk,     /* wrk for rt_kctx kv */
+                         wrk;        /* wrk for kctx, send, mcast */
+  kv::WorkAllocT< 8192 > ib_wrk,     /* wrk for inbox recv */ 
                          wrkq;       /* for pending sends to shm */
 
   void * operator new( size_t, void *ptr ) { return ptr; }
@@ -353,14 +370,14 @@ struct KvPubSub : public EvSocket {
         sigusr_recv_cnt( 0 ), inbox_msg_cnt( 0 ), mc_pos( 0 ), mc_cnt( 0 ),
         kctx( *p.map, xid ),
         rt_kctx( *p.map, xid ),
-        ib_kctx( *p.map, xid ),
         mcast( *(new ( mcptr ) KvMcastKey( this->kctx, mc, mclen )) ) {
     this->mc_value_ctr.zero();
     this->mc_cr.zero();
     this->mc_range.w = 0;
     ::memset( (void *) this->rte_cache, 0, sizeof( this->rte_cache ) );
     this->dead_cr.zero();
-    ::memset( this->inbox, 0, sizeof( this->inbox ) );
+    ::memset( this->rcv_inbox, 0, sizeof( this->rcv_inbox ) );
+    ::memset( this->snd_inbox, 0, sizeof( this->snd_inbox ) );
     this->PeerData::init_peer( sock, NULL, "kv" );
     this->session_id = p.map->ctx[ p.ctx_id ].rng.next();
     this->kctx.ht.hdr.get_hash_seed( this->kctx.db_num, this->hs );
@@ -421,6 +438,7 @@ struct KvPubSub : public EvSocket {
   void route_msg_from_shm( KvMsg &msg ) noexcept;
   void read( void ) noexcept;
   size_t read_inbox( bool read_until_empty ) noexcept;
+  size_t read_inbox2( KvInboxKey &ibx,  bool read_until_empty ) noexcept;
   bool on_msg( EvPublish &pub ) noexcept;
   void publish_status( KvMsgType mtype ) noexcept;
   bool hash_to_sub( uint32_t h,  char *key,  size_t &keylen ) noexcept;
