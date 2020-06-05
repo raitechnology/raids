@@ -14,7 +14,7 @@ namespace ds {
 struct EvPublish;
 struct RouteDB;
 
-static const uint32_t KV_CTX_INBOX_COUNT = 4;
+static const uint32_t KV_CTX_INBOX_COUNT = 16;
 
 struct KvBacklog {
   KvBacklog      * next, * back;
