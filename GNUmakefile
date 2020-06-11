@@ -62,12 +62,13 @@ math_lib    := -lm
 thread_lib  := -pthread -lrt
 
 # test submodules exist (they don't exist for dist_rpm, dist_dpkg targets)
-have_lc_submodule  := $(shell if [ -d ./linecook ]; then echo yes; else echo no; fi )
-have_md_submodule  := $(shell if [ -d ./raimd ]; then echo yes; else echo no; fi )
-have_dec_submodule := $(shell if [ -d ./raimd/libdecnumber ]; then echo yes; else echo no; fi )
-have_kv_submodule  := $(shell if [ -d ./raikv ]; then echo yes; else echo no; fi )
-have_h3_submodule  := $(shell if [ -d ./h3 ]; then echo yes; else echo no; fi )
-have_rdb_submodule := $(shell if [ -d ./rdbparser ]; then echo yes; else echo no; fi )
+have_lc_submodule    := $(shell if [ -d ./linecook ]; then echo yes; else echo no; fi )
+have_md_submodule    := $(shell if [ -d ./raimd ]; then echo yes; else echo no; fi )
+have_dec_submodule   := $(shell if [ -d ./raimd/libdecnumber ]; then echo yes; else echo no; fi )
+have_kv_submodule    := $(shell if [ -d ./raikv ]; then echo yes; else echo no; fi )
+have_h3_submodule    := $(shell if [ -d ./h3 ]; then echo yes; else echo no; fi )
+have_rdb_submodule   := $(shell if [ -d ./rdbparser ]; then echo yes; else echo no; fi )
+have_aeron_submodule := $(shell if [ -d ./aeron ]; then echo yes; else echo no; fi )
 
 lnk_lib     :=
 dlnk_lib    :=
@@ -141,8 +142,8 @@ dlnk_lib    += -ldecnumber
 endif
 
 ifeq (yes,$(have_rdb_submodule))
-rdb_lib      := rdbparser/$(libd)/librdbparser.a
-rdb_dll      := rdbparser/$(libd)/librdbparser.so
+rdb_lib     := rdbparser/$(libd)/librdbparser.a
+rdb_dll     := rdbparser/$(libd)/librdbparser.so
 lnk_lib     += $(rdb_lib)
 lnk_dep     += $(rdb_lib)
 dlnk_lib    += -Lrdbparser/$(libd) -lrdbparser
@@ -153,8 +154,23 @@ lnk_lib     += -lrdbparser
 dlnk_lib    += -lrdbparser
 endif
 
+ifeq (yes,$(have_aeron_submodule))
+aeron_lib     := aeron/$(libd)/libaeron_static.a
+aeron_dll     := aeron/$(libd)/libaeron.so
+aeron_include := -Iaeron/aeron-client/src/main/c
+lnk_lib       += $(aeron_lib)
+lnk_dep       += $(aeron_lib)
+dlnk_lib      += -Laeron/$(libd) -laeron
+dlnk_dep      += $(aeron_dll)
+rpath7         = ,-rpath,$(pwd)/aeron/$(libd)
+else
+lnk_lib       += -laeron
+dlnk_lib      += -laeron
+aeron_include := -I/usr/include/aeron
+endif
+
 ds_lib      := $(libd)/libraids.a
-rpath       := -Wl,-rpath,$(pwd)/$(libd)$(rpath1)$(rpath2)$(rpath3)$(rpath4)$(rpath5)$(rpath6)
+rpath       := -Wl,-rpath,$(pwd)/$(libd)$(rpath1)$(rpath2)$(rpath3)$(rpath4)$(rpath5)$(rpath6)$(rpath7)
 dlnk_lib    += -lpcre2-8 -lcrypto
 malloc_lib  :=
 
@@ -213,6 +229,14 @@ $(rdb_lib) $(rdb_dll):
 clean_rdb:
 	$(MAKE) -C rdbparser clean
 clean_subs += clean_rdb
+endif
+ifeq (yes,$(have_aeron_submodule))
+$(aeron_lib) $(aeron_dll):
+	$(MAKE) -C aeron
+.PHONY: clean_aeron
+clean_aeron:
+	$(MAKE) -C aeron clean
+clean_subs += clean_aeron
 endif
 
 # copr/fedora build (with version env vars)

@@ -13,3 +13,7 @@
 [submodule "rdbparser"]
 	path = rdbparser
 	url = https://github.com/injinj/rdbparser.git
+[submodule "aeron"]
+	path = aeron
+	url = https://github.com/raitechnology/aeron
+	branch = rai
