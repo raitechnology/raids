@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <assert.h>
+#include <time.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <sys/signal.h>
@@ -19,6 +20,7 @@
 #include <raimd/md_types.h>
 #include <raimd/hex_dump.h>
 
+static bool kv_use_pipes = true;
 /* signal other processes that a message available */
 static const int kv_msg_signal = SIGUSR2;
 static const uint64_t kv_timer_ival_ms  = 250; /* 4 times a second */
@@ -31,6 +33,7 @@ using namespace kv;
 using namespace ds;
 using namespace md;
 
+static const uint32_t MAX_KV_MSG_SIZE = PipeBuf::CAPACITY / 32 - 512;
 static const uint16_t KV_CTX_BYTES = KV_MAX_CTX_ID / 8;
 #if __cplusplus > 201103L
   static_assert( KV_MAX_CTX_ID == sizeof( CubeRoute128 ) * 8, "CubeRoute128" );
@@ -75,14 +78,14 @@ const char *
 KvMsg::msg_type_string( uint8_t msg_type ) noexcept
 {
   switch ( (KvMsgType) msg_type ) {
-    case KV_MSG_HELLO:   return "hello";
-    case KV_MSG_BYE:     return "bye";
-    case KV_MSG_STATUS:  return "status";
-    case KV_MSG_SUB:     return "sub";
-    case KV_MSG_UNSUB:   return "unsub";
-    case KV_MSG_PSUB:    return "psub";
-    case KV_MSG_PUNSUB:  return "punsub";
-    case KV_MSG_PUBLISH: return "publish";
+    case KV_MSG_HELLO:    return "hello";
+    case KV_MSG_BYE:      return "bye";
+    case KV_MSG_SUB:      return "sub";
+    case KV_MSG_UNSUB:    return "unsub";
+    case KV_MSG_PSUB:     return "psub";
+    case KV_MSG_PUNSUB:   return "punsub";
+    case KV_MSG_PUBLISH:  return "publish";
+    case KV_MSG_FRAGMENT: return "fragment";
   }
   return "unknown";
 }
@@ -94,7 +97,7 @@ KvMsg::msg_type_string( void ) const noexcept
 }
 
 static void
-dump_hex( void *ptr,  uint64_t size )
+dump_hex( const void *ptr,  uint64_t size )
 {
   MDHexDump hex;
   for ( uint64_t off = 0; off < size; ) {
@@ -108,19 +111,18 @@ dump_hex( void *ptr,  uint64_t size )
 void
 KvMsg::print( void ) noexcept
 {
-  printf( "\r\nsession_id : %lx\r\n"
-          "seqno      : %lu\r\n"
+  printf( "\r\nseqno      : %lu\r\n"
           "size       : %u\r\n"
           "src        : %u\r\n"
           "dest_start : %u\r\n"
           "dest_end   : %u\r\n"
           "msg_type   : %s\r\n",
-    this->session_id(), this->seqno(), this->size, this->src, this->dest_start,
+    this->get_seqno(), this->size, this->src, this->dest_start,
     this->dest_end, msg_type_string( (KvMsgType) this->msg_type ) );
 
-  if ( this->msg_type >= KV_MSG_SUB && this->msg_type <= KV_MSG_PUBLISH ) {
+  if ( this->msg_type >= KV_MSG_SUB && this->msg_type <= KV_MSG_FRAGMENT ) {
     KvSubMsg &sub = (KvSubMsg &) *this;
-    uint8_t prefix_cnt = sub.prefix_cnt();
+    uint8_t prefix_cnt = sub.get_prefix_cnt();
     printf( "hash       : %x\r\n"
             "msg_size   : %u\r\n"
             "sublen     : %u\r\n"
@@ -136,9 +138,15 @@ KvMsg::print( void ) noexcept
         printf( "pf[ %u ] : %u, %x\r\n", i, pf.pref, pf.get_hash() );
       }
     }
-    if ( this->msg_type >= KV_MSG_PUBLISH ) {
-      printf( "msg_data() : %.*s\r\n", sub.msg_size, (char *) sub.msg_data() );
+    if ( this->msg_type == KV_MSG_FRAGMENT ) {
+      printf( "msg_off    : %lu\r\n", sub.get_frag_off() );
     }
+#if 0
+    if ( this->msg_type >= KV_MSG_PUBLISH ) {
+      printf( "msg_data() : %.*s\r\n", sub.msg_size,
+                                       (char *) sub.get_msg_data() );
+    }
+#endif
   }
   dump_hex( this, this->size );
 }
@@ -146,7 +154,7 @@ KvMsg::print( void ) noexcept
 void
 KvMsg::print_sub( void ) noexcept
 {
-  if ( this->msg_type >= KV_MSG_SUB && this->msg_type <= KV_MSG_PUBLISH ) {
+  if ( this->msg_type >= KV_MSG_SUB && this->msg_type <= KV_MSG_FRAGMENT) {
     KvSubMsg &sub = (KvSubMsg &) *this;
     printf( "ctx(%u) %s %s\n", this->src,
                                msg_type_string( (KvMsgType) this->msg_type ),
@@ -273,12 +281,23 @@ KvPubSub::timer_expire( uint64_t tid,  uint64_t ) noexcept
 }
 
 bool
-KvPubSub::register_mcast( void ) noexcept
+KvPubSub::is_dead( uint32_t id ) const noexcept
+{
+  /* check that this route is valid by pinging the pid */
+  uint32_t pid = this->kctx.ht.ctx[ id ].ctx_pid;
+  return ( pid == 0 ||
+           this->kctx.ht.ctx[ id ].ctx_id == KV_NO_CTX_ID ||
+           ::kill( pid, 0 ) != 0 );
+}
+
+bool
+KvPubSub::get_mcast( CubeRoute128 &result_cr ) noexcept
 {
   void    * val;
   KeyStatus status;
   bool      res = false;
 
+  result_cr.zero();
   this->dead_cr.zero();
   this->kctx.set_key( this->mcast.kbuf );
   this->kctx.set_hash( this->mcast.hash1, this->mcast.hash2 );
@@ -287,26 +306,27 @@ KvPubSub::register_mcast( void ) noexcept
     bool is_new = ( status == KEY_IS_NEW );
     if ( (status = this->kctx.resize( &val, KV_CTX_BYTES, true )) == KEY_OK ) {
       CubeRoute128 &cr = *(CubeRoute128 *) val;
-      if ( is_new )
+      if ( is_new ) {
         cr.zero();
+      }
       else {
-        for ( uint32_t id = 1; id < MAX_CTX_ID; id++ ) {
-          if ( this->ctx_id == id )
-            continue;
-          /* check that this route is valid by pinging the pid */
-          if ( cr.is_set( id ) ) {
-            uint32_t pid = this->kctx.ht.ctx[ id ].ctx_pid;
-            if ( pid == 0 ||
-                 this->kctx.ht.ctx[ id ].ctx_id == KV_NO_CTX_ID ||
-                 ::kill( pid, 0 ) != 0 ) {
+        size_t id;
+        if ( cr.first_set( id ) ) {
+          do {
+            if ( this->ctx_id == id )
+              continue;
+            if ( this->is_dead( id ) ) {
               this->dead_cr.set( id );
-              fprintf( stderr, "ctx %u pid %u is dead\n", id, pid );
+              fprintf( stderr, "ctx %lu pid %u is dead\n", id,
+                       this->kctx.ht.ctx[ id ].ctx_pid );
             }
-          }
+            else {
+              result_cr.set( id );
+            }
+          } while ( cr.next_set( id ) );
         }
       }
       cr.set( this->ctx_id );
-      this->create_kvmsg( KV_MSG_HELLO, sizeof( KvMsg ) );
       res = true;
     }
     this->kctx.release();
@@ -314,6 +334,103 @@ KvPubSub::register_mcast( void ) noexcept
   if ( ! res ) {
     fprintf( stderr, "Unable to register mcast, kv status %d\n",
              (int) status );
+  }
+  return res;
+}
+
+bool
+KvPubSub::register_mcast( void ) noexcept
+{
+  CubeRoute128 test_cr, result_cr, conn_cr, bad_cr;
+  size_t id;
+  bool res;
+
+  conn_cr.zero(); /* try to connect to every other instance */
+  bad_cr.zero();
+  /* timer for timing out connection */
+  for ( useconds_t t = 50; ; t *= 10 ) {
+    if ( ! this->get_mcast( result_cr ) ) { /* the instances */
+      res = false;
+      break;
+    }
+    test_cr.copy_from( &conn_cr );
+    test_cr.or_bits( bad_cr );
+    test_cr.and_bits( result_cr );
+    /* if result == ( connected | bad ) */
+    if ( result_cr.equals( test_cr ) ) {
+      res = true;
+      break;
+    }
+    test_cr.zero();
+    if ( result_cr.first_set( id ) ) {
+      do {
+        if ( ! bad_cr.is_set( id ) ) {
+          /* try to make the pipe */
+          if ( this->make_rcv_pipe( id ) && this->make_snd_pipe( id ) ) {
+            conn_cr.set( id );
+            this->pipe_cr.set( id );
+          }
+          else {
+            test_cr.set( id );
+          }
+        }
+      } while ( result_cr.next_set( id ) );
+    }
+    if ( test_cr.first_set( id ) ) {
+      do {
+        KvMsgQueue & ibx = *this->snd_inbox[ id ];
+        KvMsg msg;
+        msg.set_seqno( 0 );
+        msg.size       = sizeof( KvMsg );
+        msg.src        = this->ctx_id;
+        msg.dest_start = id;
+        msg.dest_end   = id;
+        msg.msg_type   = KV_MSG_HELLO;
+        if ( ! this->send_kv_msg( ibx, msg, false ) )
+          bad_cr.set( id );
+        else {
+          uint32_t pid = this->poll.map->ctx[ id ].ctx_pid;
+          uint16_t fl  = this->poll.map->ctx[ id ].ctx_flags;
+          if ( pid > 0 && ( fl & KV_NO_SIGUSR ) == 0 ) {
+            if ( ::kill( pid, kv_msg_signal ) != 0 ) {
+              ::perror( "kill notify msg" );
+              bad_cr.set( id );
+            }
+            else {
+              ibx.signal_cnt++;
+            }
+          }
+        }
+      } while ( test_cr.next_set( id ) );
+    }
+    static const useconds_t MAX_PIPE_CONNECT_TIME_USECS =
+      (useconds_t) 1000000 * (useconds_t) 10;
+    size_t i = 0;
+    if ( test_cr.first_set( id ) ) {
+      do {
+        if ( t >= MAX_PIPE_CONNECT_TIME_USECS ) {
+          uint32_t pid = this->poll.map->ctx[ id ].ctx_pid;
+          fprintf( stderr, "giving up connecting pipe to ctx %lu pid %u "
+                           "(time %u secs)\n",
+                   id, pid, t / 1000000 );
+          bad_cr.set( id );
+        }
+        else {
+          if ( i++ == 0 ) /* just usleep once per iter */
+            ::usleep( t );
+          if ( this->make_snd_pipe( id ) ) {
+            test_cr.clear( id );
+            conn_cr.set( id );
+            this->pipe_cr.set( id );
+          }
+        }
+      } while ( test_cr.next_set( id ) );
+    }
+  }
+  if ( bad_cr.first_set( id ) ) {
+    do {
+      this->close_rcv_pipe( id );
+    } while ( bad_cr.next_set( id ) );
   }
   return res;
 }
@@ -413,7 +530,7 @@ KvPubSub::update_mcast_sub( const char *sub,  size_t len,  int flags ) noexcept
 
   if ( kbuf.copy( sub, len + 1 ) != len + 1 ) {
     size_t sz = sizeof( KeyFragment ) + len;
-    kb = (KeyFragment *) this->wrkq.alloc( sz );
+    kb = (KeyFragment *) this->snd_wrk.alloc( sz );
     ::memcpy( kb->u.buf, sub, len );
   }
   kb->u.buf[ len ] = '\0';
@@ -484,13 +601,14 @@ KvPubSub::update_mcast_sub( const char *sub,  size_t len,  int flags ) noexcept
 KvMsg *
 KvPubSub::create_kvmsg( KvMsgType mtype,  size_t sz ) noexcept
 {
+  if ( sz > MAX_KV_MSG_SIZE )
+    return NULL;
   KvMsgList * l = (KvMsgList *)
-         this->wrkq.alloc( align<size_t>( sizeof( KvMsgList ) + sz, 8 ) );
+         this->snd_wrk.alloc( align<size_t>( sizeof( KvMsgList ) + sz, 8 ) );
   KvMsg   & msg = l->msg;
 
   l->init_route();
-  msg.set_session_id( this->session_id );
-  msg.set_seqno( this->next_seqno++ );
+  msg.set_seqno( ++this->next_seqno );
   msg.size       = sz;
   msg.src        = this->ctx_id;
   msg.dest_start = 0;
@@ -502,76 +620,117 @@ KvPubSub::create_kvmsg( KvMsgType mtype,  size_t sz ) noexcept
   return &msg;
 }
 
-KvSubMsg *
-KvPubSub::create_kvpublish( uint32_t h,  const char *sub,  size_t len,
+void
+KvPubSub::create_kvpublish( uint32_t h,  const char *sub,  size_t sublen,
                             const uint8_t *pref,  const uint32_t *hash,
                             uint8_t pref_cnt,  const char *reply,  size_t rlen,
                             const void *msgdata,  size_t msgsz,
-                            char src_type,  KvMsgType mtype,
                             uint8_t code,  uint8_t msg_enc ) noexcept
 {
+  size_t hsz = KvSubMsg::hdr_size( sublen, rlen, pref_cnt ),
+         asz = kv::align<size_t>( msgsz, sizeof( uint32_t ) ),
+         fsz, off, left, frag_msgsz, afrag;
   KvSubMsg * msg;
-  size_t     sz = KvSubMsg::calc_size( len, rlen, msgsz, pref_cnt );
-  msg = (KvSubMsg *) this->create_kvmsg( mtype, sz );
+  uint8_t i;
+
+  if ( hsz + asz > MAX_KV_MSG_SIZE ) {
+    if ( hsz >= MAX_KV_MSG_SIZE ) /* shouldn't be this big */
+      return;
+    const uint8_t * fragdata = &((const uint8_t *) msgdata)[ msgsz ];
+    asz = MAX_KV_MSG_SIZE - hsz;
+    fsz = KvSubMsg::frag_hdr_size( sublen, pref_cnt );
+    off = msgsz;
+    /* split off fragments under the msg size limit */
+    for ( left = msgsz - asz; left > 0; left -= frag_msgsz ) {
+      static const size_t MAX_FRAG_SIZE = MAX_KV_MSG_SIZE - sizeof( uint64_t );
+      frag_msgsz = left;
+      afrag = kv::align<size_t>( left, sizeof( uint32_t ) );
+      if ( afrag + fsz > MAX_FRAG_SIZE ) {
+        frag_msgsz = MAX_FRAG_SIZE - fsz;
+        afrag = frag_msgsz;
+      }
+      msg = (KvSubMsg *)
+        this->create_kvmsg( KV_MSG_FRAGMENT, fsz + afrag + sizeof( uint64_t ) );
+      msg->hash    = h;
+      msg->code    = code;
+      msg->msg_enc = msg_enc;
+      msg->set_subject( sub, sublen );
+      msg->set_reply( NULL, 0 );
+      msg->set_src_type( 'K' );
+      msg->set_prefix_cnt( pref_cnt );
+      for ( i = 0; i < pref_cnt; i++ ) {
+        KvPrefHash &pf = msg->prefix_hash( i );
+        pf.pref = pref[ i ];
+        pf.set_hash( hash[ i ] );
+      }
+      fragdata = &fragdata[ -frag_msgsz ];
+      off     -= frag_msgsz;
+      msg->set_frag_data( fragdata, frag_msgsz, off );
+    }
+    msgsz = asz;
+  }
+  /* the final frag or only frag will have a subject */
+  msg = (KvSubMsg *) this->create_kvmsg( KV_MSG_PUBLISH, hsz + asz );
   msg->hash    = h;
   msg->code    = code;
   msg->msg_enc = msg_enc;
-  msg->set_subject( sub, len );
+  msg->set_subject( sub, sublen );
   msg->set_reply( reply, rlen );
-  msg->set_src_type( src_type );
+  msg->set_src_type( 'K' );
   msg->set_prefix_cnt( pref_cnt );
-  for ( uint8_t i = 0; i < pref_cnt; i++ ) {
+  for ( i = 0; i < pref_cnt; i++ ) {
     KvPrefHash &pf = msg->prefix_hash( i );
     pf.pref = pref[ i ];
     pf.set_hash( hash[ i ] );
   }
   msg->set_msg_data( msgdata, msgsz );
-  return msg;
 }
 
 KvSubMsg *
-KvPubSub::create_kvsubmsg( uint32_t h,  const char *sub,  size_t len,
+KvPubSub::create_kvsubmsg( uint32_t h,  const char *sub,  size_t sublen,
                            char src_type,  KvMsgType mtype,  const char *rep,
                            size_t rlen ) noexcept
 {
-  KvSubMsg * msg;
-  size_t     sz = KvSubMsg::calc_size( len, rlen, 0, 0 );
-  msg = (KvSubMsg *) this->create_kvmsg( mtype, sz );
-  msg->hash     = h;
-  msg->msg_size = 0;
-  msg->code     = CAPR_LISTEN;
-  msg->msg_enc  = 0;
-  msg->set_subject( sub, len );
-  msg->set_reply( rep, rlen );
-  msg->set_src_type( src_type );
-  msg->set_prefix_cnt( 0 );
+  size_t     sz  = KvSubMsg::calc_size( sublen, rlen, 0, 0 );
+  KvSubMsg * msg = (KvSubMsg *) this->create_kvmsg( mtype, sz );
+  if ( msg != NULL ) {
+    msg->hash     = h;
+    msg->msg_size = 0;
+    msg->code     = CAPR_LISTEN;
+    msg->msg_enc  = 0;
+    msg->set_subject( sub, sublen );
+    msg->set_reply( rep, rlen );
+    msg->set_src_type( src_type );
+    msg->set_prefix_cnt( 0 );
+  }
   return msg;
 }
 
 KvSubMsg *
-KvPubSub::create_kvpsubmsg( uint32_t h,  const char *pattern,  size_t len,
+KvPubSub::create_kvpsubmsg( uint32_t h,  const char *pattern,  size_t patlen,
                             const char *prefix,  uint8_t prefix_len,
                             char src_type,  KvMsgType mtype ) noexcept
 {
-  KvSubMsg * msg;
-  size_t     sz = KvSubMsg::calc_size( len, prefix_len, 0, 1 );
-  msg = (KvSubMsg *) this->create_kvmsg( mtype, sz );
-  msg->hash     = h;
-  msg->msg_size = 0;
-  msg->code     = CAPR_LISTEN;
-  msg->msg_enc  = 0;
-  msg->set_subject( pattern, len );
-  msg->set_reply( prefix, prefix_len );
-  msg->set_src_type( src_type );
-  msg->set_prefix_cnt( 1 );
-  KvPrefHash & ph = msg->prefix_hash( 0 );
-  ph.pref = prefix_len;
-  ph.set_hash( h );
+  size_t     sz  = KvSubMsg::calc_size( patlen, prefix_len, 0, 1 );
+  KvSubMsg * msg = (KvSubMsg *) this->create_kvmsg( mtype, sz );
+  if ( msg != NULL ) {
+    msg->hash     = h;
+    msg->msg_size = 0;
+    msg->code     = CAPR_LISTEN;
+    msg->msg_enc  = 0;
+    msg->set_subject( pattern, patlen );
+    msg->set_reply( prefix, prefix_len );
+    msg->set_src_type( src_type );
+    msg->set_prefix_cnt( 1 );
+    KvPrefHash & ph = msg->prefix_hash( 0 );
+    ph.pref = prefix_len;
+    ph.set_hash( h );
+  }
   return msg;
 }
 
 void
-KvPubSub::do_sub( uint32_t h,  const char *sub,  size_t len,
+KvPubSub::do_sub( uint32_t h,  const char *sub,  size_t sublen,
                   uint32_t /*sub_id*/,  uint32_t rcnt,  char src_type,
                   const char *rep,  size_t rlen ) noexcept
 {
@@ -585,18 +744,20 @@ KvPubSub::do_sub( uint32_t h,  const char *sub,  size_t len,
   /* subscribe must check the route is set because the hash used for the route
    * is may have collisions:  when another subject is subscribed and has a
    * collision, the route count will be for both subjects */
-  this->update_mcast_sub( sub, len, use_find | ACTIVATE );
+  this->update_mcast_sub( sub, sublen, use_find | ACTIVATE );
 
   KvSubMsg *submsg =
-    this->create_kvsubmsg( h, sub, len, src_type, KV_MSG_SUB, rep, rlen );
-/*printf( "subscribe %x %.*s %u:%c\n", h, (int) len, sub, sub_id, src_type );*/
-  this->idle_push( EV_WRITE );
-  if ( ! this->sub_notifyq.is_empty() )
-    this->forward_sub( *submsg );
+    this->create_kvsubmsg( h, sub, sublen, src_type, KV_MSG_SUB, rep, rlen );
+  if ( submsg != NULL ) {
+  /*printf( "subscribe %x %.*s %u:%c\n", h, (int) len, sub, sub_id, src_type );*/
+    this->idle_push( EV_WRITE );
+    if ( ! this->sub_notifyq.is_empty() )
+      this->forward_sub( *submsg );
+  }
 }
 
 void
-KvPubSub::do_unsub( uint32_t h,  const char *sub,  size_t len,
+KvPubSub::do_unsub( uint32_t h,  const char *sub,  size_t sublen,
                     uint32_t,  uint32_t rcnt,  char src_type ) noexcept
 {
   bool do_unsubscribe = false;
@@ -607,18 +768,20 @@ KvPubSub::do_unsub( uint32_t h,  const char *sub,  size_t len,
       do_unsubscribe = true;
   }
   if ( do_unsubscribe )
-    this->update_mcast_sub( sub, len, DEACTIVATE );
+    this->update_mcast_sub( sub, sublen, DEACTIVATE );
 
   KvSubMsg *submsg =
-    this->create_kvsubmsg( h, sub, len, src_type, KV_MSG_UNSUB, NULL, 0 );
-/*printf( "unsubscribe %x %.*s\n", h, (int) len, sub );*/
-  this->idle_push( EV_WRITE );
-  if ( ! this->sub_notifyq.is_empty() )
-    this->forward_sub( *submsg );
+    this->create_kvsubmsg( h, sub, sublen, src_type, KV_MSG_UNSUB, NULL, 0 );
+  if ( submsg != NULL ) {
+  /*printf( "unsubscribe %x %.*s\n", h, (int) len, sub );*/
+    this->idle_push( EV_WRITE );
+    if ( ! this->sub_notifyq.is_empty() )
+      this->forward_sub( *submsg );
+  }
 }
 
 void
-KvPubSub::do_psub( uint32_t h,  const char *pattern,  size_t len,
+KvPubSub::do_psub( uint32_t h,  const char *pattern,  size_t patlen,
                    const char *prefix,  uint8_t prefix_len,
                    uint32_t,  uint32_t rcnt,  char src_type ) noexcept
 {
@@ -636,17 +799,19 @@ KvPubSub::do_psub( uint32_t h,  const char *pattern,  size_t len,
   this->update_mcast_sub( w.sub, w.len, use_find | ACTIVATE );
 
   KvSubMsg *submsg =
-    this->create_kvpsubmsg( h, pattern, len, prefix, prefix_len, src_type,
+    this->create_kvpsubmsg( h, pattern, patlen, prefix, prefix_len, src_type,
                             KV_MSG_PSUB );
-  this->idle_push( EV_WRITE );
-/*printf( "psubscribe %x %.*s %s %u:%c rcnt=%u\n",
-          h, (int) len, pattern, w.sub, sub_id, src_type, rcnt );*/
-  if ( ! this->sub_notifyq.is_empty() )
-    this->forward_sub( *submsg );
+  if ( submsg != NULL ) {
+    this->idle_push( EV_WRITE );
+  /*printf( "psubscribe %x %.*s %s %u:%c rcnt=%u\n",
+            h, (int) len, pattern, w.sub, sub_id, src_type, rcnt );*/
+    if ( ! this->sub_notifyq.is_empty() )
+      this->forward_sub( *submsg );
+  }
 }
 
 void
-KvPubSub::do_punsub( uint32_t h,  const char *pattern,  size_t len,
+KvPubSub::do_punsub( uint32_t h,  const char *pattern,  size_t patlen,
                      const char *prefix,  uint8_t prefix_len,
                      uint32_t /*sub_id*/,  uint32_t rcnt,  char src_type ) noexcept
 {
@@ -661,13 +826,15 @@ KvPubSub::do_punsub( uint32_t h,  const char *pattern,  size_t len,
   if ( do_unsubscribe )
     this->update_mcast_sub( w.sub, w.len, DEACTIVATE );
   KvSubMsg *submsg =
-    this->create_kvpsubmsg( h, pattern, len, prefix, prefix_len, src_type,
+    this->create_kvpsubmsg( h, pattern, patlen, prefix, prefix_len, src_type,
                             KV_MSG_PUNSUB );
-  this->idle_push( EV_WRITE );
-/*printf( "punsubscribe %x %.*s %s %u:%c rcnt=%u\n",
-          h, (int) len, pattern, w.sub, sub_id, src_type, rcnt );*/
-  if ( ! this->sub_notifyq.is_empty() )
-    this->forward_sub( *submsg );
+  if ( submsg != NULL ) {
+    this->idle_push( EV_WRITE );
+  /*printf( "punsubscribe %x %.*s %s %u:%c rcnt=%u\n",
+            h, (int) len, pattern, w.sub, sub_id, src_type, rcnt );*/
+    if ( ! this->sub_notifyq.is_empty() )
+      this->forward_sub( *submsg );
+  }
 }
 
 void
@@ -786,9 +953,34 @@ KvPubSub::process_shutdown( void ) noexcept
     this->pushpop( EV_CLOSE, EV_SHUTDOWN );*/
 }
 
+static void
+make_pipe_name( uint64_t stamp,  uint32_t src,  uint32_t dest,  char *name )
+{
+  size_t n = uint_to_str( stamp, name );
+  name[ n++ ] = '_';
+  name[ n++ ] = 's';
+  n += uint_to_str( src, &name[ n ] );
+  name[ n++ ] = '_';
+  name[ n++ ] = 'd';
+  n += uint_to_str( dest, &name[ n ] );
+  ::strcpy( &name[ n ], ".pipe" );
+}
+
 void
 KvPubSub::process_close( void ) noexcept
 {
+#if 0
+  printf( "kv process close\n" );
+  for ( size_t i = 0; i < MAX_CTX_ID; i++ ) {
+    if ( this->rcv_pipe[ i ] != NULL ) {
+      char nm[ 64 ];
+      make_pipe_name( this->poll.map->hdr.create_stamp, this->ctx_id, i, nm );
+      printf( "close rcv pipe %s\n", nm );
+      this->rcv_pipe[ i ]->close();
+      this->rcv_pipe[ i ] = NULL;
+    }
+  }
+#endif
 }
 /* this refreshes the routing bits for all ctx_ids in the system */
 bool
@@ -825,13 +1017,14 @@ KvPubSub::update_mcast_route( void ) noexcept
 }
 
 bool
-KvPubSub::push_backlog( KvMsgQueue &ibx,  size_t cnt,  void **vec,
-                        msg_size_t *siz,  uint64_t vec_size ) noexcept
+KvPubSub::push_backlog( KvMsgQueue &ibx,  KvBacklogList &list,  size_t cnt,
+                        KvMsg **vec,  msg_size_t *siz,
+                        uint64_t vec_size ) noexcept
 {
   uint8_t    *  p;
-  void       ** vp;
+  KvMsg      ** vp;
   msg_size_t *  szp;
-  KvBacklog  *  back = ibx.backlog.tl;
+  KvBacklog  *  back = list.tl;
   size_t        i, j, k = 0;
 
   if ( back != NULL && back->cnt + cnt <= 64 ) {
@@ -848,11 +1041,11 @@ KvPubSub::push_backlog( KvMsgQueue &ibx,  size_t cnt,  void **vec,
   else {
     size_t arsz = ( cnt < 64 ? 64 : cnt );
     p = (uint8_t *) ibx.tmp.alloc( sizeof( KvBacklog ) + vec_size +
-                            arsz * ( sizeof( msg_size_t ) + sizeof( void * ) ) );
+                          arsz * ( sizeof( msg_size_t ) + sizeof( KvMsg * ) ) );
     if ( p == NULL )
       return false;
 
-    vp   = (void **) (void *) &p[ sizeof( KvBacklog ) ];
+    vp   = (KvMsg **) (void *) &p[ sizeof( KvBacklog ) ];
     szp  = (msg_size_t *) (void *) &vp[ arsz ];
     back = new ( p ) KvBacklog( cnt, vp, szp, vec_size );
     p    = (uint8_t *) (void *) &szp[ arsz ];
@@ -862,7 +1055,7 @@ KvPubSub::push_backlog( KvMsgQueue &ibx,  size_t cnt,  void **vec,
 
   do {
     msg_size_t n = siz[ k ];
-    vp[ i ]  = (void *) p;
+    vp[ i ]  = (KvMsg *) (void *) p;
     szp[ i ] = n;
     ::memcpy( p, vec[ k ], n );
     p = &p[ n ];
@@ -871,68 +1064,185 @@ KvPubSub::push_backlog( KvMsgQueue &ibx,  size_t cnt,  void **vec,
 
   ibx.backlog_size += vec_size;
   ibx.backlog_cnt  += cnt;
-  if ( back != ibx.backlog.tl ) {
-    if ( ibx.backlog.hd == NULL ) {
+  if ( back != list.tl ) {
+    if ( list.hd == NULL ) {
       this->backlogq.push_tl( &ibx );
-      ibx.need_signal = true;
-      ibx.backlog_progress = this->time_ns;
+      ibx.backlog_progress_ns = this->time_ns;
     }
-    ibx.backlog.push_tl( back );
+    list.push_tl( back );
   }
+  ibx.need_signal   = true;
   this->push( EV_WRITE_HI );
 
   return true;
 }
 
-inline bool
-KvPubSub::clear_backlog( KvMsgQueue &ibx ) noexcept
+bool
+KvPubSub::send_pipe_backlog( KvMsgQueue &ibx ) noexcept
 {
+  if ( ibx.snd_pipe == NULL || ibx.pipe_backlog.hd == NULL )
+    return true;
+  PipeBuf    & pb = *ibx.snd_pipe;
+  KvBacklog  * back;
+
+  for (;;) {
+    if ( (back = ibx.pipe_backlog.hd) == NULL )
+      return true;
+
+    size_t       cnt      = back->cnt,
+                 vec_size = back->vec_size;
+    msg_size_t * siz      = back->siz;
+    KvMsg     ** vec      = back->vec;
+
+    for (;;) {
+      PipeWriteCtx ctx;
+      size_t       i,
+                   j;
+      uint64_t     idx,
+                   data_len,
+                   size,
+                   more;
+
+      if ( ! pb.alloc_space( ctx, siz[ 0 ] ) ) {
+        back->cnt      = cnt;
+        back->vec_size = vec_size;
+        back->vec      = vec;
+        back->siz      = siz;
+        goto break_loop;
+      }
+      data_len = ctx.rec_len - PipeBuf::HDR_LEN;
+      for ( i = 1; i < cnt; i++ ) {
+        more = align<uint64_t>( siz[ i ], PipeBuf::HDR_LEN );
+        if ( ctx.required + more > ctx.available ||
+             ctx.required + more > PipeBuf::CAPACITY - ctx.record_idx )
+          break;
+        ctx.required += more;
+        data_len     += more;
+      }
+      ctx.rec_len = data_len + PipeBuf::HDR_LEN;
+      idx  = ctx.record_idx + PipeBuf::HDR_LEN;
+      size = 0;
+      for ( j = 0; j < i; j++ ) {
+        ::memcpy( &pb.buf[ idx ], vec[ j ], siz[ j ] );
+        idx  += align<uint64_t>( siz[ j ], PipeBuf::HDR_LEN );
+        size += siz[ j ];
+      }
+      pb.set_rec_length( idx, 0 ); /* terminate w/zero */
+      /* mem fence here if not total store ordered cpu */
+      pb.set_rec_length( ctx.record_idx, data_len, PipeBuf::FLAG2 );
+      pb.x.tail_counter = ctx.tail + ctx.rec_len + ctx.padding;
+
+      vec_size         -= size;
+      ibx.pub_size     += size;
+      ibx.pub_cnt      += 1;
+      ibx.pub_msg      += j;
+      ibx.backlog_size -= size;
+      ibx.backlog_cnt  -= j;
+      ibx.backlog_progress_ns = this->time_ns;
+      if ( cnt == j ) {
+        ibx.pipe_backlog.pop_hd();
+        goto break_loop;
+      }
+      cnt -= j;
+      vec  = &vec[ j ];
+      siz  = &siz[ j ];
+    }
+  break_loop:;
+    if ( back == ibx.pipe_backlog.hd )
+      break;
+  }
+  ibx.need_signal = true;
+  this->push( EV_WRITE_HI );
+  return false;
+}
+
+bool
+KvPubSub::send_kv_backlog( KvMsgQueue &ibx ) noexcept
+{
+  if ( ibx.kv_backlog.hd == NULL )
+    return true;
   KvBacklog * back;
   KeyStatus   status = KEY_OK;
 
+  /* send vector to kv, acquire the inbox key */
   this->kctx.set_key( ibx.kbuf );
   this->kctx.set_hash( ibx.hash1, ibx.hash2 );
   for (;;) {
-    if ( (back = ibx.backlog.hd) == NULL )
+    if ( (back = ibx.kv_backlog.hd) == NULL )
       break;
     if ( (status = this->kctx.acquire( &this->wrk )) <= KEY_IS_NEW ) {
       if ( status == KEY_IS_NEW || this->kctx.entry->test( FL_IMMEDIATE_VALUE ) )
         ibx.need_signal = true;
-
+      /* append the vector to inbox */
       status = this->kctx.append_vector( back->cnt, back->vec, back->siz,
                                          ibx.high_water_size );
+      /* if success status */
       if ( status <= KEY_IS_NEW ) {
-        ibx.backlog_size    -= back->vec_size;
-        ibx.backlog_cnt     -= back->cnt;
-        ibx.backlog_progress = this->time_ns;
-        ibx.backlog.pop_hd();
+        ibx.backlog_size -= back->vec_size;
+        ibx.backlog_cnt  -= back->cnt;
+        ibx.backlog_progress_ns = this->time_ns;
+        ibx.kv_backlog.pop_hd();
       }
     }
     this->kctx.release();
     if ( status > KEY_IS_NEW )
       break;
   }
+  /* some other error, corruption */
   if ( status > KEY_IS_NEW && status != KEY_MSG_LIST_FULL ) {
     fprintf( stderr, "KvPubSub: unable to send backlog, status %d+%s/%s\n",
              status, kv_key_status_string( status ),
              kv_key_status_description( status ) );
   }
-  if ( ibx.backlog.hd == NULL )
+  /* if all clear, return true */
+  if ( ibx.kv_backlog.hd == NULL )
     return true;
+  /* still more backlog to send */
+  ibx.need_signal = true;
   this->push( EV_WRITE_HI );
   return false;
 }
 
 inline bool
-KvPubSub::send_msg( KvMsg &msg ) noexcept
+KvPubSub::pipe_msg( KvMsgQueue &ibx,  KvMsg &msg ) noexcept
+{
+  bool backed_up = ( ibx.pipe_backlog.hd != NULL );
+  if ( ! backed_up ) {
+    if ( ibx.snd_pipe != NULL ) {
+      /* write a message to a pipe */
+      kv::PipeBuf & pb = *ibx.snd_pipe;
+      if ( pb.write( &msg, msg.size ) != 0 )
+        ibx.need_signal = true;
+      else
+        backed_up = true;
+    }
+    else {
+      return this->send_kv_msg( ibx, msg, true );
+    }
+  }
+  /* msg didn't fit, push to backlog */
+  if ( backed_up ) {
+    KvMsg    * p  = &msg;
+    msg_size_t sz = msg.size;
+    if ( this->push_backlog( ibx, ibx.pipe_backlog, 1, &p, &sz, sz ) )
+      return true;
+    /* failure */
+    fprintf( stderr, "KvPubSub: unable to pipe msg\n" );
+    return false;
+  }
+  /* ok, sent */
+  ibx.pub_size += msg.size;
+  ibx.pub_cnt  += 1;
+  ibx.pub_msg  += 1;
+  return true;
+}
+
+bool
+KvPubSub::send_kv_msg( KvMsgQueue &ibx,  KvMsg &msg,  bool backitup ) noexcept
 {
   KeyStatus status = KEY_OK;
-  KvMsgQueue & ibx = *this->snd_inbox[ msg.dest_start ];
-
-  if ( ibx.backlog.hd == NULL ) {
-  /*msg.print();
-  printf( "send_msg %.*s %lx %lx\n", (int) ibx.kbuf.keylen,
-           (char *) ibx.kbuf.u.buf, ibx.hash1, ibx.hash2 );*/
+  if ( ibx.kv_backlog.hd == NULL ) {
+    /* push message to kv inbox */
     this->kctx.set_key( ibx.kbuf );
     this->kctx.set_hash( ibx.hash1, ibx.hash2 );
     if ( (status = this->kctx.acquire( &this->wrk )) <= KEY_IS_NEW ) {
@@ -945,31 +1255,97 @@ KvPubSub::send_msg( KvMsg &msg ) noexcept
   else {
     status = KEY_MSG_LIST_FULL;
   }
-  if ( status == KEY_MSG_LIST_FULL ) {
-    void     * p  = (void *) &msg;
+  /* doesn't fit, push to backlog */
+  if ( status == KEY_MSG_LIST_FULL && backitup ) {
+    KvMsg    * p  = &msg;
     msg_size_t sz = msg.size;
-    if ( this->push_backlog( ibx, 1, &p, &sz, sz ) )
+    if ( this->push_backlog( ibx, ibx.kv_backlog, 1, &p, &sz, sz ) )
       return true;
   }
+  /* ok, sent */
   else if ( status == KEY_OK ) {
     ibx.pub_size += msg.size;
     ibx.pub_cnt  += 1;
     ibx.pub_msg  += 1;
     return true;
   }
+  /* failure */
   fprintf( stderr, "KvPubSub: unable to send msg, status %d+%s/%s\n", status,
          kv_key_status_string( status ), kv_key_status_description( status ) );
   return false;
 }
 
-inline bool
-KvPubSub::send_vec( size_t cnt,  void **vec,  msg_size_t *siz,
-                    size_t dest,  uint64_t vec_size ) noexcept
+bool
+KvPubSub::pipe_vec( size_t cnt,  KvMsg **vec,  msg_size_t *siz,
+                    KvMsgQueue &ibx,  uint64_t vec_size ) noexcept
+{
+  if ( ibx.snd_pipe == NULL )
+    return this->send_kv_vec( cnt, vec, siz, ibx, vec_size );
+  bool b = true;
+
+  if ( ibx.pipe_backlog.hd == NULL ) {
+    PipeBuf    & pb = *ibx.snd_pipe;
+    PipeWriteCtx ctx;
+    size_t       i,
+                 j;
+    uint64_t     idx,
+                 data_len,
+                 size,
+                 more;
+    for (;;) {
+      /* write smaller than the large msgs by sending an array to the pipe
+       * starting with the first and adding more until it doesn't fit */
+      if ( ! pb.alloc_space( ctx, siz[ 0 ] ) )
+        goto break_loop;
+      data_len = ctx.rec_len - PipeBuf::HDR_LEN;
+      for ( i = 1; i < cnt; i++ ) {
+        more = align<uint64_t>( siz[ i ], PipeBuf::HDR_LEN );
+        if ( ctx.required + more > ctx.available ||
+             ctx.required + more > PipeBuf::CAPACITY - ctx.record_idx )
+          break;
+        ctx.required += more;
+        data_len     += more;
+      }
+      /* copy the data into the pipe */
+      ctx.rec_len = data_len + PipeBuf::HDR_LEN;
+      idx  = ctx.record_idx + PipeBuf::HDR_LEN;
+      size = 0;
+      for ( j = 0; j < i; j++ ) {
+        ::memcpy( &pb.buf[ idx ], vec[ j ], siz[ j ] );
+        idx  += align<uint64_t>( siz[ j ], PipeBuf::HDR_LEN );
+        size += siz[ j ];
+      }
+      pb.set_rec_length( idx, 0 ); /* terminate pipe data w/zero */
+      /* mem fence here if not total store ordered cpu */
+      pb.set_rec_length( ctx.record_idx, data_len );    /* data is valid now */
+      pb.x.tail_counter = ctx.tail + ctx.rec_len + ctx.padding;
+      /* step through the vector to the next msgs */
+      vec_size     -= size;
+      ibx.pub_size += size;
+      ibx.pub_cnt  += 1;
+      ibx.pub_msg  += j;
+      cnt -= j;
+      if ( cnt == 0 )
+        goto break_loop2;
+      vec  = &vec[ j ];
+      siz  = &siz[ j ];
+    }
+  }
+break_loop:;
+  if ( cnt > 0 ) /* if some doesn't fit, backlog it */
+    b &= this->push_backlog( ibx, ibx.pipe_backlog, cnt, vec, siz, vec_size );
+break_loop2:;
+  ibx.need_signal = true;
+  return b;
+}
+
+bool
+KvPubSub::send_kv_vec( size_t cnt,  KvMsg **vec,  msg_size_t *siz,
+                       KvMsgQueue &ibx,  uint64_t vec_size ) noexcept
 {
   KeyStatus status = KEY_OK;
-  KvMsgQueue & ibx = *this->snd_inbox[ dest ];
 
-  if ( ibx.backlog.hd == NULL ) {
+  if ( ibx.kv_backlog.hd == NULL ) {
     this->kctx.set_key( ibx.kbuf );
     this->kctx.set_hash( ibx.hash1, ibx.hash2 );
     if ( (status = this->kctx.acquire( &this->wrk )) <= KEY_IS_NEW ) {
@@ -984,7 +1360,7 @@ KvPubSub::send_vec( size_t cnt,  void **vec,  msg_size_t *siz,
     status = KEY_MSG_LIST_FULL;
   }
   if ( status == KEY_MSG_LIST_FULL ) {
-    if ( this->push_backlog( ibx, cnt, vec, siz, vec_size ) )
+    if ( this->push_backlog( ibx, ibx.kv_backlog, cnt, vec, siz, vec_size ) )
       return true;
   }
   else if ( status == KEY_OK ) {
@@ -1003,27 +1379,26 @@ static inline size_t test_set_range( CubeRoute128 &used,  const uint8_t *b,
 {
   size_t j = 0;
   for ( size_t i = 0; i < cnt; i += 2 ) {
-    if ( used.test_set( b[ i ] ) )
-      j++; /* can be a vector, multiple msgs to send */
+    j += used.test_set( b[ i ] );
   }
   return j;
 }
 
-inline void
-KvPubSub::write_send_queue( CubeRoute128 &used ) noexcept
+inline size_t
+KvPubSub::resolve_routes( CubeRoute128 &used ) noexcept
 {
-  KvSubRoute * rt;
-  KvMsgList  * l;
-  size_t       dest,
-               veccnt = 0;
+  size_t veccnt = 0;
   /* for each message, determine the subscription destinations */
-  for ( l = this->sendq.hd; l != NULL; l = l->next ) {
+  for ( KvMsgList * l = this->sendq.hd; l != NULL; l = l->next ) {
     KvMsg & msg   = l->msg;
     uint8_t start = msg.dest_start,
             end   = msg.dest_end;
     /*print_msg( msg );*/
-    if ( start != end ) { /* if not to a single node */
-      if ( is_kv_bcast( msg.msg_type ) ) { /* calculate the dest range */
+    /* if not sending to a single node */
+    if ( start != end ) {
+      /* if msg goes to all nodes, calculate the dest range */
+      if ( is_kv_bcast( msg.msg_type ) ) {
+        /* if sending to all nodes */
         if ( end - start == MAX_CTX_ID ) {
           l->range.w = this->mc_range.w;
           l->cnt = this->mc_cnt;
@@ -1032,15 +1407,17 @@ KvPubSub::write_send_queue( CubeRoute128 &used ) noexcept
           l->cnt = this->mc_cr.branch4( this->ctx_id, start, end, l->range.b );
         }
       }
+      /* if msg is cast to a subscription routes (incl wildcard) */
       else {
         KvSubMsg &submsg = (KvSubMsg &) msg;
         CubeRoute128 cr;
-        uint8_t pref_cnt = submsg.prefix_cnt();
+        uint8_t pref_cnt = submsg.get_prefix_cnt();
         cr.zero();
         /* or all of the sub matches together, multiple wildcards + exact */
         for ( uint8_t i = 0; i < pref_cnt; i++ ) {
           KvPrefHash & pf = submsg.prefix_hash( i );
           uint32_t h = pf.get_hash();
+          KvSubRoute * rt;
           if ( pf.pref == 64 ) {
             rt = this->sub_tab.find( h, submsg.subject(), submsg.sublen );
           }
@@ -1050,7 +1427,10 @@ KvPubSub::write_send_queue( CubeRoute128 &used ) noexcept
           }
           if ( rt != NULL )
             cr.or_from( rt->rt_bits );
+          /*else  <- route can disappear while in msg queue
+            printf( "no route\n" );*/
         }
+        /* mask currently connected routes */
         cr.and_bits( this->mc_cr );
         cr.clip( start, end );
         KvRouteCache * p = &this->rte_cache[ cr.fold8() ];
@@ -1060,66 +1440,90 @@ KvPubSub::write_send_queue( CubeRoute128 &used ) noexcept
         }
         l->cnt = p->cnt;
         l->range.w = p->range.w;
-        /*l->cnt = CubeRoute128::branch4x( this->ctx_id, cr, l->range.b );*/
       }
       veccnt += test_set_range( used, l->range.b, l->cnt );
     }
-    else if ( this->mc_cr.is_set( start ) ) { /* dest is single node */
+    /* dest is single node */
+    else if ( this->mc_cr.is_set( start ) ) {
       l->range.b[ 0 ] = start;
       l->range.b[ 1 ] = start;
       l->cnt = 2;
-      if ( used.test_set( start ) )
-        veccnt++; /* can be a vector, multiple msgs to send */
+      veccnt += used.test_set( start );
     }
   }
-  if ( veccnt > 0 ) { /* if at least two msgs go to the same dest */
-    static const size_t VEC_CHUNK_SIZE = 1024;
-    size_t       j = 0;
-    uint64_t     vec_size = 0;
-    msg_size_t   siz[ VEC_CHUNK_SIZE ];
-    void       * vec[ VEC_CHUNK_SIZE ];
-    KvMsgList  * hd = this->sendq.hd;
-
-    for (;;) {
-      while ( hd->off == hd->cnt ) {
-        if ( (hd = hd->next) == NULL )
-          goto break_loop;
-      }
-      dest = hd->range.b[ hd->off ];
-
-      for ( l = hd; l != NULL; l = l->next ) {
-        if ( l->off < l->cnt && l->range.b[ l->off ] == dest ) {
-          KvMsg & msg = l->msg;
-          msg.dest_start = l->range.b[ l->off ];
-          msg.dest_end   = l->range.b[ l->off + 1 ];
-          l->off += 2;
-          vec[ j ] = &msg;
-          siz[ j ] = msg.size;
-          vec_size += msg.size;
-          if ( ++j == VEC_CHUNK_SIZE ) {
-            this->send_vec( VEC_CHUNK_SIZE, vec, siz, dest, vec_size );
-            j = 0;
-            vec_size = 0;
-          }
-        }
-      }
-      if ( j > 0 ) {
-        this->send_vec( j, vec, siz, dest, vec_size );
-        j = 0;
-        vec_size = 0;
-      }
+  return veccnt;
+}
+#if 0
+void
+KvPubSub::check_seqno( void ) noexcept
+{
+  for ( KvMsgList  * l = this->sendq.hd; l != NULL; l = l->next ) {
+    KvMsg & msg = l->msg;
+    uint64_t seqno = msg.get_seqno();
+    if ( seqno != this->last_seqno[ this->ctx_id ] + 1 ) {
+      printf( "missing seqno %lu -> %lu\n", this->last_seqno[ this->ctx_id ],
+              seqno );
     }
-  break_loop:;
+    this->last_seqno[ this->ctx_id ] = seqno;
   }
-  else { /* no vectors, send each msg one at a time */
-    for ( l = this->sendq.hd; l != NULL; l = l->next ) {
-      while ( l->off < l->cnt ) {
+}
+#endif
+inline void
+KvPubSub::write_send_queue_fast( void ) noexcept
+{
+  /*this->check_seqno();*/
+  /* use pipe_msg() op each queued msg, doesn't vectorize */
+  for ( KvMsgList  * l = this->sendq.hd; l != NULL; l = l->next ) {
+    KvMsg & msg = l->msg;
+    while ( l->off < l->cnt ) {
+      msg.dest_start = l->range.b[ l->off ];
+      msg.dest_end   = l->range.b[ l->off + 1 ];
+      l->off += 2;
+      KvMsgQueue & ibx = *this->snd_inbox[ msg.dest_start ];
+      this->pipe_msg( ibx, msg );
+    }
+  }
+}
+
+void
+KvPubSub::write_send_queue_slow( void ) noexcept
+{
+  static const size_t VEC_CHUNK_SIZE = 1024;
+  size_t       j = 0;
+  uint64_t     vec_size = 0;
+  msg_size_t   siz[ VEC_CHUNK_SIZE ];
+  KvMsg      * vec[ VEC_CHUNK_SIZE ];
+  KvMsgList  * hd = this->sendq.hd;
+  /*this->check_seqno();*/
+  /* send arrays of messages by iterating through the destinations */
+  for (;;) {
+    while ( hd->off == hd->cnt ) {
+      if ( (hd = hd->next) == NULL )
+        return;
+    }
+    size_t dest = hd->range.b[ hd->off ];
+    KvMsgQueue & ibx = *this->snd_inbox[ dest ];
+
+    for ( KvMsgList *l = hd; l != NULL; l = l->next ) {
+      if ( l->off < l->cnt && l->range.b[ l->off ] == dest ) {
         KvMsg & msg = l->msg;
         msg.dest_start = l->range.b[ l->off ];
         msg.dest_end   = l->range.b[ l->off + 1 ];
         l->off += 2;
-        this->send_msg( msg );
+        vec[ j ] = &msg;
+        siz[ j ] = msg.size;
+        vec_size += msg.size;
+        if ( ++j == VEC_CHUNK_SIZE ) {
+          this->pipe_vec( VEC_CHUNK_SIZE, vec, siz, ibx, vec_size );
+          j = 0;
+          vec_size = 0;
+        }
       }
+    }
+    if ( j > 0 ) {
+      this->pipe_vec( j, vec, siz, ibx, vec_size );
+      j = 0;
+      vec_size = 0;
     }
   }
 }
@@ -1159,7 +1563,11 @@ KvPubSub::write( void ) noexcept
   /* if there are other contexts recving msgs */
   if ( this->update_mcast_route() ) {
     if ( this->send_cnt > this->route_cnt ) {
-      this->write_send_queue( used );
+      size_t veccnt = this->resolve_routes( used );
+      if ( this->send_cnt - this->route_cnt < 100 || veccnt == 0 )
+        this->write_send_queue_fast();
+      else
+        this->write_send_queue_slow();
       this->route_cnt  = this->send_cnt;
       this->route_size = this->send_size;
     }
@@ -1174,26 +1582,25 @@ KvPubSub::write( void ) noexcept
       if ( ! this->mc_cr.is_set( ibx->ibx_num ) ) {
         is_cleared = true;
       }
-      else if ( this->clear_backlog( *ibx ) ) {
-        used.set( ibx->ibx_num );
-        is_cleared = true;
-      }
       else {
-        if ( this->time_ns > ibx->backlog_progress +
-             5 * (uint64_t) 1000000000 ) {
-          printf( "[ %u ] no progress (%.3f): %lu size, %lu cnt\n",
-                  ibx->ibx_num,
-              (double) ( this->time_ns - ibx->backlog_progress ) / 1000000000.0,
-                  ibx->backlog_size, ibx->backlog_cnt );
-          ibx->backlog_progress = this->time_ns;
+        used.set( ibx->ibx_num );
+        if ( this->send_pipe_backlog( *ibx ) &&
+             this->send_kv_backlog( *ibx ) ) {
+          is_cleared = true;
+        }
+        else {
+          this->check_backlog_warning( *ibx );
         }
       }
       if ( is_cleared ) {
         this->backlogq.pop( ibx );
         ibx->tmp.reset();
-        ibx->backlog.init();
+        ibx->kv_backlog.init();
+        ibx->pipe_backlog.init();
         ibx->backlog_size = 0;
         ibx->backlog_cnt  = 0;
+        ibx->backlog_progress_cnt  = 0;
+        ibx->backlog_progress_size = 0;
       }
       ibx = next;
     }
@@ -1203,7 +1610,27 @@ KvPubSub::write( void ) noexcept
 
   /* reset sendq, free mem */
   this->sendq.init();
-  this->wrkq.reset();
+  this->snd_wrk.reset();
+}
+
+static const uint64_t BACKLOG_WARN_NS   = 5 * (uint64_t) 1000000000,
+                      BACKLOG_WARN_CNT  = 1000000,
+                      BACKLOG_WARN_SIZE = BACKLOG_WARN_CNT * 1000;
+void
+KvPubSub::check_backlog_warning( KvMsgQueue &ibx ) noexcept
+{
+  if ( this->time_ns > ibx.backlog_progress_ns + BACKLOG_WARN_NS ||
+       ibx.backlog_cnt > ibx.backlog_progress_cnt + BACKLOG_WARN_CNT ||
+       ibx.backlog_size > ibx.backlog_progress_size + BACKLOG_WARN_SIZE ) {
+    printf( "[ %u ] no progress (time=%.3f): %lu size, %lu cnt, high %d\n",
+            ibx.ibx_num,
+        (double) ( this->time_ns - ibx.backlog_progress_ns ) / 1000000000.0,
+                ibx.backlog_size, ibx.backlog_cnt,
+                this->test( EV_WRITE_HI ) );
+    ibx.backlog_progress_ns = this->time_ns;
+    ibx.backlog_progress_cnt = ibx.backlog_cnt;
+    ibx.backlog_progress_size = ibx.backlog_size;
+  }
 }
 
 bool
@@ -1220,7 +1647,7 @@ KvPubSub::get_sub_mcast( const char *sub,  size_t len,
 
   if ( kbuf.copy( sub, len + 1 ) != len + 1 ) {
     size_t sz = sizeof( KeyFragment ) + len;
-    kb = (KeyFragment *) this->wrkq.alloc( sz );
+    kb = (KeyFragment *) this->snd_wrk.alloc( sz );
     ::memcpy( kb->u.buf, sub, len );
   }
   kb->u.buf[ len ] = '\0';
@@ -1263,14 +1690,14 @@ KvPubSub::forward_sub( KvSubMsg &submsg ) noexcept
     l->on_sub( submsg );
 }
 
-void
-KvPubSub::route_msg_from_shm( KvMsg &msg ) noexcept /* inbound from shm */
+bool
+KvPubSub::route_msg( KvMsg &msg ) noexcept
 {
-  /*print_msg( msg );*/
+  /*msg.print();*/
   /* if msg destination has more hops */
   if ( msg.dest_start != msg.dest_end ) {
     KvMsgList * l = (KvMsgList *)
-                    this->wrkq.alloc( sizeof( KvMsgList ) + msg.size );
+                    this->snd_wrk.alloc( sizeof( KvMsgList ) + msg.size );
     l->init_route();
     ::memcpy( &l->msg, &msg, msg.size );
     this->sendq.push_tl( l );
@@ -1279,10 +1706,69 @@ KvPubSub::route_msg_from_shm( KvMsg &msg ) noexcept /* inbound from shm */
 
     this->idle_push( EV_WRITE );
   }
+  uint64_t seqno = msg.get_seqno();
+/*  if ( seqno != this->last_seqno[ msg.src ] + 1 ) {
+    printf( "missing seqno %lu -> %lu\n", this->last_seqno[ msg.src ],
+            seqno );
+  }
+  this->last_seqno[ msg.src ] = seqno;*/
+  if ( msg.msg_type == KV_MSG_PUBLISH ) {
+    /* forward message from publisher to shm */
+    KvSubMsg  & submsg = (KvSubMsg &) msg;
+    KvFragAsm * frag   = this->frag_asm[ submsg.src ];
+    if ( frag == NULL || seqno - frag->frag_count != frag->first_seqno ) {
+      EvPublish pub( submsg.subject(), submsg.sublen,
+                     submsg.reply(), submsg.replylen,
+                     submsg.get_msg_data(), submsg.msg_size,
+                     this->fd, submsg.hash, NULL, 0,
+                     submsg.msg_enc, submsg.code );
+      this->poll.forward_msg( pub, NULL, submsg.get_prefix_cnt(),
+                              submsg.prefix_array() );
+    }
+    else if ( frag->msg_size >= submsg.msg_size ) {
+      ::memcpy( frag->buf, submsg.get_msg_data(), submsg.msg_size );
+      EvPublish pub( submsg.subject(), submsg.sublen,
+                     submsg.reply(), submsg.replylen,
+                     frag->buf, frag->msg_size,
+                     this->fd, submsg.hash, NULL, 0,
+                     submsg.msg_enc, submsg.code );
+      this->poll.forward_msg( pub, NULL, submsg.get_prefix_cnt(),
+                              submsg.prefix_array() );
+    }
+    return true;
+  }
   switch ( msg.msg_type ) {
+    case KV_MSG_FRAGMENT: {
+      KvSubMsg  & submsg = (KvSubMsg &) msg;
+      size_t      off  = submsg.get_frag_off(),
+                  size = off + submsg.msg_size;
+      KvFragAsm * frag = this->frag_asm[ submsg.src ];
+
+      if ( frag == NULL || size > frag->buf_size ) {
+        this->frag_asm[ submsg.src ] =
+          (KvFragAsm *) ::realloc( frag, sizeof( KvFragAsm ) + size );
+        bool is_first = ( frag == NULL );
+        frag = this->frag_asm[ submsg.src ];
+        frag->buf_size = size;
+        if ( is_first ) /* initialize with curr seqno */
+          goto is_first_seqno;
+      }
+      /* check if in sequence with a previous frag from src */
+      if ( seqno - frag->frag_count != frag->first_seqno ) {
+    is_first_seqno:;
+        frag->first_seqno = seqno;
+        frag->frag_count  = 1;
+        frag->msg_size    = size;
+      }
+      else {
+        frag->frag_count++;
+      }
+      ::memcpy( &frag->buf[ off ], submsg.get_msg_data(), submsg.msg_size );
+      break;
+    }
     case KV_MSG_SUB: /* update my routing table when sub/unsub occurs */
     case KV_MSG_UNSUB: {
-      msg.print_sub();
+      /*msg.print_sub();*/
       KvSubMsg &submsg = (KvSubMsg &) msg;
       CubeRoute128 cr;
 
@@ -1310,9 +1796,9 @@ KvPubSub::route_msg_from_shm( KvMsg &msg ) noexcept /* inbound from shm */
     }
     case KV_MSG_PSUB:
     case KV_MSG_PUNSUB: {
-      msg.print_sub();
+      /*msg.print_sub();*/
       KvSubMsg &submsg = (KvSubMsg &) msg;
-      if ( submsg.prefix_cnt() == 1 ) {
+      if ( submsg.get_prefix_cnt() == 1 ) {
         KvPrefHash &pf = submsg.prefix_hash( 0 );
         CubeRoute128 cr;
         SysWildSub w( submsg.reply(), pf.pref );
@@ -1339,20 +1825,111 @@ KvPubSub::route_msg_from_shm( KvMsg &msg ) noexcept /* inbound from shm */
         this->forward_sub( submsg );
       break;
     }
-    /* forward message from publisher to shm */
-    case KV_MSG_PUBLISH: {
-      KvSubMsg &submsg = (KvSubMsg &) msg;
-      EvPublish pub( submsg.subject(), submsg.sublen,
-                     submsg.reply(), submsg.replylen,
-                     submsg.msg_data(), submsg.msg_size,
-                     this->fd, submsg.hash, NULL, 0,
-                     submsg.msg_enc, submsg.code );
-      this->poll.forward_msg( pub, NULL, submsg.prefix_cnt(),
-                              submsg.prefix_array() );
+    case KV_MSG_HELLO:
+      /*msg.print();*/
+      if ( kv_use_pipes )
+        this->open_pipe( msg.src );
       break;
-    }
 
-    default: break; /* HELLO, BYE */
+    case KV_MSG_BYE:
+      /*msg.print();*/
+      this->close_pipe( msg.src );
+      return false;
+
+    default:
+      break;
+  }
+  return true;
+}
+
+bool
+KvPubSub::make_rcv_pipe( size_t src ) noexcept
+{
+  PipeBuf * pb;
+  char rcv_p[ 64 ];
+  if ( src >= MAX_CTX_ID ) {
+    fprintf( stderr, "bad source\n" );
+    return false;
+  }
+  if ( this->rcv_pipe[ src ] != NULL )
+    return true;
+  /* recv pipe */
+  make_pipe_name( this->poll.map->hdr.create_stamp, this->ctx_id, src, rcv_p );
+  pb = PipeBuf::open( rcv_p, true );
+  this->rcv_pipe[ src ] = pb;
+  if ( pb == NULL ) {
+    fprintf( stderr, "failed to make recv pipe\n" );
+    return false;
+  }
+  pb->x.owner.x.rcv_ctx_id = this->ctx_id;
+  pb->x.owner.x.rcv_pid    = this->poll.map->ctx[ this->ctx_id ].ctx_pid;
+  return true;
+}
+
+bool
+KvPubSub::make_snd_pipe( size_t src ) noexcept
+{
+  PipeBuf * pb;
+  char snd_p[ 64 ];
+  if ( src >= MAX_CTX_ID ) {
+    fprintf( stderr, "bad source\n" );
+    return false;
+  }
+  if ( this->snd_inbox[ src ]->snd_pipe != NULL )
+    return true;
+  /* send pipe */
+  make_pipe_name( this->poll.map->hdr.create_stamp, src, this->ctx_id, snd_p );
+  pb = PipeBuf::open( snd_p, false );
+  this->snd_inbox[ src ]->snd_pipe = pb;
+  if ( pb == NULL )
+    return false;
+  pb->x.owner.x.snd_ctx_id = this->ctx_id;
+  pb->x.owner.x.snd_pid    = this->poll.map->ctx[ this->ctx_id ].ctx_pid;
+  return true;
+}
+
+void
+KvPubSub::open_pipe( size_t src ) noexcept
+{
+  if ( this->make_snd_pipe( src ) && this->make_rcv_pipe( src ) )
+    this->pipe_cr.set( src );
+  else {
+    static time_t mute;
+    static uint64_t cnt;
+    time_t n = ::time( 0 );
+    cnt++;
+    if ( mute != n ) {
+      mute = n;
+      fprintf( stderr,
+               "unable to open pipe (%u, %lu) (times=%lu) is_dead = %s\n",
+            this->ctx_id, src, cnt, this->is_dead( src ) ? "true" : "false" );
+    }
+  }
+}
+
+void
+KvPubSub::close_pipe( size_t src ) noexcept
+{
+  char nm[ 64 ];
+  this->close_rcv_pipe( src );
+  make_pipe_name( this->poll.map->hdr.create_stamp, src, this->ctx_id, nm );
+  if ( this->snd_inbox[ src ]->snd_pipe != NULL ) {
+    this->snd_inbox[ src ]->snd_pipe->close();
+    this->snd_inbox[ src ]->snd_pipe = NULL;
+    PipeBuf::unlink( nm );
+  }
+}
+
+void
+KvPubSub::close_rcv_pipe( size_t src ) noexcept
+{
+  char nm[ 64 ];
+  this->pipe_cr.clear( src );
+  make_pipe_name( this->poll.map->hdr.create_stamp, this->ctx_id, src, nm );
+  if ( this->rcv_pipe[ src ] != NULL ) {
+    this->rcv_pipe[ src ]->close();
+    this->rcv_pipe[ src ] = NULL;
+    PipeBuf::unlink( nm );
   }
 }
 
@@ -1375,9 +1952,17 @@ KvPubSub::read( void ) noexcept
   this->read_inbox( until_empty );
 }
 
+static void
+read_error( size_t src,  const void *data,  size_t data_len )
+{
+  fprintf( stderr, "Bad data from %lu\n", src );
+  dump_hex( data, data_len );
+}
+
 size_t
 KvPubSub::read_inbox( bool read_until_empty ) noexcept
 {
+  /*static size_t flag2_cnt;*/
   /* guard against reentrant calls */
   if ( ( this->flags & KV_READ_INBOX ) != 0 ) {
     this->push( EV_READ_LO );
@@ -1385,11 +1970,59 @@ KvPubSub::read_inbox( bool read_until_empty ) noexcept
   }
   this->flags |= KV_READ_INBOX;
 
-  size_t n = 0;
-  for ( size_t i = 0; i < KV_CTX_INBOX_COUNT; i++ )
-    n += this->read_inbox2( *this->rcv_inbox[ i ], read_until_empty );
+  size_t i, n = 0, m = 0;
+  bool retry;
+  do {
+    retry = false;
+    for ( i = 0; i < KV_CTX_INBOX_COUNT; i++ )
+      n += this->read_inbox2( *this->rcv_inbox[ i ], read_until_empty );
+
+    if ( this->pipe_cr.first_set( i ) ) {
+      do {
+        PipeBuf   & pb = *this->rcv_pipe[ i ];
+        PipeReadCtx ctx;
+        while ( pb.read_ctx( ctx ) ) {
+          KvMsg  * msg  = (KvMsg *) ctx.data;
+          uint64_t left = ctx.data_len, sz;
+          /*if ( ( ctx.fl & PipeBuf::FLAG2 ) != 0 )
+            flag2_cnt++;*/
+          while ( left > 0 ) {
+            /*uint64_t seqno = msg->get_seqno();
+            assert( seqno == pb.x.owner.x.rcv_seqno + 1 ||
+                    pb.x.owner.x.rcv_seqno == 0 );
+            pb.x.owner.x.rcv_seqno = seqno;*/
+            if ( ! msg->is_valid( left ) ) {
+              if ( left == ctx.data_len ) {
+                retry = true; /* leave it in the pipe, match with kv */
+                goto break_loop;
+              }
+              else {
+                /*assert( 0 );*/
+                read_error( i, ctx.data, left );
+                pb.consume_ctx( ctx );
+              }
+              break;
+            }
+            m++;
+            sz = align<uint64_t>( msg->size, PipeBuf::HDR_LEN );
+            /*assert( sz > 0 && sz < MAX_PIPE_MSG_SIZE );*/
+            if ( ! this->route_msg( *msg ) ) /* route pipe msg and consume it */
+              goto break_loop; /* if closes, returns false */
+            if ( left <= sz ) {
+              pb.consume_ctx( ctx );
+              break;
+            }
+            left -= sz;
+            msg = (KvMsg *) &((uint8_t *) (void *) msg)[ sz ];
+          }
+        }
+      break_loop:;
+      } while ( this->pipe_cr.next_set( i ) );
+    }
+  } while ( retry );
 
   this->inbox_msg_cnt += n;
+  this->pipe_msg_cnt  += m;
   this->flags &= ~KV_READ_INBOX;
   return n;
 }
@@ -1397,9 +2030,9 @@ KvPubSub::read_inbox( bool read_until_empty ) noexcept
 size_t
 KvPubSub::read_inbox2( KvInboxKey &ibx,  bool read_until_empty ) noexcept
 {
-  static const size_t veclen = 4 * 1024;
-  void       * data[ veclen ];
-  msg_size_t   data_sz[ veclen ];
+  static const size_t VEC_CHUNK_SIZE = 1024;
+  void       * data[ VEC_CHUNK_SIZE ];
+  msg_size_t   data_sz[ VEC_CHUNK_SIZE ];
   KeyStatus    status;
   size_t       count = 0, total = 0;
 
@@ -1431,7 +2064,7 @@ KvPubSub::read_inbox2( KvInboxKey &ibx,  bool read_until_empty ) noexcept
       for (;;) {
         size_t   j;
         uint64_t seqno  = ibx.ibx_seqno,
-                 seqno2 = seqno + veclen;
+                 seqno2 = seqno + VEC_CHUNK_SIZE;
         if ( (status = ibx.msg_value( seqno, seqno2, data,
                                       data_sz )) != KEY_OK ) {
           if ( status == KEY_MUTATED )
@@ -1450,14 +2083,14 @@ KvPubSub::read_inbox2( KvInboxKey &ibx,  bool read_until_empty ) noexcept
 #if 0
               /* check these, make sure messages are in order ?? */
               this->snd_inbox[ msg.src ]->src_session_id = msg.session_id();
-              this->snd_inbox[ msg.src ]->src_seqno      = msg.seqno();
+              this->snd_inbox[ msg.src ]->src_seqno      = msg.get_seqno();
 #endif
-              this->route_msg_from_shm( msg );
+              this->route_msg( msg );
             }
           }
         }
         count += j;
-        if ( j != veclen ) { /* didn't fill entire array, find() again */
+        if ( j != VEC_CHUNK_SIZE ) { /* didn't fill entire array, find() again*/
           break;
         }
       }
@@ -1497,8 +2130,7 @@ KvPubSub::on_msg( EvPublish &pub ) noexcept
     this->create_kvpublish( pub.subj_hash, pub.subject, pub.subject_len,
                             pub.prefix, pub.hash, pub.prefix_cnt,
                             (const char *) pub.reply, pub.reply_len, pub.msg,
-                            pub.msg_len, 'K', KV_MSG_PUBLISH,
-                            pub.pub_type, pub.msg_enc );
+                            pub.msg_len, pub.pub_type, pub.msg_enc );
     this->idle_push( EV_WRITE );
     /* send backpressure TODO */
   }

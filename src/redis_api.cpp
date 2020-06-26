@@ -300,6 +300,12 @@ ds_dispatch( ds_t *h,  int ms )
     ds.poll.wait( 0 );
     status = ds.poll.dispatch();
   }
+  if ( ( status & EvPoll::WRITE_PRESSURE ) != 0 ) {
+    do {
+      status = ds.poll.dispatch();
+    } while ( ( status & EvPoll::WRITE_PRESSURE ) != 0 );
+    return 1;
+  }
   return ( status & EvPoll::DISPATCH_BUSY ) != 0;
 }
 

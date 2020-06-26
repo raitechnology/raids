@@ -325,6 +325,8 @@ EvPoll::dispatch( void ) noexcept
         break;
     }
     if ( s->state != 0 ) {
+      if ( s->test( EV_WRITE_HI ) )
+        ret |= WRITE_PRESSURE;
       s->prio_cnt = this->prio_tick;
       this->push_event_queue( s );
     }

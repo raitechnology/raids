@@ -43,7 +43,7 @@ soflag      := -shared
 ifdef DEBUG
 default_cflags := -ggdb
 else
-default_cflags := -ggdb -O3
+default_cflags := -ggdb -O3 -Ofast
 endif
 # rpmbuild uses RPM_OPT_FLAGS
 CFLAGS := $(default_cflags)
@@ -579,9 +579,11 @@ gen_files += include/raids/redis_cmd.h
 .PHONY: all
 all: $(gen_files) $(all_libs) $(all_dlls) $(all_exes)
 
-.PHONE: rpm_depend
-rpm_depend:
-	sudo dnf -y install redhat-lsb openssl-devel pcre2-devel liblzf-devel hwloc-gui
+.PHONE: dnf_depend
+dnf_depend:
+	sudo dnf -y install make gcc-c++ git redhat-lsb openssl-devel pcre2-devel
+	sudo dnf -y install liblzf-devel zlib-devel
+	echo maybe also install hwloc-gui
 
 # create directories
 $(dependd):

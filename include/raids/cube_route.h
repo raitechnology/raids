@@ -59,12 +59,14 @@ struct CubeRoute {
     this->w[ i / 64 ] |= ( (uint64_t) 1 << ( i % 64 ) );
   }
 
-  bool test_set( size_t i ) {
+  size_t test_set( size_t i ) {
     uint64_t & wd = this->w[ i / 64 ];
     uint64_t   m  = (uint64_t) 1 << ( i % 64 );
-    bool       r  = ( wd & m ) != 0;
-    if ( ! r ) wd |= m;
-    return r;
+    if ( ( wd & m ) == 0 ) {
+      wd |= m;
+      return 1;
+    }
+    return 0;
   }
 
   void zero( void ) {

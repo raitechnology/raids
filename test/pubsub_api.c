@@ -15,13 +15,14 @@ static int was_signaled, err;
 static void sighndlr( int sig ) { was_signaled = sig; }
 
 static void
-print_time( const char *cmd,  double secs,  size_t nrequests )
+print_time( const char *cmd,  double secs,  size_t nrequests,  size_t size )
 {
   static const double NS = 1000.0 * 1000.0 * 1000.0;
   double rqs = (double) nrequests / secs;
   printf( "%s: ", cmd );
-  printf( "%.2f req per second, ", rqs );
-  printf( "%.2f ns per req", NS / rqs );
+  printf( "%.2f msgs/sec, ", rqs );
+  printf( "%.2f ns/msg, ", NS / rqs );
+  printf( "%.2f MB/sec", (double) size / 1024.0 / 1024.0 / secs );
   if ( err != 0 ) {
     printf( ", errors %d", -err );
     err = 0;
@@ -231,7 +232,8 @@ do_latency( ds_t *h,  const char *ping,  const char *pong,  int reflect,
 }
 
 struct throughput_closure {
-  size_t   i;
+  size_t   i,
+           total;
   uint32_t last;
 };
 
@@ -243,25 +245,32 @@ throughput_cb( const ds_event_t *event,  const ds_msg_t *msg,
   uint32_t ctr;
 
   (void) event;
-  if ( msg->len == 4 ) {
+  if ( msg->len >= 4 ) {
+    if ( msg->len >= 8 ) {
+      uint32_t siz;
+      memcpy( &siz, &msg->strval[ 4 ], 4 );
+      if ( siz != (uint32_t) msg->len )
+        fprintf( stderr, "siz %u != %u\n", siz, msg->len );
+    }
     if ( memcpy( &ctr, msg->strval, 4 ) ) {
-#if 0
       if ( ctr != cl->last + 1 ) {
         if ( ctr < cl->last + 1 )
           fprintf( stderr, "-%u ", ( cl->last + 1 ) - ctr );
         else
           fprintf( stderr, "+%u ", ctr - ( cl->last + 1 ) );
-        fprintf( stderr, "*%u*\n", ctr );
+        fprintf( stderr, "%u -> *%u* (sz=%d)\n", cl->last + 1, ctr, msg->len );
+        fprintf( stderr, " oo \n" );
       }
-#endif
       cl->last = ctr;
+      cl->total += msg->len;
       cl->i++;
     }
   }
 }
 
 static void
-do_throughput( ds_t *h,  const char *subject,  int sub,  size_t nrequests )
+do_throughput( ds_t *h,  const char *subject,  int sub,  size_t nrequests,
+               size_t randsize )
 {
   ds_msg_t pub;
   size_t   j = 0;
@@ -272,8 +281,10 @@ do_throughput( ds_t *h,  const char *subject,  int sub,  size_t nrequests )
   mk_str( &pub, subject, strlen( subject ) );
   if ( sub ) {
     struct throughput_closure cl;
-    cl.i    = 0;
-    cl.last = 0;
+    size_t last = 0;
+    cl.i     = 0;
+    cl.last  = 0;
+    cl.total = 0;
     ds_subscribe_with_cb( h, &pub, throughput_cb, &cl );
     ds_release_mem( h );
     while ( ! was_signaled ) {
@@ -281,9 +292,10 @@ do_throughput( ds_t *h,  const char *subject,  int sub,  size_t nrequests )
       if ( cl.i >= j + 100000 ) {
         t2 = kv_current_monotonic_time_s();
         if ( t2 - t1 >= 1.0 ) {
-          print_time( "subscribe", t2 - t1, cl.i - j );
+          print_time( "subscribe", t2 - t1, cl.i - j, cl.total - last );
           t1 = t2;
           j = cl.i;
+          last = cl.total;
         }
       }
       if ( nrequests != 0 && cl.i >= nrequests )
@@ -291,11 +303,11 @@ do_throughput( ds_t *h,  const char *subject,  int sub,  size_t nrequests )
     }
     if ( cl.i > j ) {
       t2 = kv_current_monotonic_time_s();
-      print_time( "subscribe", t2 - t1, cl.i - j );
+      print_time( "subscribe", t2 - t1, cl.i - j, cl.total - last );
     }
     printf( "total = %lu, last = %u\n", cl.i, cl.last );
   }
-  else {
+  else if ( randsize == 0 ) {
     ds_msg_t msg;
     size_t   i, k = 0;
     uint32_t ctr = 1;
@@ -314,7 +326,7 @@ do_throughput( ds_t *h,  const char *subject,  int sub,  size_t nrequests )
       if ( i >= j + 100000 ) {
         t2 = kv_current_monotonic_time_s();
         if ( t2 - t1 >= 1.0 ) {
-          print_time( "publish", t2 - t1, i - j );
+          print_time( "publish", t2 - t1, i - j, ( i - j ) * 4 );
           t1 = t2;
           j = i;
         }
@@ -326,9 +338,54 @@ do_throughput( ds_t *h,  const char *subject,  int sub,  size_t nrequests )
       ;
     if ( i > j ) {
       t2 = kv_current_monotonic_time_s();
-      print_time( "publish", t2 - t1, i - j );
+      print_time( "publish", t2 - t1, i - j, ( i - j ) * 4 );
     }
     printf( "total = %lu, ctr = %u\n", i, ctr );
+  }
+  else {
+    ds_msg_t  msg;
+    size_t    i, k = 0, total = 0, last = 0;
+    uint32_t * ctr;
+    uint8_t  * randbuf;
+
+    randbuf  = malloc( randsize + 4 );
+    ctr      = (uint32_t *) randbuf;
+    ctr[ 0 ] = 1;
+    for ( i = 1; i < randsize / 4 + 1; i++ )
+      ctr[ i ] = i | 0xffdd0000U;
+    mk_str( &msg, randbuf, randsize );
+    for ( i = 0; ! was_signaled; ) {
+      /* publish a message */
+      msg.len = rand() % randsize + 4;
+      ctr[ 1 ] = msg.len;
+      total += msg.len;
+      ds_publish( h, NULL, &pub, &msg );
+      ds_release_mem( h );
+      ctr[ 0 ]++;
+      i++;
+      if ( i >= k + 256 ) {
+        ds_dispatch( h, 0 );
+        k = i;
+      }
+      if ( i >= j + 100000 ) {
+        t2 = kv_current_monotonic_time_s();
+        if ( t2 - t1 >= 1.0 ) {
+          print_time( "publish", t2 - t1, i - j, total - last );
+          last = total;
+          t1 = t2;
+          j = i;
+        }
+      }
+      if ( i > 0 && i == nrequests )
+        break;
+    }
+    while ( ! was_signaled && ds_dispatch( h, 0 ) )
+      ;
+    if ( i > j ) {
+      t2 = kv_current_monotonic_time_s();
+      print_time( "publish", t2 - t1, i - j, total - last );
+    }
+    printf( "total = %lu, avg size %lu, ctr = %u\n", i, total / i, ctr[ 0 ] );
   }
 }
 
@@ -400,6 +457,7 @@ print_help( const char *argv0 )
   "   -x          : Create the shm map_name\n"
   "   -n num      : Total number of requests (default inf)\n"
   "   -r          : Reverse listen and publish, reflect\n"
+  "   -z num      : Use random message sizes: rand() %% num + K\n"
   "   -l          : Latency test, ping/pong (default throughput ping)\n"
   "   -s string   : Subject to subscribe or publish\n"
   "   -p pattern  : Pattern to subscribe\n"
@@ -415,6 +473,7 @@ main( int argc,  char *argv[] )
              * cr = get_arg( argc, argv, 0, "-x", NULL ),     /* create */
              * nr = get_arg( argc, argv, 1, "-n", NULL ),     /* requests */
              * re = get_arg( argc, argv, 0, "-r", NULL ),     /* reflect */
+             * sz = get_arg( argc, argv, 1, "-z", NULL ),     /* reflect */
              * la = get_arg( argc, argv, 0, "-l", NULL ),     /* reflect */
              * da = get_arg( argc, argv, 1, "-d", NULL ),     /* send data */
              * su = get_arg( argc, argv, 1, "-s", NULL ),     /* subject */
@@ -423,12 +482,15 @@ main( int argc,  char *argv[] )
              * bu = get_arg( argc, argv, 0, "-b", NULL ),     /* busy */
              * he = get_arg( argc, argv, 0, "-h", NULL );     /* help */
 
-  size_t nrequests = 0;
+  size_t nrequests = 0,
+         randsize  = 0;
   ds_t * h;      /* handle for shm kv */
   int    status;
 
   if ( nr != NULL )
     nrequests = strtol( nr, NULL, 0 );
+  if ( sz != NULL )
+    randsize = strtol( sz, NULL, 0 );
   if ( he != NULL ) {
     print_help( argv[ 0 ] );
     return 1;
@@ -462,7 +524,7 @@ main( int argc,  char *argv[] )
   else if ( la != NULL )
     do_latency( h, "ping", "pong", re != NULL, nrequests );
   else
-    do_throughput( h, "ping", re != NULL, nrequests );
+    do_throughput( h, "ping", re != NULL, nrequests, randsize );
 
   if ( was_signaled )
     printf( "Caught signal %d\n", was_signaled );

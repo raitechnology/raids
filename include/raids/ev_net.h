@@ -295,10 +295,11 @@ struct EvPoll : public RoutePublish {
                   uint32_t fd ) noexcept;
   int wait( int ms ) noexcept;            /* call epoll() with ms timeout */
   enum { /* dispatch return bits */
-    DISPATCH_IDLE = 0, /* no events dispatched */
-    POLL_NEEDED   = 1, /* a timer is about to expire */
-    DISPATCH_BUSY = 2, /* some event occured */
-    BUSY_POLL     = 4  /* kv pubsub is busy looping */
+    DISPATCH_IDLE  = 0, /* no events dispatched */
+    POLL_NEEDED    = 1, /* a timer is about to expire */
+    DISPATCH_BUSY  = 2, /* some event occured */
+    BUSY_POLL      = 4, /* kv pubsub is busy looping */
+    WRITE_PRESSURE = 8  /* something in a write hi state */
   };
   int dispatch( void ) noexcept;          /* process any sock in the queues */
   void drain_prefetch( void ) noexcept;   /* process prefetches */
