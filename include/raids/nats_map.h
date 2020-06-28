@@ -49,11 +49,15 @@ struct NatsStr {
   }
 
   size_t copy( char *out ) const {
+#if __GNUC__ >= 7
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wstringop-overflow"
+#endif
     ::memcpy( out, &this->len, sizeof( uint16_t ) );
     ::memcpy( &out[ sizeof( uint16_t ) ], this->str, this->len );
+#if __GNUC__ >= 7
 #pragma GCC diagnostic pop
+#endif
     return this->len + sizeof( uint16_t );
   }
 

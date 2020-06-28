@@ -238,10 +238,14 @@ struct KvSubMsg : public KvMsg {
   }
   /* src type + prefix hashes + msg data */
   uint8_t * trail( void ) {
+#if __GNUC__ >= 7
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Warray-bounds"
+#endif
     return (uint8_t *) &this->buf[ this->sublen + 1 + this->replylen + 1 ];
+#if __GNUC__ >= 7
 #pragma GCC diagnostic pop
+#endif
   }
   void set_subject( const char *s,  uint16_t len ) {
     this->sublen = len;
@@ -258,11 +262,15 @@ struct KvSubMsg : public KvMsg {
     return ptr[ 0 ];
   }
   void set_src_type( char t ) {
+#if __GNUC__ >= 7
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wstringop-overflow"
+#endif
     char * ptr = (char *) this->trail();
     ptr[ 0 ] = t;
+#if __GNUC__ >= 7
 #pragma GCC diagnostic pop
+#endif
   }
   void * get_msg_data( void ) {
     uint32_t i;
@@ -294,11 +302,15 @@ struct KvSubMsg : public KvMsg {
     return ptr[ 1 ];
   }
   void set_prefix_cnt( uint8_t cnt ) {
+#if __GNUC__ >= 7
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wstringop-overflow"
+#endif
     uint8_t * ptr = this->trail();
     ptr[ 1 ] = cnt;
+#if __GNUC__ >= 7
 #pragma GCC diagnostic pop
+#endif
   }
   KvPrefHash * prefix_array( void ) {
     uint8_t * ptr = this->trail();

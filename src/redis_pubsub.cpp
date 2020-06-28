@@ -78,6 +78,8 @@ RedisPatternRoute::release( void )
   }
 }
 
+namespace rai {
+namespace ds {
 template <>
 void RedisPatDataMap<RedisPatternRoute>::release( void ) noexcept
 {
@@ -121,6 +123,8 @@ void RedisDataMap<RedisContinue>::release( void ) noexcept
     cm = list.pop_hd();
     delete cm;
   }
+}
+}
 }
 
 bool
