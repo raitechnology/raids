@@ -261,6 +261,7 @@ redis_geo_includes       := -Ih3/src/h3lib/include -I/usr/include/h3lib
 redis_sortedset_includes := -Ih3/src/h3lib/include -I/usr/include/h3lib
 decimal_includes         := -Iraimd/libdecnumber/include
 ev_client_includes       := -Ilinecook/include
+test_stream_includes     := -Ilinecook/include
 term_includes            := -Ilinecook/include
 redis_rdb_includes       := -Irdbparser/include $(redis_geo_includes)
 
@@ -581,8 +582,7 @@ all: $(gen_files) $(all_libs) $(all_dlls) $(all_exes)
 
 .PHONE: dnf_depend
 dnf_depend:
-	sudo dnf -y install make gcc-c++ git redhat-lsb openssl-devel pcre2-devel
-	sudo dnf -y install liblzf-devel zlib-devel
+	sudo dnf -y install make gcc-c++ git redhat-lsb openssl-devel pcre2-devel liblzf-devel zlib-devel libbsd-devel
 	echo maybe also install hwloc-gui
 
 # create directories
