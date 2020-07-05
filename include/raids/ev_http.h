@@ -13,8 +13,8 @@ struct EvHttpListen : public EvTcpListen {
   EvListenOps ops;
   EvHttpListen( EvPoll &p ) noexcept;
   virtual bool accept( void ) noexcept;
-  int listen( const char *ip,  int port ) {
-    return this->EvTcpListen::listen( ip, port, "http_listen" );
+  int listen( const char *ip,  int port,  int opts ) {
+    return this->EvTcpListen::listen( ip, port, opts, "http_listen" );
   }
 };
 

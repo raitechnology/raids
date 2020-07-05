@@ -111,12 +111,28 @@ enum EvListFlag {
   IN_FREE_LIST   = 2  /* in a free list */
 };
 
+enum EvSockOpts {
+  OPT_REUSEADDR   = 1, /* set SO_RESUSEADDR true */
+  OPT_REUSEPORT   = 2, /* set SO_REUSEPORT true, multiple services, same port */
+  OPT_TCP_NODELAY = 4, /* set TCP_NODELAY true */
+  OPT_AF_INET     = 8, /* use ip4 stack */
+  OPT_AF_INET6    = 16,/* use ip6 stack */
+  OPT_KEEPALIVE   = 32,/* set kSO_KEEPALIVE true */
+  OPT_LINGER      = 64,/* set SO_LINGER true, 10 secs */
+
+  DEFAULT_TCP_LISTEN_OPTS  = 64|32|16|8|4|2|1,
+  DEFAULT_TCP_CONNECT_OPTS = 64|32|16|8|4,
+  DEFAULT_UDP_LISTEN_OPTS  = 16|8|2|1,
+  DEFAULT_UDP_CONNECT_OPTS = 16|8
+};
+
 struct EvSocket : public PeerData /* fd and address of peer */ {
   EvPoll   & poll;       /* the parent container */
   uint64_t   prio_cnt;   /* timeslice each socket for a slot to run */
   uint32_t   state;      /* bit mask of states, the queues the sock is in */
   EvSockType type;       /* listen or cnnection */
   EvListFlag listfl;     /* in active list or free list */
+  uint16_t   sock_opts;  /* sock opt bits above */
   bool       in_queue;   /* if in prio queue */
   uint64_t   bytes_recv, /* stat counters for bytes and msgs */
              bytes_sent,
@@ -125,8 +141,9 @@ struct EvSocket : public PeerData /* fd and address of peer */ {
 
   EvSocket( EvPoll &p,  EvSockType t,  PeerOps &o )
     : PeerData( o ), poll( p ), prio_cnt( 0 ),
-      state( 0 ), type( t ), listfl( IN_NO_LIST ), in_queue( false ),
-      bytes_recv( 0 ), bytes_sent( 0 ), msgs_recv( 0 ), msgs_sent( 0 ) {}
+      state( 0 ), type( t ), listfl( IN_NO_LIST ), sock_opts( 0 ),
+      in_queue( false ), bytes_recv( 0 ), bytes_sent( 0 ), msgs_recv( 0 ),
+      msgs_sent( 0 ) {}
 
   /* priority queue states */
   int test( int s ) const { return this->state & ( 1U << s ); }
@@ -422,8 +439,8 @@ struct EvUdp : public EvSocket, public StreamBuf {
     this->out_nmsgs = this->in_size = 0;
   }
   bool alloc_mmsg( void ) noexcept;
-  int listen( const char *ip,  int port,  const char *k ) noexcept;
-  int connect( const char *ip,  int port ) noexcept;
+  int listen( const char *ip,  int port,  int opts,  const char *k ) noexcept;
+  int connect( const char *ip,  int port,  int opts ) noexcept;
 
   void release_buffers( void ) { /* release all buffs */
     this->clear_buffers();

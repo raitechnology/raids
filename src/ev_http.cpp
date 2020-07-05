@@ -25,7 +25,6 @@ EvHttpListen::EvHttpListen( EvPoll &p ) noexcept
 bool
 EvHttpListen::accept( void ) noexcept
 {
-  static int on = 1;
   struct sockaddr_storage addr;
   socklen_t addrlen = sizeof( addr );
   int sock = ::accept( this->fd, (struct sockaddr *) &addr, &addrlen );
@@ -44,15 +43,8 @@ EvHttpListen::accept( void ) noexcept
     ::close( sock );
     return false;
   }
-  struct linger lin;
-  lin.l_onoff  = 1;
-  lin.l_linger = 10; /* 10 secs */
-  if ( ::setsockopt( sock, SOL_SOCKET, SO_KEEPALIVE, &on, sizeof( on ) ) != 0 )
-    perror( "warning: SO_KEEPALIVE" );
-  if ( ::setsockopt( sock, SOL_SOCKET, SO_LINGER, &lin, sizeof( lin ) ) != 0 )
-    perror( "warning: SO_LINGER" );
-  if ( ::setsockopt( sock, SOL_TCP, TCP_NODELAY, &on, sizeof( on ) ) != 0 )
-    perror( "warning: TCP_NODELAY" );
+  c->sock_opts = this->sock_opts;
+  EvTcpListen::set_sock_opts( sock, this->sock_opts );
   ::fcntl( sock, F_SETFL, O_NONBLOCK | ::fcntl( sock, F_GETFL ) );
   c->PeerData::init_peer( sock, (struct sockaddr *) &addr, "http" );
   c->setup_ids( sock, ++this->timer_id );

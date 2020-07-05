@@ -14,8 +14,8 @@ struct EvRedisListen : public EvTcpListen {
   EvListenOps ops;
   EvRedisListen( EvPoll &p ) noexcept;/* : EvTcpListen( p ) {}*/
   virtual bool accept( void ) noexcept;
-  int listen( const char *ip,  int port ) {
-    return this->EvTcpListen::listen( ip, port, "redis_listen" );
+  int listen( const char *ip,  int port,  int opts ) {
+    return this->EvTcpListen::listen( ip, port, opts, "redis_listen" );
   }
 };
 

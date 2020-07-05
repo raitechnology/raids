@@ -110,8 +110,26 @@ sock_type_string( EvSockType t )
     case EV_MEMUDP_SOCK:    return "memcached_udp";
     case EV_CLIENTUDP_SOCK: return "client_udp";
   }
-  return "unknown";
+  return "unknown_sock";
 }
+const char *
+state_string( EvState state )
+{
+  switch ( state ) {
+    case EV_READ_HI:   return "read_hi";
+    case EV_CLOSE:     return "close";
+    case EV_WRITE_HI:  return "write_hi";
+    case EV_READ:      return "read";
+    case EV_PROCESS:   return "process";
+    case EV_PREFETCH:  return "prefetch";
+    case EV_WRITE:     return "write";
+    case EV_SHUTDOWN:  return "shutdown";
+    case EV_READ_LO:   return "read_lo";
+    case EV_BUSY_POLL: return "busy_poll";
+  }
+  return "unknown_state";
+}
+
 /* vtable dispatch */
 inline void EvSocket::v_write( void ) noexcept {
   SOCK_CALL( this, write() );
@@ -283,6 +301,8 @@ EvPoll::dispatch( void ) noexcept
       goto do_prefetch;
     s->in_queue = false;
     this->ev_queue.pop();
+    /*printf( "fd %d type %s state %s\n",
+      s->fd, sock_type_string( s->type ), state_string( (EvState) state ) );*/
     /*printf( "dispatch %u %u (%x)\n", s->type, state, s->state );*/
     switch ( state ) {
       case EV_READ:

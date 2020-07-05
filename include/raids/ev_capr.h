@@ -20,8 +20,8 @@ struct EvCaprListen : public EvTcpListen {
   EvListenOps   ops;
   EvCaprListen( EvPoll &p ) noexcept;
   virtual bool accept( void ) noexcept;
-  int listen( const char *ip,  int port ) {
-    return this->EvTcpListen::listen( ip, port, "capr_listen" );
+  int listen( const char *ip,  int port,  int opts ) {
+    return this->EvTcpListen::listen( ip, port, opts, "capr_listen" );
   }
 };
 

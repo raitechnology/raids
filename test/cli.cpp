@@ -57,15 +57,15 @@ struct MyClient {
      term( p, this->termcb ),
      client( 0 ), msg_sent( 0 ), msg_recv( 0 ), is_mc( false ) {}
 
-  int tcp_connect( const char *h,  int p ) {
+  int tcp_connect( const char *h,  int p,  int o ) {
     int status;
-    if ( (status = this->tclient.connect( h, p )) == 0 )
+    if ( (status = this->tclient.connect( h, p, o )) == 0 )
       this->client = &this->tclient;
     return status;
   }
-  int udp_connect( const char *h,  int p ) {
+  int udp_connect( const char *h,  int p,  int o ) {
     int status;
-    if ( (status = this->uclient.connect( h, p )) == 0 )
+    if ( (status = this->uclient.connect( h, p, o )) == 0 )
       this->client = &this->uclient;
     return status;
   }
@@ -323,7 +323,9 @@ main( int argc, char *argv[] )
 {
   SignalHandler sighndl;
   FILE       * input_fp = NULL;
-  int          status = 0;
+  int          status = 0,
+               tcp_opts = DEFAULT_TCP_CONNECT_OPTS,
+               udp_opts = DEFAULT_UDP_CONNECT_OPTS;
   bool         is_connected = false;
   EvPoll       poll;
   MyClient     my( poll );
@@ -380,7 +382,7 @@ main( int argc, char *argv[] )
   /* by default, connects to :7369 */
   if ( ! is_connected && status == 0 ) {
     if ( ud != NULL ) {
-      if ( my.udp_connect( ho, atoi( pt ) ) != 0 ) {
+      if ( my.udp_connect( ho, atoi( pt ), udp_opts ) != 0 ) {
         fprintf( stderr, "unable to connect udp socket to %s\n", pt );
         status = 2; /* bad port or network error */
       }
@@ -389,7 +391,7 @@ main( int argc, char *argv[] )
         is_connected = true;
       }
     }
-    else if ( my.tcp_connect( ho, atoi( pt ) ) != 0 ) {
+    else if ( my.tcp_connect( ho, atoi( pt ), tcp_opts ) != 0 ) {
       fprintf( stderr, "unable to connect tcp socket to %s\n", pt );
       status = 2; /* bad port or network error */
     }

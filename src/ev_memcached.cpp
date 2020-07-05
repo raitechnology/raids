@@ -24,23 +24,23 @@ EvMemcachedListen::EvMemcachedListen( EvPoll &p ) noexcept
 }
 
 int
-EvMemcachedListen::listen( const char *ip,  int port ) noexcept
+EvMemcachedListen::listen( const char *ip,  int port,  int opts ) noexcept
 {
   if ( ip != NULL )
     ::strncpy( stat.interface, ip, sizeof( stat.interface ) - 1 );
   stat.tcpport = port;
   stat.max_connections = this->poll.nfds;
-  return this->EvTcpListen::listen( ip, port, "memcached_listen" );
+  return this->EvTcpListen::listen( ip, port, opts, "memcached_listen" );
 }
 
 int
-EvMemcachedUdp::listen( const char *ip,  int port ) noexcept
+EvMemcachedUdp::listen( const char *ip,  int port,  int opts ) noexcept
 {
   if ( ip != NULL )
     ::strncpy( stat.interface, ip, sizeof( stat.interface ) - 1 );
   stat.udpport = port;
   stat.max_connections = this->poll.nfds;
-  return this->EvUdp::listen( ip, port, "memcached_udp" );
+  return this->EvUdp::listen( ip, port, opts, "memcached_udp" );
 }
 
 bool

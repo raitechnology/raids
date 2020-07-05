@@ -11,8 +11,8 @@ struct EvNatsListen : public EvTcpListen {
   EvListenOps ops;
   EvNatsListen( EvPoll &p ) : EvTcpListen( p, this->ops ) {}
   virtual bool accept( void ) noexcept;
-  int listen( const char *ip,  int port ) {
-    return this->EvTcpListen::listen( ip, port, "nats_listen" );
+  int listen( const char *ip,  int port,  int opts ) {
+    return this->EvTcpListen::listen( ip, port, opts, "nats_listen" );
   }
 };
 

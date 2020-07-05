@@ -52,7 +52,7 @@ struct EvMemcachedUdp : public EvUdp {
   EvUdpOps         ops;
   EvMemcachedUdp( EvPoll &p ) : EvUdp( p, EV_MEMUDP_SOCK, this->ops ),
     exec( 0 ), out_idx( 0 ) {}
-  int listen( const char *ip,  int port ) noexcept;
+  int listen( const char *ip,  int port,  int opts ) noexcept;
   void init( void ) noexcept;
   void process( void ) noexcept;
   void exec_key_prefetch( EvKeyCtx &ctx ) {
@@ -93,7 +93,7 @@ struct MemcachedUdpFraming {
 struct EvMemcachedListen : public EvTcpListen {
   EvListenOps ops;
   EvMemcachedListen( EvPoll &p ) noexcept;
-  int listen( const char *ip,  int port ) noexcept;
+  int listen( const char *ip,  int port,  int opts ) noexcept;
   virtual bool accept( void ) noexcept;
 };
 
