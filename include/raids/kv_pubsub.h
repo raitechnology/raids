@@ -352,7 +352,7 @@ struct KvSubRoute {
   }
 };
 
-typedef RouteVec<KvSubRoute> KvSubTab;
+struct KvSubTab : public RouteVec<KvSubRoute> {};
 
 struct KvSubNotifyList {
   KvSubNotifyList * next, * back;
@@ -377,35 +377,36 @@ struct KvFragAsm {
 
 struct KvPubSub : public EvSocket {
   static const uint16_t KV_NO_SIGUSR = 1;
-  uint16_t     ctx_id,                 /* my endpoint */
-               flags;                  /* KvPubSubFlags above */
-  uint32_t     dbx_id;                 /* db xref */
-  kv::HashSeed hs;                     /* seed for db */
-  uint64_t     next_seqno,             /* next seqno of msg sent */
-               timer_id,               /* my timer id */
-               timer_cnt,              /* count of timer expires */
-               time_ns,                /* current coarse time */
-               send_size,              /* amount sent to other inboxes */
-               send_cnt,               /* count of msgs sent, includes sendq */
-               route_size,             /* size of msgs routed from send queue */
-               route_cnt,              /* count of msgs routed from send queue*/
+  uint16_t     ctx_id;           /* my endpoint */
+  uint16_t     flags;            /* KvPubSubFlags above */
+  uint32_t     dbx_id;           /* db xref */
+  kv::HashSeed hs;               /* seed for db */
+  uint64_t     next_seqno,       /* next seqno of msg sent */
+               timer_id,         /* my timer id */
+               timer_cnt,        /* count of timer expires */
+               time_ns,          /* current coarse time */
+               send_size,        /* amount sent to other inboxes */
+               send_cnt,         /* count of msgs sent, includes sendq */
+               route_size,       /* size of msgs routed from send queue */
+               route_cnt,        /* count of msgs routed from send queue*/
                sigusr_recv_cnt,
                inbox_msg_cnt,
                pipe_msg_cnt,
-               mc_pos;                 /* hash position of the mcast route */
-  kv::ValueCtr mc_value_ctr;           /* the value serial ctr, track change */
-  CubeRoute128 mc_cr;                  /* the current mcast route */
-  range_t      mc_range;               /* the range of current mcast */
-  size_t       mc_cnt;                 /* count of bits in mc_range */
-  KvRouteCache rte_cache[ 256 ];       /* cache of cube routes */
+               mc_pos;           /* hash position of the mcast route */
+  kv::ValueCtr mc_value_ctr;     /* the value serial ctr, track change */
+  CubeRoute128 mc_cr;            /* the current mcast route */
+  range_t      mc_range;         /* the range of current mcast */
+  size_t       mc_cnt;           /* count of bits in mc_range */
+  KvRouteCache rte_cache[ 256 ]; /* cache of cube routes */
 
-  KvSubTab     sub_tab;                /* subject route table to shm */
-  kv::KeyCtx   kctx,                   /* a kv context for send/recv msgs */
-               rt_kctx;                /* a kv context for route lookup */
+  KvSubTab     sub_tab;          /* subject route table to shm */
+  kv::KeyCtx   kctx,             /* a kv context for send/recv msgs */
+               rt_kctx;          /* a kv context for route lookup */
 
   EvSocketOps  ops;
-  CubeRoute128 dead_cr,                /* clean up old route inboxes */
-               pipe_cr;                /* read from pipe */
+  CubeRoute128 dead_cr,          /* clean up old route inboxes */
+               pipe_cr,          /* routes that have pipe connected */
+               subscr_cr;        /* routes that have subscribes incoming*/
 
   KvInboxKey  * rcv_inbox[ KV_CTX_INBOX_COUNT ];
   kv::PipeBuf * rcv_pipe[ KV_MAX_CTX_ID ];
@@ -427,7 +428,7 @@ struct KvPubSub : public EvSocket {
   KvPubSub( EvPoll &p,  int sock,  void *mcptr,  const char *mc,  size_t mclen,
             uint32_t xid )
       : EvSocket( p, EV_KV_PUBSUB, this->ops ),
-        ctx_id( p.ctx_id ), flags( KV_DO_NOTIFY ), 
+        ctx_id( p.ctx_id ), flags( KV_DO_NOTIFY ),
         dbx_id( xid ), next_seqno( 0 ),
         timer_id( (uint64_t) EV_KV_PUBSUB << 56 ), timer_cnt( 0 ),
         time_ns( p.current_coarse_ns() ),
@@ -442,6 +443,7 @@ struct KvPubSub : public EvSocket {
     ::memset( (void *) this->rte_cache, 0, sizeof( this->rte_cache ) );
     this->dead_cr.zero();
     this->pipe_cr.zero();
+    this->subscr_cr.zero();
     ::memset( this->rcv_inbox, 0, sizeof( this->rcv_inbox ) );
     ::memset( this->rcv_pipe, 0, sizeof( this->rcv_pipe ) );
     ::memset( this->snd_inbox, 0, sizeof( this->snd_inbox ) );
@@ -454,9 +456,11 @@ struct KvPubSub : public EvSocket {
   static KvPubSub *create( EvPoll &p,  uint8_t db_num ) noexcept;
   void print_backlog( void ) noexcept;
   bool is_dead( uint32_t id ) const noexcept;
-  bool get_mcast( CubeRoute128 &result_cr ) noexcept;
+  bool get_set_mcast( CubeRoute128 &result_cr ) noexcept;
   bool register_mcast( void ) noexcept;
-  bool clear_mcast_dead_routes( void ) noexcept;
+  void clear_mcast_dead_routes( void ) noexcept;
+  void force_unsubscribe( void ) noexcept;
+  void check_peer_health( void ) noexcept;
   bool unregister_mcast( void ) noexcept;
   enum UpdateEnum { DEACTIVATE = 0, ACTIVATE = 1, USE_FIND = 2 };
   bool update_mcast_sub( const char *sub,  size_t len,  int flags ) noexcept;
@@ -510,7 +514,7 @@ struct KvPubSub : public EvSocket {
   void write_send_queue_slow( void ) noexcept;
   void notify_peers( CubeRoute128 &used ) noexcept;
   void write( void ) noexcept;
-  void check_backlog_warning( KvMsgQueue &ibx ) noexcept;
+  bool check_backlog_warning( KvMsgQueue &ibx ) noexcept;
   bool get_sub_mcast( const char *sub,  size_t len,
                       CubeRoute128 &cr ) noexcept;
   bool route_msg( KvMsg &msg ) noexcept;
