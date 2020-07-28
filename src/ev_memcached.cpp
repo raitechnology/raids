@@ -46,7 +46,6 @@ EvMemcachedUdp::listen( const char *ip,  int port,  int opts ) noexcept
 bool
 EvMemcachedListen::accept( void ) noexcept
 {
-  static int on = 1;
   struct sockaddr_storage addr;
   socklen_t addrlen = sizeof( addr );
   int sock = ::accept( this->fd, (struct sockaddr *) &addr, &addrlen );
@@ -69,18 +68,12 @@ EvMemcachedListen::accept( void ) noexcept
   }
   if ( was_empty )
     stat.conn_structs += EvPoll::ALLOC_INCR;
-  struct linger lin;
-  lin.l_onoff  = 1;
-  lin.l_linger = 10; /* 10 secs */
-  if ( ::setsockopt( sock, SOL_SOCKET, SO_KEEPALIVE, &on, sizeof( on ) ) != 0 )
-    perror( "warning: SO_KEEPALIVE" );
-  if ( ::setsockopt( sock, SOL_SOCKET, SO_LINGER, &lin, sizeof( lin ) ) != 0 )
-    perror( "warning: SO_LINGER" );
-  if ( ::setsockopt( sock, SOL_TCP, TCP_NODELAY, &on, sizeof( on ) ) != 0 )
-    perror( "warning: TCP_NODELAY" );
 
+  c->sock_opts = this->sock_opts;
+  EvTcpListen::set_sock_opts( this->poll, sock, this->sock_opts );
   ::fcntl( sock, F_SETFL, O_NONBLOCK | ::fcntl( sock, F_GETFL ) );
   c->PeerData::init_peer( sock, (struct sockaddr *) &addr, "memcached" );
+
   if ( this->poll.add_sock( c ) < 0 ) {
     ::close( sock );
     c->push_free_list();
@@ -227,8 +220,7 @@ EvMemcachedService::process( void ) noexcept
       /* FALLTHRU */
     case EV_WRITE:
       this->pop( EV_PROCESS );
-      if ( strm.pending() > 0 )
-        this->push( EV_WRITE );
+      this->push_write();
       break;
   }
 }
@@ -431,8 +423,7 @@ EvMemcachedUdp::process( void ) noexcept
     this->in_moff++; /* next buffer */
   }
   this->pop( EV_PROCESS );
-  if ( strm.pending() > 0 )
-    this->push( EV_WRITE );
+  this->push_write();
 }
 
 bool
@@ -684,10 +675,10 @@ EvMemcachedUdp::release( void ) noexcept
 void
 EvMemcachedService::push_free_list( void ) noexcept
 {
-  if ( this->listfl == IN_ACTIVE_LIST )
+  if ( this->in_list( IN_ACTIVE_LIST ) )
     fprintf( stderr, "memcached sock should not be in active list\n" );
-  else if ( this->listfl != IN_FREE_LIST ) {
-    this->listfl = IN_FREE_LIST;
+  else if ( ! this->in_list(  IN_FREE_LIST ) ) {
+    this->set_list( IN_FREE_LIST );
     this->poll.free_memcached.push_hd( this );
   }
 }
@@ -695,8 +686,8 @@ EvMemcachedService::push_free_list( void ) noexcept
 void
 EvMemcachedService::pop_free_list( void ) noexcept
 {
-  if ( this->listfl == IN_FREE_LIST ) {
-    this->listfl = IN_NO_LIST;
+  if ( this->in_list( IN_FREE_LIST ) ) {
+    this->set_list( IN_NO_LIST );
     this->poll.free_memcached.pop( this );
   }
 }

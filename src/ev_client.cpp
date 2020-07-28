@@ -41,8 +41,7 @@ EvNetClient::process( void ) noexcept
       break;
   }
   this->pop( EV_PROCESS );
-  if ( this->pending() > 0 )
-    this->push( EV_WRITE );
+  this->push_write();
 }
 
 void
@@ -122,8 +121,7 @@ EvUdpClient::process( void ) noexcept
     this->in_moff++; /* next buffer */
   }
   this->pop( EV_PROCESS );
-  if ( this->pending() > 0 )
-    this->push( EV_WRITE );
+  this->push_write();
 }
 
 void

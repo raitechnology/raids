@@ -126,7 +126,7 @@ EvRvListen::accept( void ) noexcept
     return false;
   }
   c->sock_opts = this->sock_opts;
-  EvTcpListen::set_sock_opts( sock, this->sock_opts );
+  EvTcpListen::set_sock_opts( this->poll, sock, this->sock_opts );
   ::fcntl( sock, F_SETFL, O_NONBLOCK | ::fcntl( sock, F_GETFL ) );
 
   if ( this->ipport == 0 ) {
@@ -151,7 +151,7 @@ EvRvListen::accept( void ) noexcept
   c->initialize_state( ++this->timer_id );
   c->idle_push( EV_WRITE_HI );
   if ( this->poll.add_sock( c ) < 0 ) {
-    printf( "failed to add sock %d\n", sock );
+    fprintf( stderr, "failed to add sock %d\n", sock );
     ::close( sock );
     c->push_free_list();
     return false;
@@ -231,8 +231,7 @@ EvRvService::process( void ) noexcept
   } while ( status == 0 );
 break_loop:;
   this->pop( EV_PROCESS );
-  if ( this->pending() > 0 )
-    this->push( EV_WRITE );
+  this->push_write();
   if ( status != 0 )
     this->push( EV_CLOSE );
 }
@@ -454,7 +453,6 @@ EvRvService::rem_sub( void ) noexcept
     uint32_t h    = kv_crc_c( sub, len, 0 ),
              rcnt = 0;
     if ( this->sub_tab.rem( h, sub, len ) == RV_SUB_OK ) {
-      printf( "rem sub %s\n", sub );
       if ( this->sub_tab.tab.find_by_hash( h ) == NULL )
         rcnt = this->poll.sub_route.del_route( h, this->fd );
       this->poll.notify_unsub( h, sub, len, this->fd, rcnt, 'V' );
@@ -718,7 +716,6 @@ RvPatternMap::release( void ) noexcept
 void
 EvRvService::release( void ) noexcept
 {
-  printf( "rv release fd=%d\n", this->fd );
   this->rem_all_sub();
   this->sub_tab.release();
   this->pat_tab.release();
@@ -729,10 +726,10 @@ EvRvService::release( void ) noexcept
 void
 EvRvService::push_free_list( void ) noexcept
 {
-  if ( this->listfl == IN_ACTIVE_LIST )
+  if ( this->in_list( IN_ACTIVE_LIST ) )
     fprintf( stderr, "capr sock should not be in active list\n" );
-  else if ( this->listfl != IN_FREE_LIST ) {
-    this->listfl = IN_FREE_LIST;
+  else if ( ! this->in_list( IN_FREE_LIST ) ) {
+    this->set_list( IN_FREE_LIST );
     this->poll.free_rv.push_hd( this );
   }
 }
@@ -740,8 +737,8 @@ EvRvService::push_free_list( void ) noexcept
 void
 EvRvService::pop_free_list( void ) noexcept
 {
-  if ( this->listfl == IN_FREE_LIST ) {
-    this->listfl = IN_NO_LIST;
+  if ( this->in_list( IN_FREE_LIST ) ) {
+    this->set_list( IN_NO_LIST );
     this->poll.free_rv.pop( this );
   }
 }

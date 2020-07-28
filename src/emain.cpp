@@ -44,45 +44,49 @@ main( int argc, char *argv[] )
   int           status = 0;
 
   const char * mn = get_arg( argc, argv, 1, "-m", KV_DEFAULT_SHM ),
-             * pt = get_arg( argc, argv, 1, "-p", "7379" ),  /* redis */
+             * pt = get_arg( argc, argv, 1, "-p", "6379" ),  /* redis */
 #ifdef MULTI_PROTO
-             * mc = get_arg( argc, argv, 1, "-d", "21211" ), /* memcached */
+             * mc = get_arg( argc, argv, 1, "-d", "11211" ), /* memcached */
 /* unix doesn't have a SO_REUSEPORT option */
 #ifdef REDIS_UNIX
              * sn = get_arg( argc, argv, 1, "-u", "/tmp/raids.sock" ),/* unix */
 #endif
              * hp = get_arg( argc, argv, 1, "-w", "48080" ), /* http/websock */
-             * np = get_arg( argc, argv, 1, "-n", "42222" ), /* nats */
+             * np = get_arg( argc, argv, 1, "-n", "4222" ), /* nats */
              * cp = get_arg( argc, argv, 1, "-c", "8866" ),  /* capr */
-             * rv = get_arg( argc, argv, 1, "-r", "7501" ),  /* rv */
+             * rv = get_arg( argc, argv, 1, "-r", "7500" ),  /* rv */
 #endif
              * fd = get_arg( argc, argv, 1, "-x", "10000" ), /* max num fds */
+             * ti = get_arg( argc, argv, 1, "-t", "16" ),    /* secs timeout */
              * fe = get_arg( argc, argv, 1, "-f", "1" ),
              /** si = get_arg( argc, argv, 1, "-s", "0" ),*/
              * bu = get_arg( argc, argv, 0, "-b", 0 ),
              * cl = get_arg( argc, argv, 0, "-P", 0 ),
+             * i4 = get_arg( argc, argv, 0, "-4", 0 ),
              * no = get_arg( argc, argv, 0, "-k", 0 ),
              * he = get_arg( argc, argv, 0, "-h", 0 );
 
   if ( he != NULL ) {
     printf( "%s"
 " [-m map] [-p redis] [-d memcd] [-u unix] [-w web] [-n nats] [-c capr]"
-" [-x mfd] [-f pre] [-b]\n" /*"[-s sin]\n"*/
-      "  map   = kv shm map name       (" KV_DEFAULT_SHM ")\n"
-      "  redis = listen redis port     (7379)\n"
+" [-x mfd] [-t secs] [-f pre] [-P] [-4] [-b]\n"
+      "  -m map   = kv shm map name       (" KV_DEFAULT_SHM ")\n"
+      "  -p redis = listen redis port     (6379)\n"
 #ifdef MULTI_PROTO
-      "  memcd = listen memcached port (21211)\n"
+      "  -d memcd = listen memcached port (11211)\n"
 #ifdef REDIS_UNIX
-      "  unix  = listen unix name      (/tmp/raids.sock)\n"
+      "  -u unix  = listen unix name      (/tmp/raids.sock)\n"
 #endif
-      "  web   = listen websocket      (48080)\n"
-      "  nats  = listen nats port      (42222)\n"
-      "  capr  = listen capr port      (8866)\n"
-      "  rv    = listen rv port        (7501)\n"
+      "  -w web   = listen websocket      (48080)\n"
+      "  -n nats  = listen nats port      (4222)\n"
+      "  -c capr  = listen capr port      (8866)\n"
+      "  -r rv    = listen rv port        (7500)\n"
 #endif
-      "  mfd   = max fds               (10000)\n"
-      "  pre   = prefetch keys:      0 = no, 1 = yes (1)\n"
+      "  -x mfd   = max fds               (10000)\n"
+      "  -t secs  = keep alive timeout    (16)\n"
+      "  -f pre   = prefetch keys:      0 = no, 1 = yes (1)\n"
       "  -P    = set SO_REUSEPORT for clustering multiple instances\n"
+      "  -4    = use only ipv4 listeners\n"
       "  -k    = don't use signal USR1 pub notification\n"
       "  -b    = busy poll\n"
       /*"  sin  = single thread:  0 = no, 1 = yes (0)\n"*/, argv[ 0 ] );
@@ -107,6 +111,7 @@ main( int argc, char *argv[] )
   EvRvListen        rv_sv( poll );
 #endif
   int               maxfd = atoi( fd ),
+                    timeo = atoi( ti ),
                     tcp_opts = DEFAULT_TCP_LISTEN_OPTS,
                     udp_opts = DEFAULT_UDP_LISTEN_OPTS;
 
@@ -116,6 +121,14 @@ main( int argc, char *argv[] )
     tcp_opts &= ~OPT_REUSEPORT; /* broken clustering when it is set */
     udp_opts &= ~OPT_REUSEPORT; /* broken clustering when it is set */
   }
+  if ( i4 != NULL ) {
+    tcp_opts &= ~OPT_AF_INET6;
+    udp_opts &= ~OPT_AF_INET6;
+  }
+  /* set timeouts */
+  poll.wr_timeout_ns   = (uint64_t) timeo * 1000000000;
+  poll.so_keepalive_ns = (uint64_t) timeo * 1000000000;
+
   if ( poll.init( maxfd, fe[ 0 ] == '1'/*, si[ 0 ] == '1'*/ ) != 0 ||
        poll.init_shm( shm ) != 0 ) {
     fprintf( stderr, "unable to init shm\n" );
@@ -154,8 +167,8 @@ main( int argc, char *argv[] )
   if ( status == 0 ) {
     printf( "raids_version:        %s\n", kv_stringify( DS_VER ) );
     printf( "max_fds:              %d\n", maxfd );
+    printf( "keepalive_timeout:    %d\n", timeo );
     printf( "prefetch:             %s\n", fe[ 0 ] == '1' ? "true" : "false" );
-    /*printf( "single_thread:        %s\n", si[ 0 ] == '1' ? "true" : "false" );*/
     printf( "redis:                %s\n", pt );
 #ifdef MULTI_PROTO
 #ifdef REDIS_UNIX
@@ -167,8 +180,10 @@ main( int argc, char *argv[] )
     printf( "capr:                 %s\n", cp );
     printf( "rv:                   %s\n", rv );
 #endif
-    printf( "SIGUSR1 notify:       %s\n", no != NULL ? "false" : "true" );
-    printf( "busy poll:            %s\n", bu != NULL ? "true" : "false" );
+    printf( "SIGUSR1_notify:       %s\n", no != NULL ? "false" : "true" );
+    printf( "cluster_soreuseport:  %s\n", cl != NULL ? "true" : "false" );
+    printf( "ipv4_only:            %s\n", i4 != NULL ? "true" : "false" );
+    printf( "busy_poll:            %s\n", bu != NULL ? "true" : "false" );
     fflush( stdout );
     sighndl.install();
     if ( bu != NULL ) {

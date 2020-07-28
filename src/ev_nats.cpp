@@ -131,7 +131,7 @@ EvNatsListen::accept( void ) noexcept
     return false;
   }
   c->sock_opts = this->sock_opts;
-  EvTcpListen::set_sock_opts( sock, this->sock_opts );
+  EvTcpListen::set_sock_opts( this->poll, sock, this->sock_opts );
   ::fcntl( sock, F_SETFL, O_NONBLOCK | ::fcntl( sock, F_GETFL ) );
 
   if ( ! is_server_info_init ) {
@@ -401,8 +401,7 @@ EvNatsService::process( void ) noexcept
   }
 break_loop:;
   this->pop( EV_PROCESS );
-  if ( this->pending() > 0 )
-    this->push( EV_WRITE );
+  this->push_write();
   return;
 }
 
@@ -852,10 +851,10 @@ EvNatsService::release( void ) noexcept
 void
 EvNatsService::push_free_list( void ) noexcept
 {
-  if ( this->listfl == IN_ACTIVE_LIST )
+  if ( this->in_list( IN_ACTIVE_LIST ) )
     fprintf( stderr, "nats sock should not be in active list\n" );
-  else if ( this->listfl != IN_FREE_LIST ) {
-    this->listfl = IN_FREE_LIST;
+  else if ( ! this->in_list( IN_FREE_LIST ) ) {
+    this->set_list( IN_FREE_LIST );
     this->poll.free_nats.push_hd( this );
   }
 }
@@ -863,8 +862,8 @@ EvNatsService::push_free_list( void ) noexcept
 void
 EvNatsService::pop_free_list( void ) noexcept
 {
-  if ( this->listfl == IN_FREE_LIST ) {
-    this->listfl = IN_NO_LIST;
+  if ( this->in_list( IN_FREE_LIST ) ) {
+    this->set_list( IN_NO_LIST );
     this->poll.free_nats.pop( this );
   }
 }

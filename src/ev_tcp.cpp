@@ -112,13 +112,37 @@ fail:;
 }
 
 void
-EvTcpListen::set_sock_opts( int sock,  int opts )
+EvTcpListen::set_sock_opts( EvPoll &poll,  int sock,  int opts )
 {
   static int on = 1;
   if ( (opts & OPT_KEEPALIVE) != 0 ) {
     if ( ::setsockopt( sock, SOL_SOCKET, SO_KEEPALIVE, &on,
                        sizeof( on ) ) != 0 )
       perror( "warning: SO_KEEPALIVE" );
+    if ( poll.so_keepalive_ns > 0 ) {
+      int keepcnt   = 3,/* quarters, so better if keepalive is divisible by 4 */
+          keepidle  = ( poll.so_keepalive_ns + (uint64_t) 3999999999UL )
+                                             / (uint64_t) 4000000000UL,
+          keepintvl = keepidle;
+
+      /* adjust to keep within keepalive range */
+      while ( keepcnt > 1 ) {
+        uint64_t ns = keepidle + keepintvl * ( keepcnt - 1 );
+        ns *= 1000000000;
+        if ( ns < poll.so_keepalive_ns )
+          break;
+        keepcnt--;
+      }
+      if ( ::setsockopt( sock, SOL_TCP, TCP_KEEPCNT, &keepcnt,
+                         sizeof( keepcnt ) ) != 0 )
+        perror( "warning: TCP_KEEPCNT" );
+      if ( ::setsockopt( sock, SOL_TCP, TCP_KEEPIDLE, &keepidle,
+                         sizeof( keepidle ) ) != 0 )
+        perror( "warning: TCP_KEEPIDLE" );
+      if ( ::setsockopt( sock, SOL_TCP, TCP_KEEPINTVL, &keepintvl,
+                         sizeof( keepintvl ) ) != 0 )
+        perror( "warning: TCP_KEEPINTVL" );
+    }
   }
   if ( (opts & OPT_LINGER) != 0 ) {
     struct linger lin;
@@ -180,7 +204,7 @@ EvTcpClient::connect( const char *ip,  int port,  int opts ) noexcept
                                sizeof( off ) ) != 0 )
               perror( "warning: IPV6_V6ONLY" );
           }
-          EvTcpListen::set_sock_opts( sock, opts );
+          EvTcpListen::set_sock_opts( this->poll, sock, opts );
           status = ::connect( sock, p->ai_addr, p->ai_addrlen );
           if ( status == 0 )
             goto break_loop;

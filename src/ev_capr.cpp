@@ -133,7 +133,7 @@ EvCaprListen::accept( void ) noexcept
     return false;
   }
   c->sock_opts = this->sock_opts;
-  EvTcpListen::set_sock_opts( sock, this->sock_opts );
+  EvTcpListen::set_sock_opts( this->poll, sock, this->sock_opts );
   ::fcntl( sock, F_SETFL, O_NONBLOCK | ::fcntl( sock, F_GETFL ) );
 
   if ( this->sess == NULL ) {
@@ -149,7 +149,7 @@ EvCaprListen::accept( void ) noexcept
   c->sess = this->sess->copy();
   c->idle_push( EV_WRITE_HI );
   if ( this->poll.add_sock( c ) < 0 ) {
-    printf( "failed to add sock %d\n", sock );
+    fprintf( stderr, "failed to add sock %d\n", sock );
     ::close( sock );
     c->push_free_list();
     return false;
@@ -217,8 +217,7 @@ EvCaprService::process( void ) noexcept
   }
 break_loop:;
   this->pop( EV_PROCESS );
-  if ( this->pending() > 0 )
-    this->push( EV_WRITE );
+  this->push_write();
   if ( status < 0 ) {
     fprintf( stderr, "capr status %d, closing\n", status );
     this->push( EV_CLOSE );
@@ -380,7 +379,6 @@ EvCaprService::rem_sub( CaprMsgIn &rec ) noexcept
     uint32_t h    = kv_crc_c( sub, len, 0 ),
              rcnt = 0;
     if ( this->sub_tab.rem( h, sub, len ) == CAPR_SUB_OK ) {
-      printf( "rem sub %s\n", sub );
       if ( this->sub_tab.tab.find_by_hash( h ) == NULL )
         rcnt = this->poll.sub_route.del_route( h, this->fd );
       this->poll.notify_unsub( h, sub, len, this->fd, rcnt, 'C' );
@@ -582,7 +580,6 @@ CaprPatternMap::release( void ) noexcept
 void
 EvCaprService::release( void ) noexcept
 {
-  printf( "capr release fd=%d\n", this->fd );
   if ( this->sess != NULL )
     delete this->sess;
   this->rem_all_sub();
@@ -595,10 +592,10 @@ EvCaprService::release( void ) noexcept
 void
 EvCaprService::push_free_list( void ) noexcept
 {
-  if ( this->listfl == IN_ACTIVE_LIST )
+  if ( this->in_list( IN_ACTIVE_LIST ) )
     fprintf( stderr, "capr sock should not be in active list\n" );
-  else if ( this->listfl != IN_FREE_LIST ) {
-    this->listfl = IN_FREE_LIST;
+  else if ( ! this->in_list( IN_FREE_LIST ) ) {
+    this->set_list( IN_FREE_LIST );
     this->poll.free_capr.push_hd( this );
   }
 }
@@ -606,8 +603,8 @@ EvCaprService::push_free_list( void ) noexcept
 void
 EvCaprService::pop_free_list( void ) noexcept
 {
-  if ( this->listfl == IN_FREE_LIST ) {
-    this->listfl = IN_NO_LIST;
+  if ( this->in_list( IN_FREE_LIST ) ) {
+    this->set_list( IN_NO_LIST );
     this->poll.free_capr.pop( this );
   }
 }

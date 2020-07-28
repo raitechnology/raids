@@ -54,7 +54,7 @@ enum EvSockType {
 /* vtable dispatch, without vtable, this allows compiler to inline the
  * functions and discard the empty ones (how a final qualifier should work) */
 #define SOCK_CALL( S, F ) \
-  switch ( S->type ) { \
+  switch ( S->type() ) { \
     case EV_LISTEN_SOCK:    static_cast<EvListen *>( S )->F; break; \
     case EV_TIMER_QUEUE:    static_cast<EvTimerQueue *>( S )->F; break; \
     case EV_REDIS_SOCK:     static_cast<EvRedisService *>( S )->F; break; \
@@ -73,7 +73,7 @@ enum EvSockType {
     case EV_CLIENTUDP_SOCK: static_cast<EvUdpClient *>( S )->F; break; \
   }
 #define SOCK_CALL2( R, S, F ) \
-  switch ( S->type ) { \
+  switch ( S->type() ) { \
     case EV_LISTEN_SOCK:    R = static_cast<EvListen *>( S )->F; break; \
     case EV_TIMER_QUEUE:    R = static_cast<EvTimerQueue *>( S )->F; break; \
     case EV_REDIS_SOCK:     R = static_cast<EvRedisService *>( S )->F; break; \
@@ -93,22 +93,17 @@ enum EvSockType {
   }
 
 enum EvState {
-  EV_READ_HI   = 0, /* listen port accept */
-  EV_CLOSE     = 1, /* if close set, do that before write/read */
-  EV_WRITE_HI  = 2, /* when send buf full at send_highwater or read pressure */
-  EV_READ      = 3, /* use read to fill until no more data or recv_highwater */
-  EV_PROCESS   = 4, /* process read buffers */
-  EV_PREFETCH  = 5, /* process key prefetch */
-  EV_WRITE     = 6, /* write at low priority, suboptimal send of small buf */
-  EV_SHUTDOWN  = 7, /* showdown after writes */
-  EV_READ_LO   = 8, /* read at low priority, back pressure from full write buf */
-  EV_BUSY_POLL = 9  /* busy poll, loop and keep checking for new data */
-};
-
-enum EvListFlag {
-  IN_NO_LIST     = 0, /* init, invalid */
-  IN_ACTIVE_LIST = 1, /* in the active list */
-  IN_FREE_LIST   = 2  /* in a free list */
+  EV_READ_HI    = 0, /* listen port accept */
+  EV_CLOSE      = 1, /* if close set, do that before write/read */
+  EV_WRITE_POLL = 2, /* when send buf full at send_highwater or read pressure */
+  EV_WRITE_HI   = 3, /* when send buf full at send_highwater or read pressure */
+  EV_READ       = 4, /* use read to fill until no more data or recv_highwater */
+  EV_PROCESS    = 5, /* process read buffers */
+  EV_PREFETCH   = 6, /* process key prefetch */
+  EV_WRITE      = 7, /* write at low priority, suboptimal send of small buf */
+  EV_SHUTDOWN   = 8, /* showdown after writes */
+  EV_READ_LO    = 9, /* read at low prio, back pressure from full write buf */
+  EV_BUSY_POLL  = 10 /* busy poll, loop and keep checking for new data */
 };
 
 enum EvSockOpts {
@@ -126,14 +121,28 @@ enum EvSockOpts {
   DEFAULT_UDP_CONNECT_OPTS = 16|8
 };
 
+enum EvListFlag {
+  IN_NO_LIST     = 0, /* init, invalid */
+  IN_ACTIVE_LIST = 1, /* in the active list */
+  IN_FREE_LIST   = 2  /* in a free list */
+};
+
+enum EvQueueLoc {
+  NOT_IN_QUEUE   = 0,
+  IN_EVENT_QUEUE = 1,
+  IN_WRITE_QUEUE = 2
+};
+
 struct EvSocket : public PeerData /* fd and address of peer */ {
   EvPoll   & poll;       /* the parent container */
   uint64_t   prio_cnt;   /* timeslice each socket for a slot to run */
   uint32_t   state;      /* bit mask of states, the queues the sock is in */
-  EvSockType type;       /* listen or cnnection */
-  EvListFlag listfl;     /* in active list or free list */
-  uint16_t   sock_opts;  /* sock opt bits above */
-  bool       in_queue;   /* if in prio queue */
+  uint8_t    sock_opts,  /* sock opt bits above */
+             sock_type,  /* listen or cnnection */
+             sock_flags_listfl,   /* in active list or free list */
+             sock_flags_in_queue; /* if in prio queue */
+
+  uint8_t    pad[ 8 ];
   uint64_t   bytes_recv, /* stat counters for bytes and msgs */
              bytes_sent,
              msgs_recv,
@@ -141,11 +150,33 @@ struct EvSocket : public PeerData /* fd and address of peer */ {
 
   EvSocket( EvPoll &p,  EvSockType t,  PeerOps &o )
     : PeerData( o ), poll( p ), prio_cnt( 0 ),
-      state( 0 ), type( t ), listfl( IN_NO_LIST ), sock_opts( 0 ),
-      in_queue( false ), bytes_recv( 0 ), bytes_sent( 0 ), msgs_recv( 0 ),
-      msgs_sent( 0 ) {}
+      state( 0 ),  sock_opts( 0 ), sock_type( t ), sock_flags_listfl( 0 ),
+      sock_flags_in_queue( 0 ),
+      bytes_recv( 0 ), bytes_sent( 0 ), msgs_recv( 0 ), msgs_sent( 0 ) {}
+
+  /* type of socket */
+  bool is_type( EvSockType t ) const { return this->type() == t; }
+  EvSockType type( void ) const { return (EvSockType) this->sock_type; }
+  const char *type_string( void ) {
+    return EvSocket::sock_type_string( this->type() ); }
+
+  /* if socket mem is free */
+  bool in_list( EvListFlag f ) const {
+    return (EvListFlag) this->sock_flags_listfl == f; }
+  void set_list( EvListFlag f ) { this->sock_flags_listfl = f; }
+
+  /* if in event queue  */
+  bool in_queue( EvQueueLoc q ) const {
+    return (EvQueueLoc) this->sock_flags_in_queue == q; }
+  void set_queue( EvQueueLoc l ) { this->sock_flags_in_queue = l; }
+
+  static const char * sock_type_string( EvSockType t ) noexcept;
+  static const char * state_string( EvState state ) noexcept;
 
   /* priority queue states */
+  EvState get_dispatch_state( void ) const {
+    return (EvState) ( __builtin_ffs( this->state ) - 1 );
+  }
   int test( int s ) const { return this->state & ( 1U << s ); }
   void push( int s )      { this->state |= ( 1U << s ); }
   void pop( int s )       { this->state &= ~( 1U << s ); }
@@ -163,11 +194,6 @@ struct EvSocket : public PeerData /* fd and address of peer */ {
   /* priority queue test, ordered by first bit set (EV_WRITE > EV_READ).
    * a sock with EV_READ bit set will have a higher priority than one with
    * EV_WRITE */
-  static bool is_greater( EvSocket *s1,  EvSocket *s2 ) {
-    int x1 = __builtin_ffs( s1->state ),
-        x2 = __builtin_ffs( s2->state );
-    return x1 > x2 || ( x1 == x2 && s1->prio_cnt > s2->prio_cnt );
-  }
   /* the "virtual" calls, dispatched based on this->type, inlined ev_net.cpp */
   void v_write( void ) noexcept;
   void v_read( void ) noexcept;
@@ -209,28 +235,61 @@ static inline void *aligned_malloc( size_t sz ) {
  *   publishers may not need to see EvPoll, only RoutePublish, that is why it
  *   is a sepearate structure */
 struct EvPoll : public RoutePublish {
-  kv::PrioQueue<EvSocket *, EvSocket::is_greater> ev_queue;
+  static bool is_event_greater( EvSocket *s1,  EvSocket *s2 ) {
+    int x1 = __builtin_ffs( s1->state ),
+        x2 = __builtin_ffs( s2->state );
+    /* prio_cnt is incremented forever, it makes queue fair */
+    return x1 > x2 || ( x1 == x2 && s1->prio_cnt > s2->prio_cnt );
+  }
+  static bool is_active_older( EvSocket *s1,  EvSocket *s2 ) {
+    /* active_ns is set when epoll says sock is read ready */
+    return s1->PeerData::active_ns < s2->PeerData::active_ns;
+  }
+  /* order by event priority */
+  kv::PrioQueue<EvSocket *, EvPoll::is_event_greater> ev_queue;
+  /* order by last active time */
+  kv::PrioQueue<EvSocket *, EvPoll::is_active_older>  ev_write;
+
   void push_event_queue( EvSocket *s ) {
-    if ( ! s->in_queue ) {
-      s->in_queue = true;
+    if ( s->in_queue( NOT_IN_QUEUE ) ) {
+      s->set_queue( IN_EVENT_QUEUE );
       this->ev_queue.push( s );
     }
   }
+  /* sock is blocked on a write, add to epoll set and write queue, if
+   * client is idle for a long time and sock is in write queue, it may
+   * need to be closed to free buffer space */
+  void push_write_queue( EvSocket *s ) {
+    if ( s->in_queue( NOT_IN_QUEUE ) ) {
+      s->set_queue( IN_WRITE_QUEUE );
+      this->ev_write.push( s );
+    }
+  }
+  void remove_write_queue( EvSocket *s ) {
+    if ( s->in_queue( IN_WRITE_QUEUE ) ) {
+      s->set_queue( NOT_IN_QUEUE );
+      this->ev_write.remove( s );
+    }
+  }
 
-  EvSocket          ** sock;            /* sock array indexed by fd */
+  EvSocket          ** sock,            /* sock array indexed by fd */
+                    ** wr_poll;         /* write queue waiting for epoll */
   struct epoll_event * ev;              /* event array used by epoll() */
   kv::HashTab        * map;             /* the data store */
   EvPrefetchQueue    * prefetch_queue;  /* ordering keys */
   KvPubSub           * pubsub;          /* cross process pubsub */
   EvTimerQueue       * timer_queue;     /* timer events */
   uint64_t             prio_tick,       /* priority queue ticker */
+                       wr_timeout_ns,   /* timeout for writes in EV_WRITE_POLL */
+                       so_keepalive_ns, /* keep alive ping timeout */
                        next_id;         /* unique id for connection */
   uint32_t             ctx_id,          /* this thread context */
                        dbx_id,          /* the db context */
-                       fdcnt;           /* num fds in poll set */
-  int                  efd,             /* epoll fd */
-                       nfds,            /* max epoll() fds, array sz this->ev */
+                       fdcnt,           /* num fds in poll set */
+                       wr_count,        /* num fds in wr_poll[] */
                        maxfd,           /* current maximum fd number */
+                       nfds;            /* max epoll() fds, array sz this->ev */
+  int                  efd,             /* epoll fd */
                        quit;            /* when > 0, wants to exit */
   static const size_t  ALLOC_INCR    = 64, /* alloc size of poll socket ar */
                        PREFETCH_SIZE = 4;  /* pipe size of number of pref */
@@ -290,13 +349,16 @@ struct EvPoll : public RoutePublish {
   }
   void * operator new( size_t, void *ptr ) { return ptr; }
   void operator delete( void *ptr ) { ::free( ptr ); }
+  /* 16 seconds */
+  static const uint64_t DEFAULT_NS_TIMEOUT = (uint64_t) 16 * 1000 * 1000 * 1000;
 
   EvPoll()
-    : sock( 0 ), ev( 0 ), map( 0 ), prefetch_queue( 0 ), pubsub( 0 ),
-      timer_queue( 0 ), prio_tick( 0 ), next_id( 0 ), ctx_id( kv::MAX_CTX_ID ),
-      dbx_id( kv::MAX_STAT_ID ), fdcnt( 0 ), efd( -1 ), nfds( -1 ),
-      maxfd( -1 ), quit( 0 ), prefetch_pending( 0 ),
-      sub_route( *this ) /*, single_thread( false )*/ {
+    : sock( 0 ), wr_poll( 0 ), ev( 0 ), map( 0 ), prefetch_queue( 0 ),
+      pubsub( 0 ), timer_queue( 0 ), prio_tick( 0 ),
+      wr_timeout_ns( DEFAULT_NS_TIMEOUT ), so_keepalive_ns( DEFAULT_NS_TIMEOUT ),
+      next_id( 0 ), ctx_id( kv::MAX_CTX_ID ), dbx_id( kv::MAX_STAT_ID ),
+      fdcnt( 0 ), wr_count( 0 ), maxfd( 0 ), nfds( 0 ), efd( -1 ), quit( 0 ),
+      prefetch_pending( 0 ), sub_route( *this ) /*, single_thread( false )*/ {
     ::memset( this->prefetch_cnt, 0, sizeof( this->prefetch_cnt ) );
   }
 
@@ -311,6 +373,9 @@ struct EvPoll : public RoutePublish {
   void del_route( const char *sub,  size_t sub_len,  uint32_t hash,
                   uint32_t fd ) noexcept;
   int wait( int ms ) noexcept;            /* call epoll() with ms timeout */
+
+  void idle_close( EvSocket *s,  uint64_t ns ) noexcept;
+
   enum { /* dispatch return bits */
     DISPATCH_IDLE  = 0, /* no events dispatched */
     POLL_NEEDED    = 1, /* a timer is about to expire */
@@ -363,6 +428,7 @@ struct EvListenOps : public EvSocketOps {
 };
 
 struct EvConnection : public EvSocket, public StreamBuf {
+  static const size_t RCV_BUFSIZE = 16 * 1024;
   char   * recv;           /* initially recv_buf, but may realloc */
   uint32_t off,            /* offset of recv_buf consumed */
            len,            /* length of data in recv_buf */
@@ -370,15 +436,15 @@ struct EvConnection : public EvSocket, public StreamBuf {
            recv_highwater, /* recv_highwater: switch to low priority read */
            send_highwater, /* send_highwater: switch to high priority write */
            pad;
-  char     recv_buf[ 16 * 1024 ] __attribute__((__aligned__( 64 )));
+  char     recv_buf[ RCV_BUFSIZE ] __attribute__((__aligned__( 64 )));
 
   EvConnection( EvPoll &p, EvSockType t,  PeerOps &o ) : EvSocket( p, t, o ) {
     this->recv           = this->recv_buf;
     this->off            = 0;
     this->len            = 0;
     this->recv_size      = sizeof( this->recv_buf );
-    this->recv_highwater = this->recv_size - this->recv_size / 8;
-    this->send_highwater = this->recv_size * 2;
+    this->recv_highwater = RCV_BUFSIZE - RCV_BUFSIZE / 32;
+    this->send_highwater = StreamBuf::SND_BUFSIZE - StreamBuf::SND_BUFSIZE / 32;
     this->pad            = 0xaa99bb88U;
   }
   void release_buffers( void ) { /* release all buffs */
@@ -412,6 +478,16 @@ struct EvConnection : public EvSocket, public StreamBuf {
   bool resize_recv_buf( void ) noexcept;   /* need more buffer space */
   void read( void ) noexcept;              /* fill recv buf */
   void write( void ) noexcept;             /* flush stream buffer */
+  bool push_write( void ) {
+    size_t buflen = this->StreamBuf::pending();
+    if ( buflen > 0 ) {
+      this->push( EV_WRITE );
+      if ( buflen > this->send_highwater )
+        this->pushpop( EV_WRITE_HI, EV_WRITE );
+      return true;
+    }
+    return false;
+  }
   void close_alloc_error( void ) noexcept; /* if stream buf alloc failed */
   void process_shutdown( void ) { this->pushpop( EV_CLOSE, EV_SHUTDOWN ); }
 };
@@ -452,6 +528,16 @@ struct EvUdp : public EvSocket, public StreamBuf {
   }
   void read( void ) noexcept;             /* fill recv buf, return true if read some */
   void write( void ) noexcept;            /* flush stream buffer */
+  bool push_write( void ) {
+    size_t buflen = this->StreamBuf::pending();
+    if ( buflen > 0 ) {
+      this->push( EV_WRITE );
+      /*if ( buflen > this->send_highwater )
+        this->pushpop( EV_WRITE_HI, EV_WRITE );*/
+      return true;
+    }
+    return false;
+  }
   void process_shutdown( void ) { this->pushpop( EV_CLOSE, EV_SHUTDOWN ); }
 };
 

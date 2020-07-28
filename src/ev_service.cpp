@@ -54,7 +54,7 @@ EvRedisListen::accept( void ) noexcept
     return false;
   }
   c->sock_opts = this->sock_opts;
-  EvTcpListen::set_sock_opts( sock, this->sock_opts );
+  EvTcpListen::set_sock_opts( this->poll, sock, this->sock_opts );
   ::fcntl( sock, F_SETFL, O_NONBLOCK | ::fcntl( sock, F_GETFL ) );
   c->PeerData::init_peer( sock, (struct sockaddr *) &addr, "redis" );
   c->setup_ids( sock, ++this->timer_id );
@@ -133,9 +133,7 @@ EvRedisService::process( void ) noexcept
         break;
     }
   }
-  if ( strm.pending() > 0 )
-    this->push( EV_WRITE );
-  else
+  if ( ! this->push_write() )
     strm.reset();
 }
 
@@ -187,10 +185,10 @@ EvRedisService::release( void ) noexcept
 void
 EvRedisService::push_free_list( void ) noexcept
 {
-  if ( this->listfl == IN_ACTIVE_LIST )
+  if ( this->in_list( IN_ACTIVE_LIST ) )
     fprintf( stderr, "redis sock should not be in active list\n" );
-  else if ( this->listfl != IN_FREE_LIST ) {
-    this->listfl = IN_FREE_LIST;
+  else if ( ! this->in_list( IN_FREE_LIST ) ) {
+    this->set_list( IN_FREE_LIST );
     this->poll.free_redis.push_hd( this );
   }
 }
@@ -198,8 +196,8 @@ EvRedisService::push_free_list( void ) noexcept
 void
 EvRedisService::pop_free_list( void ) noexcept
 {
-  if ( this->listfl == IN_FREE_LIST ) {
-    this->listfl = IN_NO_LIST;
+  if ( this->in_list( IN_FREE_LIST ) ) {
+    this->set_list( IN_NO_LIST );
     this->poll.free_redis.pop( this );
   }
 }
@@ -244,7 +242,7 @@ EvRedisService::debug( void ) noexcept
   printf( "heap: " );
   for ( i = 0; i < this->poll.ev_queue.num_elems; i++ ) {
     s = this->poll.ev_queue.heap[ i ];
-    if ( s->type != EV_LISTEN_SOCK ) {
+    if ( ! s->is_type( EV_LISTEN_SOCK ) ) {
       addrlen = sizeof( addr );
       getpeername( s->fd, (struct sockaddr*) &addr, &addrlen );
       getnameinfo( (struct sockaddr*) &addr, addrlen, buf, sizeof( buf ),

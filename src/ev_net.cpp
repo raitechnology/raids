@@ -32,22 +32,24 @@ using namespace kv;
 int
 EvPoll::init( int numfds,  bool prefetch/*,  bool single*/ ) noexcept
 {
-  size_t sz = sizeof( this->ev[ 0 ] ) * numfds;
-
+  uint32_t n  = align<uint32_t>( numfds, 2 ); /* 64 bit boundary */
+  size_t   sz = ( sizeof( this->ev[ 0 ] ) +
+                  sizeof( this->wr_poll[ 0 ] ) ) * n;
   if ( prefetch )
     this->prefetch_queue = EvPrefetchQueue::create();
   /*this->single_thread = single;*/
 
-  if ( (this->efd = ::epoll_create( numfds )) < 0 ) {
+  if ( (this->efd = ::epoll_create( n )) < 0 ) {
     perror( "epoll" );
     return -1;
   }
-  this->nfds = numfds;
+  this->nfds = n;
   this->ev   = (struct epoll_event *) aligned_malloc( sz );
   if ( this->ev == NULL ) {
     perror( "malloc" );
     return -1;
   }
+  this->wr_poll     = (EvSocket **) (void *) &this->ev[ n ];
   this->timer_queue = EvTimerQueue::create_timer_queue( *this );
   if ( this->timer_queue == NULL )
     return -1;
@@ -61,7 +63,7 @@ EvPoll::init_shm( EvShm &shm ) noexcept
   this->ctx_id = shm.ctx_id;
   this->dbx_id = shm.dbx_id;
   if ( (this->pubsub = KvPubSub::create( *this, 254 )) == NULL ) {
-    fprintf( stderr, "unable to open unix kv dgram socket\n" );
+    fprintf( stderr, "unable to open kv pub sub\n" );
     return -1;
   }
   return 0;
@@ -70,7 +72,21 @@ EvPoll::init_shm( EvShm &shm ) noexcept
 int
 EvPoll::wait( int ms ) noexcept
 {
-  int n = ::epoll_wait( this->efd, this->ev, this->nfds, ms );
+  struct epoll_event event;
+  EvSocket *s;
+  int n;
+  while ( this->wr_count > 0 ) {
+    s = this->wr_poll[ --this->wr_count ];
+    ::memset( &event, 0, sizeof( struct epoll_event ) );
+    event.data.fd = s->fd;
+    event.events  = EPOLLOUT | EPOLLRDHUP | EPOLLET;
+    if ( ::epoll_ctl( this->efd, EPOLL_CTL_MOD, s->fd, &event ) < 0 ) {
+      perror( "epoll_ctl pollout" );
+    }
+    if ( this->wr_timeout_ns != 0 )
+      this->push_write_queue( s );
+  }
+  n = ::epoll_wait( this->efd, this->ev, this->nfds, ms );
   if ( n < 0 ) {
     if ( errno == EINTR )
       return 0;
@@ -78,19 +94,72 @@ EvPoll::wait( int ms ) noexcept
     return -1;
   }
   for ( int i = 0; i < n; i++ ) {
-    EvSocket *s = this->sock[ this->ev[ i ].data.fd ];
+    s = this->sock[ this->ev[ i ].data.fd ];
     if ( ( this->ev[ i ].events & ( EPOLLIN | EPOLLRDHUP ) ) != 0 ) {
-      EvState ev = ( s->type > EV_TIMER_QUEUE ? EV_READ : EV_READ_HI );
-      s->idle_push( ev );
+      if ( s->test( EV_WRITE_POLL ) ) { /* full output buffers, can't read */
+        this->remove_write_queue( s );
+        s->popall();
+        s->idle_push( EV_CLOSE );
+      }
+      else {
+        EvState ev = EV_READ;
+        if ( s->is_type( EV_TIMER_QUEUE ) || s->is_type( EV_LISTEN_SOCK ) )
+          ev = EV_READ_HI;
+        s->idle_push( ev );
+      }
     }
-    if ( ( this->ev[ i ].events & ( EPOLLOUT ) ) != 0 )
-      s->idle_push( EV_WRITE );
+    if ( ( this->ev[ i ].events & EPOLLOUT ) != 0 ) {
+      if ( s->test( EV_WRITE_POLL ) ) { /* if not closed above */
+        this->remove_write_queue( s );
+        s->pop( EV_WRITE_POLL );
+        s->idle_push( EV_WRITE_HI );
+        ::memset( &event, 0, sizeof( struct epoll_event ) );
+        event.data.fd = s->fd;
+        event.events  = EPOLLIN | EPOLLRDHUP | EPOLLET;
+        if ( ::epoll_ctl( this->efd, EPOLL_CTL_MOD, s->fd, &event ) < 0 ) {
+          perror( "epoll_ctl pollin" );
+        }
+      }
+    }
+  }
+  if ( ! this->ev_write.is_empty() ) {
+    uint64_t ns = this->current_coarse_ns();
+    do {
+      s = this->ev_write.heap[ 0 ];
+      if ( ns - s->PeerData::active_ns > this->wr_timeout_ns &&
+           ns > s->PeerData::active_ns ) {
+        this->idle_close( s, ns - s->PeerData::active_ns );
+      }
+    } while ( ! this->ev_write.is_empty() );
   }
   return n;
 }
 
+void
+EvPoll::idle_close( EvSocket *s,  uint64_t ns ) noexcept
+{
+  struct sockaddr_storage addr;
+  socklen_t addrlen = sizeof( addr );
+  char buf[ 128 ], svc[ 32 ];
+
+  if ( getpeername( s->fd, (struct sockaddr*) &addr, &addrlen ) == 0 &&
+       getnameinfo( (struct sockaddr*) &addr, addrlen, buf, sizeof( buf ),
+                  svc, sizeof( svc ), NI_NUMERICHOST | NI_NUMERICSERV ) == 0 ) {
+    fprintf( stderr, "write timeout: %.3f secs, force close fd %d addr %s:%s\n",
+             (double) ns / 1000000000.0, s->fd, buf, svc );
+  }
+  else {
+    fprintf( stderr, "write timeout: %.3f secs, force close fd %d\n",
+             (double) ns / 1000000000.0, s->fd );
+  }
+  /* log closed fd */
+  this->remove_write_queue( s );
+  s->popall();
+  s->idle_push( EV_CLOSE );
+}
+
 const char *
-sock_type_string( EvSockType t )
+EvSocket::sock_type_string( EvSockType t ) noexcept
 {
   switch ( t ) {
     case EV_LISTEN_SOCK:    return "listen"; /* virtual accept */
@@ -113,19 +182,20 @@ sock_type_string( EvSockType t )
   return "unknown_sock";
 }
 const char *
-state_string( EvState state )
+EvSocket::state_string( EvState state ) noexcept
 {
   switch ( state ) {
-    case EV_READ_HI:   return "read_hi";
-    case EV_CLOSE:     return "close";
-    case EV_WRITE_HI:  return "write_hi";
-    case EV_READ:      return "read";
-    case EV_PROCESS:   return "process";
-    case EV_PREFETCH:  return "prefetch";
-    case EV_WRITE:     return "write";
-    case EV_SHUTDOWN:  return "shutdown";
-    case EV_READ_LO:   return "read_lo";
-    case EV_BUSY_POLL: return "busy_poll";
+    case EV_READ_HI:    return "read_hi";
+    case EV_CLOSE:      return "close";
+    case EV_WRITE_POLL: return "write_poll";
+    case EV_WRITE_HI:   return "write_hi";
+    case EV_READ:       return "read";
+    case EV_PROCESS:    return "process";
+    case EV_PREFETCH:   return "prefetch";
+    case EV_WRITE:      return "write";
+    case EV_SHUTDOWN:   return "shutdown";
+    case EV_READ_LO:    return "read_lo";
+    case EV_BUSY_POLL:  return "busy_poll";
   }
   return "unknown_state";
 }
@@ -251,8 +321,8 @@ EvPoll::dispatch( void ) noexcept
            curr_ns = this->current_coarse_ns(),
            busy_ns = this->timer_queue->busy_delta( curr_ns ),
            used_ns = 0;
-  int      state,
-           ret     = DISPATCH_IDLE;
+  int      ret     = DISPATCH_IDLE;
+  EvState  state;
 
   if ( this->quit )
     this->process_quit();
@@ -270,8 +340,8 @@ EvPoll::dispatch( void ) noexcept
         busy_ns = this->timer_queue->busy_delta( curr_ns );
       }
       if ( busy_ns == 0 ) {
-        /* if timer is already an event (in_queue=true), dispatch that first */
-        if ( ! this->timer_queue->in_queue ) {
+        /* if timer is already an event (in_queue=1), dispatch that first */
+        if ( ! this->timer_queue->in_queue( IN_EVENT_QUEUE ) ) {
           ret |= POLL_NEEDED;
           if ( start != this->prio_tick )
             ret |= DISPATCH_BUSY;
@@ -280,7 +350,7 @@ EvPoll::dispatch( void ) noexcept
       }
       used_ns = 0;
     }
-    used_ns += 300; /* guess 300 ns is needed for dispatching event */
+    used_ns += 300; /* guess 300 ns is upper bound for dispatching event */
     if ( this->ev_queue.is_empty() ) {
       if ( this->prefetch_pending > 0 ) {
       do_prefetch:;
@@ -295,11 +365,11 @@ EvPoll::dispatch( void ) noexcept
       return ret;
     }
     s     = this->ev_queue.heap[ 0 ];
-    state = __builtin_ffs( s->state ) - 1;
+    state = s->get_dispatch_state();
     this->prio_tick++;
     if ( state > EV_PREFETCH && this->prefetch_pending > 0 )
       goto do_prefetch;
-    s->in_queue = false;
+    s->set_queue( NOT_IN_QUEUE );
     this->ev_queue.pop();
     /*printf( "fd %d type %s state %s\n",
       s->fd, sock_type_string( s->type ), state_string( (EvState) state ) );*/
@@ -320,6 +390,7 @@ EvPoll::dispatch( void ) noexcept
         goto next_tick; /* skip putting s back into event queue */
       case EV_WRITE:
       case EV_WRITE_HI:
+      case EV_WRITE_POLL:
         s->v_write();
         break;
       case EV_SHUTDOWN:
@@ -332,7 +403,7 @@ EvPoll::dispatch( void ) noexcept
         s->v_process_close();
         break;
       case EV_BUSY_POLL:
-        if ( s->type == EV_KV_PUBSUB ) {
+        if ( s->is_type( EV_KV_PUBSUB ) ) {
           ret |= BUSY_POLL;
           if ( ((KvPubSub *) s)->read_inbox( false ) == 0 ) {
             s->prio_cnt = this->prio_tick;
@@ -345,8 +416,14 @@ EvPoll::dispatch( void ) noexcept
         break;
     }
     if ( s->state != 0 ) {
-      if ( s->test( EV_WRITE_HI ) )
+      if ( s->test( EV_WRITE_HI ) ) {
+        if ( s->test( EV_WRITE_POLL ) ) {
+          ret |= POLL_NEEDED;
+          this->wr_poll[ this->wr_count++ ] = s;
+          continue; /* don't put into event queue */
+        }
         ret |= WRITE_PRESSURE;
+      }
       s->prio_cnt = this->prio_tick;
       this->push_event_queue( s );
     }
@@ -374,7 +451,7 @@ EvPoll::publish_one( EvPublish &pub,  uint32_t *rcount_total,
   prefix[ 0 ]    = rpd.prefix;
   for ( uint32_t i = 0; i < rcount; i++ ) {
     EvSocket * s;
-    if ( routes[ i ] <= (uint32_t) this->maxfd &&
+    if ( routes[ i ] <= this->maxfd &&
          (s = this->sock[ routes[ i ] ]) != NULL ) {
       flow_good &= s->v_on_msg( pub );
     }
@@ -558,7 +635,7 @@ RoutePublish::hash_to_sub( uint32_t r,  uint32_t h,  char *key,
   EvPoll & poll = static_cast<EvPoll &>( *this );
   EvSocket *s;
   bool b = false;
-  if ( r <= (uint32_t) poll.maxfd && (s = poll.sock[ r ]) != NULL )
+  if ( r <= poll.maxfd && (s = poll.sock[ r ]) != NULL )
     b = s->v_hash_to_sub( h, key, keylen );
   return b;
 }
@@ -708,8 +785,8 @@ EvPoll::process_quit( void ) noexcept
     /* wait for socks to flush data for up to 5 interations */
     do {
       if ( this->quit >= 5 ) {
-        if ( s->in_queue ) {
-          s->in_queue = false;
+        if ( s->in_queue( IN_EVENT_QUEUE ) ) {
+          s->set_queue( NOT_IN_QUEUE );
           this->ev_queue.remove( s ); /* close state */
         }
         if ( s->state != 0 )
@@ -876,8 +953,8 @@ EvSocketOps::client_kill( PeerData &pd ) noexcept
   EvSocket &s = (EvSocket &) pd;
   /* if already shutdown, close up immediately */
   if ( s.test( EV_SHUTDOWN ) != 0 ) {
-    if ( s.in_queue ) {
-      s.in_queue = false;
+    if ( s.in_queue( IN_EVENT_QUEUE ) ) {
+      s.set_queue( NOT_IN_QUEUE );
       s.poll.ev_queue.remove( &s ); /* close state */
     }
     if ( s.state != 0 )
@@ -986,8 +1063,8 @@ int
 EvPoll::add_sock( EvSocket *s ) noexcept
 {
   /* make enough space for fd */
-  if ( s->fd > this->maxfd ) {
-    int xfd = align<int>( s->fd + 1, EvPoll::ALLOC_INCR );
+  if ( (uint32_t) s->fd > this->maxfd ) {
+    uint32_t xfd = align<uint32_t>( s->fd + 1, EvPoll::ALLOC_INCR );
     EvSocket **tmp;
     if ( xfd < this->nfds )
       xfd = this->nfds;
@@ -997,16 +1074,16 @@ EvPoll::add_sock( EvSocket *s ) noexcept
     if ( tmp == NULL ) {
       perror( "realloc" );
       xfd /= 2;
-      if ( xfd > s->fd )
+      if ( xfd > (uint32_t) s->fd )
         goto try_again;
       return -1;
     }
-    for ( int i = this->maxfd + 1; i < xfd; i++ )
+    for ( uint32_t i = this->maxfd + 1; i < xfd; i++ )
       tmp[ i ] = NULL;
     this->sock  = tmp;
     this->maxfd = xfd - 1;
   }
-  if ( s->type != EV_SHM_SVC ) { /* shm svc doesn't use the fd */
+  if ( ! s->is_type( EV_SHM_SVC ) ) { /* shm svc doesn't use the fd */
     /* add to poll set */
     struct epoll_event event;
     ::memset( &event, 0, sizeof( struct epoll_event ) );
@@ -1020,7 +1097,7 @@ EvPoll::add_sock( EvSocket *s ) noexcept
   this->sock[ s->fd ] = s;
   this->fdcnt++;
   /* add to active list */
-  s->listfl = IN_ACTIVE_LIST;
+  s->set_list( IN_ACTIVE_LIST );
   this->active_list.push_tl( s );
   /* if sock starts in write mode, add it to the queue */
   s->prio_cnt = this->prio_tick;
@@ -1067,7 +1144,7 @@ EvPoll::timer_expire( EvTimerEvent &ev ) noexcept
 {
   EvSocket *s;
   bool b = false;
-  if ( ev.id <= this->maxfd && (s = this->sock[ ev.id ]) != NULL )
+  if ( (uint32_t) ev.id <= this->maxfd && (s = this->sock[ ev.id ]) != NULL )
     b = s->v_timer_expire( ev.timer_id, ev.event_id );
   return b;
 }
@@ -1079,8 +1156,8 @@ EvPoll::remove_sock( EvSocket *s ) noexcept
   if ( s->fd < 0 )
     return;
   /* remove poll set */
-  if ( s->fd <= this->maxfd && this->sock[ s->fd ] == s ) {
-    if ( s->type != EV_SHM_SVC ) {
+  if ( (uint32_t) s->fd <= this->maxfd && this->sock[ s->fd ] == s ) {
+    if ( ! s->is_type( EV_SHM_SVC ) ) {
       ::memset( &event, 0, sizeof( struct epoll_event ) );
       event.data.fd = s->fd;
       event.events  = 0;
@@ -1091,15 +1168,15 @@ EvPoll::remove_sock( EvSocket *s ) noexcept
     this->fdcnt--;
   }
   /* terms are stdin, stdout */
-  if ( s->type != EV_TERMINAL && s->type != EV_SHM_SVC ) {
+  if ( ! s->is_type( EV_TERMINAL ) && ! s->is_type( EV_SHM_SVC ) ) {
     if ( ::close( s->fd ) != 0 ) {
-      fprintf( stderr, "close: errno %d/%s, fd %d type %d\n",
-               errno, strerror( errno ), s->fd, s->type );
+      fprintf( stderr, "close: errno %d/%s, fd %d type %s\n",
+               errno, strerror( errno ), s->fd, s->type_string() );
     }
   }
-  if ( s->listfl == IN_ACTIVE_LIST ) {
+  if ( s->in_list( IN_ACTIVE_LIST ) ) {
     s->op.client_stats( *s, this->peer_stats );
-    s->listfl = IN_NO_LIST;
+    s->set_list( IN_NO_LIST );
     this->active_list.pop( s );
   }
   /* release memory buffers */
@@ -1184,7 +1261,7 @@ EvConnection::write( void ) noexcept
   if ( strm.sz > 0 )
     strm.flush();
   else if ( strm.wr_pending == 0 ) {
-    this->pop2( EV_WRITE, EV_WRITE_HI );
+    this->pop3( EV_WRITE, EV_WRITE_HI, EV_WRITE_POLL );
     return;
   }
   ::memset( &h, 0, sizeof( h ) );
@@ -1208,7 +1285,7 @@ EvConnection::write( void ) noexcept
     nb += nbytes;
     if ( strm.wr_pending == 0 ) {
       strm.reset();
-      this->pop2( EV_WRITE, EV_WRITE_HI );
+      this->pop3( EV_WRITE, EV_WRITE_HI, EV_WRITE_POLL );
     }
     else {
       for (;;) {
@@ -1236,6 +1313,8 @@ EvConnection::write( void ) noexcept
     this->popall();
     this->push( EV_CLOSE );
   }
+  if ( this->test( EV_WRITE_HI ) )
+    this->push( EV_WRITE_POLL );
 }
 /* use mmsg for udp sockets */
 bool
@@ -1343,7 +1422,7 @@ EvUdp::write( void ) noexcept
       for ( uint32_t i = 0; i < this->out_nmsgs; i++ )
         this->bytes_sent += this->out_mhdr[ i ].msg_len;
       this->clear_buffers();
-      this->pop2( EV_WRITE, EV_WRITE_HI );
+      this->pop3( EV_WRITE, EV_WRITE_HI, EV_WRITE_POLL );
       return;
     }
   }
@@ -1352,7 +1431,7 @@ EvUdp::write( void ) noexcept
     if ( nbytes > 0 ) {
       this->bytes_sent += nbytes;
       this->clear_buffers();
-      this->pop2( EV_WRITE, EV_WRITE_HI );
+      this->pop3( EV_WRITE, EV_WRITE_HI, EV_WRITE_POLL );
       return;
     }
     if ( nbytes < 0 )
@@ -1392,8 +1471,8 @@ EvSocket::idle_push( EvState s ) noexcept
         x2 = __builtin_ffs( this->state | ( 1 << s ) );
     if ( x1 > x2 ) {
       /*printf( "remove %d\n", this->type );*/
-      if ( this->in_queue ) {
-        this->in_queue = false;
+      if ( this->in_queue( IN_EVENT_QUEUE ) ) {
+        this->set_queue( NOT_IN_QUEUE );
         this->poll.ev_queue.remove( this );
       }
       goto do_push;

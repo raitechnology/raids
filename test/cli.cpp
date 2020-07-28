@@ -331,7 +331,7 @@ main( int argc, char *argv[] )
   MyClient     my( poll );
 
   const char * ho = get_arg( argc, argv, 1, "-x", NULL ),
-             * pt = get_arg( argc, argv, 1, "-p", "7379" ),
+             * pt = get_arg( argc, argv, 1, "-p", "6379" ),
              * pa = get_arg( argc, argv, 1, "-a", NULL ),
              * ma = get_arg( argc, argv, 1, "-m", NULL ),
              * fi = get_arg( argc, argv, 1, "-f", NULL ),
@@ -379,7 +379,7 @@ main( int argc, char *argv[] )
       is_connected = true;
     }
   }
-  /* by default, connects to :7369 */
+  /* by default, connects to :6379 */
   if ( ! is_connected && status == 0 ) {
     if ( ud != NULL ) {
       if ( my.udp_connect( ho, atoi( pt ), udp_opts ) != 0 ) {

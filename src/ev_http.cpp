@@ -44,7 +44,7 @@ EvHttpListen::accept( void ) noexcept
     return false;
   }
   c->sock_opts = this->sock_opts;
-  EvTcpListen::set_sock_opts( sock, this->sock_opts );
+  EvTcpListen::set_sock_opts( this->poll, sock, this->sock_opts );
   ::fcntl( sock, F_SETFL, O_NONBLOCK | ::fcntl( sock, F_GETFL ) );
   c->PeerData::init_peer( sock, (struct sockaddr *) &addr, "http" );
   c->setup_ids( sock, ++this->timer_id );
@@ -308,8 +308,7 @@ EvHttpService::process( void ) noexcept
   }
 break_loop:;
   this->pop( EV_PROCESS );
-  if ( strm.pending() > 0 )
-    this->push( EV_WRITE );
+  this->push_write();
   return;
 
 is_closed:;
@@ -781,10 +780,10 @@ EvHttpService::release( void ) noexcept
 void
 EvHttpService::push_free_list( void ) noexcept
 {
-  if ( this->listfl == IN_ACTIVE_LIST )
+  if ( this->in_list( IN_ACTIVE_LIST ) )
     fprintf( stderr, "redis sock should not be in active list\n" );
-  else if ( this->listfl != IN_FREE_LIST ) {
-    this->listfl = IN_FREE_LIST;
+  else if ( ! this->in_list( IN_FREE_LIST ) ) {
+    this->set_list( IN_FREE_LIST );
     this->poll.free_http.push_hd( this );
   }
 }
@@ -792,8 +791,8 @@ EvHttpService::push_free_list( void ) noexcept
 void
 EvHttpService::pop_free_list( void ) noexcept
 {
-  if ( this->listfl == IN_FREE_LIST ) {
-    this->listfl = IN_NO_LIST;
+  if ( this->in_list( IN_FREE_LIST ) ) {
+    this->set_list( IN_NO_LIST );
     this->poll.free_http.pop( this );
   }
 }

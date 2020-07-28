@@ -11,7 +11,7 @@ struct EvTcpListen : public EvListen {
   EvTcpListen( EvPoll &p,  PeerOps &o ) : EvListen( p, o ) {}
   int listen( const char *ip,  int port,  int opts,  const char *k ) noexcept;
   virtual bool accept( void ) noexcept { return false; }
-  static void set_sock_opts( int sock,  int opts );
+  static void set_sock_opts( EvPoll &p,  int sock,  int opts );
 };
 
 struct EvTcpClient : public EvNetClient {
