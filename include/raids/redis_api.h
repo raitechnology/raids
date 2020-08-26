@@ -25,7 +25,7 @@ typedef void (*ds_on_msg_t)( const ds_event_t *event,
 int ds_open( ds_t **h, const char *map_name,  uint8_t db_num,
              int use_busy_poll );
 /* create ds shared memory: db_num 0 -> 253 (254,255 resvd) */
-int ds_create( ds_t **h, const char *map_name,  uint8_t db_num,
+int ds_create( ds_t **h, const char *map_name,  int map_mode,  uint8_t db_num,
                int use_busy_poll,  uint64_t map_size,  double entry_ratio,
                uint64_t max_value_size );
 /* unique context id assigned for this thread on open/create, 0 -> 127 */

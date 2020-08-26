@@ -57,269 +57,502 @@ EvHttpListen::accept( void ) noexcept
   return true;
 }
 
-static char page404[] =
-"HTTP/1.1 404 Not Found\r\n"
-"Connection: close\r\n"
-"Content-Type: text/html\r\n"
-"Content-Length: 40\r\n"
-"\r\n"
-"<html><body> Not  Found </body></html>\r\n";
-
 void
 EvHttpService::process( void ) noexcept
 {
-  StreamBuf       & strm = *this;
-  //EvPrefetchQueue * q    = ( use_prefetch ? this->poll.prefetch_queue : NULL );
-  size_t            buflen, used, i, j, k, sz;
-  char            * p, * eol, * start, * end;
-  char            * line[ 64 ];
-  size_t            llen[ 64 ];
-
-  if ( this->is_not_found )
-    goto is_closed;
-  for (;;) { 
-    buflen = this->len - this->off;
-    if ( buflen == 0 )
-      goto break_loop;
-
-    start = &this->recv[ this->off ];
-    end   = &start[ buflen ];
-
-    /* decode websock frame */
-    if ( this->websock_off > 0 ) {
-      char * inptr;
-      size_t inoff,
-             inlen,
-             msgcnt = 0,
-             nlcnt  = 0;
-      used = this->recv_wsframe( start, end );
-      if ( used <= 1 ) { /* 0 == not enough data for hdr, 1 == closed */
-        if ( used == 0 )
-          goto break_loop;
-        goto is_closed;
-      }
-      this->off += used;
-      if ( this->is_using_term ) {
-        this->term_int = this->term.interrupt + this->term.suspend;
-        this->term.tty_input( &this->wsbuf[ this->wsoff ],
-                              this->wslen - this->wsoff );
-        this->wsoff = this->wslen;
-        this->flush_term();
-        inptr = this->term.line_buf;
-        inoff = this->term.line_off;
-        inlen = this->term.line_len;
-      }
-      else {
-        inptr = this->wsbuf;
-        inoff = this->wsoff;
-        inlen = this->wslen;
-      }
-      while ( inoff < inlen ) {
-        int status;
-        sz = inlen - inoff;
-        p  = &inptr[ inoff ];
-        switch ( p[ 0 ] ) {
-          default:
-          case DS_SIMPLE_STRING: /* + */
-          case DS_ERROR_STRING:  /* - */
-          case DS_INTEGER_VALUE: /* : */
-          case DS_BULK_STRING:   /* $ */
-          case DS_BULK_ARRAY:    /* * */
-            status = this->msg.unpack( p, sz, strm.tmp );
-            break;
-          case '\n':
-            nlcnt++;
-            /* FALLTHRU */
-          case ' ':
-          case '\t':
-          case '\r':
-            sz = 1; /* eat the whitespace */
-            status = -1;
-            break;
-          case '"': /* possible json */
-          case '\'':
-          case '[':
-          case '0': case '1': case '2': case '3': case '4':
-          case '5': case '6': case '7': case '8': case '9':
-            status = this->msg.unpack_json( p, sz, strm.tmp );
-            break;
-        }
-        if ( status != DS_MSG_STATUS_OK ) {
-          if ( status < 0 ) {
-            inoff += sz;
-            continue;
-          }
-          if ( status == DS_MSG_STATUS_PARTIAL ) {
-            /*printf( "partial [%.*s]\n", (int)sz, p );*/
-            break;
-          }
-          fprintf( stderr, "protocol error(%d/%s), ignoring %lu bytes\n",
-                   status, ds_msg_status_string( (RedisMsgStatus) status ),
-                   inlen - inoff );
-          inoff = inlen;
-          break;
-        }
-        this->msgs_recv++;
-        msgcnt++;
-        inoff += sz;
-        if ( (status = this->exec( this, NULL )) == EXEC_OK )
-          if ( strm.alloc_fail )
-            status = ERR_ALLOC_FAIL;
-        switch ( status ) {
-          case EXEC_SETUP_OK:
-            /*if ( q != NULL )
-              return;*/
-            this->exec_run_to_completion();
-            if ( ! strm.alloc_fail ) {
-              this->msgs_sent++;
-              break;
-            }
-            status = ERR_ALLOC_FAIL;
-            /* FALLTHRU */
-          case EXEC_QUIT:
-            if ( status == EXEC_QUIT ) {
-              this->push( EV_SHUTDOWN );
-              this->poll.quit++;
-            }
-            /* FALLTHRU */
-          default:
-            this->msgs_sent++;
-            this->send_status( (ExecStatus) status, KEY_OK );
-            break;
-          case EXEC_DEBUG:
-            break;
-        }
-      }
-      if ( this->is_using_term ) {
-        if ( msgcnt == 0 && nlcnt != 0 ) {
-          if ( this->term.tty_prompt() )
-            this->flush_term();
-        }
-        this->term.line_off = inoff;
-      }
-      else
-        this->wsoff = inoff;
-      continue;
-    }
-
-    i     = 0;
-    used  = 0;
-    /* decode http hdrs */
-    for ( p = start; p < end; ) {
-      eol = (char *) ::memchr( &p[ 1 ], '\n', end - &p[ 1 ] );
-      if ( eol == NULL )
-        break;
-      sz = &eol[ 1 ] - p;
-      if ( sz <= 2 ) {
-        used = &eol[ 1 ] - start;
-        break;
-      }
-      line[ i ] = p;
-      llen[ i ] = sz;
-      p = &eol[ 1 ];
-      i++;
-      if ( i == 64 ) {
-        fprintf( stderr, "http header has too many lines (%ld)\n", i );
-        goto not_found;
-      }
-    }
-    if ( used == 0 ) /* if didn't find line break which terminates hdrs */
-      goto break_loop;
-    this->off += used;
-
-    /* GET path HTTP/1.1 */
-    if ( toupper( line[ 0 ][ 0 ] ) == 'G' && llen[ 0 ] > 12 ) {
-      char wsver[ 128 ], wskey[ 128 ], wspro[ 128 ], *str;
-      bool upgrade = false, websock = false;
-      size_t start, wskeylen = 0;
-      wsver[ 0 ] = wskey[ 0 ] = wspro[ 0 ] = '\0';
-      /* find websock stuff */
-      for ( j = 1; j < i; j++ ) {
-        switch ( line[ j ][ 0 ] ) {
-          case 'c': case 'C':  /* Connection: upgrade */
-            if ( ::strncasecmp( line[ j ], "Connection: upgrade", 19 ) == 0 )
-              upgrade = true;
-            break;
-          case 'u': case 'U':  /* Upgrade: websocket */
-            if ( ::strncasecmp( line[ j ], "Upgrade: websocket", 18 ) == 0 )
-              websock = true;
-            break;
-          case 's': case 'S':  /* Sec-WebSocket-[Version,Key,Protocol] */
-            if ( ::strncasecmp( line[ j ], "Sec-WebSocket-", 14 ) == 0 ) {
-              const char *ptr = &line[ j ][ 14 ];
-              if ( ::strncasecmp( ptr, "Version: ", 9 ) == 0 ) {
-                str = wsver;
-                start = 23;
-              }
-              else if ( ::strncasecmp( ptr, "Key: ", 5 ) == 0 ) {
-                str = wskey;
-                start = 19;
-              }
-              else if ( ::strncasecmp( ptr, "Protocol: ", 10 ) == 0 ) {
-                str = wspro;
-                start = 24;
-              }
-              else {
-                str = NULL;
-                start = 0;
-              }
-              if ( str != NULL ) {
-                static const char wsguid[] =
-                  "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
-                for ( k = start; line[ j ][ k ] > ' ' && k - start < 128; k++ )
-                  str[ k - start ] = line[ j ][ k ];
-                k -= start;
-                str[ k ] = '\0';
-                if ( str == wskey && k + sizeof( wsguid ) < 128 ) {
-                  ::strcpy( &wskey[ k ], wsguid );
-                  wskeylen = k + sizeof( wsguid ) - 1;
-                }
-              }
-            }
-            break;
-          default:
-            break;
-        }
-        /*printf( "[%.*s]\n", (int) llen[ j ] - 2, line[ j ] );*/
-      }
-      if ( upgrade && websock && wsver[ 0 ] && wskey[ 0 ] /*&& wspro[ 0 ]*/ ) {
-        if ( this->send_ws_upgrade( wsver, wskey, wskeylen, wspro ) ) {
-          this->websock_off = this->bytes_sent + this->strm.pending();
-          if ( ::strncmp( wspro, "term", 4 ) == 0 ) {
-            this->flush();
-            this->term.tty_init();
-            this->term.tty_prompt();
-            this->is_using_term = true;
-            this->flush_term();
-          }
-        }
-        else {
-          goto not_found;
-        }
-      }
-      else {
-        /*printf( "-> %.*s\n", (int) llen[ 0 ], line[ 0 ] );*/
-        if ( ! this->send_file( line[ 0 ], llen[ 0 ] ) )
-          goto not_found;
-      }
-    }
-    else
-      goto not_found;
+  if ( this->websock_off > 0 ) {
+    if ( this->process_websock() )
+      goto is_closed;
+    goto break_loop;
   }
+  else if ( this->process_http() )
+    goto is_closed;
+
 break_loop:;
   this->pop( EV_PROCESS );
-  this->push_write();
+  if ( this->pending() > 0 )
+    this->push_write();
   return;
 
 is_closed:;
   this->pushpop( EV_CLOSE, EV_PROCESS );
   return;
+}
 
-not_found:;
-  printf( "-> not found\n" );
-  strm.append( page404, sizeof( page404 ) - 1 );
-  this->push( EV_WRITE_HI );
-  this->is_not_found = true;
+bool
+EvHttpService::process_http( void ) noexcept
+{
+  static const size_t MAX_HTTP_REQUEST_LEN = 65 * 1024;
+  for (;;) {
+    char   * start,
+           * end;
+    size_t   buflen = this->len - this->off;
+    if ( buflen == 0 )
+      return false;
+
+    start = &this->recv[ this->off ];
+    end   = &start[ buflen ];
+
+    size_t   used         = 0;    /* amount eaten */
+    char   * http_request = NULL; /* the first line: GET / HTTP/1.1 */
+    size_t   request_len  = 0;    /* len of request line */
+    HttpReq  hreq;        /* the parameters after the first line */
+    /* decode http hdrs */
+    for ( char *p = start; p < end; ) {
+      char * eol = (char *) ::memchr( &p[ 1 ], '\n', end - &p[ 1 ] );
+      if ( eol == NULL ) {
+        /* if request is bigger than MAX, close the connection */
+        if ( (size_t) ( end - p ) > MAX_HTTP_REQUEST_LEN )
+          return true;
+        return false; /* didn't see the empty line */
+      }
+      size_t size = &eol[ 1 ] - p;
+      if ( size <= 2 ) { /* found the empty line following hdr (\r\n) */
+        used = &eol[ 1 ] - start;
+        break;
+      }
+      if ( p == start ) {
+        http_request = p;
+        request_len  = size;
+        hreq.parse_version( http_request, request_len );
+      }
+      else {
+        hreq.parse_header( p, size );
+      }
+      p = &eol[ 1 ];
+    }
+    hreq.data = &start[ used ];
+    if ( &start[ used + hreq.content_length ] > end )
+      return false;
+    this->off += used + hreq.content_length;
+
+    /* GET path HTTP/1.1 */
+    switch ( http_request[ 0 ] ) {
+      case 'g': /* GET */
+      case 'G': {
+        /* check for websock upgrade */
+        if ( ( hreq.opts & HttpReq::UPGRADE )   != 0 &&
+             ( hreq.opts & HttpReq::WEBSOCKET ) != 0 &&
+             hreq.wsver[ 0 ] && hreq.wskey[ 0 ] /*&& wspro[ 0 ]*/ ) {
+          if ( this->send_ws_upgrade( hreq ) ) {
+            this->websock_off = this->bytes_sent + this->pending();
+            if ( ::strncmp( hreq.wspro, "term", 4 ) == 0 ) {
+              this->flush();
+              this->term.tty_init();
+              this->term.tty_prompt();
+              this->is_using_term = true;
+              this->flush_term();
+            }
+            return false; /* process websock frames now */
+          }
+          this->send_404_not_found( hreq, 0 );
+        }
+        else {
+          /* do redis GET path */
+          if ( ! this->process_get( hreq ) )
+            this->send_404_not_found( hreq, 0 );
+        }
+        break;
+      }
+      case 'p':
+      case 'P': /* POST, PUT */
+        /* do POST path */
+        if ( ! this->process_post( hreq ) )
+          this->send_404_not_found( hreq, 0 );
+        else
+          this->send_201_created( hreq );
+        break;
+
+      default:
+        this->send_404_not_found( hreq, HttpReq::CLOSE );
+        return false;
+    }
+  }
+}
+
+static const char http_hdr11[] = "HTTP/1.1 ",
+                  http_hdr10[] = "HTTP/1.0 ",
+                  code_200[]   = "200 OK\r\n",
+                  code_201[]   = "201 Created\r\n",
+                  code_404[]   = "404 Not Found\r\n",
+                  no_cache[]   = "Cache-Control: no-cache\r\n",
+                  conn_close[] = "Connection: close\r\n",
+                  keep_alive[] = "Connection: keep-alive\r\n",
+                  ctype_resp[] = "Content-Type: application/x-resp\r\n",
+                  ctype_json[] = "Content-Type: application/json\r\n",
+                  ctype_html[] = "Content-Type: text/html\r\n",
+                  ctype[]      = "Content-Type: ",
+                  clength[]    = "Content-Length: ",
+                  clength_40[] = "Content-Length: 40\r\n",
+                  clength_0[]  = "Content-Length: 0\r\n",
+                  location[]   = "Location: ";
+
+/* initialize http response */
+void
+EvHttpService::init_http_response( const HttpReq &hreq,  HttpOut &hout,
+                                   int opts,  int code ) noexcept
+{
+  hout.off = hout.size = 0;
+  if ( ( hreq.opts & HttpReq::HTTP_1_1 ) != 0 )
+    hout.push( http_hdr11, sizeof( http_hdr11 ) - 1 );
+  else
+    hout.push( http_hdr10, sizeof( http_hdr10 ) - 1 );
+  if ( code == 200 )
+    hout.push( code_200, sizeof( code_200 ) - 1 );
+  else if ( code == 201 )
+    hout.push( code_201, sizeof( code_201 ) - 1 );
+  else
+    hout.push( code_404, sizeof( code_404 ) - 1 );
+
+  /* if either Close specified or http/1.0 and ! Connection: Keep-Alive */
+  if ( ( ( hreq.opts | opts ) & HttpReq::CLOSE ) != 0 ||
+       ( ( hreq.opts & HttpReq::HTTP_1_1 ) == 0 &&
+         ( hreq.opts & HttpReq::KEEP_ALIVE ) == 0 ) ) {
+    hout.push( conn_close, sizeof( conn_close ) - 1 );
+    this->push( EV_SHUTDOWN ); /* close after data sent */
+  }
+  else {
+    hout.push( keep_alive, sizeof( keep_alive ) - 1 );
+  }
+  if ( code != 201 )
+    hout.push( no_cache, sizeof( no_cache ) - 1 );
+}
+
+void
+EvHttpService::send_404_not_found( const HttpReq &hreq,  int opts ) noexcept
+{
+  static const char not_found_html[] =
+  "\r\n" /* text must be 40 chars */
+  "<html><body> Not  Found </body></html>\r\n";
+  HttpOut hout;
+  char  * s;
+  this->init_http_response( hreq, hout, opts, 404 );
+  hout.push( ctype_html, sizeof( ctype_html ) - 1 );
+  hout.push( clength_40, sizeof( clength_40 ) - 1 );
+  hout.push( not_found_html, sizeof( not_found_html ) - 1 );
+  if ( (s = this->alloc( hout.size )) != NULL )
+    this->sz = hout.cat( s );
+}
+
+void
+EvHttpService::send_404_bad_type( const HttpReq &hreq ) noexcept
+{
+  static const char bad_type_html[] =
+  "\r\n" /* text must be 40 chars */
+  "<html><body> Bad  Type  </body></html>\r\n";
+  HttpOut hout;
+  char  * s;
+  this->init_http_response( hreq, hout, 0, 404 );
+  hout.push( ctype_html, sizeof( ctype_html ) - 1 );
+  hout.push( clength_40, sizeof( clength_40 ) - 1 );
+  hout.push( bad_type_html, sizeof( bad_type_html ) - 1 );
+  if ( (s = this->alloc( hout.size )) != NULL )
+    this->sz = hout.cat( s );
+}
+
+void
+EvHttpService::send_201_created( const HttpReq &hreq ) noexcept
+{
+  static const char created_html[] =
+  "\r\n" /* text must be 40 chars */
+  "<html><body>  Created   </body></html>\r\n";
+  HttpOut hout;
+  char  * s;
+  this->init_http_response( hreq, hout, 0, 201 );
+  hout.push( ctype_html, sizeof( ctype_html ) - 1 );
+  hout.push( clength_40, sizeof( clength_40 ) - 1 );
+  if ( hreq.path_len > 0 ) {
+    hout.push( location, sizeof( location ) - 1 );
+    hout.push( hreq.path, hreq.path_len );
+    hout.push( "\r\n", 2 );
+  }
+  hout.push( created_html, sizeof( created_html ) - 1 );
+  if ( (s = this->alloc( hout.size )) != NULL )
+    this->sz = hout.cat( s );
+}
+
+void
+HttpReq::parse_version( const char *line,  size_t len ) noexcept
+{
+  if ( len > 0 && line[ len - 1 ] == '\n' ) {
+    len -= 1;
+    if ( len > 0 && line[ len - 1 ] == '\r' )
+      len -= 1;
+  }
+  if ( len > 9 ) {
+    if ( ::strncasecmp( &line[ len - 8 ], "HTTP/1.1", 8 ) == 0 )
+      this->opts |= HTTP_1_1;
+    if ( line[ len - 9 ] == ' ' ) {
+      len -= 9;
+      for ( size_t i = 0; i < len; i++ ) {
+        if ( line[ i ] == '/' ) {
+          this->path = &line[ i ];
+          this->path_len = len - i;
+          break;
+        }
+      }
+    }
+  }
+}
+
+void
+HttpReq::parse_header( const char *line,  size_t len ) noexcept
+{
+  size_t i;
+  if ( len > 0 && line[ len - 1 ] == '\n' ) {
+    len -= 1;
+    if ( len > 0 && line[ len - 1 ] == '\r' )
+      len -= 1;
+  }
+  /* find websock stuff */
+  switch ( line[ 0 ] ) {
+    case 'A': case 'a': {
+      static const char   auth[]   = "Authorization: ";
+      static const size_t auth_len = sizeof( auth ) - 1;
+      /*HttpDigestAuth auth( this->svc.nonce.nonce, &this->svc.htDigestDb );*/
+
+      if ( ::strncasecmp( line, auth, auth_len ) == 0 ) {
+        len -= auth_len;
+        for ( i = 0; i < len; i++ ) {
+          if ( i == STR_SZ - 1 )
+            break;
+          if ( line[ i + auth_len ] <= ' ' )
+            break;
+          this->authorize[ i ] = line[ i + auth_len ];
+        }
+        this->authorize[ i ] = '\0';
+      }
+      break;
+    }
+    case 'C': case 'c':  { /* Connection: */
+      static const char   conn[]   = "Connection: ";
+      static const size_t conn_len = sizeof( conn ) - 1;
+      static const char   clen[]   = "Content-Length: ";
+      static const size_t clen_len = sizeof( clen ) - 1;
+      static const char   ctyp[]   = "Content-Type: ";
+      static const size_t ctyp_len = sizeof( ctyp ) - 1;
+
+      /* Connection: Close */
+      if ( ::strncasecmp( line, conn, conn_len ) == 0 ) {
+        /* upgrade */
+        if ( line[ conn_len ] == 'U' || line[ conn_len ] == 'u' )
+          this->opts |= UPGRADE;
+        /* keep-alive */
+        else if ( line[ conn_len ] == 'K' || line[ conn_len ] == 'k' )
+          this->opts |= KEEP_ALIVE;
+        /* close */
+        else if ( line[ conn_len ] == 'C' || line[ conn_len ] == 'c' )
+          this->opts |= CLOSE;
+      }
+      /* Content-Lenth: 1234 */
+      else if ( ::strncasecmp( line, clen, clen_len ) == 0 ) {
+        for ( i = 0; isdigit( line[ i + clen_len ] ); i++ )
+          ;
+        string_to_uint( &line[ clen_len ], i, this->content_length );
+      }
+      /* Content-Type: text/plain; charset=UTF-8 */
+      else if ( ::strncasecmp( line, ctyp, ctyp_len ) == 0 ) {
+        len -= ctyp_len;
+        for ( i = 0; i < len; i++ ) {
+          if ( i == STR_SZ - 1 )
+            break;
+          if ( line[ i + ctyp_len ] <= ' ' || line[ i + ctyp_len ] == ';' )
+            break;
+          this->content_type[ i ] = line[ i + ctyp_len ];
+        }
+        this->content_type[ i ] = '\0';
+      }
+      break;
+    }
+    case 'U': case 'u':  { /* Upgrade: websocket */
+      static const char   uwsk[]   = "Upgrade: websocket";
+      static const size_t uwsk_len = sizeof( uwsk ) - 1;
+      if ( ::strncasecmp( line, uwsk, uwsk_len ) == 0 )
+        this->opts |= WEBSOCKET;
+      break;
+    }
+    case 'S': case 's':  { /* Sec-WebSocket-[Version,Key,Protocol] */
+      static const char   secw[]   = "Sec-WebSocket-";
+      static const size_t secw_len = sizeof( secw ) - 1;
+      static const char   vers[]   = "Version: ";
+      static const size_t vers_len = sizeof( vers ) - 1;
+      static const char   key[]    = "Key: ";
+      static const size_t key_len  = sizeof( key ) - 1;
+      static const char   prot[]   = "Protocol: ";
+      static const size_t prot_len = sizeof( prot ) - 1;
+
+      if ( ::strncasecmp( line, secw, secw_len ) == 0 ) {
+        const char * ptr   = &line[ secw_len ];
+        char       * str   = NULL;
+        size_t       start = 0;
+        if ( ::strncasecmp( ptr, vers, vers_len ) == 0 ) {
+          str   = this->wsver;
+          start = secw_len + vers_len;
+        }
+        else if ( ::strncasecmp( ptr, key, key_len ) == 0 ) {
+          str   = this->wskey;
+          start = secw_len + key_len;
+        }
+        else if ( ::strncasecmp( ptr, prot, prot_len ) == 0 ) {
+          str   = this->wspro;
+          start = secw_len + prot_len;
+        }
+        if ( str != NULL ) {
+          static const char wsguid[] = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+          len -= start;
+          for ( i = 0; i < len; i++ ) {
+            if ( i == STR_SZ - 1 )
+              break;
+            if ( line[ i + start ] <= ' ' )
+              break;
+            str[ i ] = line[ i + start ];
+          }
+          str[ i ] = '\0';
+          /* concat guid to the wskey, SHA1 digest is returned */
+          if ( str == this->wskey && i + sizeof( wsguid ) < STR_SZ ) {
+            ::strcpy( &this->wskey[ i ], wsguid );
+            this->wskeylen = i + sizeof( wsguid ) - 1;
+          }
+        }
+      }
+      break;
+    }
+    default:
+      break;
+  }
+}
+
+bool
+EvHttpService::process_websock( void ) noexcept
+{
+  for (;;) {
+    char * start, * end;
+    size_t buflen = this->len - this->off;
+    if ( buflen == 0 )
+      return false;
+
+    start = &this->recv[ this->off ];
+    end   = &start[ buflen ];
+
+    /* decode websock frame */
+    char * inptr;
+    size_t inoff,
+           inlen,
+           msgcnt,
+           nlcnt,
+           used = this->recv_wsframe( start, end );
+    if ( used <= 1 ) { /* 0 == not enough data for hdr, 1 == closed */
+      if ( used == 0 )
+        return false;
+      return true;
+    }
+    this->off += used;
+    msgcnt = 0;
+    nlcnt  = 0;
+
+    if ( this->is_using_term ) {
+      this->term_int = this->term.interrupt + this->term.suspend;
+      this->term.tty_input( &this->wsbuf[ this->wsoff ],
+                            this->wslen - this->wsoff );
+      this->wsoff = this->wslen;
+      this->flush_term();
+      inptr = this->term.line_buf;
+      inoff = this->term.line_off;
+      inlen = this->term.line_len;
+    }
+    else {
+      inptr = this->wsbuf;
+      inoff = this->wsoff;
+      inlen = this->wslen;
+    }
+    while ( inoff < inlen ) {
+      char * p = &inptr[ inoff ];
+      size_t size = inlen - inoff;
+      int    status;
+      switch ( p[ 0 ] ) {
+        default:
+        case DS_SIMPLE_STRING: /* + */
+        case DS_ERROR_STRING:  /* - */
+        case DS_INTEGER_VALUE: /* : */
+        case DS_BULK_STRING:   /* $ */
+        case DS_BULK_ARRAY:    /* * */
+          status = this->msg.unpack( p, size, this->tmp );
+          break;
+        case '\n':
+          nlcnt++;
+          /* FALLTHRU */
+        case ' ':
+        case '\t':
+        case '\r':
+          size = 1; /* eat the whitespace */
+          status = -1;
+          break;
+        case '"': /* possible json */
+        case '\'':
+        case '[':
+        case '0': case '1': case '2': case '3': case '4':
+        case '5': case '6': case '7': case '8': case '9':
+          status = this->msg.unpack_json( p, size, this->tmp );
+          break;
+      }
+      if ( status != DS_MSG_STATUS_OK ) {
+        if ( status < 0 ) {
+          inoff += size;
+          continue;
+        }
+        if ( status == DS_MSG_STATUS_PARTIAL ) {
+          /*printf( "partial [%.*s]\n", (int)size, p );*/
+          break;
+        }
+        this->mstatus = (RedisMsgStatus) status;
+        this->send_err_string( ERR_MSG_STATUS, KEY_OK );
+/*        fprintf( stderr, "protocol error(%d/%s), ignoring %lu bytes\n",
+                 status, ds_msg_status_string( (RedisMsgStatus) status ),
+                 inlen - inoff );*/
+        inoff = inlen;
+        break;
+      }
+      this->msgs_recv++;
+      msgcnt++;
+      inoff += size;
+      if ( (status = this->exec( this, NULL )) == EXEC_OK )
+        if ( this->alloc_fail )
+          status = ERR_ALLOC_FAIL;
+      switch ( status ) {
+        case EXEC_SETUP_OK:
+          /*if ( q != NULL )
+            return;*/
+          this->exec_run_to_completion();
+          if ( ! this->alloc_fail ) {
+            this->msgs_sent++;
+            break;
+          }
+          status = ERR_ALLOC_FAIL;
+          /* FALLTHRU */
+        case EXEC_QUIT:
+          if ( status == EXEC_QUIT ) {
+            this->push( EV_SHUTDOWN );
+            this->poll.quit++;
+          }
+          /* FALLTHRU */
+        default:
+          this->msgs_sent++;
+          this->send_status( (ExecStatus) status, KEY_OK );
+          break;
+        case EXEC_DEBUG:
+          break;
+      }
+    }
+    if ( this->is_using_term ) {
+      if ( msgcnt == 0 && nlcnt != 0 ) {
+        if ( this->term.tty_prompt() )
+          this->flush_term();
+      }
+      this->term.line_off = inoff;
+    }
+    else
+      this->wsoff = inoff;
+  }
 }
 
 bool
@@ -330,13 +563,12 @@ EvHttpService::flush_term( void ) noexcept
   if ( buflen == 0 )
     return false;
 
-  StreamBuf & strm = *this;
   uint8_t msg[ 2 + 255 ];
   for ( size_t i = 0; i < buflen; i += 255 ) {
     msg[ 0 ] = '@';
     msg[ 1 ] = (uint8_t) kv::min<size_t>( 255, buflen - i );
     ::memcpy( &msg[ 2 ], &buf[ i ], msg[ 1 ] );
-    strm.append( msg, (size_t) msg[ 1 ] + 2 );
+    this->append( msg, (size_t) msg[ 1 ] + 2 );
   }
   this->term.tty_out_reset();
   return true;
@@ -349,7 +581,7 @@ EvHttpService::on_msg( EvPublish &pub ) noexcept
   bool flow_good = true;
   int  status    = this->RedisExec::do_pub( pub, cm );
   if ( ( status & RPUB_FORWARD_MSG ) != 0 ) {
-    flow_good = ( this->strm.pending() <= this->send_highwater );
+    flow_good = ( this->pending() <= this->send_highwater );
     this->idle_push( flow_good ? EV_WRITE : EV_WRITE_HI );
   }
   if ( ( status & RPUB_CONTINUE_MSG ) != 0 ) {
@@ -412,52 +644,51 @@ EvHttpService::frame_websock2( void ) noexcept
 {
   static const char eol[]    = "\r\n";
   static size_t     eol_size = sizeof( eol ) - 1;
-  StreamBuf & strm   = *this;
   size_t      nbytes = this->bytes_sent,
-              off    = strm.woff,
+              off    = this->woff,
               i;
   char      * newbuf;
 
-  if ( strm.sz > 0 )
-    strm.flush();
+  if ( this->sz > 0 )
+    this->flush();
   /* find websock stream offset */
-  for ( ; off < strm.idx; off++ ) {
-    nbytes += strm.iov[ off ].iov_len;
+  for ( ; off < this->idx; off++ ) {
+    nbytes += this->iov[ off ].iov_len;
     if ( this->websock_off < nbytes )
       break;
   }
-  if ( off == strm.idx )
+  if ( off == this->idx )
     return true;
   /* concat buffers */
-  if ( off + 1 < strm.idx ) {
-    nbytes = strm.iov[ off ].iov_len;
-    for ( i = off + 1; i < strm.idx; i++ )
-      nbytes += strm.iov[ i ].iov_len;
-    newbuf = strm.alloc_temp( nbytes );
+  if ( off + 1 < this->idx ) {
+    nbytes = this->iov[ off ].iov_len;
+    for ( i = off + 1; i < this->idx; i++ )
+      nbytes += this->iov[ i ].iov_len;
+    newbuf = this->alloc_temp( nbytes );
     if ( newbuf == NULL )
       return false;
-    nbytes = strm.iov[ off ].iov_len;
-    ::memcpy( newbuf, strm.iov[ off ].iov_base, nbytes );
-    for ( i = off + 1; i < strm.idx; i++ ) {
-      size_t len = strm.iov[ i ].iov_len;
-      ::memcpy( &newbuf[ nbytes ], strm.iov[ i ].iov_base, len );
+    nbytes = this->iov[ off ].iov_len;
+    ::memcpy( newbuf, this->iov[ off ].iov_base, nbytes );
+    for ( i = off + 1; i < this->idx; i++ ) {
+      size_t len = this->iov[ i ].iov_len;
+      ::memcpy( &newbuf[ nbytes ], this->iov[ i ].iov_base, len );
       nbytes += len;
     }
-    strm.iov[ off ].iov_base = newbuf;
-    strm.iov[ off ].iov_len  = nbytes;
-    strm.idx = off + 1;
+    this->iov[ off ].iov_base = newbuf;
+    this->iov[ off ].iov_len  = nbytes;
+    this->idx = off + 1;
   }
   /* frame the new data */
   RedisMsg       msg;
   WebSocketFrame ws;
-  char         * buf    = (char *) strm.iov[ off ].iov_base,
+  char         * buf    = (char *) this->iov[ off ].iov_base,
                * wsmsg;
-  const size_t   buflen = strm.iov[ off ].iov_len;
+  const size_t   buflen = this->iov[ off ].iov_len;
   size_t         bufoff,
                  msgsize,
-                 hsz,
-                 sz,
-                 totsz = 0;
+                 hsize,
+                 size,
+                 totsize = 0;
   RedisMsgStatus mstatus;
   bool           is_literal;
   /* determine the size of each framed json msg */
@@ -465,148 +696,418 @@ EvHttpService::frame_websock2( void ) noexcept
     msgsize = buflen - bufoff;
     /* the '@'[len] is a literal, not a msg, pass through */
     if ( msgsize > 2 && buf[ bufoff ] == '@' ) {
-      sz = (uint8_t) buf[ bufoff + 1 ];
-      msgsize = sz + 2;
+      size = (uint8_t) buf[ bufoff + 1 ];
+      msgsize = size + 2;
       if ( bufoff + msgsize > buflen )
         return false;
       is_literal = true;
     }
     else {
-      mstatus = msg.unpack( &buf[ bufoff ], msgsize, this->strm.tmp );
+      mstatus = msg.unpack( &buf[ bufoff ], msgsize, this->tmp );
       if ( mstatus != DS_MSG_STATUS_OK )
         return false;
-      sz = msg.to_almost_json_size( false );
-      sz += eol_size;
+      size = msg.to_almost_json_size( false );
+      size += eol_size;
       is_literal = false;
       this->wsmsgcnt++;
     }
-    ws.set( sz, 0, WebSocketFrame::WS_TEXT, true );
-    hsz = ws.hdr_size();
-    totsz += sz + hsz;
+    ws.set( size, 0, WebSocketFrame::WS_TEXT, true );
+    hsize = ws.hdr_size();
+    totsize += size + hsize;
     if ( (bufoff += msgsize) == buflen )
       break;
   }
   /* frame and convert to json */
-  if ( totsz > 0 ) {
-    newbuf = strm.alloc_temp( totsz );
+  if ( totsize > 0 ) {
+    newbuf = this->alloc_temp( totsize );
     /* if only one msg, then it is already decoded */
-    if ( totsz == hsz + sz ) {
+    if ( totsize == hsize + size ) {
       ws.encode( newbuf );
       if ( is_literal )
-        ::memcpy( &newbuf[ hsz ], &buf[ 2 ], sz );
+        ::memcpy( &newbuf[ hsize ], &buf[ 2 ], size );
       else {
-        msg.to_almost_json( &newbuf[ hsz ], false );
-        ::memcpy( &newbuf[ hsz + sz - eol_size ], eol, eol_size );
+        msg.to_almost_json( &newbuf[ hsize ], false );
+        ::memcpy( &newbuf[ hsize + size - eol_size ], eol, eol_size );
       }
-      /*printf( "frame: %.*s\n", (int) sz, &newbuf[ hsz ] );*/
+      /*printf( "frame: %.*s\n", (int) size, &newbuf[ hsize ] );*/
     }
     else {
       wsmsg = newbuf;
       for ( bufoff = 0; ; ) {
         msgsize = buflen - bufoff;
         if ( msgsize > 2 && buf[ bufoff ] == '@' ) {
-          sz = (uint8_t) buf[ bufoff + 1 ];
-          msgsize = sz + 2;
-          ws.set( sz, 0, WebSocketFrame::WS_TEXT, true );
-          hsz = ws.hdr_size();
+          size = (uint8_t) buf[ bufoff + 1 ];
+          msgsize = size + 2;
+          ws.set( size, 0, WebSocketFrame::WS_TEXT, true );
+          hsize = ws.hdr_size();
           ws.encode( wsmsg );
-          ::memcpy( &wsmsg[ hsz ], &buf[ bufoff + 2 ], sz );
+          ::memcpy( &wsmsg[ hsize ], &buf[ bufoff + 2 ], size );
         }
         else {
-          msg.unpack( &buf[ bufoff ], msgsize, this->strm.tmp );
-          sz = msg.to_almost_json_size( false );
-          sz += eol_size;
-          ws.set( sz, 0, WebSocketFrame::WS_TEXT, true );
-          hsz = ws.hdr_size();
+          msg.unpack( &buf[ bufoff ], msgsize, this->tmp );
+          size = msg.to_almost_json_size( false );
+          size += eol_size;
+          ws.set( size, 0, WebSocketFrame::WS_TEXT, true );
+          hsize = ws.hdr_size();
           ws.encode( wsmsg );
-          msg.to_almost_json( &wsmsg[ hsz ], false );
-          ::memcpy( &wsmsg[ hsz + sz - eol_size ], eol, eol_size );
+          msg.to_almost_json( &wsmsg[ hsize ], false );
+          ::memcpy( &wsmsg[ hsize + size - eol_size ], eol, eol_size );
         }
         bufoff += msgsize;
-        /*printf( "frame2: %.*s\n", (int) sz, &wsmsg[ hsz ] );*/
-        wsmsg = &wsmsg[ hsz + sz ];
-        if ( wsmsg == &newbuf[ totsz ] )
+        /*printf( "frame2: %.*s\n", (int) size, &wsmsg[ hsize ] );*/
+        wsmsg = &wsmsg[ hsize + size ];
+        if ( wsmsg == &newbuf[ totsize ] )
           break;
       }
     }
-    if ( totsz >= buflen )
-      strm.wr_pending += totsz - buflen;
+    if ( totsize >= buflen )
+      this->wr_pending += totsize - buflen;
     else
-      strm.wr_pending -= buflen - totsz;
-    strm.iov[ off ].iov_base = newbuf;
-    strm.iov[ off ].iov_len  = totsz;
-    this->websock_off += totsz;
+      this->wr_pending -= buflen - totsize;
+    this->iov[ off ].iov_base = newbuf;
+    this->iov[ off ].iov_len  = totsize;
+    this->websock_off += totsize;
   }
   return true;
 }
 
 static const char *
-get_mime_type( const char *path,  size_t len )
+get_mime_type( const char *path,  size_t len,  size_t &mlen )
 {
+#define RET( s ) { mlen = sizeof( s ) - 1; return s; }
   if ( len >= 3 ) {
     const char *p = &path[ len-3 ];
+    /* the third char from the end */
     switch ( p[ 0 ] ) {
-#define CASE( c, d, e, s ) case c: if ( p[ 1 ] == d && p[ 2 ] == e ) return s
-      /* check for [.]js */
-      CASE( '.', 'j', 's', "application/x-javascript" ); break;
-      case 't': /* check for .h[t]ml */
-        if ( len >= 5 &&
-            p[ -2 ] == '.' && p[ -1 ] == 'h' && p[ 1 ] == 'm' && p[ 2 ] == 'l' )
-          return "text/html";
-        /* FALLTHRU */
-        /* fall through, could be .[t]xt */
+      case '.':
+        if ( p[ 1 ] == 'j' && p[ 2 ] == 's' )                       /* [.]js */
+          RET( "text/javascript" );
+        if ( p[ 1 ] == 'm' && p[ 2 ] == 'd' )                       /* [.]md */
+          RET( "text/markdown" );
+        break;
+      case 'c':
+        if ( len >= 4 && ::memcmp( &p[ -1 ], ".css", 4 ) == 0 )    /* .[c]ss */
+          RET( "text/css" );
+        break;
+      case 'd':
+        if ( ( len >= 5 &&
+               ::memcmp( &p[ -2 ], ".adoc", 5 ) == 0 ) ||         /* .a[d]oc */
+             ( len >= 9 &&
+               ::memcmp( &p[ -6 ], ".asciidoc", 9 ) == 0 ) )  /* .ascii[d]oc */
+          RET( "text/asciidoc" );
+        break;
+      case 'h':
+        if ( len >= 4 && ::memcmp( &p[ -1 ], ".htm", 4 ) == 0 )    /* .[h]tm */
+          RET( "text/html" );
+        break;
+      case 'j':
+        if ( len >= 4 && ::memcmp( &p[ -1 ], ".jpg", 4 ) == 0 )    /* .[j]pg */
+          RET( "image/jpeg" );
+        break;
+      case 'p':
+        if ( len >= 4 && ::memcmp( &p[ -1 ], ".png", 4 ) == 0 )    /* .[p]ng */
+          RET( "image/png" );
+        break;
+      case 's':
+        if ( len >= 5 && ::memcmp( &p[ -2 ], ".json", 5 ) == 0 )  /* .j[s]on */
+          RET( "application/json" );
+        if ( len >= 4 && ::memcmp( &p[ -1 ], ".svg", 4 ) == 0 )    /* .[s]vg */
+          RET( "image/svg+xml" );
+        break;
+      case 't':
+        if ( len >= 5 && ::memcmp( &p[ -2 ], ".html", 5 ) == 0 )  /* .h[t]ml */
+          RET( "text/html" );
+        if ( len >= 4 && ::memcmp( &p[ -1 ], ".txt", 4 ) == 0 )    /* .[t]xt */
+          RET( "text/plain" );
+        break;
+      case 'x':
+        if ( len >= 4 && ::memcmp( &p[ -1 ], ".xml", 4 ) == 0 )    /* .[x]ml */
+          RET( "text/xml" );
+        break;
       default:
-        if ( len < 4 || path[ len-4 ] != '.' )
-          break;
-        switch ( p[ 0 ] ) {
-          CASE( 'c', 's', 's', "text/css" ); break;      /* .css */
-          CASE( 'h', 't', 'm', "text/html" ); break;     /* .htm */
-          CASE( 'j', 'p', 'g', "image/jpeg" ); break;    /* .jpg */
-          CASE( 'p', 'n', 'g', "image/png" ); break;     /* .png */
-          CASE( 's', 'v', 'g', "image/svg+xml" ); break; /* .svg */
-          CASE( 't', 'x', 't', "text/plain" ); break;    /* .txt */
-          CASE( 'x', 'm', 'l', "text/xml" ); break;      /* .xml */
-#undef CASE
-        }
         break;
     }
   }
-  return "application/octet-stream";
+  RET( "application/octet-stream" );
+#undef RET
+}
+
+static uint8_t
+hexval( char c )
+{
+  if ( isdigit( c ) ) return (uint8_t) c - '0';
+  if ( c >= 'A' ) return (uint8_t) c - 'A' + 10;
+  return (uint8_t) c - 'a' + 10;
+}
+
+static size_t
+decode_uri( const char *s,  const char *e,  char *q )
+{
+  static const char * amp_str[ 5 ] = {"apos;", "quot;", "amp;", "lt;", "gt;" };
+  static const size_t amp_len[ 5 ] = { 5, 5, 4, 3, 3 };
+  static const char   amp_chr[ 5 ] = { '&', '"', '&', '<', '>' };
+  char * start = q;
+  size_t i;
+  while ( s < e ) {
+    switch ( s[ 0 ] ) {
+      case '%':
+        /* check if the two chars following % are hex chars */
+        if ( isxdigit( s[ 1 ] ) && isxdigit( s[ 2 ] ) ) {
+          *q = (char) ( ( hexval( s[ 1 ] ) << 4 ) | hexval( s[ 2 ] ) );
+          s = &s[ 3 ];
+          break;
+        }
+        *q = '%'; s++;
+        break;
+      case '+':
+        *q = ' '; s++;
+        break;
+      case '&':
+        for ( i = 0; i < 5; i++ ) {
+          if ( ::strncasecmp( &s[ 1 ], amp_str[ i ], amp_len[ i ] ) == 0 ) {
+            *q = amp_chr[ i ]; s = &s[ amp_len[ i ] + 1 ];
+            break;
+          }
+        }
+        if ( i == 5 ) {
+          *q = '&'; s++;
+        }
+        break;
+      default:
+        *q = *s++;
+        break;
+    }
+    q++;
+  }
+  *q = '\0';
+  return q - start;
 }
 
 bool
-EvHttpService::send_file( const char *get,  size_t getlen ) noexcept
+EvHttpService::process_get( const HttpReq &hreq ) noexcept
 {
   /* GET /somefile HTTP/1.1 */
-  const char *obj = (const char *) ::memchr( get, '/', getlen ),
-             *end = (const char *)
-                    ( obj ? ::memchr( obj, ' ', &get[ getlen ] - obj ) : NULL );
-  struct stat statbuf;
-  char   path[ 1024 ];
-  size_t len;
-  int    fd;
-  bool   res;
+  const char * obj = hreq.path,
+             * end = &hreq.path[ hreq.path_len ];
+  HttpOut      hout;
+  ds_msg_t     ar[ 2 ];
+  char         buf[ 1024 ];
+  size_t       off, i, j, d, n,
+               len, mlen, qoff;
+  char       * s;
+  const char * mtype;
+  RedisMsg     m;
+  ExecStatus   status;
+  bool         use_json = false,
+               use_resp = false;
 
-  if ( obj == NULL || end == NULL )
+  if ( obj == NULL )
     return false;
   len = (size_t) ( end - &obj[ 1 ] );
-  if ( len > sizeof( path ) - 11 )
+  if ( len > sizeof( buf ) - 11 ) /* space for index.html */
     return false;
-  if ( len > 0 ) {
-    ::memcpy( path, &obj[ 1 ], len );
-    path[ len ] = '\0';
+  /* skip /? */
+  if ( obj[ 1 ] == '?' ) {
+    qoff = 2; /* resp format */
+    use_resp = true;
   }
-  if ( len == 0 || path[ len - 1 ] == '/' ) {
-    ::strcpy( &path[ len ], "index.html" );
-    len += 10;
+  /* skip /js? */
+  else if ( obj[ 1 ] == 'j' && obj[ 2 ] == 's' && obj[ 3 ] == '?' ) {
+    qoff = 4;
+    use_json = true;
   }
+  else {
+    qoff = 1; /* skip the leading '/' */
+  }
+/*  if ( ::strncmp( path, "console/", 8 ) == 0 )
+    return this->send_file( path, len );*/
 
+  len = decode_uri( &obj[ qoff ], end, buf );
+  if ( len == 0 ) {
+    ::strcpy( buf, "index.html" );
+    len = 10;
+  }
+  mlen = len;
+
+  if ( qoff > 1 ) {
+    len = crlf( buf, len );
+    if ( this->msg.unpack( buf, len, this->tmp ) != DS_MSG_STATUS_OK )
+      return false;
+  }
+  else {
+    /* make array: [ "get", buf ] */
+    this->msg.type  = DS_BULK_ARRAY;
+    this->msg.len   = 2;
+    this->msg.array = ar;
+    ar[ 0 ].type    = DS_INTEGER_VALUE;
+    ar[ 0 ].len     = 0;
+    ar[ 0 ].ival    = GET_CMD;
+    ar[ 1 ].type    = DS_BULK_STRING;
+    ar[ 1 ].len     = len;
+    ar[ 1 ].strval  = buf;
+  }
+  if ( this->sz > 0 )
+    this->flush();
+  off = this->pending(); /* record location at start of list */
+  i   = this->idx;
+  if ( (status = this->exec( NULL, NULL )) == EXEC_OK )
+    if ( this->alloc_fail )
+      status = ERR_ALLOC_FAIL;
+  switch ( status ) {
+    case EXEC_SETUP_OK:
+      this->exec_run_to_completion();
+      if ( ! this->alloc_fail )
+        break;
+      status = ERR_ALLOC_FAIL;
+      /* fall through */
+    case EXEC_QUIT:
+      if ( status == EXEC_QUIT ) {
+        this->push( EV_SHUTDOWN );
+        this->poll.quit++;
+      }
+      /* fall through */
+    default:
+      this->send_status( status, KEY_OK );
+      if ( ! use_json && ! use_resp ) {
+        this->truncate( off );
+        return false;
+      }
+      break;
+    case EXEC_DEBUG:
+      return false;
+  }
+  if ( this->pending() == off )
+    return false;
+
+  this->init_http_response( hreq, hout, 0, 200 );
+
+  if ( use_json ) {
+    s = this->trunc_copy( off, n );
+    if ( n == 0 )
+      return false;
+    if ( m.unpack( s, n, this->tmp ) != DS_MSG_STATUS_OK )
+      return false;
+    hout.push( ctype_json, sizeof( ctype_json ) - 1 );
+    hout.push( clength, sizeof( clength ) - 1 );
+
+    n = m.to_almost_json_size( false ) + 2;
+    d = uint_digits( n );
+    s = this->alloc( n + hout.size + d + 4 );
+    j = hout.cat( s );
+    j += uint_to_str( n - off, &s[ j ], d );
+    j  = crlf( s, j );
+    j  = crlf( s, j );
+    j += m.to_almost_json( &s[ j ], false );
+    this->sz = crlf( s, j );
+    return true;
+  }
+  if ( use_resp ) {
+    hout.push( ctype_resp, sizeof( ctype_resp ) - 1 );
+    hout.push( clength, sizeof( clength ) - 1 );
+
+    this->flush();
+    n = this->pending();
+    d = uint_digits( n - off );
+    s = this->alloc( hout.size + d + 4 );
+    j = hout.cat( s );
+    j += uint_to_str( n - off, &s[ j ], d );
+    j  = crlf( s, j );
+    this->sz = crlf( s, j );
+    this->prepend_flush( i );
+    return true;
+  }
+  s = this->trunc_copy( off, n );
+  if ( n == 0 )
+    return false;
+  if ( m.unpack( s, n, this->tmp ) != DS_MSG_STATUS_OK )
+    return false;
+  if ( m.type == DS_BULK_STRING && m.len >= 0 ) {
+    mtype = get_mime_type( buf, mlen, mlen );
+    hout.push( ctype, sizeof( ctype ) - 1 );
+    hout.push( mtype, mlen );
+    hout.push( "\r\n", 2 );
+    hout.push( clength, sizeof( clength ) - 1 );
+
+    n = m.len;
+    d = uint_digits( n );
+    s = this->alloc( hout.size + d + 4 );
+    j = hout.cat( s );
+    j += uint_to_str( n, &s[ j ], d );
+    j  = crlf( s, j );
+    this->sz = crlf( s, j );
+    this->append_iov( m.strval, n );
+    return true;
+  }
+  return false;
+  /*return this->send_file( path );*/
+}
+
+bool
+EvHttpService::process_post( const HttpReq &hreq ) noexcept
+{
+  const char * obj = hreq.path,
+             * end = &hreq.path[ hreq.path_len ];
+  ds_msg_t     ar[ 3 ];
+  char         buf[ 1024 ];
+  size_t       off, len;
+  ExecStatus   status;
+  bool         ret = true;
+
+  /* skip the leading '/' */
+  len = decode_uri( &obj[ 1 ], end, buf );
+  if ( len == 0 ) {
+    ::strcpy( buf, "index.html" );
+    len = 10;
+  }
+  /* make array: [ "set", buf, data ] */
+  this->msg.type  = DS_BULK_ARRAY;
+  this->msg.len   = 3;
+  this->msg.array = ar;
+  ar[ 0 ].type    = DS_INTEGER_VALUE;
+  ar[ 0 ].len     = 0;
+  ar[ 0 ].ival    = SET_CMD;
+  ar[ 1 ].type    = DS_BULK_STRING;
+  ar[ 1 ].len     = len;
+  ar[ 1 ].strval  = buf;
+  ar[ 2 ].type    = DS_BULK_STRING;
+  ar[ 2 ].len     = hreq.content_length;
+  ar[ 2 ].strval  = (char *) hreq.data;
+
+  if ( this->sz > 0 )
+    this->flush();
+  off = this->pending(); /* record location at start of list */
+  if ( (status = this->exec( NULL, NULL )) == EXEC_OK )
+    if ( this->alloc_fail )
+      status = ERR_ALLOC_FAIL;
+  switch ( status ) {
+    case EXEC_SETUP_OK:
+      this->exec_run_to_completion();
+      if ( ! this->alloc_fail )
+        break;
+      /* fall through */
+    default:
+      ret = false;
+      break;
+  }
+  if ( this->pending() == off )
+    ret = false;
+  this->truncate( off );
+  return ret;
+}
+
+
+bool
+EvHttpService::send_file( const char *path,  size_t len ) noexcept
+{
+  struct stat statbuf;
+  int    fd;
+  bool   res = false;
   if ( (fd = ::open( path, O_RDONLY )) < 0 )
     return false;
-  res = false;
   if ( ::fstat( fd, &statbuf ) == 0 && statbuf.st_size != 0 ) {
     if ( statbuf.st_size <= 10 * 1024 * 1024 ) {
-      char * p = this->strm.alloc_temp( 256 + statbuf.st_size );
+      char * p = this->alloc_temp( 256 + statbuf.st_size );
+      size_t mlen;
       if ( p != NULL &&
            ::read( fd, &p[ 256 ], statbuf.st_size ) == statbuf.st_size ) {
         int n = ::snprintf( p, 256,
@@ -615,11 +1116,11 @@ EvHttpService::send_file( const char *get,  size_t getlen ) noexcept
           "Cache-Control: no-cache\r\n"
           "Content-Type: %s\r\n"
           "Content-Length: %u\r\n"
-          "\r\n", get_mime_type( path, len ), (int) statbuf.st_size );
+          "\r\n", get_mime_type( path, len, mlen ), (int) statbuf.st_size );
         if ( n > 0 && n < 256 ) {
           ::memmove( &p[ 256 - n ], p, n );
           p = &p[ 256 - n ];
-          this->strm.append_iov( p, statbuf.st_size + (size_t) n );
+          this->append_iov( p, statbuf.st_size + (size_t) n );
           res = true;
         }
       }
@@ -633,8 +1134,7 @@ EvHttpService::send_file( const char *get,  size_t getlen ) noexcept
 }
 
 bool
-EvHttpService::send_ws_upgrade( const char *wsver, const char *wskey,
-                                size_t wskeylen,  const char *wspro ) noexcept
+EvHttpService::send_ws_upgrade( const HttpReq &hreq ) noexcept
 {
   static const char b64[] =
   "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -643,7 +1143,7 @@ EvHttpService::send_ws_upgrade( const char *wsver, const char *wskey,
   char wsacc[ 32 ];
   bool res = false;
   /* websock switch hashes wskey with SHA1 and base64 encodes the result */
-  SHA1( (const uint8_t *) wskey, wskeylen, digest );
+  SHA1( (const uint8_t *) hreq.wskey, hreq.wskeylen, digest );
   /* base64 encode it */
   for ( i = 0; i < 18; i += 3 ) {
     val = ( (uint32_t) digest[ i ] << 16 ) | ( (uint32_t) digest[ i+1 ] << 8 ) |
@@ -661,7 +1161,7 @@ EvHttpService::send_ws_upgrade( const char *wsver, const char *wskey,
   wsacc[ j + 3 ] = '=';
   wsacc[ j + 4 ] = '\0';
 
-  char * p = this->strm.alloc( 256 );
+  char * p = this->alloc( 256 );
   if ( p != NULL ) {
     int n = ::snprintf( p, 256,
       "HTTP/1.1 101 Switching Protocols\r\n"
@@ -672,12 +1172,13 @@ EvHttpService::send_ws_upgrade( const char *wsver, const char *wskey,
       "Sec-WebSocket-Accept: %s\r\n"
       "Content-Length: 0\r\n"
       "\r\n",
-      wsver,
-      wspro[0]?"Sec-WebSocket-Protocol: ":"", wspro, wspro[0]?"\r\n":"",
+      hreq.wsver,
+      hreq.wspro[0]?"Sec-WebSocket-Protocol: ":"", hreq.wspro,
+      hreq.wspro[0]?"\r\n":"",
       wsacc );
     /*printf( "%.*s", n, p );*/
     if ( n > 0 && n < 256 ) {
-      this->strm.sz += n;
+      this->sz += n;
       res = true;
     }
   }
@@ -690,11 +1191,11 @@ EvHttpService::send_ws_pong( const char *payload,  size_t len ) noexcept
   WebSocketFrame ws;
 
   ws.set( len, 0, WebSocketFrame::WS_PONG, true );
-  char * p = this->strm.alloc( WebSocketFrame::MAX_HEADER_SIZE + len );
+  char * p = this->alloc( WebSocketFrame::MAX_HEADER_SIZE + len );
   if ( p != NULL ) {
     size_t off = ws.encode( p );
     ::memcpy( &p[ off ], payload, len );
-    this->strm.sz += off + len;
+    this->sz += off + len;
     return true;
   }
   return false;
@@ -704,14 +1205,14 @@ size_t
 EvHttpService::recv_wsframe( char *start,  char *end ) noexcept
 {
   WebSocketFrame ws;
-  size_t hdrsz = ws.decode( start, end - start );
-  if ( hdrsz <= 1 ) /* 0 == not enough data for hdr, 1 == closed */
-    return hdrsz;
+  size_t hdrsize = ws.decode( start, end - start );
+  if ( hdrsize <= 1 ) /* 0 == not enough data for hdr, 1 == closed */
+    return hdrsize;
   if ( ws.payload_len > (uint64_t) 10 * 1024 * 1024 ) {
     fprintf( stderr, "Websocket payload too large: %lu\n", ws.payload_len );
     return 1; /* close */
   }
-  char *p = &start[ hdrsz ];
+  char *p = &start[ hdrsize ];
   if ( &p[ ws.payload_len ] > end ) { /* if still need more data */
     printf( "need more data\n" );
     return 0;
@@ -751,19 +1252,19 @@ EvHttpService::recv_wsframe( char *start,  char *end ) noexcept
           this->wsoff = 0;
         }
         else {
-          size_t sz  = kv::align<size_t>( this->wslen + ws.payload_len, 1024 );
-          char * tmp = (char *) ::realloc( this->wsbuf, sz );
+          size_t size = kv::align<size_t>( this->wslen + ws.payload_len, 1024 );
+          char * tmp = (char *) ::realloc( this->wsbuf, size );
           if ( tmp == NULL )
             return 1; /* close */
           this->wsbuf   = tmp;
-          this->wsalloc = sz;
+          this->wsalloc = size;
         }
       }
       break;
     }
   }
   //printf( "wspayload: %ld\n", ws.payload_len );
-  return hdrsz + ws.payload_len;
+  return hdrsize + ws.payload_len;
 }
 
 void

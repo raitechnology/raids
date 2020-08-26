@@ -91,25 +91,53 @@ struct StreamBuf {
       this->woff       = 0;
       this->wr_pending = 0;
       this->out_buf    = NULL;
+      return;
     }
-    /* find truncate offset, add iovs together with out_buf/sz */
-    else {
-      size_t i, len = 0, off = offset;
-      for ( i = 0; i < this->idx; i++ ) {
-        len = this->iov[ i ].iov_len;
-        if ( len >= off ) {
-          this->iov[ i ].iov_len = off;
-          this->idx = i + 1;
-          off = 0;
-          break;
+    this->truncate2( offset );
+  }
+  void truncate2( size_t offset ) noexcept;
+
+  /* return the end of the output buffer */
+  char *trunc_copy( size_t offset,  size_t &len ) {
+    char *s;
+    len = this->pending() - offset;
+    if ( len == 0 )
+      return NULL;
+    if ( this->sz == len ) { /* most likely */
+      s = this->out_buf;
+      this->sz      = 0;
+      this->out_buf = NULL;
+      return s;
+    }
+    s = (char *) this->tmp.alloc( len ); /* concat or shrink buffers */
+    if ( s == NULL ) {
+      this->alloc_fail = true;
+      len = 0;
+      return NULL;
+    }
+    if ( this->sz > len ) {
+      ::memcpy( s, &this->out_buf[ this->sz - len ], len );
+      this->sz -= len;
+      return s;
+    }
+    /* sz < len */
+    size_t j = len - this->sz;
+    ::memcpy( &s[ j ], this->out_buf, this->sz );
+    this->sz = 0;
+    for (;;) {
+      iovec & io = this->iov[ --this->idx ];
+      if ( io.iov_len >= j ) {
+        ::memcpy( s, &((char *) io.iov_base)[ io.iov_len - j ], j );
+        if ( io.iov_len > j ) {
+          this->idx += 1;
+          io.iov_len -= j;
         }
-        off -= len;
+        this->wr_pending -= j;
+        return s;
       }
-      if ( (this->sz = off) == 0 ) {
-        this->out_buf = NULL;
-        this->sz      = 0;
-      }
-      this->wr_pending = offset - this->sz;
+      j -= io.iov_len;
+      ::memcpy( &s[ j ], io.iov_base, io.iov_len );
+      this->wr_pending -= io.iov_len;
     }
   }
 

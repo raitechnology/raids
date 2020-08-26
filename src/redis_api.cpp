@@ -28,8 +28,9 @@ struct ds_internal : public ds_s, public EvShmApi {
 extern "C" {
 
 int
-ds_create( ds_t **h,  const char *map_name,  uint8_t db_num,  int use_busy_poll,
-           uint64_t map_size,  double entry_ratio,  uint64_t max_value_size )
+ds_create( ds_t **h,  const char *map_name,  int map_mode,  uint8_t db_num,
+           int use_busy_poll,  uint64_t map_size,  double entry_ratio,
+           uint64_t max_value_size )
 {
   size_t        sz   = align<size_t>( sizeof( ds_internal ), 64 );
   void        * m    = aligned_malloc( sz + sizeof( EvPoll ) );
@@ -44,7 +45,7 @@ ds_create( ds_t **h,  const char *map_name,  uint8_t db_num,  int use_busy_poll,
   if ( map_name == NULL )
     status = ds->create();
   else
-    status = ds->create( map_name, db_num, map_size, entry_ratio,
+    status = ds->create( map_name, map_mode, db_num, map_size, entry_ratio,
                          max_value_size );
   if ( status == 0 ) {
     if ( status == 0 )

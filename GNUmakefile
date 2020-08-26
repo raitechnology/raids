@@ -18,6 +18,8 @@ libd      := $(build_dir)/lib64
 objd      := $(build_dir)/obj
 dependd   := $(build_dir)/dep
 
+have_asciidoctor := $(shell if [ -x /usr/bin/asciidoctor ]; then echo true; fi)
+
 # use 'make port_extra=-g' for debug build
 ifeq (-g,$(findstring -g,$(port_extra)))
   DEBUG = true
@@ -301,17 +303,18 @@ $(libd)/libshmdp.so: $(libshmdp_dbjs) $(libshmdp_libs)
 all_libs    += $(libd)/libshmdp.so
 all_depends += $(libshmdp_deps)
 
-ds_server_files      := emain
-ds_server_objs       := $(addprefix $(objd)/, $(addsuffix .o, $(ds_server_files)))
-ds_server_deps       := $(addprefix $(dependd)/, $(addsuffix .d, $(ds_server_files)))
-ds_server_libs       := $(libd)/libraids.so
-ds_server_static_lnk := $(ds_lib) $(lnk_lib) -lpcre2-32 -lpcre2-8 -lcrypto -llzf 
-ds_server_lnk        := $(raids_dlnk)
+ds_server_files := emain
+ds_server_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(ds_server_files)))
+ds_server_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(ds_server_files)))
+ds_server_libs  := $(libd)/libraids.so
+ds_server_lnk   := $(ds_lib) $(lnk_lib) -lpcre2-32 -lpcre2-8 -lcrypto -llzf
+#ds_server_static_lnk := $(ds_lib) $(lnk_lib) -lpcre2-32 -lpcre2-8 -lcrypto -llzf
+#ds_server_lnk        := $(raids_dlnk)
 
-$(bind)/ds_server: $(ds_server_objs) $(ds_server_libs)
-$(bind)/ds_server.static: $(ds_server_objs) $(ds_lib) $(lnk_dep)
+#$(bind)/ds_server: $(ds_server_objs) $(ds_server_libs)
+$(bind)/ds_server: $(ds_server_objs) $(ds_lib) $(lnk_dep)
 
-all_exes    += $(bind)/ds_server $(bind)/ds_server.static
+all_exes    += $(bind)/ds_server
 all_depends += $(ds_server_deps)
 
 shmdp_files := smain
@@ -526,21 +529,20 @@ test_stream_lnk   := $(raids_dlnk)
 
 $(bind)/test_stream: $(test_stream_objs) $(test_stream_libs)
 
-test_api_files := test_api
-test_api_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(test_api_files)))
-test_api_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(test_api_files)))
-test_api_libs  := $(raids_dlib)
-test_api_static_lnk := $(ds_lib) $(lnk_lib) -lpcre2-32 -lpcre2-8 -lcrypto -llzf 
-test_api_lnk   := $(raids_dlnk)
+ds_test_api_files := test_api
+ds_test_api_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(ds_test_api_files)))
+ds_test_api_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(ds_test_api_files)))
+ds_test_api_libs  := $(raids_dlib)
+ds_test_api_lnk := $(ds_lib) $(lnk_lib) -lpcre2-32 -lpcre2-8 -lcrypto -llzf
 
-$(bind)/test_api: $(test_api_objs) $(test_api_libs)
-$(bind)/test_api.static: $(test_api_objs) $(ds_lib) $(lnk_dep)
+#$(bind)/test_api: $(test_api_objs) $(test_api_libs)
+$(bind)/ds_test_api: $(ds_test_api_objs) $(ds_lib) $(lnk_dep)
 
 pubsub_api_files := pubsub_api
 pubsub_api_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(pubsub_api_files)))
 pubsub_api_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(pubsub_api_files)))
 pubsub_api_libs  := $(raids_dlib)
-pubsub_api_static_lnk := $(ds_lib) $(lnk_lib) -lpcre2-32 -lpcre2-8 -lcrypto -llzf 
+pubsub_api_static_lnk := $(ds_lib) $(lnk_lib) -lpcre2-32 -lpcre2-8 -lcrypto -llzf
 pubsub_api_lnk   := $(raids_dlnk)
 
 $(bind)/pubsub_api: $(pubsub_api_objs) $(pubsub_api_libs)
@@ -554,7 +556,7 @@ all_exes    += $(bind)/client $(bind)/test_msg $(bind)/test_mcmsg \
 	       $(bind)/test_decimal $(bind)/test_cr $(bind)/test_rtht \
 	       $(bind)/test_subht $(bind)/test_wild $(bind)/test_timer \
 	       $(bind)/test_ping $(bind)/test_sub $(bind)/test_pub \
-	       $(bind)/test_stream $(bind)/test_api $(bind)/test_api.static \
+	       $(bind)/test_stream $(bind)/ds_test_api \
                $(bind)/pubsub_api $(bind)/pubsub_api.static
 all_depends += $(client_deps) $(test_msg_deps) $(test_mcmsg_deps) \
                $(redis_cmd_deps) $(test_cmd_deps) $(test_list_deps) \
@@ -564,13 +566,15 @@ all_depends += $(client_deps) $(test_msg_deps) $(test_mcmsg_deps) \
 	       $(test_decimal_deps) $(test_cr_deps) $(test_rtht_deps) \
 	       $(test_subht_deps) $(test_wild_deps) $(test_timer_deps) \
 	       $(test_ping_deps) $(test_sub_deps) $(test_pub_deps) \
-	       $(test_stream_deps) $(test_api_deps) $(pubsub_api_deps)
+	       $(test_stream_deps) $(ds_test_api_deps) $(pubsub_api_deps)
 
 all_dirs := $(bind) $(libd) $(objd) $(dependd)
 
+ifeq ($(have_asciidoctor),true)
 doc/redis_cmd.html: doc/redis_cmd.adoc
 	asciidoctor -b html5 doc/redis_cmd.adoc
 gen_files += doc/redis_cmd.html
+endif
 
 include/raids/redis_cmd.h: $(bind)/redis_cmd doc/redis_cmd.adoc
 	$(bind)/redis_cmd doc/redis_cmd.adoc > include/raids/redis_cmd.h
@@ -580,10 +584,13 @@ gen_files += include/raids/redis_cmd.h
 .PHONY: all
 all: $(gen_files) $(all_libs) $(all_dlls) $(all_exes)
 
-.PHONE: dnf_depend
+.PHONY: dnf_depend
 dnf_depend:
 	sudo dnf -y install make gcc-c++ git redhat-lsb openssl-devel pcre2-devel liblzf-devel zlib-devel libbsd-devel
-	echo maybe also install hwloc-gui
+
+.PHONY: deb_depend
+deb_depend:
+	sudo apt-get install -y install make g++ gcc devscripts libpcre2-dev chrpath git lsb-release libssl-dev lzf zlib1g-dev uuid-dev libbsd-dev
 
 # create directories
 $(dependd):

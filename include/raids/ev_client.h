@@ -36,15 +36,19 @@ struct EvShm {
                 dbx_id;
 
   EvShm() : map( 0 ), ctx_id( kv::MAX_CTX_ID ), dbx_id( kv::MAX_STAT_ID ) {}
+  EvShm( EvShm &m ) : map( m.map ), ctx_id( m.ctx_id ), dbx_id( m.dbx_id ) {}
   ~EvShm();
   int open( const char *map_name      = KV_DEFAULT_SHM,
             uint8_t db_num            = 0 ) noexcept;
   int create( const char *map_name    = KV_DEFAULT_SHM,
+              int map_mode            = 0660,
               uint8_t db_num          = 0,
               uint64_t map_size       = (uint64_t) 2 * 1024 * 1024 * 1024,
               double entry_ratio      = 0.25,
               uint64_t max_value_size = 0 ) noexcept;
   void print( void ) noexcept;
+  int attach( uint8_t db_num ) noexcept;
+  void detach( void ) noexcept;
   void close( void ) noexcept;
 };
 

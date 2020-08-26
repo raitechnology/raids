@@ -1981,7 +1981,7 @@ KvPubSub::make_rcv_pipe( size_t src ) noexcept
     return true;
   /* recv pipe */
   make_pipe_name( this->poll.map->hdr.create_stamp, this->ctx_id, src, rcv_p );
-  pb = PipeBuf::open( rcv_p, true );
+  pb = PipeBuf::open( rcv_p, true, 0660 );
   this->rcv_pipe[ src ] = pb;
   if ( pb == NULL ) {
     fprintf( stderr, "failed to make recv pipe\n" );
@@ -2005,7 +2005,7 @@ KvPubSub::make_snd_pipe( size_t src ) noexcept
     return true;
   /* send pipe */
   make_pipe_name( this->poll.map->hdr.create_stamp, src, this->ctx_id, snd_p );
-  pb = PipeBuf::open( snd_p, false );
+  pb = PipeBuf::open( snd_p, false, 0660 );
   this->snd_inbox[ src ]->snd_pipe = pb;
   if ( pb == NULL )
     return false;

@@ -53,6 +53,28 @@ StreamBuf::merge_iov( void ) noexcept
   this->idx = 1;
 }
 
+void
+StreamBuf::truncate2( size_t offset ) noexcept
+{
+  /* find truncate offset, add iovs together with out_buf/sz */
+  size_t i, len = 0, off = offset;
+  for ( i = 0; i < this->idx; i++ ) {
+    len = this->iov[ i ].iov_len;
+    if ( len >= off ) {
+      this->iov[ i ].iov_len = off;
+      this->idx = i + 1;
+      off = 0;
+      break;
+    }
+    off -= len;
+  }
+  if ( (this->sz = off) == 0 ) {
+    this->out_buf = NULL;
+    this->sz      = 0;
+  }
+  this->wr_pending = offset - this->sz;
+}
+
 static inline size_t
 crlf( char *b,  size_t i ) {
   b[ i ] = '\r'; b[ i + 1 ] = '\n'; return i + 2;

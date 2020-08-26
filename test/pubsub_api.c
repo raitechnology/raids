@@ -497,7 +497,7 @@ main( int argc,  char *argv[] )
     return 1;
   }
   if ( cr != NULL )
-    status = ds_create( &h, mn, 0, bu != NULL, 0, 0, 0 );
+    status = ds_create( &h, mn, 0660, 0, bu != NULL, 0, 0, 0 );
   else
     status = ds_open( &h, mn, 0, bu != NULL );
 

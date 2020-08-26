@@ -18,19 +18,15 @@ EvShm::open( const char *map_name,  uint8_t db_num ) noexcept
 {
   HashTabGeom geom;
   this->map = HashTab::attach_map( map_name, 0, geom );
-  if ( this->map != NULL ) {
-    this->ctx_id = map->attach_ctx( ::getpid() );
-    if ( this->ctx_id != MAX_CTX_ID ) {
-      this->dbx_id = map->attach_db( this->ctx_id, db_num );
-      return 0;
-    }
-  }
+  if ( this->map != NULL )
+    return this->attach( db_num );
   return -1;
 }
 
 int
-EvShm::create( const char *map_name,  uint8_t db_num,  uint64_t map_size,
-               double entry_ratio,  uint64_t max_value_size ) noexcept
+EvShm::create( const char *map_name,  int map_mode,  uint8_t db_num,
+               uint64_t map_size,  double entry_ratio,
+               uint64_t max_value_size ) noexcept
 {
   HashTabGeom geom;
   uint64_t value_size;
@@ -53,14 +49,9 @@ EvShm::create( const char *map_name,  uint8_t db_num,  uint64_t map_size,
   geom.hash_value_ratio = entry_ratio;
   geom.cuckoo_buckets   = 2;
   geom.cuckoo_arity     = 4;
-  this->map = HashTab::create_map( map_name, 0, geom );
-  if ( this->map != NULL ) {
-    this->ctx_id = map->attach_ctx( ::getpid() );
-    if ( this->ctx_id != MAX_CTX_ID ) {
-      this->dbx_id = map->attach_db( this->ctx_id, db_num );
-      return 0;
-    }
-  }
+  this->map = HashTab::create_map( map_name, 0, geom, map_mode );
+  if ( this->map != NULL )
+    return this->attach( db_num );
   return -1;
 }
 
@@ -73,17 +64,35 @@ EvShm::print( void ) noexcept
 
 EvShm::~EvShm() noexcept
 {
-  if ( this->map != NULL )
-    this->close();
+  /* should explicity close instead */
+  /*if ( this->map != NULL )
+    this->close();*/
+}
+
+int
+EvShm::attach( uint8_t db_num ) noexcept
+{
+  this->ctx_id = this->map->attach_ctx( ::getpid() );
+  if ( this->ctx_id != MAX_CTX_ID ) {
+    this->dbx_id = this->map->attach_db( this->ctx_id, db_num );
+    return 0;
+  }
+  return -1;
+}
+
+void
+EvShm::detach( void ) noexcept
+{
+  if ( this->ctx_id != MAX_CTX_ID ) {
+    this->map->detach_ctx( this->ctx_id );
+    this->ctx_id = MAX_CTX_ID;
+  }
 }
 
 void
 EvShm::close( void ) noexcept
 {
-  if ( this->ctx_id != MAX_CTX_ID ) {
-    map->detach_ctx( ctx_id );
-    this->ctx_id = MAX_CTX_ID;
-  }
+  this->detach();
   delete this->map;
   this->map = NULL;
 }
