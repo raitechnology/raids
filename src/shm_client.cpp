@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <sys/syscall.h>
 #include <raids/ev_client.h>
 #include <raids/redis_exec.h>
 
@@ -77,7 +78,8 @@ EvShm::~EvShm() noexcept
 int
 EvShm::attach( uint8_t db_num ) noexcept
 {
-  this->ctx_id = this->map->attach_ctx( ::gettid() );
+  /* centos don't have gettid() */
+  this->ctx_id = this->map->attach_ctx( ::syscall( SYS_gettid ) );
   if ( this->ctx_id != MAX_CTX_ID ) {
     this->dbx_id = this->map->attach_db( this->ctx_id, db_num );
     return 0;

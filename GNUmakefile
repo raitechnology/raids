@@ -588,6 +588,10 @@ all: $(gen_files) $(all_libs) $(all_dlls) $(all_exes)
 dnf_depend:
 	sudo dnf -y install make gcc-c++ git redhat-lsb openssl-devel pcre2-devel liblzf-devel zlib-devel libbsd-devel
 
+.PHONY: yum_depend
+yum_depend:
+	sudo yum -y install make gcc-c++ git redhat-lsb openssl-devel pcre2-devel liblzf-devel zlib-devel libbsd-devel
+
 .PHONY: deb_depend
 deb_depend:
 	sudo apt-get install -y install make g++ gcc devscripts libpcre2-dev chrpath git lsb-release libssl-dev lzf zlib1g-dev uuid-dev libbsd-dev
