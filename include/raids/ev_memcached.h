@@ -50,6 +50,7 @@ struct EvMemcachedUdp : public EvUdp {
   uint32_t       * out_idx;  /* index into strm.iov[] for each result */
   EvMemcachedMerge sav;
   EvUdpOps         ops;
+  void * operator new( size_t, void *ptr ) { return ptr; }
   EvMemcachedUdp( EvPoll &p ) : EvUdp( p, EV_MEMUDP_SOCK, this->ops ),
     exec( 0 ), out_idx( 0 ) {}
   int listen( const char *ip,  int port,  int opts ) noexcept;
@@ -92,6 +93,7 @@ struct MemcachedUdpFraming {
 
 struct EvMemcachedListen : public EvTcpListen {
   EvListenOps ops;
+  void * operator new( size_t, void *ptr ) { return ptr; }
   EvMemcachedListen( EvPoll &p ) noexcept;
   int listen( const char *ip,  int port,  int opts ) noexcept;
   virtual bool accept( void ) noexcept;

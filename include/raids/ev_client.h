@@ -40,12 +40,11 @@ struct EvShm {
   ~EvShm();
   int open( const char *map_name      = KV_DEFAULT_SHM,
             uint8_t db_num            = 0 ) noexcept;
-  int create( const char *map_name    = KV_DEFAULT_SHM,
-              int map_mode            = 0660,
-              uint8_t db_num          = 0,
-              uint64_t map_size       = (uint64_t) 2 * 1024 * 1024 * 1024,
-              double entry_ratio      = 0.25,
-              uint64_t max_value_size = 0 ) noexcept;
+
+  int create( const char * map_name = KV_DEFAULT_SHM,
+              kv_geom_t  * geom     = NULL,
+              int          map_mode = 0660,
+              uint8_t      db_num   = 0 ) noexcept;
   void print( void ) noexcept;
   int attach( uint8_t db_num ) noexcept;
   void detach( void ) noexcept;

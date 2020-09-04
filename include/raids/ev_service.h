@@ -12,6 +12,7 @@ struct EvPrefetchQueue;
 struct EvRedisListen : public EvTcpListen {
   uint64_t timer_id;
   EvListenOps ops;
+  void * operator new( size_t, void *ptr ) { return ptr; }
   EvRedisListen( EvPoll &p ) noexcept;/* : EvTcpListen( p ) {}*/
   virtual bool accept( void ) noexcept;
   int listen( const char *ip,  int port,  int opts ) {

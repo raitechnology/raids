@@ -16,6 +16,7 @@ struct ds_event_s {
            reply;        /* reply if rpc */
 };
 typedef struct ds_event_s ds_event_t;
+typedef struct kv_geom_s kv_geom_t; /* include <raikv/shm_ht.h> */
 
 typedef void (*ds_on_msg_t)( const ds_event_t *event,
                              const ds_msg_t *msg,
@@ -25,9 +26,8 @@ typedef void (*ds_on_msg_t)( const ds_event_t *event,
 int ds_open( ds_t **h, const char *map_name,  uint8_t db_num,
              int use_busy_poll );
 /* create ds shared memory: db_num 0 -> 253 (254,255 resvd) */
-int ds_create( ds_t **h, const char *map_name,  int map_mode,  uint8_t db_num,
-               int use_busy_poll,  uint64_t map_size,  double entry_ratio,
-               uint64_t max_value_size );
+int ds_create( ds_t **h, const char *map_name,  uint8_t db_num,
+               int use_busy_poll,  kv_geom_t *geom,  int map_mode );
 /* unique context id assigned for this thread on open/create, 0 -> 127 */
 int ds_get_ctx_id( ds_t *h );
 /* close ds shared memory */

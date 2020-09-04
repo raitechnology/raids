@@ -24,32 +24,37 @@ EvShm::open( const char *map_name,  uint8_t db_num ) noexcept
 }
 
 int
-EvShm::create( const char *map_name,  int map_mode,  uint8_t db_num,
-               uint64_t map_size,  double entry_ratio,
-               uint64_t max_value_size ) noexcept
+EvShm::create( const char *map_name,  kv_geom_t *geom,  int map_mode,
+               uint8_t db_num ) noexcept
 {
-  HashTabGeom geom;
-  uint64_t value_size;
-  if ( entry_ratio < 0.0 || entry_ratio > 1.0 )
-    return -1;
-  geom.map_size = map_size;
-  value_size    = (uint64_t) ( (double) map_size * ( 1.0 - entry_ratio ) );
-  if ( max_value_size > 0 && max_value_size < value_size / 3 )
-    geom.max_value_size = max_value_size;
-  else {
-    uint64_t d = 8; /* 8 = 512MB/64MB, 8 = 1G/128MB, 16 = 2G/256G */
-    max_value_size = value_size / d;
-    while ( d < 128 && max_value_size / 2 > (uint64_t) 256 * 1024 * 1024 ) {
-      max_value_size /= 2;
-      d *= 2;
-    }
-    geom.max_value_size = max_value_size;
+  kv_geom_t default_geom;
+  if ( geom == NULL ) {
+    ::memset( &default_geom, 0, sizeof( default_geom ) );
+    geom = &default_geom;
   }
-  geom.hash_entry_size  = 64;
-  geom.hash_value_ratio = entry_ratio;
-  geom.cuckoo_buckets   = 2;
-  geom.cuckoo_arity     = 4;
-  this->map = HashTab::create_map( map_name, 0, geom, map_mode );
+  if ( geom->map_size == 0 )
+    geom->map_size = (uint64_t) 1024*1024*1024;
+  if ( geom->hash_value_ratio <= 0.0 || geom->hash_value_ratio > 1.0 )
+    geom->hash_value_ratio = 0.25;
+  if ( geom->hash_value_ratio < 1.0 ) {
+    uint64_t value_space = (uint64_t) ( (double) geom->map_size *
+                                        ( 1.0 - geom->hash_value_ratio ) );
+    if ( geom->max_value_size == 0 || geom->max_value_size > value_space / 3 ) {
+      const uint64_t sz = 256 * 1024 * 1024;
+      uint64_t d  = 8; /* 8 = 512MB/64MB, 8 = 1G/128MB, 16 = 2G/256G */
+      geom->max_value_size = value_space / d;
+      while ( d < 128 && geom->max_value_size / 2 > sz ) {
+        geom->max_value_size /= 2;
+        d *= 2;
+      }
+    }
+  }
+  geom->hash_entry_size = 64;
+  geom->cuckoo_buckets  = 2;
+  geom->cuckoo_arity    = 4;
+  if ( map_mode == 0 )
+    map_mode = 0660;
+  this->map = HashTab::create_map( map_name, 0, *geom, map_mode );
   if ( this->map != NULL )
     return this->attach( db_num );
   return -1;
@@ -72,7 +77,7 @@ EvShm::~EvShm() noexcept
 int
 EvShm::attach( uint8_t db_num ) noexcept
 {
-  this->ctx_id = this->map->attach_ctx( ::getpid() );
+  this->ctx_id = this->map->attach_ctx( ::gettid() );
   if ( this->ctx_id != MAX_CTX_ID ) {
     this->dbx_id = this->map->attach_db( this->ctx_id, db_num );
     return 0;

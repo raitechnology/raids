@@ -18,6 +18,7 @@ struct EvCaprListen : public EvTcpListen {
   CaprSession * sess;
   uint64_t      timer_id;
   EvListenOps   ops;
+  void * operator new( size_t, void *ptr ) { return ptr; }
   EvCaprListen( EvPoll &p ) noexcept;
   virtual bool accept( void ) noexcept;
   int listen( const char *ip,  int port,  int opts ) {

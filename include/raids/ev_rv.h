@@ -20,6 +20,7 @@ struct EvRvListen : public EvTcpListen {
   uint32_t    ipaddr;
   uint16_t    ipport;
   EvListenOps ops;
+  void * operator new( size_t, void *ptr ) { return ptr; }
   EvRvListen( EvPoll &p ) noexcept;
   virtual bool accept( void ) noexcept;
   int listen( const char *ip,  int port,  int opts ) {

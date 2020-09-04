@@ -9,6 +9,7 @@ namespace ds {
 
 struct EvNatsListen : public EvTcpListen {
   EvListenOps ops;
+  void * operator new( size_t, void *ptr ) { return ptr; }
   EvNatsListen( EvPoll &p ) : EvTcpListen( p, this->ops ) {}
   virtual bool accept( void ) noexcept;
   int listen( const char *ip,  int port,  int opts ) {

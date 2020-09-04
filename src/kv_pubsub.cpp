@@ -7,6 +7,7 @@
 #include <fcntl.h>
 #include <assert.h>
 #include <time.h>
+#include <errno.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <sys/signal.h>
@@ -286,9 +287,11 @@ KvPubSub::is_dead( uint32_t id ) const noexcept
 {
   /* check that this route is valid by pinging the pid */
   uint32_t pid = this->kctx.ht.ctx[ id ].ctx_pid;
-  return ( pid == 0 ||
-           this->kctx.ht.ctx[ id ].ctx_id == KV_NO_CTX_ID ||
-           ::kill( pid, 0 ) != 0 );
+  if ( pid == 0 || this->kctx.ht.ctx[ id ].ctx_id == KV_NO_CTX_ID )
+    return true;
+  if ( ::kill( pid, 0 ) == 0 )
+    return false;
+  return true;
 }
 
 bool
@@ -317,9 +320,11 @@ KvPubSub::get_set_mcast( CubeRoute128 &result_cr ) noexcept
             if ( this->ctx_id == id )
               continue;
             if ( this->is_dead( id ) ) {
+              uint32_t pid = this->kctx.ht.ctx[ id ].ctx_pid,
+                       tid = this->kctx.ht.ctx[ id ].ctx_thrid;
               this->dead_cr.set( id );
-              fprintf( stderr, "ctx %lu pid %u is dead\n", id,
-                       this->kctx.ht.ctx[ id ].ctx_pid );
+              fprintf( stderr, "ctx %lu pid %u tid %u is dead\n", id,
+                       pid, tid );
             }
             else {
               result_cr.set( id );
@@ -391,12 +396,20 @@ KvPubSub::register_mcast( void ) noexcept
         if ( ! this->send_kv_msg( ibx, msg, false ) )
           bad_cr.set( id );
         else {
-          uint32_t pid = this->poll.map->ctx[ id ].ctx_pid;
-          uint16_t fl  = this->poll.map->ctx[ id ].ctx_flags;
+          uint32_t pid = this->kctx.ht.ctx[ id ].ctx_pid,
+                   tid = this->kctx.ht.ctx[ id ].ctx_thrid;
+          uint16_t fl  = this->kctx.ht.ctx[ id ].ctx_flags;
           if ( pid > 0 && ( fl & KV_NO_SIGUSR ) == 0 ) {
-            if ( ::kill( pid, kv_msg_signal ) != 0 ) {
-              ::perror( "kill notify msg" );
-              bad_cr.set( id );
+            if ( ::kill( tid, kv_msg_signal ) != 0 ) {
+              if ( errno != EPERM ) {
+                ::perror( "kill notify msg" );
+                bad_cr.set( id );
+              }
+              else {
+                static int errcnt;
+                if ( errcnt++ == 0 )
+                  perror( "kill notify msg" );
+              }
             }
             else {
               ibx.signal_cnt++;
@@ -411,10 +424,11 @@ KvPubSub::register_mcast( void ) noexcept
     if ( test_cr.first_set( id ) ) {
       do {
         if ( t >= MAX_PIPE_CONNECT_TIME_USECS ) {
-          uint32_t pid = this->poll.map->ctx[ id ].ctx_pid;
-          fprintf( stderr, "giving up connecting pipe to ctx %lu pid %u "
-                           "(time %u secs)\n",
-                   id, pid, t / 1000000 );
+          uint32_t pid = this->kctx.ht.ctx[ id ].ctx_pid,
+                   tid = this->kctx.ht.ctx[ id ].ctx_thrid;
+          fprintf( stderr, "giving up connecting pipe to ctx %lu pid %u tid %u"
+                           " (time %u secs)\n",
+                   id, pid, tid, t / 1000000 );
           bad_cr.set( id );
         }
         else {
@@ -588,7 +602,14 @@ KvPubSub::unregister_mcast( void ) noexcept
           cr.clear( this->ctx_id );
           this->kctx.next_serial( ValueCtr::SERIAL_MASK );
           /*printf( "mcast clear %u\n", this->ctx_id );*/
-          this->create_kvmsg( KV_MSG_BYE, sizeof( KvMsg ) );
+          size_t id;
+          if ( cr.first_set( id ) ) {
+            do {
+              KvMsg *m = this->create_kvmsg( KV_MSG_BYE, sizeof( KvMsg ) );
+              m->dest_start = id;
+              m->dest_end   = id;
+            } while ( cr.next_set( id ) );
+          }
         }
         res = true;
       }
@@ -1637,12 +1658,14 @@ KvPubSub::notify_peers( CubeRoute128 &used ) noexcept
         KvMsgQueue & ibx = *this->snd_inbox[ dest ];
         if ( ibx.need_signal ) {
           ibx.need_signal = false;
-          uint32_t pid = this->poll.map->ctx[ dest ].ctx_pid;
-          uint16_t fl  = this->poll.map->ctx[ dest ].ctx_flags;
+          uint32_t pid = this->kctx.ht.ctx[ dest ].ctx_pid,
+                   tid = this->kctx.ht.ctx[ dest ].ctx_thrid;
+          uint16_t fl  = this->kctx.ht.ctx[ dest ].ctx_flags;
           if ( pid > 0 && ( fl & KV_NO_SIGUSR ) == 0 ) {
             if ( this->poll.quit )
-              printf( "quit, notify %d ctx %ld\n", pid, dest );
-            ::kill( pid, kv_msg_signal );
+              printf( "quit[ %u ], notify pid:%d tid:%d dest ctx %ld\n",
+                      this->ctx_id, pid, tid, dest );
+            ::kill( tid, kv_msg_signal );
             ibx.signal_cnt++;
           }
         }
@@ -2195,6 +2218,8 @@ KvPubSub::read_inbox2( KvInboxKey &ibx,  bool read_until_empty ) noexcept
                                       data_sz )) != KEY_OK ) {
           if ( status == KEY_MUTATED )
             retry = true;
+          else if ( ibx.ibx_pos == 0 && status == KEY_NOT_FOUND )
+            ibx.get_pos_value_ctr( ibx.ibx_pos, ibx.ibx_value_ctr );
           break;
         }
         ibx.ibx_seqno = seqno2;
@@ -2224,10 +2249,9 @@ KvPubSub::read_inbox2( KvInboxKey &ibx,  bool read_until_empty ) noexcept
     else if ( status == KEY_MUTATED )
       retry = true;
     else if ( status == KEY_NOT_FOUND ) {
-      if ( ibx.ibx_pos == 0 ) {
-        ibx.ibx_pos = 0;
+      if ( ibx.ibx_pos != 0 )
         retry = true;
-      }
+      ibx.ibx_pos = 0;
     }
     /* remove msgs consumed */
     if ( count > total ) {
