@@ -65,6 +65,17 @@ void
 EvShm::print( void ) noexcept
 {
   fputs( print_map_geom( this->map, this->ctx_id ), stdout );
+  HashTabStats * hts = HashTabStats::create( *this->map );
+  hts->fetch();
+  for ( uint32_t db = 0; db < DB_COUNT; db++ ) {
+    if ( this->map->hdr.test_db_opened( db ) ) {
+      printf( "db[ %u ].entry_cnt:%s %lu\n", db,
+              ( ( db < 10 ) ? "   " : ( ( db < 100 ) ? "  " : " " ) ),
+              hts->db_stats[ db ].last.add -
+              hts->db_stats[ db ].last.drop );
+    }
+  }
+  ::free( hts );
   fflush( stdout );
 }
 

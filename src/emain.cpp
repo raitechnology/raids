@@ -297,30 +297,36 @@ main( int argc, char *argv[] )
   const char  * opts[ 8 ] = {"","","","","","","",""};
   const char  * desc[ 8 ] = {"","","","","","","",""};
   EvShm         shm;
-  int           i, n = 0, status = 0;
+  int           i, n = 0;
 
   const char * mn = get_arg( argc, argv, 1, "-m", KV_DEFAULT_SHM );
   const char * xx = get_arg( argc, argv, 0, "-X", NULL ),
-             * pt = NULL, * mc = NULL, * sn = NULL, * hp = NULL,
-             * np = NULL, * cp = NULL, * rv = NULL;
+             * pt = NULL, * mc = NULL, * mu = NULL, * sn = NULL,
+             * hp = NULL, * np = NULL, * cp = NULL, * rv = NULL;
 #ifdef USE_REDIS
   const char * pt_def = ( xx ? NULL : "6379" );
                pt = get_arg( argc, argv, 1, "-p", pt_def );  /* redis */
   opts[ n ]   = " [-p redis-port]";
   desc[ n++ ] = "  -p redis = listen redis port     (6379)\n";
 #endif
-#if defined( USE_MEMCACHED ) || defined( USE_MEMCACHED_UDP )
+#if defined( USE_MEMCACHED )
   const char * mc_def = ( xx ? NULL : "11211" );
                mc = get_arg( argc, argv, 1, "-d", mc_def ); /* memcached */
   opts[ n ]   = " [-d memcd-port]";
   desc[ n++ ] = "  -d memcd = listen memcached port (11211)\n";
 #endif
+#if defined( USE_MEMCACHED_UDP )
+  const char * mu_def = ( xx ? NULL : "11211" );
+               mu = get_arg( argc, argv, 1, "-u", mu_def ); /* memcached_udp */
+  opts[ n ]   = " [-u memcd_udp-port]";
+  desc[ n++ ] = "  -u memcd_udp = memcached udp port (11211)\n";
+#endif
 /* unix doesn't have a SO_REUSEPORT option */
 #ifdef REDIS_UNIX
   const char * sn_def = ( xx ? NULL : "/tmp/raids.sock" );
-               sn = get_arg( argc, argv, 1, "-u", sn_def );/* unix */
-  opts[ n ]   = " [-u unx-port]";
-  desc[ n++ ] = "  -u unix  = listen unix name      (/tmp/raids.sock)\n";
+               sn = get_arg( argc, argv, 1, "-i", sn_def );/* unix */
+  opts[ n ]   = " [-i unx-port]";
+  desc[ n++ ] = "  -i unix  = listen unix name      (/tmp/raids.sock)\n";
 #endif
 #ifdef USE_HTTP
   const char * hp_def = ( xx ? NULL : "48080" );
@@ -343,7 +349,7 @@ main( int argc, char *argv[] )
 #ifdef USE_RV
   const char * rv_def = ( xx ? NULL : "7500" );
                rv = get_arg( argc, argv, 1, "-r", rv_def );  /* rv */
-  opts[ n ]   = " [-c rv-port]";
+  opts[ n ]   = " [-r rv-port]";
   desc[ n++ ] = "  -r rv    = listen rv port        (7500)\n";
 #endif
   const char * fd = get_arg( argc, argv, 1, "-x", "10000" ), /* max num fds */
@@ -388,7 +394,7 @@ main( int argc, char *argv[] )
 
   r.redis_port         = ( pt ? atoi( pt ) : 0 );
   r.memcached_port     = ( mc ? atoi( mc ) : 0 );
-  r.memcached_udp_port = ( mc ? atoi( mc ) : 0 );
+  r.memcached_udp_port = ( mu ? atoi( mu ) : 0 );
   r.redis_sock         = sn;
   r.http_port          = ( hp ? atoi( hp ) : 0 );
   r.nats_port          = ( np ? atoi( np ) : 0 );
@@ -459,10 +465,13 @@ main( int argc, char *argv[] )
   }
   else {
     MainLoop loop( shm, r, 0 );
-    if ( loop.initialize() > 0 )
+    if ( loop.initialize() > 0 ) {
+      sighndl.install(); /* catch sig int */
       loop.run();
+    }
   }
   shm.detach();
+  printf( "bye\n" );
 
-  return status;
+  return 0;
 }

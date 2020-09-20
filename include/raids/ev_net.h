@@ -292,9 +292,9 @@ struct EvPoll : public RoutePublish {
   int                  efd,             /* epoll fd */
                        quit;            /* when > 0, wants to exit */
   static const size_t  ALLOC_INCR    = 64, /* alloc size of poll socket ar */
-                       PREFETCH_SIZE = 4;  /* pipe size of number of pref */
-  size_t               prefetch_pending,
-                       prefetch_cnt[ PREFETCH_SIZE + 1 ];
+                       PREFETCH_SIZE = 8;  /* pipe size of number of pref */
+  size_t               prefetch_pending/*,
+                       prefetch_cnt[ PREFETCH_SIZE + 1 ]*/;
   RouteDB              sub_route;       /* subscriptions */
   RoutePublishQueue    pub_queue;       /* temp routing queue: */
   PeerStats            peer_stats;      /* accumulator after sock closes */
@@ -359,7 +359,7 @@ struct EvPoll : public RoutePublish {
       next_id( 0 ), ctx_id( kv::MAX_CTX_ID ), dbx_id( kv::MAX_STAT_ID ),
       fdcnt( 0 ), wr_count( 0 ), maxfd( 0 ), nfds( 0 ), efd( -1 ), quit( 0 ),
       prefetch_pending( 0 ), sub_route( *this ) /*, single_thread( false )*/ {
-    ::memset( this->prefetch_cnt, 0, sizeof( this->prefetch_cnt ) );
+    /*::memset( this->prefetch_cnt, 0, sizeof( this->prefetch_cnt ) );*/
   }
 
   int init( int numfds,  bool prefetch/*,  bool single*/ ) noexcept;

@@ -261,7 +261,7 @@ EvPoll::drain_prefetch( void ) noexcept
     s = k.owner;
     s->v_exec_key_prefetch( k );
   }
-  this->prefetch_cnt[ sz ]++;
+  /*this->prefetch_cnt[ sz ]++;*/
   i &= ( PREFETCH_SIZE - 1 );
   for ( j = 0; ; ) {
     EvKeyCtx & k = *ctx[ j ];
@@ -287,7 +287,7 @@ EvPoll::drain_prefetch( void ) noexcept
     }
     cnt++;
     if ( --sz == 0 && pq.is_empty() ) {
-      this->prefetch_cnt[ 0 ] += cnt;
+      /*this->prefetch_cnt[ 0 ] += cnt;*/
       return;
     }
     j = ( j + 1 ) & ( PREFETCH_SIZE - 1 );
@@ -300,7 +300,7 @@ EvPoll::drain_prefetch( void ) noexcept
         /*ctx[ i ]->prefetch();*/
         i = ( i + 1 ) & ( PREFETCH_SIZE - 1 );
       } while ( ++sz < PREFETCH_SIZE && ! pq.is_empty() );
-      this->prefetch_cnt[ sz ]++;
+      /*this->prefetch_cnt[ sz ]++;*/
     }
   }
 }

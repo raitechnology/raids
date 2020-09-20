@@ -13,7 +13,7 @@ KV](https://github.com/raitechnology/raikv) shared memory and using [Rai
 MD]((https://github.com/raitechnology/raimd) data structures.  It is intended
 to provide protocol services to popular caching frameworks:  Redis and
 Memcached, with additional services for bridging PubSub systems:  Http Websock,
-NATS, RV, CAPR.  These maintain compatiblity with the original systems, but the
+[NATS](https://nats.io/about/), RV, CAPR.  These maintain compatiblity with the original systems, but the
 idea here is not for complete compatibility, but to extend the tools and
 infrastructure from these worlds into the more vertical domain that [Rai
 Technologies](https://www.raitechnology.com/) has existed for long time:
@@ -24,14 +24,15 @@ Although Rai DS `ds_server` provides services compatible with
 [Memcached](https://github.com/memcached/memcached), this is not a drop in
 replacement for them.  There are some things that both services do better
 because they target different types applications.  Both systems have a long
-history of service performed at high performance levels.  Rai has traditionally
-focused on PubSub systems, and that is true of Rai DS as well.  The type of
-PubSub system Rai implements is a caching layer that is concerned with
-maintaining last value consistency between publisher and subscriber.  This is
-different from a fire and forget system like Redis and also different from a
-persistent queue system like Kafka.  Rai DS aims to provide both fire and
-forget semantics or last value consistency, depending the service type,
-but not persistent queues, except for the Redis Stream data type.
+history of service performed at high performance levels.  Rai has
+traditionally focused on PubSub systems, and that is true of Rai DS as well.
+The type of PubSub system Rai implements is a caching layer that bridges
+publishers to subscribers while maintaining last value consistency between
+publisher and subscriber.  This is different from a fire and forget system like
+Redis and also different from a persistent queue system like Kafka.  Rai DS
+aims to provide both fire and forget semantics or last value consistency,
+depending the service type, but not persistent queues, except for the Redis
+Stream data type.
 
 ### A Focus on Latency
 
@@ -41,18 +42,19 @@ lot of protocol services that can be bound to a core(s) and accelerated with
 VMA](https://www.mellanox.com/products/software/accelerator-software/vma).
 
 One method of scaling up is to balance services bound to cores and utilizing
-network hardware acceleration from the Solarflare and Mellanox, or native Linux
-methods, such as the built-in load balancer that can forward TCP connections to
-a cluster of processes all listening to the same port using
+network hardware acceleration from the Solarflare and Mellanox, or native
+Linux methods, such as the built-in load balancer that can forward TCP
+connections to a cluster of processes all listening to the same port using
 [SO_REUSEPORT](https://lwn.net/Articles/542629/).  There has also been a lot
 of work accelerating containers, in order to isolate services from one another,
 while using virtual hardware acceleration to direct traffic.
 
-For these reasons, the design of Rai DS utilizes Rai KV shared memory that can
-persist across multiple instances and/or local processing which can attach and
-detach without disrupting each other.  This provides for seamless vertical
-scaling based on external considerations of hardware acceleration or software
-clustering, more instances can be started or stopped at any time.
+For these reasons, the design of Rai DS utilizes Rai KV shared memory that
+can persist across multiple instances and/or local processing which can attach
+and detach without disrupting each other.  This provides for vertical scaling
+based on external considerations of hardware acceleration or software
+clustering, more instances can be started or stopped at any time.  This is
+scaling based on planning, resouces are used when allocated.
 
 ## Features of Rai DS
 
@@ -73,24 +75,24 @@ clustering, more instances can be started or stopped at any time.
 
       ```console
       $ ds_test_api
-      cpu affinity 45
-      PING: 33162611.85 req per second, 30.15 ns per req
-      SET: 8661753.83 req per second, 115.45 ns per req
-      GET: 9275413.08 req per second, 107.81 ns per req
-      INCR: 7232089.78 req per second, 138.27 ns per req
-      LPUSH: 7756708.67 req per second, 128.92 ns per req
-      RPUSH: 7679394.47 req per second, 130.22 ns per req
-      LPOP: 7294216.83 req per second, 137.09 ns per req
-      RPOP: 7256950.40 req per second, 137.80 ns per req
-      SADD: 7547661.42 req per second, 132.49 ns per req
-      HSET: 6912941.58 req per second, 144.66 ns per req
-      SPOP: 8100940.29 req per second, 123.44 ns per req
-      LPUSH (for LRANGE): 7979828.80 req per second, 125.32 ns per req
-      LRANGE_100: 481345.76 req per second, 2077.51 ns per req
-      LRANGE_300: 169569.23 req per second, 5897.30 ns per req
-      LRANGE_450: 113232.64 req per second, 8831.38 ns per req
-      LRANGE_600: 85519.76 req per second, 11693.20 ns per req
-      MSET (10 keys): 2242705.90 req per second, 445.89 ns per req
+      cpu affinity 60
+      PING_BULK: 30440427.41 req per second, 32.85 ns per req
+      SET: 8749929.86 req per second, 114.29 ns per req
+      GET: 9267735.03 req per second, 107.90 ns per req
+      INCR: 6922478.05 req per second, 144.46 ns per req
+      LPUSH: 7821725.97 req per second, 127.85 ns per req
+      RPUSH: 7835282.92 req per second, 127.63 ns per req
+      LPOP: 7453225.44 req per second, 134.17 ns per req
+      RPOP: 7307049.19 req per second, 136.85 ns per req
+      SADD: 7510576.04 req per second, 133.15 ns per req
+      HSET: 6400618.95 req per second, 156.23 ns per req
+      SPOP: 7780763.58 req per second, 128.52 ns per req
+      LPUSH (for LRANGE): 7974739.28 req per second, 125.40 ns per req
+      LRANGE_100 (first 100 elements): 481893.01 req per second, 2075.15 ns per req
+      LRANGE_300 (first 300 elements): 170590.20 req per second, 5862.00 ns per req
+      LRANGE_500 (first 450 elements): 114822.70 req per second, 8709.08 ns per req
+      LRANGE_600 (first 600 elements): 86661.83 req per second, 11539.11 ns per req
+      MSET (10 keys): 2105124.26 req per second, 475.03 ns per req
       Removing test keys
       ```
 
@@ -119,6 +121,14 @@ clustering, more instances can be started or stopped at any time.
     memory locations to increase throughput.  The effect of prefetching can be
     dramatic, see the [Rai KV prefetching
     test](https://github.com/raitechnology/raikv#prefetching-hashtable-lookups).
+
+4.  Support IEEE 754-2008 decimal arithmatic.  The 128 bit decimals are used
+    when operating on real numbers within the Redis INCRBYFLOAT commands.  The
+    64 bit decimals are used when operating on scores within the Redis sorted
+    set commands.  This fixes the loss of precision when converting between
+    binary floating point and string decimal representations of real numbers.
+    It also remembers the precision of the inputs, for example:  1.10 + 2.2 is
+    3.30, not 3.30000019.
 
 4.  Memcached TCP and UDP support.  All memcached operations can operate on
     the same String data type that Redis commands do.  The UDP path is
@@ -186,6 +196,12 @@ clustering, more instances can be started or stopped at any time.
 
 ## How to Build Rai DS
 
+The current implementation uses x86_64 hardware based AES hashing and can use
+Posix, SysV, or mmap() based shared memory.  These Linuxes are known to work:
+CentOS 7, 8 or Fedora >=27, or Ubuntu 16, 18, 20, or Debian 9, 10.  It will
+also run under Windows Subsystem for Linux with Ubuntu 18.  Minimum x64 CPU is
+a Intel Sandy Bridge or an AMD Ryzen (with AVX/SSE4 extentions).
+
 Clone this and then update the submodules.
 
 ```console
@@ -194,8 +210,10 @@ $ cd raids
 $ git submodule update --init --recursive
 ```
 
-The dependencies for CentOS/Fedora are a make dependency called `dnf_depend`.
-There is a `deb_depend` target for Ubuntu/Debian systems.
+### Software dependencies
+
+The dependencies for CentOS/Fedora are a make dependency called `dnf_depend` or
+`yum_depend`.  There is a `deb_depend` target for Ubuntu/Debian systems.
 
 ```console
 $ make dnf_depend
@@ -214,6 +232,22 @@ Nothing to do.
 Complete!
 ```
 
+If building an rpm or a dpkg is desired, then also install these:
+
+CentOS/Fedora
+
+```console
+$ sudo dnf install chrpath rpm-build
+```
+
+Ubuntu/Debian
+
+```console
+$ sudo apt-get install chrpath devscripts
+```
+
+### Building
+
 And finally, make.
 
 ```console
@@ -224,14 +258,18 @@ The binaries will work from the working directory, there are no config files.
 
 Installing requires installing all of the submodules first by running `make
 dist_rpm` or `make dist_dpkg` in each of the submodule directories then
-installing via rpm or dpkg.  I'd recommend installing from COPR instead.
+installing via rpm or dpkg.
 
 ## Installing Rai DS from COPR
 
 Current development RPM builds are installable from
-[copr](https://copr.fedorainfracloud.org).
+[copr](https://copr.fedorainfracloud.org/coprs/injinj/gold).  These builds are
+clonable, so it is easy to get a recent build by cloning the packages and
+rebuilding.
 
-These should resolve all of the dependencies automatically.
+Installing from copr automaticlly resolves all of the dependencies using the
+system package manager `dnf` or `yum`, simplifying installing to a single
+install command.
 
 ```console
 $ sudo dnf copr enable injinj/gold
@@ -240,4 +278,110 @@ $ sudo dnf install raids
 
 ## Testing Performance of Rai DS
 
-Todo
+There are 4 performance metrics highlighted.  The first is a http test, the
+second is a redis-benchmark test, the third is a NATS PubSub test, and the
+forth is a memcached test.  The tests are run with the Linux Kernel TCP and
+with the Solarflare OpenOnload TCP Kernel Bypass running with a dual port
+[Solarflare X2522-25G](https://www.xilinx.com/publications/product-briefs/xtremescale-x2522-product-brief.pdf).
+
+There are three systems involved running CentOS 8, a
+[Ryzen 3970x](https://www.amd.com/en/products/cpu/amd-ryzen-threadripper-3970x#product-specs)
+32 core cpu running the `ds_server` and 2 client systems, both using an
+[Intel i9-10980xe](https://ark.intel.com/content/www/us/en/ark/products/198017/intel-core-i9-10980xe-extreme-edition-processor-24-75m-cache-3-00-ghz.html)
+18 core cpu, all with the Solarflare X2522-25G adapter.  They are connected
+with both clients using a port on the AMD Ryzen system.
+
+The shared memory segment is created with default parameters, using the System
+V shm mapping using the 1GB page size.  These benchmarks stress the networking
+event processing and the protocol components, not the KV store.
+
+These benchmarks are meant to be repeatable on different hardware and highlight
+the variety of `ds_server` protocols.  The systems used in the benchmarks are
+workstations and not servers, the instructions to replicate them for different
+environments are in the [README](graph/README.md) in the graph directory.  It
+is Rai's belief that Kernel Bypass technologies will perform better in most
+situations where a network is involved.  This doesn't mean that using the Linux
+Kernel TCP stack is not the best tool for the job, though, since there is a lot
+of infrastructure built around it that bypassing it may not be ideal.
+
+### Using wrk HTTPD loading
+
+The first test is a well known web benchmark using the
+[wrk](https://github.com/wg/wrk) load generator.  It fetches a small 42 byte
+index.html web page over and over again using `GET /index.html HTTP/1.1`, so it
+does not stress the caching system, since there is only one key retrieved,
+rather it tests the HTTP protocol processing and Redis get value processing.
+The network bandwidth limit of a 109 byte request and 209 byte result is
+
+    2 ports * 25 Gigabits / 209 bytes result = 30 million/sec
+
+![www](graph/www.svg)
+
+See [this](graph/README.md#using-wrk-httpd-loading) for the steps to reproduce
+the above.
+
+### Using redis-benchmark
+
+This is the classic histogram of `redis-benchmark` with the default tests at 50
+connections with a pipeline of 128 operations on each connection.  It shows the
+best throughput of a single threaded instance without testing the KV or the
+Redis data structures.  It does test the network and the Redis
+[RESP](https://redis.io/topics/protocol) TCP command processing.  There is only
+one key per data structure and the hash and set commands are only operating
+with a single member.  The pipeline combines operations in batches of 128,
+which has the effect of negating the network latency since transmitting batches
+of 128 cost about the same as a transmitting single operation.  The LIST
+operations do have an effect on the data cached, but the HASH and the SET are
+repeatedly adding the same element to the same key.  The results for these are
+not very useful, but they are often included anyway.
+
+![rb_s128](graph/rb_s128.svg)
+
+Latency is an important aspect, so this shows the effect of different pipelines
+on processing speeds.  The latency of an individual request in a pipeline can
+roughly be calculated by the rate / pipeline size, if there is one connection.
+The following are the message rates of scaling the pipeline counts over a
+single connection.
+
+![rb_srat](graph/rb_srat.svg)
+
+This is the same data inverting the rate by the pipeline size to estimate the
+latency of each message in the batch to arrive at the mean latency.  The Linux
+Kernel latency could benefit from fixing the network interrupts to a core close
+to the processing thread, since the Ryzen 3970x cores are not symmetrical, it
+should be smoother than it is.
+
+![rb_slat](graph/rb_slat.svg)
+
+This next test is scaling the Redis GET command, basically following the
+[Cloud Onload Redis Cookbook](https://www.xilinx.com/publications/onload/sf-onload-redis-cookbook.pdf).
+The cookbook uses the 128 command pipeline across many cores with a Redis
+instance on each core, using a single key.  This scales the pipeline and
+uses multiple Rai DS instances which share the same data.  The first uses the
+default data size of 3 bytes.  The network bandwidth limit is 
+
+    2 ports * 25 Gigabits / ( 42 bytes GET request + 1.2 TCP overhead ) = 144 million/sec
+
+The TCP overhead is averaged over the pipeline of 128 requests mod the frame
+size, which is about 1.2 bytes per request.
+
+![redis_get_d3](graph/redis_get_d3.svg)
+
+This second uses the 128 byte size as the cookbook uses.  The cookbook only
+uses one port and underestimates the Kernel TCP stack compared to these
+results.  The network bandwidth limit is
+
+    2 ports * 25 Gigabits / ( 136 bytes GET result + 0.5 TCP overhead ) = 45 million/sec
+
+The TCP overhead is averaged over the pipeline of 128 results mod the frame
+size, which is about .5 bytes per result.
+
+![redis_get_d128](graph/redis_get_d128.svg)
+
+See [this](graph/README.md#using-redis-benchmark) for the steps to reproduce
+the above.
+
+### Using nats-bench
+
+### Using memcache memaslap
+

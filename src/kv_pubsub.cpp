@@ -178,7 +178,7 @@ KvPubSub::create( EvPoll &poll,  uint8_t db_num ) noexcept
   uint32_t   dbx_id;
 
   dbx_id = poll.map->attach_db( poll.ctx_id, db_num );
-  if ( dbx_id == MAX_STAT_ID )
+  if ( dbx_id == KV_NO_DBSTAT_ID )
     return NULL;
 
   sigemptyset( &mask );

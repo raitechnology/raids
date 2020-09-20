@@ -145,6 +145,68 @@ EvKeyCtx::is_greater( EvKeyCtx *ctx,  EvKeyCtx *ctx2 ) noexcept
   return false;
 }
 
+struct EvPrefetchQueue {
+  void * operator new( size_t, void *ptr ) { return ptr; }
+  void operator delete( void *ptr ) { ::free( ptr ); }
+
+  EvKeyCtx ** ar;      /* ring buffer queue */
+  size_t      ar_size, /* count of queue elems */
+              hd,      /* next to prefetch */
+              cnt;     /* hd + cnt push to queue */
+  EvKeyCtx  * ini[ 1024 ]; /* prefetch will fit in this array in most cases */
+  EvPrefetchQueue() : ar( this->ini ), ar_size( 1024 ), hd( 0 ), cnt( 0 ) {}
+
+  bool more_queue( void ) {
+    void * p;
+    if ( this->ar == this->ini ) {
+      p = ::malloc( sizeof( this->ar[ 0 ] ) * ( this->ar_size + 1024 ) );
+      if ( p != NULL )
+        ::memcpy( p, this->ini, sizeof( this->ini ) );
+    }
+    else {
+      p = ::realloc( this->ar, sizeof( this->ar[ 0 ] ) * ( this->ar_size + 1024 ) );
+    }
+    if ( p == NULL )
+      return false;
+    this->ar = (EvKeyCtx **) p;
+
+    if ( this->ar_size > 0 ) { /* make contiguous */
+      size_t k = this->ar_size,        /* copy to end of array */
+             j = this->hd & ( k - 1 ); /* copy from 0 -> hd */
+      for ( size_t i = 0; i < j; i++ )
+        this->ar[ k++ ] = this->ar[ i ];
+    }
+    this->ar_size += 1024;
+    return true;
+  }
+
+  bool push( EvKeyCtx *k ) {
+    /* if full, realloc some more */
+    if ( this->cnt == this->ar_size ) {
+      if ( ! this->more_queue() )
+        return false;
+    }
+    this->ar[ ( this->hd + this->cnt ) & ( this->ar_size - 1 ) ] = k;
+    this->cnt++;
+    return true;
+  }
+
+  bool is_empty( void ) const { return this->cnt == 0; }
+  size_t count( void ) const  { return this->cnt; }
+
+  EvKeyCtx *pop( void ) {
+    EvKeyCtx *k = this->ar[ this->hd & ( this->ar_size - 1 ) ];
+    this->hd++; this->cnt--;
+    return k;
+  }
+
+  static EvPrefetchQueue *create( void ) {
+    void *p = ::malloc( sizeof( EvPrefetchQueue ) );
+    return new ( p ) EvPrefetchQueue();
+  }
+};
+
+#if 0
 struct EvPrefetchQueue :
     public kv::PrioQueue<EvKeyCtx *, EvKeyCtx::is_greater> {
   void * operator new( size_t, void *ptr ) { return ptr; }
@@ -155,7 +217,7 @@ struct EvPrefetchQueue :
     return new ( p ) EvPrefetchQueue();
   }
 };
-
+#endif
 }
 }
 

@@ -590,7 +590,7 @@ main( int argc,  char *argv[] )
       t1 = kv_current_monotonic_time_s(); /* PING */
       if ( test_ping( h, nrequests ) != 0 ) break;
       t2 = kv_current_monotonic_time_s();
-      print_time( "PING", t2 - t1, nrequests );
+      print_time( "PING_BULK", t2 - t1, nrequests );
     }
     if ( ( fl & DO_SET ) != 0 ) {
       t1 = kv_current_monotonic_time_s(); /* SET */
@@ -665,22 +665,22 @@ main( int argc,  char *argv[] )
       t1 = kv_current_monotonic_time_s(); /* LRANGE_100 */
       if ( test_lrange( h, nrequests, 100 ) != 0 ) break;
       t2 = kv_current_monotonic_time_s();
-      print_time( "LRANGE_100", t2 - t1, nrequests );
+      print_time( "LRANGE_100 (first 100 elements)", t2 - t1, nrequests );
 
       t1 = kv_current_monotonic_time_s(); /* LRANGE_300 */
       if ( test_lrange( h, nrequests, 300 ) != 0 ) break;
       t2 = kv_current_monotonic_time_s();
-      print_time( "LRANGE_300", t2 - t1, nrequests );
+      print_time( "LRANGE_300 (first 300 elements)", t2 - t1, nrequests );
 
-      t1 = kv_current_monotonic_time_s(); /* LRANGE_450 */
+      t1 = kv_current_monotonic_time_s(); /* LRANGE_500 (even tho it is 450) */
       if ( test_lrange( h, nrequests, 450 ) != 0 ) break;
       t2 = kv_current_monotonic_time_s();
-      print_time( "LRANGE_450", t2 - t1, nrequests );
+      print_time( "LRANGE_500 (first 450 elements)", t2 - t1, nrequests );
 
       t1 = kv_current_monotonic_time_s(); /* LRANGE_600 */
       if ( test_lrange( h, nrequests, 600 ) != 0 ) break;
       t2 = kv_current_monotonic_time_s();
-      print_time( "LRANGE_600", t2 - t1, nrequests );
+      print_time( "LRANGE_600 (first 600 elements)", t2 - t1, nrequests );
     }
     if ( ( fl & DO_MSET ) != 0 ) {
       t1 = kv_current_monotonic_time_s(); /* MSET */

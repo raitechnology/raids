@@ -1,0 +1,31 @@
+diff --git a/src/redis-benchmark.c b/src/redis-benchmark.c
+index 2df41580..ffbc1d19 100644
+--- a/src/redis-benchmark.c
++++ b/src/redis-benchmark.c
+@@ -396,10 +396,16 @@ static void setClusterKeyHashTag(client c) {
+     }
+ }
+ 
++static int signal_recvd;
++static void signal_handle( int _unused ) {
++  (void) _unused;
++  signal_recvd++;
++}
++
+ static void clientDone(client c) {
+     int requests_finished = 0;
+     atomicGet(config.requests_finished, requests_finished);
+-    if (requests_finished >= config.requests) {
++    if (requests_finished >= config.requests || signal_recvd > 0 ) {
+         freeClient(c);
+         if (!config.num_threads && config.el) aeStop(config.el);
+         return;
+@@ -1480,7 +1486,7 @@ int main(int argc, const char **argv) {
+     client c;
+ 
+     srandom(time(NULL));
+-    signal(SIGHUP, SIG_IGN);
++    signal(SIGHUP, signal_handle);
+     signal(SIGPIPE, SIG_IGN);
+ 
+     config.numclients = 50;

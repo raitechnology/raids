@@ -235,10 +235,10 @@ EvRedisService::debug( void ) noexcept
   char buf[ 128 ], svc[ 32 ];
   EvSocket *s;
   size_t i;
-  for ( i = 0; i < EvPoll::PREFETCH_SIZE; i++ ) {
+  /*for ( i = 0; i < EvPoll::PREFETCH_SIZE; i++ ) {
     if ( this->poll.prefetch_cnt[ i ] != 0 )
       printf( "[%ld]: %lu\n", i, this->poll.prefetch_cnt[ i ] );
-  }
+  }*/
   printf( "heap: " );
   for ( i = 0; i < this->poll.ev_queue.num_elems; i++ ) {
     s = this->poll.ev_queue.heap[ i ];
