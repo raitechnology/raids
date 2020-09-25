@@ -500,10 +500,10 @@ struct EvConnectionOps : public EvSocketOps {
 struct EvUdp : public EvSocket, public StreamBuf {
   struct    mmsghdr * in_mhdr,
                     * out_mhdr;
-  uint32_t  in_moff,
-            in_nmsgs,
-            in_size,
-            in_nsize,
+  uint32_t  in_moff,   /* offset from 0 -> in_nmsgs */
+            in_nmsgs,  /* number of msgs recvd */
+            in_size,   /* array size of in_mhdr[] */
+            in_nsize,  /* new array size, ajusted based on activity */
             out_nmsgs;
 
   EvUdp( EvPoll &p, EvSockType t, PeerOps &o ) : EvSocket( p, t, o ),
@@ -515,6 +515,7 @@ struct EvUdp : public EvSocket, public StreamBuf {
     this->out_nmsgs = this->in_size = 0;
   }
   bool alloc_mmsg( void ) noexcept;
+  ssize_t discard_pkt( void ) noexcept;
   int listen( const char *ip,  int port,  int opts,  const char *k ) noexcept;
   int connect( const char *ip,  int port,  int opts ) noexcept;
 

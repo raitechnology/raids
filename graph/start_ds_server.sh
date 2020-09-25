@@ -35,6 +35,7 @@ case $3 in
   ;;
   memc*d_udp)
   ds_type=-u
+  ds_type2=-d
   ;;
   www|http)
   ds_type=-w

@@ -372,7 +372,7 @@ EvMemcachedMerge::merge_frames( StreamBuf &strm,  struct mmsghdr *mhdr,
 void
 EvMemcachedUdp::process( void ) noexcept
 {
-  EvPrefetchQueue * q    = this->poll.prefetch_queue;
+  /*EvPrefetchQueue * q    = this->poll.prefetch_queue;*/
   StreamBuf       & strm = *this;
   /* alloc index for tracking iov[] indexes in strm above */
   if ( this->out_idx == NULL )
@@ -388,12 +388,11 @@ EvMemcachedUdp::process( void ) noexcept
       strm.flush();
     this->out_idx[ i ] = strm.idx;
     if ( len > MC_HDR_SIZE ) {
-      char         * buf = (char *)
-                           this->in_mhdr[ i ].msg_hdr.msg_iov[ 0 ].iov_base;
-      MemcachedHdr * h   = (MemcachedHdr *) (void *) buf;
-      uint16_t       total;
+      iovec        & iov   = this->in_mhdr[ i ].msg_hdr.msg_iov[ 0 ];
+      char         * buf   = (char *) iov.iov_base;
+      MemcachedHdr * h     = (MemcachedHdr *) (void *) buf;
+      uint16_t       total = __builtin_bswap16( h->total );
 
-      total = __builtin_bswap16( h->total );
       if ( total != 1 ) {
         if ( this->sav.merge_frames( strm, this->in_mhdr, this->in_nmsgs,
                                      h->req_id, i, total, len ) )
@@ -408,7 +407,7 @@ EvMemcachedUdp::process( void ) noexcept
         h->seqno = 0;
         h->total = __builtin_bswap16( 1 ); /* adjust later if more than 1 */
 
-        switch ( evm.process_loop( *this->exec, q, strm, this ) ) {
+        switch ( evm.process_loop( *this->exec, /*q*/ NULL, strm, this ) ) {
           case EV_PREFETCH:
             this->pushpop( EV_PREFETCH, EV_PROCESS ); /* prefetch keys */
             return;

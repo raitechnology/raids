@@ -1325,11 +1325,15 @@ EvUdp::alloc_mmsg( void ) noexcept
                       psz = 64 * 1024 + gsz;
   StreamBuf      & strm     = *this;
   uint32_t         i,
-                   new_size = this->in_nsize - this->in_size;
+                   new_size;
   struct mmsghdr * sav      = this->in_mhdr;
 
-  if ( this->in_nsize <= this->in_size )
-    return false;
+  if ( this->in_nsize <= this->in_size ) {
+    if ( this->in_nsize > 1024 || this->in_nsize * 2 <= this->in_size )
+      return false;
+    this->in_nsize *= 2;
+  }
+  new_size = this->in_nsize - this->in_size;
   /* allocate new_size buffers, and in_nsize headers */
   this->in_mhdr = (struct mmsghdr *) strm.alloc_temp( psz * new_size +
                                     sizeof( struct mmsghdr ) * this->in_nsize );
@@ -1365,35 +1369,74 @@ EvUdp::alloc_mmsg( void ) noexcept
   this->in_size = this->in_nsize;
   return true;
 }
+
+ssize_t
+EvUdp::discard_pkt( void ) noexcept
+{
+  uint8_t buf[ 64 * 1024 +
+               sizeof( struct sockaddr_storage ) +
+               sizeof( struct iovec ) ],
+        * p = buf;
+  msghdr  hdr;
+  ssize_t nbytes;
+  hdr.msg_name    = (struct sockaddr_storage *) (void *) p;
+  hdr.msg_namelen = sizeof( sockaddr_storage );
+  p += sizeof( struct sockaddr_storage );
+  hdr.msg_iov        = (struct iovec *) p;
+  hdr.msg_iovlen     = 1;
+  p += sizeof( struct iovec );
+  hdr.msg_iov[ 0 ].iov_base = p;
+  hdr.msg_iov[ 0 ].iov_len  = 64 * 1024;
+  hdr.msg_control    = NULL;
+  hdr.msg_controllen = 0;
+  hdr.msg_flags      = 0;
+  nbytes = ::recvmsg( this->fd, &hdr, 0 );
+  if ( nbytes > 0 )
+    fprintf( stderr, "discard %ld bytes\n", (long) nbytes );
+  return nbytes;
+}
+
 /* read udp packets */
 void
 EvUdp::read( void ) noexcept
 {
-  int nmsgs = 0;
-  if ( this->in_moff == this->in_size ) {
-    if ( ! this->alloc_mmsg() ) {
-      perror( "alloc" );
-      this->popall();
-      this->push( EV_CLOSE );
-      return;
-    }
+  int     nmsgs  = 0;
+  ssize_t nbytes = 0;
+
+  if ( this->in_nmsgs == this->in_size && ! this->alloc_mmsg() ) {
+    nbytes = this->discard_pkt();
   }
-  if ( this->in_moff + 1 < this->in_size ) {
-    nmsgs = ::recvmmsg( this->fd, &this->in_mhdr[ this->in_moff ],
-                        this->in_size - this->in_moff, 0, NULL );
+#ifndef NO_RECVMMSG
+  else if ( this->in_nmsgs + 1 < this->in_size ) {
+    nmsgs = ::recvmmsg( this->fd, &this->in_mhdr[ this->in_nmsgs ],
+                        this->in_size - this->in_nmsgs, 0, NULL );
   }
   else {
-    ssize_t nbytes = ::recvmsg( this->fd,
-                                &this->in_mhdr[ this->in_moff ].msg_hdr, 0 );
+    nbytes = ::recvmsg( this->fd, &this->in_mhdr[ this->in_nmsgs ].msg_hdr, 0 );
     if ( nbytes > 0 ) {
-      this->in_mhdr[ this->in_moff ].msg_len = nbytes;
+      this->in_mhdr[ this->in_nmsgs ].msg_len = nbytes;
       nmsgs = 1;
     }
   }
+#else
+  else {
+    while ( this->in_nmsgs + nmsgs < this->in_size ) {
+      nbytes = ::recvmsg( this->fd,
+                          &this->in_mhdr[ this->in_nmsgs + nmsgs ].msg_hdr, 0 );
+      if ( nbytes > 0 ) {
+        this->in_mhdr[ this->in_nmsgs + nmsgs ].msg_len = nbytes;
+        nmsgs++;
+        continue;
+      }
+      break;
+    }
+  }
+#endif
   if ( nmsgs > 0 ) {
+    uint32_t j = this->in_nmsgs;
     this->in_nmsgs += nmsgs;
     for ( int i = 0; i < nmsgs; i++ )
-      this->bytes_recv += this->in_mhdr[ this->in_moff + i ].msg_len;
+      this->bytes_recv += this->in_mhdr[ j++ ].msg_len;
     this->in_nsize = ( ( this->in_nmsgs < 8 ) ? this->in_nmsgs + 1 : 8 );
     this->push( EV_PROCESS );
     this->pushpop( EV_READ_LO, EV_READ );
@@ -1402,7 +1445,7 @@ EvUdp::read( void ) noexcept
   this->in_nsize = 1;
   /* wait for epoll() to set EV_READ again */
   this->pop3( EV_READ, EV_READ_LO, EV_READ_HI );
-  if ( nmsgs < 0 && errno != EINTR ) {
+  if ( ( nmsgs < 0 || nbytes < 0 ) && errno != EINTR ) {
     if ( errno != EAGAIN ) {
       if ( errno != ECONNRESET )
         perror( "recvmmsg" );
@@ -1416,6 +1459,7 @@ void
 EvUdp::write( void ) noexcept
 {
   int nmsgs = 0;
+#ifndef NO_SENDMMSG
   if ( this->out_nmsgs > 1 ) {
     nmsgs = ::sendmmsg( this->fd, this->out_mhdr, this->out_nmsgs, 0 );
     if ( nmsgs > 0 ) {
@@ -1437,6 +1481,17 @@ EvUdp::write( void ) noexcept
     if ( nbytes < 0 )
       nmsgs = -1;
   }
+#else
+  for ( uint32_t i = 0; i < this->out_nmsgs; i++ ) {
+    ssize_t nbytes = ::sendmsg( this->fd, &this->out_mhdr[ i ].msg_hdr, 0 );
+    if ( nbytes > 0 )
+      this->bytes_sent += nbytes;
+    if ( nbytes < 0 ) {
+      nmsgs = -1;
+      break;
+    }
+  }
+#endif
   if ( nmsgs < 0 && errno != EAGAIN && errno != EINTR ) {
     if ( errno != ECONNRESET && errno != EPIPE ) {
       fprintf( stderr, "sendmsg: errno %d/%s, fd %d, state %d\n",
@@ -1445,6 +1500,8 @@ EvUdp::write( void ) noexcept
     this->popall();
     this->push( EV_CLOSE );
   }
+  this->clear_buffers();
+  this->pop3( EV_WRITE, EV_WRITE_HI, EV_WRITE_POLL );
 }
 /* if some alloc failed, kill the client */
 void

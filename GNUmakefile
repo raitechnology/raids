@@ -575,9 +575,16 @@ doc/redis_cmd.html: doc/redis_cmd.adoc
 	asciidoctor -b html5 doc/redis_cmd.adoc
 gen_files += doc/redis_cmd.html
 endif
-
+# cmp exchange this in case multiple builds are running
 include/raids/redis_cmd.h: $(bind)/redis_cmd doc/redis_cmd.adoc
-	$(bind)/redis_cmd doc/redis_cmd.adoc > include/raids/redis_cmd.h
+	$(bind)/redis_cmd doc/redis_cmd.adoc > include/raids/redis_cmd.h.1
+	if cmp -s include/raids/redis_cmd.h include/raids/redis_cmd.h.1 ; then \
+	  echo no change ; \
+	  rm include/raids/redis_cmd.h.1 ; \
+	  touch include/raids/redis_cmd.h ; \
+	else \
+	  mv include/raids/redis_cmd.h.1 include/raids/redis_cmd.h ; \
+	fi
 gen_files += include/raids/redis_cmd.h
 
 # the default targets

@@ -435,11 +435,14 @@ struct MemcachedExec {
   uint32_t         key_cnt,   /* total keys[] size */
                    key_done;  /* number of keys processed */
   MemcachedStats & stat;
+  uint8_t        & kv_load,
+                 & kv_crit;
 
   MemcachedExec( kv::HashTab &map,  uint32_t,  uint32_t dbx_id,
                  StreamBuf &s,  MemcachedStats &st ) :
       kctx( map, dbx_id, NULL ), strm( s ), msg( 0 ),
-      key( 0 ), keys( 0 ), key_cnt( 0 ), key_done( 0 ), stat( st ) {
+      key( 0 ), keys( 0 ), key_cnt( 0 ), key_done( 0 ), stat( st ),
+      kv_load( map.hdr.load_percent ), kv_crit( map.hdr.critical_load ) {
     this->kctx.ht.hdr.get_hash_seed( this->kctx.db_num, this->hs );
     this->kctx.set( kv::KEYCTX_NO_COPY_ON_READ );
   }

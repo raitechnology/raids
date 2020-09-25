@@ -105,6 +105,7 @@ count=0
 svrpid=()
 # what type of server to run
 ds_type=-w
+ds_type2=
 # which cpu to run
 cpu=0
 
@@ -208,7 +209,17 @@ function start_ds_servers()
     get_cpu $i
     i=$(($i + 1))
     echo Starting instance on CPU $cpu listen on port $port
-    $accelerate taskset -c $cpu ds_server -X $ds_type $port &
+    if [ "${ds_type}x" != "x" ] ; then
+      ds_type_port="$ds_type $port"
+    else
+      ds_type_port=
+    fi
+    if [ "${ds_type2}x" != "x" ] ; then
+      ds_type2_port="$ds_type2 $port"
+    else
+      ds_type2_port=
+    fi
+    $accelerate taskset -c $cpu ds_server -X $ds_type_port $ds_type2_port &
     svrpid+=( $! )
     usleep 1000000
   done

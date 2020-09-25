@@ -1234,6 +1234,12 @@ MemcachedExec::exec_key_fetch( EvKeyCtx &ctx,  bool force_read ) noexcept
     ctx.flags  |= EKF_IS_READ_ONLY;
   }
   else if ( test_mutator( this->msg->cmd ) != 0 ) {
+#ifdef USE_EVICT_ACQUIRE
+    if ( this->kv_load >= this->kv_crit )
+      this->kctx.set( KEYCTX_EVICT_ACQUIRE );
+    else
+      this->kctx.clear( KEYCTX_EVICT_ACQUIRE );
+#endif
     ctx.kstatus = this->kctx.acquire( &this->wrk );
     ctx.flags  |= ( ( ctx.kstatus == KEY_IS_NEW ) ? EKF_IS_NEW : 0 );
     ctx.flags  &= ~EKF_IS_READ_ONLY;
