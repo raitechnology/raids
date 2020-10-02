@@ -2,10 +2,10 @@
 
 . $(dirname $0)/ds_test_functions.sh
 
+find_build_binary kv_server
 find_build_binary ds_server
 find_sys_binary taskset
 check_onload
-check_kv_server
 
 function usage()
 {
@@ -14,6 +14,7 @@ function usage()
   echo type restricts to a single protocol, one of
   echo   redis, memcd, memcd_udp, www, nats, capr, rv
   echo set USE_ONLOAD=yes to use the onload accelerator
+  stop_kv_server
   exit 1
 }
 
@@ -51,6 +52,7 @@ case $3 in
   ;;
 esac
 
+start_kv_server
 start_ds_servers
 
 # catch ctrl-c and jump to handler() to stop instances
@@ -58,3 +60,4 @@ trap sigint_handler SIGINT
 
 echo waiting for ctr-c to stop $count instances
 wait_for_all
+stop_kv_server

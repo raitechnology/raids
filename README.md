@@ -38,7 +38,7 @@ Stream data type.
 
 The implementation of `ds_server` is an event driven single threaded, packing a
 lot of protocol services that can be bound to a core(s) and accelerated with
-[Solarflare onload](https://support.solarflare.com/wp/onload) or [Mellanox
+[Solarflare OpenOnload](https://support.solarflare.com/wp/onload) or [Mellanox
 VMA](https://www.mellanox.com/products/software/accelerator-software/vma).
 
 One method of scaling up is to balance services bound to cores and utilizing
@@ -74,27 +74,17 @@ scaling based on planning, resouces are used when allocated.
     For example, reimplementing the `redis-benchmark` within the 'C' DS API:
 
       ```console
-      $ ds_test_api
-      cpu affinity 60
-      PING_BULK: 30440427.41 req per second, 32.85 ns per req
-      SET: 8749929.86 req per second, 114.29 ns per req
-      GET: 9267735.03 req per second, 107.90 ns per req
-      INCR: 6922478.05 req per second, 144.46 ns per req
-      LPUSH: 7821725.97 req per second, 127.85 ns per req
-      RPUSH: 7835282.92 req per second, 127.63 ns per req
-      LPOP: 7453225.44 req per second, 134.17 ns per req
-      RPOP: 7307049.19 req per second, 136.85 ns per req
-      SADD: 7510576.04 req per second, 133.15 ns per req
-      HSET: 6400618.95 req per second, 156.23 ns per req
-      SPOP: 7780763.58 req per second, 128.52 ns per req
-      LPUSH (for LRANGE): 7974739.28 req per second, 125.40 ns per req
-      LRANGE_100 (first 100 elements): 481893.01 req per second, 2075.15 ns per req
-      LRANGE_300 (first 300 elements): 170590.20 req per second, 5862.00 ns per req
-      LRANGE_500 (first 450 elements): 114822.70 req per second, 8709.08 ns per req
-      LRANGE_600 (first 600 elements): 86661.83 req per second, 11539.11 ns per req
-      MSET (10 keys): 2105124.26 req per second, 475.03 ns per req
-      Removing test keys
+      $ RH8_x86_64/bin/ds_test_api -x -n 1000000 -c | tee test_api.csv
+      "PING_BULK","34253518.75"
+      "SET","8704074.99"
+      ...
+      $ sh graph/redis_histogram.sh test_api.csv > test_api
+      $ gnuplot-qt -p graph/plot_test_api.gnuplot
       ```
+
+      ![test_api](graph/test_api.svg)
+
+      More redis-benchmark style graphs [below](#using-redis-benchmark).
 
 2.  Multi-threading and/or multi-process support.  The [Rai KV](https://github.com/raitechnology/raikv)
     library fully supports locking shared memory by multiple processes or
@@ -191,9 +181,6 @@ scaling based on planning, resouces are used when allocated.
     [xterm.js](https://xtermjs.org) with the
     [attach](https://xtermjs.org/docs/api/addons/attach/) addon in the browser.
 
-7.  Support for PubSub with last value caching, with updates using Redis,
-    Websock, NATS, RV, CAPR.  Descriptions... Todo.
-
 ## How to Build Rai DS
 
 The current implementation uses x86_64 hardware based AES hashing and can use
@@ -278,11 +265,10 @@ $ sudo dnf install raids
 
 ## Testing Performance of Rai DS
 
-There are 4 performance metrics highlighted.  The first is a http test, the
-second is a redis-benchmark test, the third is a NATS PubSub test, and the
-forth is a memcached test.  The tests are run with the Linux Kernel TCP and
-with the Solarflare OpenOnload TCP Kernel Bypass running with a dual port
-[Solarflare X2522-25G](https://www.xilinx.com/publications/product-briefs/xtremescale-x2522-product-brief.pdf).
+There are 3 performance metrics below.  The first is a http test, the second is
+a `redis-benchmark` test, and the thired is a `memaslap` test.  The tests are
+run with the Linux Kernel TCP and with the Solarflare OpenOnload TCP Kernel
+Bypass running with a dual port [Solarflare X2522-25G](https://www.xilinx.com/publications/product-briefs/xtremescale-x2522-product-brief.pdf).
 
 There are three systems involved running CentOS 8, a
 [Ryzen 3970x](https://www.amd.com/en/products/cpu/amd-ryzen-threadripper-3970x#product-specs)
@@ -298,11 +284,17 @@ event processing and the protocol components, not the KV store.
 These benchmarks are meant to be repeatable on different hardware and highlight
 the variety of `ds_server` protocols.  The systems used in the benchmarks are
 workstations and not servers, the instructions to replicate them for different
-environments are in the [README](graph/README.md) in the graph directory.  It
-is Rai's belief that Kernel Bypass technologies will perform better in most
-situations where a network is involved.  This doesn't mean that using the Linux
-Kernel TCP stack is not the best tool for the job, though, since there is a lot
-of infrastructure built around it that bypassing it may not be ideal.
+environments are in this [README](graph/README.md).  Kernel bypass technologies
+will perform better in most situations where a network is involved.  The Linux
+Kernel network stack is important as well, since a lot of infrastructure is
+built around it that bypassing it may not be ideal.
+
+Scaling is important to provide multiple paths to access the KV data at
+predictable latency, for example, partitioning simple reads from complex Redis
+transactions, pubsub distribution, and updates.  The aggregate numbers are not
+as important as the linear scaling even though they are closely related, since
+many architectures do benefit from several networks statically split and
+assigned to different CPUs.
 
 ### Using wrk HTTPD loading
 
@@ -360,10 +352,10 @@ instance on each core, using a single key.  This scales the pipeline and
 uses multiple Rai DS instances which share the same data.  The first uses the
 default data size of 3 bytes.  The network bandwidth limit is 
 
-    2 ports * 25 Gigabits / ( 42 bytes GET request + 1.2 TCP overhead ) = 144 million/sec
+    2 ports * 25 Gigabits / ( 42 bytes GET request + 1.25 TCP overhead ) = 144 million/sec
 
-The TCP overhead is averaged over the pipeline of 128 requests mod the frame
-size, which is about 1.2 bytes per request.
+The TCP overhead is averaged over the pipeline of 128 requests fitting in a
+1500 byte frame size, which is 1.25 bytes per request.
 
 ![redis_get_d3](graph/redis_get_d3.svg)
 
@@ -371,17 +363,39 @@ This second uses the 128 byte size as the cookbook uses.  The cookbook only
 uses one port and underestimates the Kernel TCP stack compared to these
 results.  The network bandwidth limit is
 
-    2 ports * 25 Gigabits / ( 136 bytes GET result + 0.5 TCP overhead ) = 45 million/sec
+    2 ports * 25 Gigabits / ( 136 bytes GET result + 3.75 TCP overhead ) = 44 million/sec
 
-The TCP overhead is averaged over the pipeline of 128 results mod the frame
-size, which is about .5 bytes per result.
+The TCP overhead is averaged over the pipeline of 128 results fitting in a
+1500 byte frame size, which is 3.75 bytes per result.
 
 ![redis_get_d128](graph/redis_get_d128.svg)
 
 See [this](graph/README.md#using-redis-benchmark) for the steps to reproduce
 the above.
 
-### Using nats-bench
+### Using libmemcached memaslap
 
-### Using memcache memaslap
+The memaslap load generator doesn't allow for selecting the range of keys to
+get, instead it randomly generates them and preloads the cache before starting
+the get benchmark.  Since there are several memaslap processes running and each
+loads keys, the number of keys increases as more are processes are added.
+Memaslap doesn't pipeline commands like redis-benchmark does, but it does have
+a multiget capability, so that was used instead of pipelining.
 
+The first test uses a datasize is 3 bytes, the network bandwidth limit is
+
+    2 ports * 25 Gigabits / ( 40 bytes GET request + 1.25 TCP overhead ) = 151 million/sec
+
+The TCP overhead is averaged over the multiget of 128 requests fitting in a 
+1500 byte frame size, which is 1.25 bytes per request.
+
+![redis_get_d3](graph/memaslap_d3.svg)
+
+The second test uses a datasize is 128 bytes, the network bandwidth limit is
+
+    2 ports * 25 Gigabits / ( 156 bytes GET result + 4.375 TCP overhead ) = 39 million/sec
+
+The TCP overhead is averaged over the multiget of 128 results fitting in a 
+1500 byte frame size, which is 4.375 bytes per request.
+
+![redis_get_d128](graph/memaslap_d128.svg)

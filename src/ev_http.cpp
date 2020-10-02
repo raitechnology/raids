@@ -184,7 +184,7 @@ static const char http_hdr11[] = "HTTP/1.1 ",
                   ctype[]      = "Content-Type: ",
                   clength[]    = "Content-Length: ",
                   clength_40[] = "Content-Length: 40\r\n",
-                  clength_0[]  = "Content-Length: 0\r\n",
+                  /*clength_0[]  = "Content-Length: 0\r\n",*/
                   location[]   = "Location: ";
 
 /* initialize http response */
@@ -1303,11 +1303,11 @@ EvHttpServiceOps::match( PeerData &pd,  PeerMatchArgs &ka ) noexcept
 {
   EvHttpService & svc = (EvHttpService &) pd;
   if ( svc.sub_tab.sub_count() + svc.pat_tab.sub_count() != 0 ) {
-    if ( this->EvSocketOps::client_match( pd, ka, MARG( "pubsub" ), MARG( "http" ), NULL ) )
+    if ( this->EvSocketOps::client_match( pd, &ka, MARG( "pubsub" ), MARG( "http" ), NULL ) )
       return true;
   }
   else {
-    if ( this->EvSocketOps::client_match( pd, ka, MARG( "normal" ), MARG( "http" ), NULL ) )
+    if ( this->EvSocketOps::client_match( pd, &ka, MARG( "normal" ), MARG( "http" ), NULL ) )
       return true;
   }
   return this->EvConnectionOps::match( pd, ka );

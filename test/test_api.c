@@ -401,18 +401,23 @@ test_mset( ds_t *h, size_t nrequests, size_t randomcnt, size_t nkeys,
 }
 
 static void
-print_time( const char *cmd,  double secs,  size_t nrequests )
+print_time( const char *cmd,  double secs,  size_t nrequests,  int csv )
 {
   static const double NS = 1000.0 * 1000.0 * 1000.0;
   double rqs = (double) nrequests / secs;
-  printf( "%s: ", cmd );
-  printf( "%.2f req per second, ", rqs );
-  printf( "%.2f ns per req", NS / rqs );
-  if ( err != 0 ) {
-    printf( ", errors %d", -err );
-    err = 0;
+  if ( csv ) {
+    printf( "\"%s\",\"%.2f\"\n", cmd, rqs );
   }
-  printf( "\n" );
+  else {
+    printf( "%s: ", cmd );
+    printf( "%.2f req per second, ", rqs );
+    printf( "%.2f ns per req", NS / rqs );
+    if ( err != 0 ) {
+      printf( ", errors %d", -err );
+      err = 0;
+    }
+    printf( "\n" );
+  }
 }
 
 static void
@@ -445,7 +450,7 @@ set_affinity( int cpu )
   return -1;
 }
 
-static void
+static int
 warm_up_cpu( ds_t *h,  const char *affinity )
 {
   int cpu = -1;
@@ -461,8 +466,7 @@ warm_up_cpu( ds_t *h,  const char *affinity )
     if ( cpu >= 0 )
       cpu = set_affinity( cpu );
   }
-  if ( cpu >= 0 )
-    printf( "cpu affinity %d\n", cpu );
+  return cpu;
 }
 
 static const char *
@@ -479,7 +483,7 @@ static void
 print_help( const char *argv0 )
 {
   printf( "%s [-m map_name] [-x] [-n requests] [-d size]\n"
-         "%*s [-r count] [-P num_req] [-l] [-t tests] [-a cpu]\n"
+         "%*s [-r count] [-P num_req] [-l] [-t tests] [-a cpu] [-C 0|1][-c]\n"
   "   -m map_name : Name of shm to attach or create (default " KV_DEFAULT_SHM ")\n"
   "   -x          : Create the shm map_name\n"
   "   -n requests : Total number of requests (default 100000)\n"
@@ -489,7 +493,8 @@ print_help( const char *argv0 )
   "   -l          : Loop, run forever\n"
   "   -t tests    : Only run the comma list of tests\n"
   "   -a cpu      : Set affinity to cpu (default linux)\n"
-  "   -C 0|1      : Delete keys if 1, don't clean if 0 (default 1)\n",
+  "   -C 0|1      : Delete keys if 1, don't clean if 0 (default 1)\n"
+  "   -c          : Output CSV of test, msgs/sec\n",
   argv0, (int) strlen( argv0 ), "" );
 }
 
@@ -548,6 +553,7 @@ main( int argc,  char *argv[] )
              * af = get_arg( argc, argv, 1, "-a", NULL ), /* cpu */
              * cl = get_arg( argc, argv, 1, "-C", "1" ),  /* clean keys */
              * bu = get_arg( argc, argv, 0, "-b", NULL ), /* busy */
+             * cs = get_arg( argc, argv, 0, "-c", NULL ), /* csv */
              * he = get_arg( argc, argv, 0, "-h", NULL ); /* help */
 
   size_t    nrequests = strtol( nr, NULL, 0 ),
@@ -559,6 +565,9 @@ main( int argc,  char *argv[] )
   int       clean_keys = atoi( cl ),
             status;
   uint32_t  fl = parse_tests( te ); /* bit mask of tests */
+  int       cpu,
+            csv  = ( cs != NULL ),
+            busy = ( bu != NULL );
 
  if ( nrequests == 0 || size == 0 || he != NULL || pi != NULL ) {
     print_help( argv[ 0 ] );
@@ -570,16 +579,18 @@ main( int argc,  char *argv[] )
   }
   memset( data, 'x', size );
   if ( cr != NULL )
-    status = ds_create( &h, mn, 0, bu != NULL, NULL, 0660 );
+    status = ds_create( &h, mn, 0, busy, NULL, 0660 );
   else
-    status = ds_open( &h, mn, 0, bu != NULL );
+    status = ds_open( &h, mn, 0, busy );
 
   if ( status != 0 ) {
     fprintf( stderr, "failed to %s map %s\n",
              cr ? "create" : "open", mn );
     return 3;
   }
-  warm_up_cpu( h, af );
+  cpu = warm_up_cpu( h, af );
+  if ( cpu >= 0 && ! csv )
+    printf( "cpu affinity %d\n", cpu );
 
   signal( SIGHUP, sighndlr );
   signal( SIGINT, sighndlr );
@@ -590,111 +601,111 @@ main( int argc,  char *argv[] )
       t1 = kv_current_monotonic_time_s(); /* PING */
       if ( test_ping( h, nrequests ) != 0 ) break;
       t2 = kv_current_monotonic_time_s();
-      print_time( "PING_BULK", t2 - t1, nrequests );
+      print_time( "PING_BULK", t2 - t1, nrequests, csv );
     }
     if ( ( fl & DO_SET ) != 0 ) {
       t1 = kv_current_monotonic_time_s(); /* SET */
       if ( test_set( h, nrequests, randomcnt, data, size ) != 0 ) break;
       t2 = kv_current_monotonic_time_s();
-      print_time( "SET", t2 - t1, nrequests );
+      print_time( "SET", t2 - t1, nrequests, csv );
     }
     if ( ( fl & DO_GET ) != 0 ) {
       t1 = kv_current_monotonic_time_s(); /* GET */
       if ( test_get( h, nrequests, randomcnt ) != 0 ) break;
       t2 = kv_current_monotonic_time_s();
-      print_time( "GET", t2 - t1, nrequests );
+      print_time( "GET", t2 - t1, nrequests, csv );
     }
     if ( ( fl & DO_INCR ) != 0 ) {
       t1 = kv_current_monotonic_time_s(); /* INCR */
       if ( test_incr( h, nrequests, randomcnt ) != 0 ) break;
       t2 = kv_current_monotonic_time_s();
-      print_time( "INCR", t2 - t1, nrequests );
+      print_time( "INCR", t2 - t1, nrequests, csv );
     }
     if ( ( fl & DO_LPUSH ) != 0 ) {
       remove_list_key( h );
       t1 = kv_current_monotonic_time_s(); /* LPUSH */
       if ( test_lpush( h, nrequests, data, size ) != 0 ) break;
       t2 = kv_current_monotonic_time_s();
-      print_time( "LPUSH", t2 - t1, nrequests );
+      print_time( "LPUSH", t2 - t1, nrequests, csv );
     }
     if ( ( fl & DO_RPUSH ) != 0 ) {
       t1 = kv_current_monotonic_time_s(); /* RPUSH */
       if ( test_rpush( h, nrequests, data, size ) != 0 ) break;
       t2 = kv_current_monotonic_time_s();
-      print_time( "RPUSH", t2 - t1, nrequests );
+      print_time( "RPUSH", t2 - t1, nrequests, csv );
     }
     if ( ( fl & DO_LPOP ) != 0 ) {
       t1 = kv_current_monotonic_time_s(); /* LPOP */
       if ( test_lpop( h, nrequests ) != 0 ) break;
       t2 = kv_current_monotonic_time_s();
-      print_time( "LPOP", t2 - t1, nrequests );
+      print_time( "LPOP", t2 - t1, nrequests, csv );
     }
     if ( ( fl & DO_RPOP ) != 0 ) {
       t1 = kv_current_monotonic_time_s(); /* RPOP */
       if ( test_rpop( h, nrequests ) != 0 ) break;
       t2 = kv_current_monotonic_time_s();
-      print_time( "RPOP", t2 - t1, nrequests );
+      print_time( "RPOP", t2 - t1, nrequests, csv );
     }
     if ( ( fl & DO_SADD ) != 0 ) {
       remove_set_key( h );
       t1 = kv_current_monotonic_time_s(); /* SADD */
       if ( test_sadd( h, nrequests, randomcnt ) != 0 ) break;
       t2 = kv_current_monotonic_time_s();
-      print_time( "SADD", t2 - t1, nrequests );
+      print_time( "SADD", t2 - t1, nrequests, csv );
     }
     if ( ( fl & DO_HSET ) != 0 ) {
       remove_hash_key( h, randomcnt );
       t1 = kv_current_monotonic_time_s(); /* HSET */
       if ( test_hset( h, nrequests, randomcnt, data, size ) != 0 ) break;
       t2 = kv_current_monotonic_time_s();
-      print_time( "HSET", t2 - t1, nrequests );
+      print_time( "HSET", t2 - t1, nrequests, csv );
     }
     if ( ( fl & DO_SPOP ) != 0 ) {
       t1 = kv_current_monotonic_time_s(); /* SPOP */
       if ( test_spop( h, nrequests ) != 0 ) break;
       t2 = kv_current_monotonic_time_s();
-      print_time( "SPOP", t2 - t1, nrequests );
+      print_time( "SPOP", t2 - t1, nrequests, csv );
     }
     if ( ( fl & DO_LRANGE ) != 0 ) {
       remove_list_key( h );
       t1 = kv_current_monotonic_time_s();
       if ( test_lpush( h, 1000, data, size ) != 0 ) break;
       t2 = kv_current_monotonic_time_s();
-      print_time( "LPUSH (for LRANGE)", t2 - t1, 1000 );
+      print_time( "LPUSH (for LRANGE)", t2 - t1, 1000, csv );
 
       t1 = kv_current_monotonic_time_s(); /* LRANGE_100 */
       if ( test_lrange( h, nrequests, 100 ) != 0 ) break;
       t2 = kv_current_monotonic_time_s();
-      print_time( "LRANGE_100 (first 100 elements)", t2 - t1, nrequests );
+      print_time( "LRANGE_100 (first 100 elements)", t2 - t1, nrequests, csv );
 
       t1 = kv_current_monotonic_time_s(); /* LRANGE_300 */
       if ( test_lrange( h, nrequests, 300 ) != 0 ) break;
       t2 = kv_current_monotonic_time_s();
-      print_time( "LRANGE_300 (first 300 elements)", t2 - t1, nrequests );
+      print_time( "LRANGE_300 (first 300 elements)", t2 - t1, nrequests, csv );
 
       t1 = kv_current_monotonic_time_s(); /* LRANGE_500 (even tho it is 450) */
       if ( test_lrange( h, nrequests, 450 ) != 0 ) break;
       t2 = kv_current_monotonic_time_s();
-      print_time( "LRANGE_500 (first 450 elements)", t2 - t1, nrequests );
+      print_time( "LRANGE_500 (first 450 elements)", t2 - t1, nrequests, csv );
 
       t1 = kv_current_monotonic_time_s(); /* LRANGE_600 */
       if ( test_lrange( h, nrequests, 600 ) != 0 ) break;
       t2 = kv_current_monotonic_time_s();
-      print_time( "LRANGE_600 (first 600 elements)", t2 - t1, nrequests );
+      print_time( "LRANGE_600 (first 600 elements)", t2 - t1, nrequests, csv );
     }
     if ( ( fl & DO_MSET ) != 0 ) {
       t1 = kv_current_monotonic_time_s(); /* MSET */
       if ( test_mset( h, nrequests, randomcnt, 10, data, size ) != 0 ) break;
       t2 = kv_current_monotonic_time_s();
-      print_time( "MSET (10 keys)", t2 - t1, nrequests );
+      print_time( "MSET (10 keys)", t2 - t1, nrequests, csv );
     }
     if ( lo == NULL ) /* if not looping forever */
       break;
   }
 
-  if ( was_signaled )
+  if ( was_signaled && ! csv )
     printf( "Caught signal %d\n", was_signaled );
-  if ( clean_keys ) {
+  if ( clean_keys && ! csv ) {
     printf( "Removing test keys\n" );
     if ( ( fl & ( DO_MSET | DO_SET ) ) != 0 )
       remove_key( h, randomcnt );

@@ -37,7 +37,7 @@ struct EvShm {
 
   EvShm() : map( 0 ), ctx_id( kv::MAX_CTX_ID ), dbx_id( kv::MAX_STAT_ID ) {}
   EvShm( EvShm &m ) : map( m.map ), ctx_id( m.ctx_id ), dbx_id( m.dbx_id ) {}
-  ~EvShm();
+  ~EvShm() noexcept;
   int open( const char *map_name      = KV_DEFAULT_SHM,
             uint8_t db_num            = 0 ) noexcept;
 

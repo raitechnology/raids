@@ -207,11 +207,11 @@ EvRedisServiceOps::match( PeerData &pd,  PeerMatchArgs &ka ) noexcept
 {
   EvRedisService & svc = (EvRedisService &) pd;
   if ( svc.sub_tab.sub_count() + svc.pat_tab.sub_count() != 0 ) {
-    if ( this->EvSocketOps::client_match( pd, ka, MARG( "pubsub" ), NULL ) )
+    if ( this->EvSocketOps::client_match( pd, &ka, MARG( "pubsub" ), NULL ) )
       return true;
   }
   else {
-    if ( this->EvSocketOps::client_match( pd, ka, MARG( "normal" ), NULL ) )
+    if ( this->EvSocketOps::client_match( pd, &ka, MARG( "normal" ), NULL ) )
       return true;
   }
   return this->EvConnectionOps::match( pd, ka );

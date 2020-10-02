@@ -18,22 +18,17 @@ function find_build_binary()
 {
   if ! command -v $1 &> /dev/null
   then
-    b=../${ospref}${osver}_x86_64/bin/$1
-    if command -v $b &> /dev/null
-    then
-      echo found $b
-      export PATH=$(dirname $b):$PATH
-    else
-      b=./${ospref}${osver}_x86_64/bin/$1
+    for d in . raids raikv ../raikv ../raids .. ; do
+      b=${d}/${ospref}${osver}_x86_64/bin/$1
       if command -v $b &> /dev/null
       then
         echo found $b
         export PATH=$(dirname $b):$PATH
-      else
-        echo "$1 could not be found"
-        exit 1
+        return
       fi
-    fi
+    done
+    echo "$1 could not be found"
+    exit 1
   fi
 }
 
@@ -201,6 +196,30 @@ function get_cpu()
   cpu=${core_index[$((($basecpu + $1) % $nprocessors))]}
 }
 
+# start kv server if not already running
+kvpid=0
+function start_kv_server()
+{
+  if ! killall -0 kv_server ; then
+    echo no kv_server running, starting it
+    kv_server &
+    kvpid=$!
+    sleep 1
+    if ! kill -0 ${kvpid} ; then
+      echo kv_server failed to start
+      exit 1
+    fi
+  fi
+}
+# stop kv server if was started by script
+function stop_kv_server()
+{
+  if [ ${kvpid} != 0 ] ; then
+    echo stopping kv_server at pid ${kvpid}
+    kill -1 ${kvpid}
+  fi
+}
+
 function start_ds_servers()
 {
   i=0
@@ -265,6 +284,7 @@ function signal_all()
       usleep $1
     fi
   done
+  stop_kv_server
 }
 
 # send a shutdown to ds_server port

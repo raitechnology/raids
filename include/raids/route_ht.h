@@ -601,7 +601,7 @@ struct RouteVec {
     Data   * data;
     uint32_t i = 0;
     if ( this->vec_size == 0 )
-      return NULL;
+      return false;
     if ( this->vec_size > 1 )
       i = this->bsearch( h );
     if ( (data = this->vec[ i ]->remove( h, s, l )) != NULL )

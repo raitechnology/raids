@@ -219,7 +219,7 @@ struct EvSocketOps : public PeerOps {
   virtual bool match( PeerData &pd,  PeerMatchArgs &ka ) noexcept;
   virtual void client_stats( PeerData &pd,  PeerStats &ps ) noexcept;
   virtual void retired_stats( PeerData &pd,  PeerStats &ps ) noexcept;
-  static bool client_match( PeerData &pd,  PeerMatchArgs &ka,  ... ) noexcept;
+  static bool client_match( PeerData &pd,  PeerMatchArgs *ka,  ... ) noexcept;
 };
 
 static inline void *aligned_malloc( size_t sz ) {

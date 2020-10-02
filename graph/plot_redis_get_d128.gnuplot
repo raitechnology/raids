@@ -3,8 +3,8 @@
 set title "Rai DS redis-benchmark, scaling GET datasize 128, Solarflare x2522-25G"
 set ylabel "Operations per Second (Millions)"
 set xlabel "Number of Threads (redis-benchmark -t get -d 128 -c 50 -P <cnt>)"
-set yrange [0:50]
-set y2range [0:50]
+set yrange [0:45]
+set y2range [0:45]
 set y2tics
 set ytic 5
 set y2tic 5

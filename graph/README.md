@@ -4,13 +4,11 @@
 1. [Using wrk HTTPD loading](#using-wrk-httpd-loading)
 2. [Using redis-benchmark](#using-redis-benchmark)
 3. [Using nats-bench](#using-nats-bench)
-4. [Using memcache memaslap](#using-memcache-memaslap)
+4. [Using libmemcached memaslap](#using-libmemcached-memaslap)
 
-After building Rai DS, all of the scripts used to construct the benchmark
-graphs presume that there is a shared memory segment to attach to, none of them
-will create it.  Use the `kv_server` program in the raikv build directory or
-from the Rai KV package to create it by running it without arguments, default
-parameters will work.
+After building Rai DS, the scripts used to start `ds_server` will also start
+`kv_server` with default parameters to create the memory segment to attach to,
+if it is not already started.
 
 Many of these benchmarks use multiple ports for the same data store.  It is
 possible to listen on the same port with multiple instances and use the kernel
@@ -347,17 +345,7 @@ datasizes, setting `USE_ONLOAD=yes`, to construct these data files.  The
 client1 and client2 examples used above are run simultaneously so that the
 merging of the two data files represents concurrent execution.
 
-## Using nats-bench
-
-Install golang and use go install nats-bench:
-
-```console
-$ dnf install golang
-$ GOPATH=~/gopath ; export GOPATH
-$ go install $GOPATH/src/github.com/nats-io/nats.go/examples/nats-bench/main.go
-```
-
-## Using memcache memaslap
+## Using libmemcached memaslap
 
 Install libmemcached, which includes memaslap:
 

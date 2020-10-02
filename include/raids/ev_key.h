@@ -156,29 +156,7 @@ struct EvPrefetchQueue {
   EvKeyCtx  * ini[ 1024 ]; /* prefetch will fit in this array in most cases */
   EvPrefetchQueue() : ar( this->ini ), ar_size( 1024 ), hd( 0 ), cnt( 0 ) {}
 
-  bool more_queue( void ) {
-    void * p;
-    if ( this->ar == this->ini ) {
-      p = ::malloc( sizeof( this->ar[ 0 ] ) * ( this->ar_size + 1024 ) );
-      if ( p != NULL )
-        ::memcpy( p, this->ini, sizeof( this->ini ) );
-    }
-    else {
-      p = ::realloc( this->ar, sizeof( this->ar[ 0 ] ) * ( this->ar_size + 1024 ) );
-    }
-    if ( p == NULL )
-      return false;
-    this->ar = (EvKeyCtx **) p;
-
-    if ( this->ar_size > 0 ) { /* make contiguous */
-      size_t k = this->ar_size,        /* copy to end of array */
-             j = this->hd & ( k - 1 ); /* copy from 0 -> hd */
-      for ( size_t i = 0; i < j; i++ )
-        this->ar[ k++ ] = this->ar[ i ];
-    }
-    this->ar_size += 1024;
-    return true;
-  }
+  bool more_queue( void ) noexcept;
 
   bool push( EvKeyCtx *k ) {
     /* if full, realloc some more */
@@ -195,7 +173,9 @@ struct EvPrefetchQueue {
   size_t count( void ) const  { return this->cnt; }
 
   EvKeyCtx *pop( void ) {
-    EvKeyCtx *k = this->ar[ this->hd & ( this->ar_size - 1 ) ];
+    size_t    n = this->hd & ( this->ar_size - 1 );
+    EvKeyCtx *k = this->ar[ n ];
+    this->ar[ n ] = NULL;
     this->hd++; this->cnt--;
     return k;
   }

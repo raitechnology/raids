@@ -880,7 +880,7 @@ PeerData::set_addr( const sockaddr *sa ) noexcept
 bool
 EvSocketOps::match( PeerData &pd,  PeerMatchArgs &ka ) noexcept
 {
-  return this->client_match( pd, ka, NULL );
+  return this->client_match( pd, &ka, NULL );
 }
 
 int
@@ -909,17 +909,17 @@ EvSocketOps::client_list( PeerData &pd,  char *buf,  size_t buflen ) noexcept
 }
 
 bool
-EvSocketOps::client_match( PeerData &pd,  PeerMatchArgs &ka,  ... ) noexcept
+EvSocketOps::client_match( PeerData &pd,  PeerMatchArgs *ka,  ... ) noexcept
 {
   /* match filters, if any don't match return false */
-  if ( ka.id != 0 )
-    if ( (uint64_t) ka.id != pd.id ) /* match id */
+  if ( ka->id != 0 )
+    if ( (uint64_t) ka->id != pd.id ) /* match id */
       return false;
-  if ( ka.ip_len != 0 ) /* match ip address string */
-    if ( ka.ip_len != pd.get_peer_address_strlen() ||
-         ::memcmp( ka.ip, pd.peer_address, ka.ip_len ) != 0 )
+  if ( ka->ip_len != 0 ) /* match ip address string */
+    if ( ka->ip_len != pd.get_peer_address_strlen() ||
+         ::memcmp( ka->ip, pd.peer_address, ka->ip_len ) != 0 )
       return false;
-  if ( ka.type_len != 0 ) {
+  if ( ka->type_len != 0 ) {
     va_list    args;
     size_t     k, sz;
     const char * str;
@@ -931,16 +931,16 @@ EvSocketOps::client_match( PeerData &pd,  PeerMatchArgs &ka,  ... ) noexcept
         break;
       }
       sz = va_arg( args, size_t );
-      if ( sz == ka.type_len &&
-           ::strncasecmp( ka.type, str, sz ) == 0 )
+      if ( sz == ka->type_len &&
+           ::strncasecmp( ka->type, str, sz ) == 0 )
         break; /* match */
     }
     va_end( args );
     if ( k != 0 )
       return true;
     /* match the kind */
-    if ( pd.kind != NULL && ka.type_len == ::strlen( pd.kind ) &&
-         ::strncasecmp( ka.type, pd.kind, ka.type_len ) == 0 )
+    if ( pd.kind != NULL && ka->type_len == ::strlen( pd.kind ) &&
+         ::strncasecmp( ka->type, pd.kind, ka->type_len ) == 0 )
       return true;
     return false;
   }
@@ -970,7 +970,7 @@ EvSocketOps::client_kill( PeerData &pd ) noexcept
 bool
 EvConnectionOps::match( PeerData &pd,  PeerMatchArgs &ka ) noexcept
 {
-  return this->client_match( pd, ka, MARG( "tcp" ), NULL );
+  return this->client_match( pd, &ka, MARG( "tcp" ), NULL );
 }
 
 int
@@ -1015,7 +1015,7 @@ EvSocketOps::retired_stats( PeerData &pd,  PeerStats &ps ) noexcept
 bool
 EvListenOps::match( PeerData &pd,  PeerMatchArgs &ka ) noexcept
 {
-  return this->client_match( pd, ka, MARG( "listen" ), NULL );
+  return this->client_match( pd, &ka, MARG( "listen" ), NULL );
 }
 
 int
@@ -1041,7 +1041,7 @@ EvListenOps::client_stats( PeerData &pd,  PeerStats &ps ) noexcept
 bool
 EvUdpOps::match( PeerData &pd,  PeerMatchArgs &ka ) noexcept
 {
-  return this->client_match( pd, ka, MARG( "udp" ), NULL );
+  return this->client_match( pd, &ka, MARG( "udp" ), NULL );
 }
 
 int
@@ -1516,27 +1516,77 @@ EvConnection::close_alloc_error( void ) noexcept
 void
 EvSocket::idle_push( EvState s ) noexcept
 {
+  /* if no state, not currently in the queue */
   if ( this->state == 0 ) {
   do_push:;
     this->push( s );
-    /*printf( "idle_push %d %x\n", this->type, this->state );*/
     this->prio_cnt = this->poll.prio_tick;
     this->poll.push_event_queue( this );
   }
-  else { /* check if added state requires queue to be rearranged */
+  /* check if added state requires queue to be rearranged */
+  else {
     int x1 = __builtin_ffs( this->state ),
         x2 = __builtin_ffs( this->state | ( 1 << s ) );
+    /* new state has higher priority than current state, reorder queue */
     if ( x1 > x2 ) {
-      /*printf( "remove %d\n", this->type );*/
       if ( this->in_queue( IN_EVENT_QUEUE ) ) {
         this->set_queue( NOT_IN_QUEUE );
         this->poll.ev_queue.remove( this );
       }
-      goto do_push;
+      goto do_push; /* pop, then push */
     }
+    /* otherwise, current state >= the new state, in the correct order */
     else {
       this->push( s );
-      /*printf( "idle_push2 %d %x\n", this->type, this->state );*/
     }
   }
+}
+
+bool
+EvPrefetchQueue::more_queue( void ) noexcept
+{
+  void * p;
+  size_t sz  = this->ar_size,
+         nsz = sz * 2;
+
+  if ( this->ar == this->ini ) {
+    p = ::malloc( sizeof( this->ar[ 0 ] ) * nsz );
+    if ( p != NULL ) {
+      ::memcpy( p, this->ini, sizeof( this->ini ) );
+      ::memset( this->ini, 0, sizeof( this->ini ) );
+    }
+  }
+  else {
+    p = ::realloc( this->ar, sizeof( this->ar[ 0 ] ) * nsz );
+  }
+  if ( p == NULL )
+    return false;
+  this->ar = (EvKeyCtx **) p;
+  this->ar_size = nsz;
+  ::memset( &this->ar[ sz ], 0, sizeof( this->ar[ 0 ] ) * sz );
+
+  size_t j = this->hd & ( nsz - 1 ),
+         k = this->hd & ( sz - 1 );
+  /* first case, head moves to the new area:
+   * [ k k k hd k k k k ] -> [ k k k 0 0 0 0 0 0 0 0 hd k k k k ]
+   *                                 |xxxxxxx|  -->  |--------| */
+  if ( j >= sz ) {
+    while ( j < nsz ) {
+      this->ar[ j ] = this->ar[ k ];
+      this->ar[ k ] = NULL;
+      j++; k++;
+    }
+  }
+  /* send case, tail moves to the new area:
+   * [ k k k hd k k k k ] -> [ 0 0 0 hd k k k k k k k 0 0 0 0 0 ]
+   *                           |xxx|      ->    |---| */
+  else {
+    j = sz;
+    for ( size_t i = 0; i < k; ) {
+      this->ar[ j ] = this->ar[ i ];
+      this->ar[ i ] = NULL;
+      i++; j++;
+    }
+  }
+  return true;
 }
