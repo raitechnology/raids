@@ -19,7 +19,6 @@ struct EvRvListen : public EvTcpListen {
   uint64_t    timer_id;
   uint32_t    ipaddr;
   uint16_t    ipport;
-  EvListenOps ops;
   void * operator new( size_t, void *ptr ) { return ptr; }
   EvRvListen( EvPoll &p ) noexcept;
   virtual bool accept( void ) noexcept;
@@ -203,6 +202,7 @@ struct RvMsgIn {
 };
 
 struct EvRvService : public EvConnection {
+  static const uint8_t EV_RV_SOCK = 8;
   void * operator new( size_t, void *ptr ) { return ptr; }
   enum ProtoState {
     VERS_RECV,
@@ -226,9 +226,8 @@ struct EvRvService : public EvConnection {
   uint32_t     vmaj,
                vmin,
                vupd;
-  EvConnectionOps ops;
 
-  EvRvService( EvPoll &p ) : EvConnection( p, EV_RV_SOCK, this->ops ) {}
+  EvRvService( EvPoll &p ) : EvConnection( p, EV_RV_SOCK ) {}
   void initialize_state( uint64_t id ) {
     this->state = VERS_RECV;
     this->ms = this->bs = 0;
@@ -242,26 +241,24 @@ struct EvRvService : public EvConnection {
     this->vmaj = this->vmin = this->vupd = 0;
   }
   void send_info( bool agree ) noexcept;
-  void process( void ) noexcept;
-  void exec_key_prefetch( EvKeyCtx & ) {}
-  int exec_key_continue( EvKeyCtx & ) { return 0; }
   int recv_data( void *msg,  size_t msg_len ) noexcept;
   int respond_info( void ) noexcept;
-  bool timer_expire( uint64_t tid,  uint64_t eid ) noexcept;
   void add_sub( void ) noexcept;
   void rem_sub( void ) noexcept;
   void rem_all_sub( void ) noexcept;
   bool fwd_pub( void ) noexcept;
-  bool on_msg( EvPublish &pub ) noexcept;
-  bool hash_to_sub( uint32_t h,  char *key,  size_t &keylen ) noexcept;
   void send( void *hdr,  size_t off,   const void *data,
              size_t data_len ) noexcept;
   bool fwd_msg( EvPublish &pub,  const void *sid,  size_t sid_len ) noexcept;
-  void release( void ) noexcept;
   void push_free_list( void ) noexcept;
   void pop_free_list( void ) noexcept;
   void pub_session( uint8_t code ) noexcept;
-  void process_close( void ) {}
+  /* EvSocket */
+  virtual void process( void ) noexcept final;
+  virtual void release( void ) noexcept final;
+  virtual bool timer_expire( uint64_t tid, uint64_t eid ) noexcept final;
+  virtual bool hash_to_sub( uint32_t h, char *k, size_t &klen ) noexcept final;
+  virtual bool on_msg( EvPublish &pub ) noexcept final;
 };
 
 }

@@ -17,7 +17,6 @@ struct CaprSession;
 struct EvCaprListen : public EvTcpListen {
   CaprSession * sess;
   uint64_t      timer_id;
-  EvListenOps   ops;
   void * operator new( size_t, void *ptr ) { return ptr; }
   EvCaprListen( EvPoll &p ) noexcept;
   virtual bool accept( void ) noexcept;
@@ -171,6 +170,7 @@ struct CaprPatternMap {
 };
 
 struct EvCaprService : public EvConnection {
+  static const uint8_t EV_CAPR_SOCK = 7;
   void * operator new( size_t, void *ptr ) { return ptr; }
 
   CaprSubMap     sub_tab;
@@ -182,9 +182,8 @@ struct EvCaprService : public EvConnection {
   char           inbox[ 32 + 4 ]; /* _INBOX.127-000-000-001.6EB8C0CB.> */
   uint32_t       inboxlen;
   uint64_t       sid;
-  EvConnectionOps ops;
 
-  EvCaprService( EvPoll &p ) : EvConnection( p, EV_CAPR_SOCK, this->ops ) {}
+  EvCaprService( EvPoll &p ) : EvConnection( p, EV_CAPR_SOCK ) {}
   void initialize_state( uint64_t id ) {
     this->sess = NULL;
     this->ms = this->bs = 0;
@@ -195,10 +194,6 @@ struct EvCaprService : public EvConnection {
   }
   void send( CaprMsgOut &rec,  size_t off,  const void *data,
              size_t data_len ) noexcept;
-  void process( void ) noexcept;
-  void exec_key_prefetch( EvKeyCtx & ) {}
-  int exec_key_continue( EvKeyCtx & ) { return 0; }
-  bool timer_expire( uint64_t tid,  uint64_t eid ) noexcept;
   void reassert_subs( CaprMsgIn &rec ) noexcept;
   void add_sub( CaprMsgIn &rec ) noexcept;
   void add_subscription( const char *sub,  uint32_t len,  const char *reply,
@@ -206,17 +201,19 @@ struct EvCaprService : public EvConnection {
   void rem_sub( CaprMsgIn &rec ) noexcept;
   void rem_all_sub( void ) noexcept;
   bool fwd_pub( CaprMsgIn &rec ) noexcept;
-  bool on_msg( EvPublish &pub ) noexcept;
-  bool hash_to_sub( uint32_t h,  char *key,  size_t &keylen ) noexcept;
   bool fwd_msg( EvPublish &pub,  const void *sid,  size_t sid_len ) noexcept;
   bool fwd_inbox( EvPublish &pub ) noexcept;
   void get_inbox_addr( EvPublish &pub,  const char *&subj,
                        uint8_t *addr ) noexcept;
-  void release( void ) noexcept;
   void push_free_list( void ) noexcept;
   void pop_free_list( void ) noexcept;
   void pub_session( uint8_t code ) noexcept;
-  void process_close( void ) {}
+  /* EvSocket */
+  virtual void process( void ) noexcept final;
+  virtual void release( void ) noexcept final;
+  virtual bool timer_expire( uint64_t tid, uint64_t eid ) noexcept final;
+  virtual bool hash_to_sub( uint32_t h, char *k, size_t &klen ) noexcept final;
+  virtual bool on_msg( EvPublish &pub ) noexcept final;
 };
 
 static inline bool is_rng( uint8_t c, uint8_t x, uint8_t y ) {

@@ -102,9 +102,7 @@ using namespace md;
 static uint64_t uptime_stamp;
 
 EvCaprListen::EvCaprListen( EvPoll &p ) noexcept
-            : EvTcpListen( p, this->ops ),
-              sess( 0 ),
-              timer_id( (uint64_t) EV_CAPR_SOCK << 56 )
+  : EvTcpListen( p, EvCaprService::EV_CAPR_SOCK, "capr_sock" )
 {
   if ( uptime_stamp == 0 )
     uptime_stamp = kv_current_realtime_ns();
@@ -126,13 +124,13 @@ EvCaprListen::accept( void ) noexcept
     return false;
   }
   EvCaprService *c = 
-    this->poll.get_free_list<EvCaprService>( this->poll.free_capr );
+    this->poll.get_free_list<EvCaprService>(
+      this->poll.free_list[ EvCaprService::EV_CAPR_SOCK ] );
   if ( c == NULL ) {
     perror( "accept: no memory" );
     ::close( sock );
     return false;
   }
-  c->sock_opts = this->sock_opts;
   EvTcpListen::set_sock_opts( this->poll, sock, this->sock_opts );
   ::fcntl( sock, F_SETFL, O_NONBLOCK | ::fcntl( sock, F_GETFL ) );
 
@@ -596,7 +594,7 @@ EvCaprService::push_free_list( void ) noexcept
     fprintf( stderr, "capr sock should not be in active list\n" );
   else if ( ! this->in_list( IN_FREE_LIST ) ) {
     this->set_list( IN_FREE_LIST );
-    this->poll.free_capr.push_hd( this );
+    this->poll.free_list[ EV_CAPR_SOCK ].push_hd( this );
   }
 }
 
@@ -605,7 +603,7 @@ EvCaprService::pop_free_list( void ) noexcept
 {
   if ( this->in_list( IN_FREE_LIST ) ) {
     this->set_list( IN_NO_LIST );
-    this->poll.free_capr.pop( this );
+    this->poll.free_list[ EV_CAPR_SOCK ].pop( this );
   }
 }
 
@@ -964,4 +962,3 @@ CaprMsgIn::decode( uint8_t *capr_pkt,  size_t pkt_size ) noexcept
   this->msg_data_len = this->data_len - off;
   return DECODE_OK;
 }
-

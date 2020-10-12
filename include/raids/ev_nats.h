@@ -8,9 +8,9 @@ namespace rai {
 namespace ds {
 
 struct EvNatsListen : public EvTcpListen {
-  EvListenOps ops;
+  uint64_t timer_id;
   void * operator new( size_t, void *ptr ) { return ptr; }
-  EvNatsListen( EvPoll &p ) : EvTcpListen( p, this->ops ) {}
+  EvNatsListen( EvPoll &p ) noexcept;
   virtual bool accept( void ) noexcept;
   int listen( const char *ip,  int port,  int opts ) {
     return this->EvTcpListen::listen( ip, port, opts, "nats_listen" );
@@ -25,6 +25,7 @@ enum NatsState {
 };
 
 struct EvNatsService : public EvConnection {
+  static const uint8_t EV_NATS_SOCK = 6;
   void * operator new( size_t, void *ptr ) { return ptr; }
   NatsSubMap map;
 
@@ -54,9 +55,8 @@ struct EvNatsService : public EvConnection {
            * user,
            * pass,
            * auth_token;
-  EvConnectionOps ops;
 
-  EvNatsService( EvPoll &p ) : EvConnection( p, EV_NATS_SOCK, this->ops ) {}
+  EvNatsService( EvPoll &p ) : EvConnection( p, EV_NATS_SOCK ) {}
   void initialize_state( void ) {
     this->msg_ptr   = NULL;
     this->msg_len   = 0;
@@ -75,10 +75,6 @@ struct EvNatsService : public EvConnection {
     this->name = this->lang = this->version = NULL;
     this->user = this->pass = this->auth_token = NULL;
   }
-  void process( void ) noexcept;
-  void exec_key_prefetch( EvKeyCtx & ) {}
-  int exec_key_continue( EvKeyCtx & ) { return 0; }
-  bool timer_expire( uint64_t, uint64_t ) { return false; }
   /*HashData * resize_tab( HashData *curr,  size_t add_len );*/
   void add_sub( void ) noexcept;
   void add_wild( NatsStr &xsubj ) noexcept;
@@ -86,14 +82,16 @@ struct EvNatsService : public EvConnection {
   void rem_wild( NatsStr &xsubj ) noexcept;
   void rem_all_sub( void ) noexcept;
   bool fwd_pub( void ) noexcept;
-  bool on_msg( EvPublish &pub ) noexcept;
-  bool hash_to_sub( uint32_t h,  char *key,  size_t &keylen ) noexcept;
   bool fwd_msg( EvPublish &pub,  const void *sid,  size_t sid_len ) noexcept;
   void parse_connect( const char *buf,  size_t sz ) noexcept;
-  void release( void ) noexcept;
   void push_free_list( void ) noexcept;
   void pop_free_list( void ) noexcept;
-  void process_close( void ) {}
+  /* EvSocket */
+  virtual void process( void ) noexcept final;
+  virtual void release( void ) noexcept final;
+  virtual bool timer_expire( uint64_t tid, uint64_t eid ) noexcept final;
+  virtual bool hash_to_sub( uint32_t h, char *k, size_t &klen ) noexcept final;
+  virtual bool on_msg( EvPublish &pub ) noexcept final;
 };
 
 /* presumes little endian, 0xdf masks out 0x20 for toupper() */

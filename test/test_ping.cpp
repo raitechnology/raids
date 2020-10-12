@@ -43,11 +43,10 @@ struct PingTest : public EvShmSvc, public KvSubNotifyList {
                last_time;
   bool         active_ping, /* initiates the round trip or one way */
                round_trip;
-  PeerOps      ops;
 
   PingTest( EvPoll &poll,  const char *s,  const char *p,  const char *i,
             bool act,  bool round,  uint32_t ps_rate,  uint32_t pub_cnt )
-    : EvShmSvc( poll, this->ops ), sub( s ), pub( p ), ibx( i ),
+    : EvShmSvc( poll ), sub( s ), pub( p ), ibx( i ),
       len( ::strlen( s ) ), plen( ::strlen( p ) ),
       ilen( i ? ::strlen( i ) : 0 ),
       h( 0 ), ph( 0 ), ih( 0 ), per_sec( ps_rate ), pub_left( pub_cnt ),

@@ -187,29 +187,6 @@ RedisExec::get_peer_match_args( PeerMatchArgs &ka ) noexcept
   return true;
 }
 
-PeerData *
-PeerMatchIter::first( void ) noexcept
-{
-  /* go to the front */
-  for ( this->p = &this->me; this->p->back != NULL; this->p = this->p->back )
-    ;
-  return this->next(); /* match the next */
-}
-
-PeerData *
-PeerMatchIter::next( void ) noexcept
-{
-  while ( this->p != NULL ) { /* while peers to match */
-    PeerData & x = *this->p;
-    this->p = x.next;
-    if ( ( &x == &this->me && this->ka.skipme ) || /* match peer */
-         ! x.op.match( x, this->ka ) )
-      continue;
-    return &x;
-  }
-  return NULL;
-}
-
 ExecStatus
 RedisExec::exec_client( void ) noexcept
 {
@@ -243,7 +220,7 @@ RedisExec::exec_client( void ) noexcept
         return ERR_BAD_ARGS;
       i = 0;
       for ( p = iter.first(); p != NULL; p = iter.next() ) {
-        if ( p->op.client_kill( *p ) )
+        if ( p->client_kill() )
           i++;
       }
       this->send_int( i ); /* number of clients killed */
@@ -259,7 +236,7 @@ RedisExec::exec_client( void ) noexcept
       i   = this->strm.idx;
       for ( p = iter.first(); p != NULL; p = iter.next() ) {
         char buf[ 8 * 1024 ];
-        int  sz = p->op.client_list( *p, buf, sizeof( buf ) );
+        int  sz = p->client_list( buf, sizeof( buf ) );
         if ( sz > 0 ) {
           char *str = this->strm.alloc( sz );
           ::memcpy( str, buf, sz );
@@ -311,7 +288,7 @@ RedisExec::exec_client( void ) noexcept
 }
 
 int
-RedisExec::client_list( char *buf,  size_t buflen ) noexcept
+RedisExec::exec_client_list( char *buf,  size_t buflen ) noexcept
 {
   /* id=unique id, addr=peer addr, fd=sock, age=time connected
    * idle=time idle, flags=what, db=cur db, sub=channel subs,
@@ -1080,9 +1057,9 @@ RedisExec::exec_info( void ) noexcept
   }
   if ( ( info & INFO_STATS ) != 0 ) {
     ka.set_type( NULL, 0 );
-    this->peer.op.retired_stats( this->peer, stats );
+    this->peer.retired_stats( stats );
     for ( p = iter.first(); p != NULL; p = iter.next() )
-      p->op.client_stats( *p, stats );
+      p->client_stats( stats );
 
     xnprintf( b, sz, "net_bytes_recv:       %s\r\n",
               mstring( stats.bytes_recv, tmp, 1024 ) );

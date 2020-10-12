@@ -17,7 +17,7 @@ using namespace kv;
 static MemcachedStats stat;
 
 EvMemcachedListen::EvMemcachedListen( EvPoll &p ) noexcept
-                 : EvTcpListen( p, this->ops )
+  : EvTcpListen( p, EvMemcachedService::EV_MEMCACHED_SOCK, "memcached_sock" )
 {
   if ( stat.boot_time == 0 )
     stat.boot_time = kv_current_realtime_ns();
@@ -57,10 +57,11 @@ EvMemcachedListen::accept( void ) noexcept
     }
     return false;
   }
-  bool was_empty = this->poll.free_memcached.is_empty();
+  bool was_empty =
+    this->poll.free_list[ EvMemcachedService::EV_MEMCACHED_SOCK ].is_empty();
   EvMemcachedService * c =
     this->poll.get_free_list2<EvMemcachedService, MemcachedStats>(
-      this->poll.free_memcached, stat );
+      this->poll.free_list[ EvMemcachedService::EV_MEMCACHED_SOCK ], stat );
   if ( c == NULL ) {
     perror( "accept: no memory" );
     ::close( sock );
@@ -69,7 +70,6 @@ EvMemcachedListen::accept( void ) noexcept
   if ( was_empty )
     stat.conn_structs += EvPoll::ALLOC_INCR;
 
-  c->sock_opts = this->sock_opts;
   EvTcpListen::set_sock_opts( this->poll, sock, this->sock_opts );
   ::fcntl( sock, F_SETFL, O_NONBLOCK | ::fcntl( sock, F_GETFL ) );
   c->PeerData::init_peer( sock, (struct sockaddr *) &addr, "memcached" );
@@ -678,7 +678,7 @@ EvMemcachedService::push_free_list( void ) noexcept
     fprintf( stderr, "memcached sock should not be in active list\n" );
   else if ( ! this->in_list(  IN_FREE_LIST ) ) {
     this->set_list( IN_FREE_LIST );
-    this->poll.free_memcached.push_hd( this );
+    this->poll.free_list[ EV_MEMCACHED_SOCK ].push_hd( this );
   }
 }
 
@@ -687,7 +687,37 @@ EvMemcachedService::pop_free_list( void ) noexcept
 {
   if ( this->in_list( IN_FREE_LIST ) ) {
     this->set_list( IN_NO_LIST );
-    this->poll.free_memcached.pop( this );
+    this->poll.free_list[ EV_MEMCACHED_SOCK ].pop( this );
   }
 }
 
+void
+EvMemcachedUdp::key_prefetch( EvKeyCtx &ctx ) noexcept
+{
+  this->exec->exec_key_prefetch( ctx );
+}
+
+int
+EvMemcachedUdp::key_continue( EvKeyCtx &ctx ) noexcept
+{
+  return this->exec->exec_key_continue( ctx );
+}
+
+void
+EvMemcachedService::key_prefetch( EvKeyCtx &ctx ) noexcept
+{
+  this->MemcachedExec::exec_key_prefetch( ctx );
+}
+
+int
+EvMemcachedService::key_continue( EvKeyCtx &ctx ) noexcept
+{
+  return this->MemcachedExec::exec_key_continue( ctx );
+}
+
+bool EvMemcachedUdp::timer_expire( uint64_t, uint64_t ) noexcept { return false; }
+bool EvMemcachedUdp::hash_to_sub( uint32_t, char *, size_t & ) noexcept { return false; }
+bool EvMemcachedUdp::on_msg( EvPublish & ) noexcept { return true; }
+bool EvMemcachedService::timer_expire( uint64_t, uint64_t ) noexcept { return false; }
+bool EvMemcachedService::hash_to_sub( uint32_t, char *, size_t & ) noexcept { return false; }
+bool EvMemcachedService::on_msg( EvPublish & ) noexcept { return true; }

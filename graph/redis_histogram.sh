@@ -23,6 +23,8 @@ function strip_quotes()
   sed -e 's/^"//' -e 's/"$//' <<<"$1"
 }
 
+lpush=0
+
 while true ; do
   IFS=',' read -r -u 3 -a array
   if [ ${#array[@]} -eq 0 ] ; then
@@ -32,6 +34,12 @@ while true ; do
   rate=$(strip_quotes ${array[1]})
   case $cmd in
     PING*)
+    ;;
+    LPUSH)
+    if [ $lpush == 0 ] ; then
+      echo LPUSH $rate
+      lpush=1
+    fi
     ;;
     LRANGE_100*)
     echo LR100 $rate

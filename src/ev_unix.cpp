@@ -57,39 +57,6 @@ fail:;
   return -1;
 }
 
-bool
-EvRedisUnixListen::accept( void ) noexcept
-{
-  struct sockaddr_un sunaddr;
-  socklen_t addrlen = sizeof( sunaddr );
-  int sock = ::accept( this->fd, (struct sockaddr *) &sunaddr, &addrlen );
-  if ( sock < 0 ) {
-    if ( errno != EINTR ) {
-      if ( errno != EAGAIN )
-	perror( "accept" );
-      this->pop3( EV_READ, EV_READ_LO, EV_READ_HI );
-    }
-    return false;
-  }
-  EvRedisService *c =
-    this->poll.get_free_list<EvRedisService>( this->poll.free_redis );
-  if ( c == NULL ) {
-    perror( "accept: no memory" );
-    ::close( sock );
-    return false;
-  }
-  ::fcntl( sock, F_SETFL, O_NONBLOCK | ::fcntl( sock, F_GETFL ) );
-  this->PeerData::init_peer( sock, (struct sockaddr *) &sunaddr, "redis" );
-  c->setup_ids( sock, ++this->timer_id );
-
-  if ( this->poll.add_sock( c ) < 0 ) {
-    ::close( sock );
-    c->push_free_list();
-    return false;
-  }
-  return true;
-}
-
 int
 EvUnixClient::connect( const char *path ) noexcept
 {

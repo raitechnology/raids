@@ -9,8 +9,6 @@ namespace rai {
 namespace ds {
 
 struct EvHttpListen : public EvTcpListen {
-  uint64_t timer_id;
-  EvListenOps ops;
   void * operator new( size_t, void *ptr ) { return ptr; }
   EvHttpListen( EvPoll &p ) noexcept;
   virtual bool accept( void ) noexcept;
@@ -20,11 +18,6 @@ struct EvHttpListen : public EvTcpListen {
 };
 
 struct EvPrefetchQueue;
-
-struct EvHttpServiceOps : public EvConnectionOps {
-  virtual int client_list( PeerData &pd,  char *buf,  size_t buflen ) noexcept;
-  virtual bool match( PeerData &pd,  PeerMatchArgs &ka ) noexcept;
-};
 
 struct HttpReq {
   static const size_t STR_SZ = 128;
@@ -77,6 +70,7 @@ struct HttpOut {
 };
 
 struct EvHttpService : public EvConnection, public RedisExec {
+  static const uint8_t EV_HTTP_SOCK = 3;
   char           * wsbuf;   /* decoded websocket frames */
   size_t           wsoff,   /* start offset of wsbuf */
                    wslen,   /* length of wsbuf used */
@@ -86,10 +80,9 @@ struct EvHttpService : public EvConnection, public RedisExec {
   int              term_int;
   bool             is_using_term;
   Term             term;
-  EvHttpServiceOps ops;
   void * operator new( size_t, void *ptr ) { return ptr; }
 
-  EvHttpService( EvPoll &p ) : EvConnection( p, EV_HTTP_SOCK, this->ops ),
+  EvHttpService( EvPoll &p ) : EvConnection( p, EV_HTTP_SOCK ),
     RedisExec( *p.map, p.ctx_id, p.dbx_id, *this, p.sub_route, *this ),
     wsbuf( 0 ), wsoff( 0 ), wslen( 0 ), websock_off( 0 ),
     term_int( 0 ), is_using_term( false ) {}
@@ -109,14 +102,9 @@ struct EvHttpService : public EvConnection, public RedisExec {
   void send_404_not_found( const HttpReq &hreq,  int opts ) noexcept;
   void send_404_bad_type( const HttpReq &hreq ) noexcept;
   void send_201_created( const HttpReq &hreq ) noexcept;
-  void process( void ) noexcept;
   bool process_websock( void ) noexcept;
   bool process_http( void ) noexcept;
-  bool on_msg( EvPublish &pub ) noexcept;
-  bool timer_expire( uint64_t tid,  uint64_t event_id ) noexcept;
-  bool hash_to_sub( uint32_t h,  char *key,  size_t &keylen ) noexcept;
   bool flush_term( void ) noexcept;
-  void write( void ) noexcept; /* override write() in EvConnection */
   bool frame_websock( void ) noexcept;
   bool frame_websock2( void ) noexcept;
   bool process_get( const HttpReq &hreq ) noexcept;
@@ -125,10 +113,21 @@ struct EvHttpService : public EvConnection, public RedisExec {
   bool send_ws_upgrade( const HttpReq &wshdr ) noexcept;
   bool send_ws_pong( const char *payload,  size_t len ) noexcept;
   size_t recv_wsframe( char *start,  char *end ) noexcept;
-  void release( void ) noexcept;
   void push_free_list( void ) noexcept;
   void pop_free_list( void ) noexcept;
-  void process_close( void ) {}
+
+  /* EvSocket */
+  virtual void write( void ) noexcept final;
+  virtual void process( void ) noexcept final;
+  virtual void release( void ) noexcept final;
+  virtual bool timer_expire( uint64_t tid, uint64_t eid ) noexcept final;
+  virtual bool hash_to_sub( uint32_t h, char *k, size_t &klen ) noexcept final;
+  virtual bool on_msg( EvPublish &pub ) noexcept final;
+  virtual void key_prefetch( EvKeyCtx &ctx ) noexcept final;
+  virtual int  key_continue( EvKeyCtx &ctx ) noexcept final;
+  /* PeerData */
+  virtual int client_list( char *buf,  size_t buflen ) noexcept final;
+  virtual bool match( PeerMatchArgs &ka ) noexcept final;
 };
 
 /*    0                   1                   2                   3

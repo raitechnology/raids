@@ -8,14 +8,15 @@ namespace rai {
 namespace ds {
 
 struct EvTcpListen : public EvListen {
-  EvTcpListen( EvPoll &p,  PeerOps &o ) : EvListen( p, o ) {}
+  EvTcpListen( EvPoll &p,  uint8_t tp,  const char *name )
+    : EvListen( p, tp, name ) {}
   int listen( const char *ip,  int port,  int opts,  const char *k ) noexcept;
   virtual bool accept( void ) noexcept { return false; }
   static void set_sock_opts( EvPoll &p,  int sock,  int opts );
 };
 
 struct EvTcpClient : public EvNetClient {
-  EvTcpClient( EvPoll &p, EvCallback &callback,  EvSockType t = EV_CLIENT_SOCK )
+  EvTcpClient( EvPoll &p,  EvCallback &callback,  uint8_t t = EV_CLIENT_SOCK )
     : EvNetClient( p, callback, t ) {}
   int connect( const char *ip,  int port,  int opts ) noexcept;
 };

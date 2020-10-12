@@ -35,10 +35,9 @@ struct PubTest : public EvShmSvc, public KvSubNotifyList {
   uint64_t     last_time;
   MDMsgMem     mem;
   MDDict     * dict;
-  PeerOps      ops;
 
   PubTest( EvPoll &poll,  const char *s,  uint32_t ps_rate )
-    : EvShmSvc( poll, this->ops ), sub( s ), len( ::strlen( s ) ),
+    : EvShmSvc( poll ), sub( s ), len( ::strlen( s ) ),
       h( 0 ), per_sec( ps_rate ), ns_ival( 1e9 / ps_rate ),
       count( 0 ), last_time( 0 ), dict( 0 ) {
   }

@@ -34,10 +34,9 @@ struct SubTest : public EvShmSvc {
                ih;
   MDMsgMem     mem;
   MDDict     * dict;
-  PeerOps      ops;
 
   SubTest( EvPoll &poll,  const char *s,  const char *i )
-    : EvShmSvc( poll, ops ), sub( s ), ibx( i ),
+    : EvShmSvc( poll ), sub( s ), ibx( i ),
       len( ::strlen( s ) ), ilen( i ? ::strlen( i ) : 0 ),
       h( 0 ), ih( 0 ), dict( 0 ) {
   }

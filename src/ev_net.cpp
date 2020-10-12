@@ -13,21 +13,27 @@
 #include <arpa/inet.h>
 #include <sys/un.h>
 #include <raids/ev_net.h>
-#include <raids/ev_service.h>
-#include <raids/ev_client.h>
-#include <raids/ev_http.h>
-#include <raids/ev_nats.h>
-#include <raids/ev_capr.h>
-#include <raids/ev_rv.h>
+#include <raids/ev_key.h>
 #include <raids/ev_publish.h>
 #include <raids/kv_pubsub.h>
-#include <raids/ev_memcached.h>
 #include <raids/bit_iter.h>
 #include <raids/timer_queue.h>
+#include <raids/int_str.h>
 
 using namespace rai;
 using namespace ds;
 using namespace kv;
+
+void
+EvPoll::register_type( uint8_t t,  const char *s ) noexcept
+{
+  const char *x = this->sock_type_str[ t ];
+  this->sock_type_str[ t ] = s;
+  if ( x != NULL && ::strcmp( x, s ) != 0 ) {
+    fprintf( stderr, "duplicate type %u %s:%s\n", t, x, s );
+    exit( 1 );
+  }
+}
 
 int
 EvPoll::init( int numfds,  bool prefetch/*,  bool single*/ ) noexcept
@@ -103,7 +109,7 @@ EvPoll::wait( int ms ) noexcept
       }
       else {
         EvState ev = EV_READ;
-        if ( s->is_type( EV_TIMER_QUEUE ) || s->is_type( EV_LISTEN_SOCK ) )
+        if ( s->test_opts( OPT_READ_HI ) )
           ev = EV_READ_HI;
         s->idle_push( ev );
       }
@@ -134,6 +140,96 @@ EvPoll::wait( int ms ) noexcept
   }
   return n;
 }
+/* enable epolling of sock fd */
+int
+EvPoll::add_sock( EvSocket *s ) noexcept
+{
+  /* make enough space for fd */
+  if ( (uint32_t) s->fd > this->maxfd ) {
+    uint32_t xfd = align<uint32_t>( s->fd + 1, EvPoll::ALLOC_INCR );
+    EvSocket **tmp;
+    if ( xfd < this->nfds )
+      xfd = this->nfds;
+  try_again:;
+    tmp = (EvSocket **)
+          ::realloc( this->sock, xfd * sizeof( this->sock[ 0 ] ) );
+    if ( tmp == NULL ) {
+      perror( "realloc" );
+      xfd /= 2;
+      if ( xfd > (uint32_t) s->fd )
+        goto try_again;
+      return -1;
+    }
+    for ( uint32_t i = this->maxfd + 1; i < xfd; i++ )
+      tmp[ i ] = NULL;
+    this->sock  = tmp;
+    this->maxfd = xfd - 1;
+  }
+  if ( ! s->test_opts( OPT_NO_POLL ) ) {
+    /* add to poll set */
+    struct epoll_event event;
+    ::memset( &event, 0, sizeof( struct epoll_event ) );
+    event.data.fd = s->fd;
+    event.events  = EPOLLIN | EPOLLRDHUP | EPOLLET;
+    if ( ::epoll_ctl( this->efd, EPOLL_CTL_ADD, s->fd, &event ) < 0 ) {
+      perror( "epoll_ctl" );
+      return -1;
+    }
+  }
+  this->sock[ s->fd ] = s;
+  this->fdcnt++;
+  /* add to active list */
+  s->set_list( IN_ACTIVE_LIST );
+  this->active_list.push_tl( s );
+  /* if sock starts in write mode, add it to the queue */
+  s->prio_cnt = this->prio_tick;
+  if ( s->state != 0 )
+    this->push_event_queue( s );
+  uint64_t ns = this->current_coarse_ns();
+  s->start_ns   = ns;
+  s->active_ns  = ns;
+  s->id         = ++this->next_id;
+  s->bytes_recv = 0;
+  s->bytes_sent = 0;
+  s->msgs_recv  = 0;
+  s->msgs_sent  = 0;
+  return 0;
+}
+/* remove a sock fd from epolling */
+void
+EvPoll::remove_sock( EvSocket *s ) noexcept
+{
+  struct epoll_event event;
+  if ( s->fd < 0 )
+    return;
+  /* remove poll set */
+  if ( (uint32_t) s->fd <= this->maxfd && this->sock[ s->fd ] == s ) {
+    if ( ! s->test_opts( OPT_NO_POLL ) ) {
+      ::memset( &event, 0, sizeof( struct epoll_event ) );
+      event.data.fd = s->fd;
+      event.events  = 0;
+      if ( ::epoll_ctl( this->efd, EPOLL_CTL_DEL, s->fd, &event ) < 0 )
+        perror( "epoll_ctl" );
+    }
+    this->sock[ s->fd ] = NULL;
+    this->fdcnt--;
+  }
+  /* close if wants */
+  if ( ! s->test_opts( OPT_NO_CLOSE ) ) {
+    if ( ::close( s->fd ) != 0 ) {
+      fprintf( stderr, "close: errno %d/%s, fd %d type %s\n",
+               errno, strerror( errno ), s->fd, s->type_string() );
+    }
+  }
+  if ( s->in_list( IN_ACTIVE_LIST ) ) {
+    s->client_stats( this->peer_stats );
+    s->set_list( IN_NO_LIST );
+    this->active_list.pop( s );
+  }
+  /* release memory buffers */
+  s->release();
+  s->fd = -1;
+}
 
 void
 EvPoll::idle_close( EvSocket *s,  uint64_t ns ) noexcept
@@ -159,29 +255,6 @@ EvPoll::idle_close( EvSocket *s,  uint64_t ns ) noexcept
 }
 
 const char *
-EvSocket::sock_type_string( EvSockType t ) noexcept
-{
-  switch ( t ) {
-    case EV_LISTEN_SOCK:    return "listen"; /* virtual accept */
-    case EV_TIMER_QUEUE:    return "timer";
-    case EV_REDIS_SOCK:     return "redis";
-    case EV_HTTP_SOCK:      return "http";
-    case EV_CLIENT_SOCK:    return "client";
-    case EV_TERMINAL:       return "term";
-    case EV_NATS_SOCK:      return "nats";
-    case EV_CAPR_SOCK:      return "capr";
-    case EV_RV_SOCK:        return "rv";
-    case EV_KV_PUBSUB:      return "kv_pubsub";
-    case EV_SHM_SOCK:       return "shm_sock";
-    case EV_SHM_API:        return "shm_api";
-    case EV_SHM_SVC:        return "svc";
-    case EV_MEMCACHED_SOCK: return "memcached";
-    case EV_MEMUDP_SOCK:    return "memcached_udp";
-    case EV_CLIENTUDP_SOCK: return "client_udp";
-  }
-  return "unknown_sock";
-}
-const char *
 EvSocket::state_string( EvState state ) noexcept
 {
   switch ( state ) {
@@ -199,50 +272,67 @@ EvSocket::state_string( EvState state ) noexcept
   }
   return "unknown_state";
 }
-
 /* vtable dispatch */
-inline void EvSocket::v_write( void ) noexcept {
-  SOCK_CALL( this, write() );
+const char *
+EvSocket::type_string( void ) noexcept
+{
+  return "ev_socket";
 }
-inline void EvSocket::v_read( void ) noexcept {
-  SOCK_CALL( this, read() );
+
+void
+EvSocket::dbg( const char *where ) noexcept
+{
+  fprintf( stderr, "dbg: %s at %s\n", this->type_string(), where );
 }
-inline void EvSocket::v_process( void ) noexcept {
-  SOCK_CALL( this, process() );
+
+bool
+EvSocket::busy_poll( void ) noexcept
+{
+  uint64_t nb = this->bytes_recv;
+  this->read();
+  return nb != this->bytes_recv; /* if progress */
 }
-inline void EvSocket::v_release( void ) noexcept {
-  SOCK_CALL( this, release() );
+
+void
+EvSocket::process_shutdown( void ) noexcept
+{
+  /* transition from shutdown to close */
+  this->pushpop( EV_CLOSE, EV_SHUTDOWN );
 }
-inline bool EvSocket::v_timer_expire( uint64_t tid, uint64_t eid ) noexcept {
-  bool b = false;
-  SOCK_CALL2( b, this, timer_expire( tid, eid ) );
-  return b;
+
+void
+EvSocket::process_close( void ) noexcept
+{
+  /* after this, close fd */
 }
-inline bool EvSocket::v_hash_to_sub( uint32_t h, char *k,
-                                     size_t &klen ) noexcept {
-  bool b = false;
-  SOCK_CALL2( b, this, hash_to_sub( h, k, klen ) );
-  return b;
+
+/* thsee are optional, but not necessary for a working protocol */
+/* timer, return true to rearm same interval */
+bool EvSocket::timer_expire( uint64_t, uint64_t ) noexcept { return false; }
+/* pub sub, subject resolution, deliver publish message */
+bool EvSocket::hash_to_sub( uint32_t, char *, size_t & ) noexcept { return false; }
+bool EvSocket::on_msg( EvPublish & ) noexcept { return true; }
+/* key prefetch, requires a batch of keys to hide latency */
+void EvSocket::key_prefetch( EvKeyCtx & ) noexcept {}
+int  EvSocket::key_continue( EvKeyCtx & ) noexcept { return 0; }
+
+EvListen::EvListen( EvPoll &p,  uint8_t tp,  const char *name )
+    : EvSocket( p, tp ), accept_cnt( 0 ), timer_id( (uint64_t) tp << 56 )
+{
+  p.register_type( tp, name );
 }
-inline bool EvSocket::v_on_msg( EvPublish &pub ) noexcept {
-  bool b = true;
-  SOCK_CALL2( b, this, on_msg( pub ) );
-  return b;
+
+void
+EvListen::read( void ) noexcept
+{
+  if ( this->accept() )
+    this->accept_cnt++;
 }
-inline void EvSocket::v_exec_key_prefetch( EvKeyCtx &ctx ) noexcept {
-  SOCK_CALL( this, exec_key_prefetch( ctx ) );
-}
-inline int  EvSocket::v_exec_key_continue( EvKeyCtx &ctx ) noexcept {
-  int status = 0;
-  SOCK_CALL2( status, this, exec_key_continue( ctx ) );
-  return status;
-}
-inline void EvSocket::v_process_shutdown( void ) noexcept {
-  SOCK_CALL( this, process_shutdown() );
-}
-inline void EvSocket::v_process_close( void ) noexcept {
-  SOCK_CALL( this, process_close() );
-}
+
+/* listeners don't do these */
+void EvListen::write( void ) noexcept {}   /* nothing to write */
+void EvListen::process( void ) noexcept {} /* nothing to process */
+void EvListen::release( void ) noexcept {} /* no buffers */
 
 void
 EvPoll::drain_prefetch( void ) noexcept
@@ -259,18 +349,18 @@ EvPoll::drain_prefetch( void ) noexcept
     ctx[ i ] = pq.pop();
     EvKeyCtx & k = *ctx[ i ];
     s = k.owner;
-    s->v_exec_key_prefetch( k );
+    s->key_prefetch( k );
   }
   /*this->prefetch_cnt[ sz ]++;*/
   i &= ( PREFETCH_SIZE - 1 );
   for ( j = 0; ; ) {
     EvKeyCtx & k = *ctx[ j ];
     s = k.owner;
-    switch( s->v_exec_key_continue( k ) ) {
+    switch( s->key_continue( k ) ) {
       default:
       case EK_SUCCESS:
         s->msgs_sent++;
-        s->v_process();
+        s->process();
         if ( s->test( EV_PREFETCH ) != 0 ) {
           s->pop( EV_PREFETCH ); /* continue prefetching */
         }
@@ -296,7 +386,7 @@ EvPoll::drain_prefetch( void ) noexcept
         ctx[ i ] = pq.pop();
         EvKeyCtx & k = *ctx[ i ];
         s = k.owner;
-        s->v_exec_key_prefetch( k );
+        s->key_prefetch( k );
         /*ctx[ i ]->prefetch();*/
         i = ( i + 1 ) & ( PREFETCH_SIZE - 1 );
       } while ( ++sz < PREFETCH_SIZE && ! pq.is_empty() );
@@ -369,7 +459,7 @@ EvPoll::dispatch( void ) noexcept
     this->prio_tick++;
     if ( state > EV_PREFETCH && this->prefetch_pending > 0 )
       goto do_prefetch;
-    s->set_queue( NOT_IN_QUEUE );
+    s->set_queue( IN_NO_QUEUE );
     this->ev_queue.pop();
     /*printf( "fd %d type %s state %s\n",
       s->fd, sock_type_string( s->type ), state_string( (EvState) state ) );*/
@@ -379,10 +469,10 @@ EvPoll::dispatch( void ) noexcept
       case EV_READ_LO:
       case EV_READ_HI:
         s->active_ns = curr_ns;
-        s->v_read();
+        s->read();
         break;
       case EV_PROCESS:
-        s->v_process();
+        s->process();
         break;
       case EV_PREFETCH:
         s->pop( EV_PREFETCH );
@@ -391,28 +481,27 @@ EvPoll::dispatch( void ) noexcept
       case EV_WRITE:
       case EV_WRITE_HI:
       case EV_WRITE_POLL:
-        s->v_write();
+        s->write();
         break;
       case EV_SHUTDOWN:
-        s->v_process_shutdown();
+        s->process_shutdown();
         s->pop( EV_SHUTDOWN );
         break;
       case EV_CLOSE:
         s->popall();
         this->remove_sock( s );
-        s->v_process_close();
+        s->process_close();
         break;
       case EV_BUSY_POLL:
-        if ( s->is_type( EV_KV_PUBSUB ) ) {
-          ret |= BUSY_POLL;
-          if ( ((KvPubSub *) s)->read_inbox( false ) == 0 ) {
-            s->prio_cnt = this->prio_tick;
-            this->push_event_queue( s );
-            if ( start + 1 != this->prio_tick )
-              ret |= DISPATCH_BUSY;
-            return ret;
-          }
+        ret |= BUSY_POLL;
+        if ( ! s->busy_poll() ) { /* if no progress made */
+          s->prio_cnt = this->prio_tick;
+          this->push_event_queue( s );
+          if ( start + 1 != this->prio_tick )
+            ret |= DISPATCH_BUSY; /* some progress made */
+          return ret;
         }
+        /* otherwise continue busy */
         break;
     }
     if ( s->state != 0 ) {
@@ -453,7 +542,7 @@ EvPoll::publish_one( EvPublish &pub,  uint32_t *rcount_total,
     EvSocket * s;
     if ( routes[ i ] <= this->maxfd &&
          (s = this->sock[ routes[ i ] ]) != NULL ) {
-      flow_good &= s->v_on_msg( pub );
+      flow_good &= s->on_msg( pub );
     }
   }
   return flow_good;
@@ -502,7 +591,7 @@ EvPoll::publish_multi( EvPublish &pub,  uint32_t *rcount_total,
     if ( (s = this->sock[ min_route ]) != NULL ) {
       rcount++;
       pub.prefix_cnt = cnt;
-      flow_good &= s->v_on_msg( pub );
+      flow_good &= s->on_msg( pub );
     }
   }
   if ( rcount_total != NULL )
@@ -553,7 +642,7 @@ EvPoll::publish_queue( EvPublish &pub,  uint32_t *rcount_total ) noexcept
     if ( (s = this->sock[ min_route ]) != NULL ) {
       rcount++;
       pub.prefix_cnt = cnt;
-      flow_good &= s->v_on_msg( pub );
+      flow_good &= s->on_msg( pub );
     }
   }
   if ( rcount_total != NULL )
@@ -636,7 +725,7 @@ RoutePublish::hash_to_sub( uint32_t r,  uint32_t h,  char *key,
   EvSocket *s;
   bool b = false;
   if ( r <= poll.maxfd && (s = poll.sock[ r ]) != NULL )
-    b = s->v_hash_to_sub( h, key, keylen );
+    b = s->hash_to_sub( h, key, keylen );
   return b;
 }
 /* track number of subscribes to keyspace subjects to enable them */
@@ -786,7 +875,7 @@ EvPoll::process_quit( void ) noexcept
     do {
       if ( this->quit >= 5 ) {
         if ( s->in_queue( IN_EVENT_QUEUE ) ) {
-          s->set_queue( NOT_IN_QUEUE );
+          s->set_queue( IN_NO_QUEUE );
           this->ev_queue.remove( s ); /* close state */
         }
         if ( s->state != 0 )
@@ -878,17 +967,17 @@ PeerData::set_addr( const sockaddr *sa ) noexcept
 }
 
 bool
-EvSocketOps::match( PeerData &pd,  PeerMatchArgs &ka ) noexcept
+EvSocket::match( PeerMatchArgs &ka ) noexcept
 {
-  return this->client_match( pd, &ka, NULL );
+  return EvSocket::client_match( *this, &ka, NULL );
 }
 
 int
-EvSocketOps::client_list( PeerData &pd,  char *buf,  size_t buflen ) noexcept
+EvSocket::client_list( char *buf,  size_t buflen ) noexcept
 {
   /* id=1082 addr=[::1]:43362 fd=8 name= age=1 idle=0 flags=N */
   static const uint64_t ONE_NS = 1000000000;
-  uint64_t cur_time_ns = ((EvSocket &) pd).poll.current_coarse_ns();
+  uint64_t cur_time_ns = this->poll.current_coarse_ns();
   /* list: 'id=1082 addr=[::1]:43362 fd=8 name= age=1 idle=0 flags=N db=0
    * sub=0 psub=0 multi=-1 qbuf=0 qbuf-free=32768 obl=0 oll=0 omem=0
    * events=r cmd=client\n'
@@ -899,17 +988,18 @@ EvSocketOps::client_list( PeerData &pd,  char *buf,  size_t buflen ) noexcept
    * events=sock rd/wr, cmd=last cmd issued */
   return ::snprintf( buf, buflen,
     "id=%lu addr=%.*s fd=%d name=%.*s kind=%s age=%ld idle=%ld ",
-    pd.id,
-    (int) pd.get_peer_address_strlen(), pd.peer_address,
-    pd.fd,
-    (int) pd.get_name_strlen(), pd.name,
-    pd.kind,
-    ( cur_time_ns - pd.start_ns ) / ONE_NS,
-    ( cur_time_ns - pd.active_ns ) / ONE_NS );
+    this->PeerData::id,
+    (int) this->PeerData::get_peer_address_strlen(),
+    this->PeerData::peer_address,
+    this->PeerData::fd,
+    (int) this->PeerData::get_name_strlen(), this->PeerData::name,
+    this->PeerData::kind,
+    ( cur_time_ns - this->PeerData::start_ns ) / ONE_NS,
+    ( cur_time_ns - this->PeerData::active_ns ) / ONE_NS );
 }
 
 bool
-EvSocketOps::client_match( PeerData &pd,  PeerMatchArgs *ka,  ... ) noexcept
+EvSocket::client_match( PeerData &pd,  PeerMatchArgs *ka,  ... ) noexcept
 {
   /* match filters, if any don't match return false */
   if ( ka->id != 0 )
@@ -948,170 +1038,128 @@ EvSocketOps::client_match( PeerData &pd,  PeerMatchArgs *ka,  ... ) noexcept
 }
 
 bool
-EvSocketOps::client_kill( PeerData &pd ) noexcept
+EvSocket::client_kill( void ) noexcept
 {
-  EvSocket &s = (EvSocket &) pd;
   /* if already shutdown, close up immediately */
-  if ( s.test( EV_SHUTDOWN ) != 0 ) {
-    if ( s.in_queue( IN_EVENT_QUEUE ) ) {
-      s.set_queue( NOT_IN_QUEUE );
-      s.poll.ev_queue.remove( &s ); /* close state */
+  if ( this->test( EV_SHUTDOWN ) != 0 ) {
+    if ( this->in_queue( IN_EVENT_QUEUE ) ) {
+      this->set_queue( IN_NO_QUEUE );
+      this->poll.ev_queue.remove( this ); /* close state */
     }
-    if ( s.state != 0 )
-      s.popall();
-    s.idle_push( EV_CLOSE );
+    if ( this->state != 0 )
+      this->popall();
+    this->idle_push( EV_CLOSE );
   }
   else { /* close after writing pending data */
-    s.idle_push( EV_SHUTDOWN );
+    this->idle_push( EV_SHUTDOWN );
   }
   return true;
 }
 
 bool
-EvConnectionOps::match( PeerData &pd,  PeerMatchArgs &ka ) noexcept
+EvConnection::match( PeerMatchArgs &ka ) noexcept
 {
-  return this->client_match( pd, &ka, MARG( "tcp" ), NULL );
+  return EvSocket::client_match( *this, &ka, "tcp", 3, NULL );
 }
 
 int
-EvConnectionOps::client_list( PeerData &pd,  char *buf,
-                              size_t buflen ) noexcept
+EvConnection::client_list( char *buf,  size_t buflen ) noexcept
 {
-  EvConnection & c = (EvConnection &) pd;
-  int i = this->EvSocketOps::client_list( pd, buf, buflen );
+  int i = this->EvSocket::client_list( buf, buflen );
   if ( i >= 0 ) {
     i += ::snprintf( &buf[ i ], buflen - (size_t) i,
-                     "rbuf=%u rsz=%u imsg=%lu br=%lu "
-                     "wbuf=%lu wsz=%lu omsg=%lu bs=%lu ",
-                     c.len - c.off, c.recv_size, c.msgs_recv, c.bytes_recv,
-                     c.wr_pending,
-                     c.tmp.fast_len + c.tmp.block_cnt * c.tmp.alloc_size,
-                     c.msgs_sent, c.bytes_sent );
+      "rbuf=%u rsz=%u imsg=%lu br=%lu wbuf=%lu wsz=%lu omsg=%lu bs=%lu ",
+      this->len - this->off, this->recv_size, this->msgs_recv, this->bytes_recv,
+      this->wr_pending,
+      this->tmp.fast_len + this->tmp.block_cnt * this->tmp.alloc_size,
+      this->msgs_sent, this->bytes_sent );
   }
   return i;
 }
 
 void
-EvSocketOps::client_stats( PeerData &pd,  PeerStats &ps ) noexcept
+EvSocket::client_stats( PeerStats &ps ) noexcept
 {
-  EvSocket & s = (EvSocket &) pd;
-  ps.bytes_recv += s.bytes_recv;
-  ps.bytes_sent += s.bytes_sent;
-  ps.msgs_recv  += s.msgs_recv;
-  ps.msgs_sent  += s.msgs_sent;
+  ps.bytes_recv += this->bytes_recv;
+  ps.bytes_sent += this->bytes_sent;
+  ps.msgs_recv  += this->msgs_recv;
+  ps.msgs_sent  += this->msgs_sent;
 }
 
 void
-EvSocketOps::retired_stats( PeerData &pd,  PeerStats &ps ) noexcept
+EvSocket::retired_stats( PeerStats &ps ) noexcept
 {
-  EvSocket & s = (EvSocket &) pd;
-  ps.bytes_recv += s.poll.peer_stats.bytes_recv;
-  ps.bytes_sent += s.poll.peer_stats.bytes_sent;
-  ps.msgs_recv  += s.poll.peer_stats.msgs_recv;
-  ps.msgs_sent  += s.poll.peer_stats.msgs_sent;
-  ps.accept_cnt += s.poll.peer_stats.accept_cnt;
+  ps.bytes_recv += this->poll.peer_stats.bytes_recv;
+  ps.bytes_sent += this->poll.peer_stats.bytes_sent;
+  ps.msgs_recv  += this->poll.peer_stats.msgs_recv;
+  ps.msgs_sent  += this->poll.peer_stats.msgs_sent;
+  ps.accept_cnt += this->poll.peer_stats.accept_cnt;
 }
 
 bool
-EvListenOps::match( PeerData &pd,  PeerMatchArgs &ka ) noexcept
+EvListen::match( PeerMatchArgs &ka ) noexcept
 {
-  return this->client_match( pd, &ka, MARG( "listen" ), NULL );
+  return EvSocket::client_match( *this, &ka, "listen", 6, NULL );
 }
 
 int
-EvListenOps::client_list( PeerData &pd,  char *buf,  size_t buflen ) noexcept
+EvListen::client_list( char *buf,  size_t buflen ) noexcept
 {
-  EvListen & l = (EvListen &) pd;
-  int i = this->EvSocketOps::client_list( pd, buf, buflen );
+  int i = this->EvSocket::client_list( buf, buflen );
   if ( i >= 0 ) {
     i += ::snprintf( &buf[ i ], buflen - (size_t) i,
                      "acpt=%lu ",
-                     l.accept_cnt );
+                     this->accept_cnt );
   }
   return i;
 }
 
 void
-EvListenOps::client_stats( PeerData &pd,  PeerStats &ps ) noexcept
+EvListen::client_stats( PeerStats &ps ) noexcept
 {
-  EvListen & l = (EvListen &) pd;
-  ps.accept_cnt += l.accept_cnt;
+  ps.accept_cnt += this->accept_cnt;
 }
 
 bool
-EvUdpOps::match( PeerData &pd,  PeerMatchArgs &ka ) noexcept
+EvUdp::match( PeerMatchArgs &ka ) noexcept
 {
-  return this->client_match( pd, &ka, MARG( "udp" ), NULL );
+  return EvSocket::client_match( *this, &ka, "udp", 3, NULL );
 }
 
 int
-EvUdpOps::client_list( PeerData &pd,  char *buf,  size_t buflen ) noexcept
+EvUdp::client_list( char *buf,  size_t buflen ) noexcept
 {
-  EvUdp & u = (EvUdp &) pd;
-  int i = this->EvSocketOps::client_list( pd, buf, buflen );
+  int i = this->EvSocket::client_list( buf, buflen );
   if ( i >= 0 ) {
     i += ::snprintf( &buf[ i ], buflen - (size_t) i,
                      "imsg=%lu omsg=%lu br=%lu bs=%lu ",
-                     u.msgs_recv, u.msgs_sent,
-                     u.bytes_recv, u.bytes_sent );
+                     this->msgs_recv, this->msgs_sent,
+                     this->bytes_recv, this->bytes_sent );
   }
   return i;
 }
 
-/* enable epolling of sock fd */
-int
-EvPoll::add_sock( EvSocket *s ) noexcept
+PeerData *
+PeerMatchIter::first( void ) noexcept
 {
-  /* make enough space for fd */
-  if ( (uint32_t) s->fd > this->maxfd ) {
-    uint32_t xfd = align<uint32_t>( s->fd + 1, EvPoll::ALLOC_INCR );
-    EvSocket **tmp;
-    if ( xfd < this->nfds )
-      xfd = this->nfds;
-  try_again:;
-    tmp = (EvSocket **)
-          ::realloc( this->sock, xfd * sizeof( this->sock[ 0 ] ) );
-    if ( tmp == NULL ) {
-      perror( "realloc" );
-      xfd /= 2;
-      if ( xfd > (uint32_t) s->fd )
-        goto try_again;
-      return -1;
-    }
-    for ( uint32_t i = this->maxfd + 1; i < xfd; i++ )
-      tmp[ i ] = NULL;
-    this->sock  = tmp;
-    this->maxfd = xfd - 1;
+  /* go to the front */
+  for ( this->p = &this->me; this->p->back != NULL; this->p = this->p->back )
+    ;
+  return this->next(); /* match the next */
+}
+
+PeerData *
+PeerMatchIter::next( void ) noexcept
+{
+  while ( this->p != NULL ) { /* while peers to match */
+    PeerData & x = *this->p;
+    this->p = x.next;
+    if ( ( &x == &this->me && this->ka.skipme ) || /* match peer */
+         ! x.match( this->ka ) )
+      continue;
+    return &x;
   }
-  if ( ! s->is_type( EV_SHM_SVC ) ) { /* shm svc doesn't use the fd */
-    /* add to poll set */
-    struct epoll_event event;
-    ::memset( &event, 0, sizeof( struct epoll_event ) );
-    event.data.fd = s->fd;
-    event.events  = EPOLLIN | EPOLLRDHUP | EPOLLET;
-    if ( ::epoll_ctl( this->efd, EPOLL_CTL_ADD, s->fd, &event ) < 0 ) {
-      perror( "epoll_ctl" );
-      return -1;
-    }
-  }
-  this->sock[ s->fd ] = s;
-  this->fdcnt++;
-  /* add to active list */
-  s->set_list( IN_ACTIVE_LIST );
-  this->active_list.push_tl( s );
-  /* if sock starts in write mode, add it to the queue */
-  s->prio_cnt = this->prio_tick;
-  if ( s->state != 0 )
-    this->push_event_queue( s );
-  uint64_t ns = this->current_coarse_ns();
-  s->start_ns   = ns;
-  s->active_ns  = ns;
-  s->id         = ++this->next_id;
-  s->bytes_recv = 0;
-  s->bytes_sent = 0;
-  s->msgs_recv  = 0;
-  s->msgs_sent  = 0;
-  return 0;
+  return NULL;
 }
 /* start a timer event */
 bool
@@ -1145,43 +1193,8 @@ EvPoll::timer_expire( EvTimerEvent &ev ) noexcept
   EvSocket *s;
   bool b = false;
   if ( (uint32_t) ev.id <= this->maxfd && (s = this->sock[ ev.id ]) != NULL )
-    b = s->v_timer_expire( ev.timer_id, ev.event_id );
+    b = s->timer_expire( ev.timer_id, ev.event_id );
   return b;
-}
-/* remove a sock fd from epolling */
-void
-EvPoll::remove_sock( EvSocket *s ) noexcept
-{
-  struct epoll_event event;
-  if ( s->fd < 0 )
-    return;
-  /* remove poll set */
-  if ( (uint32_t) s->fd <= this->maxfd && this->sock[ s->fd ] == s ) {
-    if ( ! s->is_type( EV_SHM_SVC ) ) {
-      ::memset( &event, 0, sizeof( struct epoll_event ) );
-      event.data.fd = s->fd;
-      event.events  = 0;
-      if ( ::epoll_ctl( this->efd, EPOLL_CTL_DEL, s->fd, &event ) < 0 )
-        perror( "epoll_ctl" );
-    }
-    this->sock[ s->fd ] = NULL;
-    this->fdcnt--;
-  }
-  /* terms are stdin, stdout */
-  if ( ! s->is_type( EV_TERMINAL ) && ! s->is_type( EV_SHM_SVC ) ) {
-    if ( ::close( s->fd ) != 0 ) {
-      fprintf( stderr, "close: errno %d/%s, fd %d type %s\n",
-               errno, strerror( errno ), s->fd, s->type_string() );
-    }
-  }
-  if ( s->in_list( IN_ACTIVE_LIST ) ) {
-    s->op.client_stats( *s, this->peer_stats );
-    s->set_list( IN_NO_LIST );
-    this->active_list.pop( s );
-  }
-  /* release memory buffers */
-  s->v_release();
-  s->fd = -1;
 }
 /* fill up recv buffers */
 void
@@ -1530,7 +1543,7 @@ EvSocket::idle_push( EvState s ) noexcept
     /* new state has higher priority than current state, reorder queue */
     if ( x1 > x2 ) {
       if ( this->in_queue( IN_EVENT_QUEUE ) ) {
-        this->set_queue( NOT_IN_QUEUE );
+        this->set_queue( IN_NO_QUEUE );
         this->poll.ev_queue.remove( this );
       }
       goto do_push; /* pop, then push */

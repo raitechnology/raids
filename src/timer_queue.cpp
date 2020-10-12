@@ -13,6 +13,13 @@ using namespace rai;
 using namespace ds;
 using namespace kv;
 
+EvTimerQueue::EvTimerQueue( EvPoll &p )
+            : EvSocket( p, EV_TIMER_QUEUE ),
+              last( 0 ), epoch( 0 ), delta( 0 ), real( 0 )
+{
+  this->sock_opts = OPT_READ_HI;
+}
+
 EvTimerQueue *
 EvTimerQueue::create_timer_queue( EvPoll &p ) noexcept
 {
@@ -39,7 +46,6 @@ EvTimerQueue::create_timer_queue( EvPoll &p ) noexcept
   if ( p.add_sock( q ) < 0 ) {
     printf( "failed to add timer %d\n", tfd );
     ::close( tfd );
-    delete q;
     return NULL;
   }
   return q;
@@ -88,11 +94,11 @@ EvTimerQueue::repost( void ) noexcept
   this->queue.push( el );
 }
 
-bool
+void
 EvTimerQueue::read( void ) noexcept
 {
   uint8_t buf[ 1024 ];
-  size_t  total = 0;
+  /*size_t  total = 0;*/
   ssize_t n;
   for (;;) {
     n = ::read( this->fd, buf, sizeof( buf ) );
@@ -110,9 +116,9 @@ EvTimerQueue::read( void ) noexcept
       }
       break;
     }
-    total += n;
+    /*total += n;*/
   }
-  return total > 0;
+  /*return total > 0;*/
 }
 
 bool
@@ -157,3 +163,13 @@ EvTimerQueue::process( void ) noexcept
   }
   this->pop( EV_PROCESS ); /* all timers that expired are processed */
 }
+
+void EvTimerQueue::write( void ) noexcept {}
+void EvTimerQueue::release( void ) noexcept {}
+bool EvTimerQueue::timer_expire( uint64_t, uint64_t ) noexcept { return false; }
+bool EvTimerQueue::hash_to_sub( uint32_t, char *, size_t & ) noexcept { return false; }
+bool EvTimerQueue::on_msg( EvPublish & ) noexcept { return false; }
+void EvTimerQueue::key_prefetch( EvKeyCtx & ) noexcept {}
+int  EvTimerQueue::key_continue( EvKeyCtx & ) noexcept { return 0; }
+void EvTimerQueue::process_shutdown( void ) noexcept {}
+void EvTimerQueue::process_close( void ) noexcept {}

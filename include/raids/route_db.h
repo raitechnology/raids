@@ -127,7 +127,7 @@ struct PeerStats {
   PeerStats() : bytes_recv( 0 ), bytes_sent( 0 ), accept_cnt( 0 ),
                 msgs_recv( 0 ), msgs_sent( 0 ) {}
 };
-
+#if 0
 struct PeerOps { /* interface for the peers */
   PeerOps() {}   /* list prints the peer, kill shuts the connection down */
   virtual int client_list( PeerData &,  char *,  size_t ) { return 0; }
@@ -136,7 +136,7 @@ struct PeerOps { /* interface for the peers */
   virtual void client_stats( PeerData &,  PeerStats & )   { return; }
   virtual void retired_stats( PeerData &,  PeerStats & )  { return; }
 };
-
+#endif
 struct PeerMatchIter {
   PeerData      & me,  /* the client using this connection is this */
                 * p;   /* the current position in the list */
@@ -164,11 +164,10 @@ struct PeerData {
                start_ns,   /* start time */
                active_ns;  /* last read time */
   const char * kind;       /* what protocol type */
-  PeerOps    & op;
   char         name[ 64 ], /* name assigned to peer */
                peer_address[ 64 ]; /* ip4 1.2.3.4:p, ip6 [ab::cd]:p, other */
 
-  PeerData( PeerOps &o ) : next( 0 ), back( 0 ), op( o ) {
+  PeerData() : next( 0 ), back( 0 ) {
     this->init_peer( -1, NULL, NULL );
   }
   /* no address, attached directly to shm */
@@ -230,6 +229,11 @@ struct PeerData {
       return 63;
     return (size_t) (uint8_t) buf[ 63 ];
   }
+  virtual int client_list( char *,  size_t ) { return 0; }
+  virtual bool client_kill( void )           { return false; }
+  virtual bool match( PeerMatchArgs & )      { return true; }
+  virtual void client_stats( PeerStats & )   { return; }
+  virtual void retired_stats( PeerStats & )  { return; }
 };
 
 struct KvPrefHash;

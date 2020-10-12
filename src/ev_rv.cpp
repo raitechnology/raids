@@ -77,10 +77,8 @@ using namespace md;
 static uint64_t uptime_stamp;
 
 EvRvListen::EvRvListen( EvPoll &p ) noexcept
-            : EvTcpListen( p, this->ops ),
-              timer_id( (uint64_t) EV_RV_SOCK << 56 ),
-              ipaddr( 0 ),
-              ipport( 0 )
+  : EvTcpListen( p, EvRvService::EV_RV_SOCK, "rv_sock" ),
+    ipaddr( 0 ), ipport( 0 )
 {
   if ( uptime_stamp == 0 )
     uptime_stamp = kv_current_realtime_ns();
@@ -119,13 +117,13 @@ EvRvListen::accept( void ) noexcept
     return false;
   }
   EvRvService *c =
-    this->poll.get_free_list<EvRvService>( this->poll.free_rv );
+    this->poll.get_free_list<EvRvService>(
+      this->poll.free_list[ EvRvService::EV_RV_SOCK ] );
   if ( c == NULL ) {
     perror( "accept: no memory" );
     ::close( sock );
     return false;
   }
-  c->sock_opts = this->sock_opts;
   EvTcpListen::set_sock_opts( this->poll, sock, this->sock_opts );
   ::fcntl( sock, F_SETFL, O_NONBLOCK | ::fcntl( sock, F_GETFL ) );
 
@@ -730,7 +728,7 @@ EvRvService::push_free_list( void ) noexcept
     fprintf( stderr, "capr sock should not be in active list\n" );
   else if ( ! this->in_list( IN_FREE_LIST ) ) {
     this->set_list( IN_FREE_LIST );
-    this->poll.free_rv.push_hd( this );
+    this->poll.free_list[ EV_RV_SOCK ].push_hd( this );
   }
 }
 
@@ -739,7 +737,7 @@ EvRvService::pop_free_list( void ) noexcept
 {
   if ( this->in_list( IN_FREE_LIST ) ) {
     this->set_list( IN_NO_LIST );
-    this->poll.free_rv.pop( this );
+    this->poll.free_list[ EV_RV_SOCK ].pop( this );
   }
 }
 

@@ -17,10 +17,7 @@ using namespace rai;
 using namespace ds;
 
 EvHttpListen::EvHttpListen( EvPoll &p ) noexcept
-             : EvTcpListen( p, this->ops ),
-               timer_id( (uint64_t) EV_HTTP_SOCK << 56 )
-{
-}
+  : EvTcpListen( p, EvHttpService::EV_HTTP_SOCK, "http_sock" ) {}
 
 bool
 EvHttpListen::accept( void ) noexcept
@@ -37,13 +34,13 @@ EvHttpListen::accept( void ) noexcept
     return false;
   }
   EvHttpService *c =
-    this->poll.get_free_list<EvHttpService>( this->poll.free_http );
+    this->poll.get_free_list<EvHttpService>(
+      this->poll.free_list[ EvHttpService::EV_HTTP_SOCK ] );
   if ( c == NULL ) {
     perror( "accept: no memory" );
     ::close( sock );
     return false;
   }
-  c->sock_opts = this->sock_opts;
   EvTcpListen::set_sock_opts( this->poll, sock, this->sock_opts );
   ::fcntl( sock, F_SETFL, O_NONBLOCK | ::fcntl( sock, F_GETFL ) );
   c->PeerData::init_peer( sock, (struct sockaddr *) &addr, "http" );
@@ -602,6 +599,18 @@ EvHttpService::timer_expire( uint64_t tid,  uint64_t event_id ) noexcept
     }
   }
   return false;
+}
+
+void
+EvHttpService::key_prefetch( EvKeyCtx &ctx ) noexcept
+{
+  this->RedisExec::exec_key_prefetch( ctx );
+}
+
+int
+EvHttpService::key_continue( EvKeyCtx &ctx ) noexcept
+{
+  return this->RedisExec::exec_key_continue( ctx );
 }
 
 bool
@@ -1285,7 +1294,7 @@ EvHttpService::push_free_list( void ) noexcept
     fprintf( stderr, "redis sock should not be in active list\n" );
   else if ( ! this->in_list( IN_FREE_LIST ) ) {
     this->set_list( IN_FREE_LIST );
-    this->poll.free_http.push_hd( this );
+    this->poll.free_list[ EV_HTTP_SOCK ].push_hd( this );
   }
 }
 
@@ -1294,32 +1303,32 @@ EvHttpService::pop_free_list( void ) noexcept
 {
   if ( this->in_list( IN_FREE_LIST ) ) {
     this->set_list( IN_NO_LIST );
-    this->poll.free_http.pop( this );
+    this->poll.free_list[ EV_HTTP_SOCK ].pop( this );
   }
 }
 
 bool
-EvHttpServiceOps::match( PeerData &pd,  PeerMatchArgs &ka ) noexcept
+EvHttpService::match( PeerMatchArgs &ka ) noexcept
 {
-  EvHttpService & svc = (EvHttpService &) pd;
-  if ( svc.sub_tab.sub_count() + svc.pat_tab.sub_count() != 0 ) {
-    if ( this->EvSocketOps::client_match( pd, &ka, MARG( "pubsub" ), MARG( "http" ), NULL ) )
+  if ( this->sub_tab.sub_count() + this->pat_tab.sub_count() != 0 ) {
+    if ( EvSocket::client_match( *this, &ka, MARG( "pubsub" ),
+                                             MARG( "http" ), NULL ) )
       return true;
   }
   else {
-    if ( this->EvSocketOps::client_match( pd, &ka, MARG( "normal" ), MARG( "http" ), NULL ) )
+    if ( EvSocket::client_match( *this, &ka, MARG( "normal" ),
+                                             MARG( "http" ), NULL ) )
       return true;
   }
-  return this->EvConnectionOps::match( pd, ka );
+  return this->EvConnection::match( ka );
 }
 
 int
-EvHttpServiceOps::client_list( PeerData &pd,  char *buf,
-                               size_t buflen ) noexcept
+EvHttpService::client_list( char *buf,  size_t buflen ) noexcept
 {
-  int i = this->EvConnectionOps::client_list( pd, buf, buflen );
+  int i = this->EvConnection::client_list( buf, buflen );
   if ( i >= 0 )
-    i += ((EvHttpService &) pd).client_list( &buf[ i ], buflen - i );
+    i += this->exec_client_list( &buf[ i ], buflen - i );
   return i;
 }
 

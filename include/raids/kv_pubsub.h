@@ -376,6 +376,7 @@ struct KvFragAsm {
 };
 
 struct KvPubSub : public EvSocket {
+  static const uint8_t  EV_KV_PUBSUB = 9;
   static const uint16_t KV_NO_SIGUSR = 1;
   uint16_t     ctx_id;           /* my endpoint */
   uint16_t     flags;            /* KvPubSubFlags above */
@@ -403,7 +404,6 @@ struct KvPubSub : public EvSocket {
   kv::KeyCtx   kctx,             /* a kv context for send/recv msgs */
                rt_kctx;          /* a kv context for route lookup */
 
-  EvSocketOps  ops;
   CubeRoute128 dead_cr,          /* clean up old route inboxes */
                pipe_cr,          /* routes that have pipe connected */
                subscr_cr;        /* routes that have subscribes incoming*/
@@ -427,7 +427,7 @@ struct KvPubSub : public EvSocket {
   void * operator new( size_t, void *ptr ) { return ptr; }
   KvPubSub( EvPoll &p,  int sock,  void *mcptr,  const char *mc,  size_t mclen,
             uint32_t xid )
-      : EvSocket( p, EV_KV_PUBSUB, this->ops ),
+      : EvSocket( p, EV_KV_PUBSUB ),
         ctx_id( p.ctx_id ), flags( KV_DO_NOTIFY ),
         dbx_id( xid ), next_seqno( 0 ),
         timer_id( (uint64_t) EV_KV_PUBSUB << 56 ), timer_cnt( 0 ),
@@ -500,20 +500,12 @@ struct KvPubSub : public EvSocket {
                   const char *prefix,  uint8_t prefix_len,
                   uint32_t sub_id,  uint32_t rcnt,  char src_type ) noexcept;
   void forward_sub( KvSubMsg &submsg ) noexcept;
-  void process( void ) noexcept;
   void scan_ht( void ) noexcept;
-  void exec_key_prefetch( EvKeyCtx & ) {}
-  int exec_key_continue( EvKeyCtx & ) { return 0; }
-  bool timer_expire( uint64_t tid, uint64_t ) noexcept;
-  void release( void ) {}
-  void process_shutdown( void ) noexcept;
-  void process_close( void ) noexcept;
   size_t resolve_routes( CubeRoute128 &used ) noexcept;
   /*void check_seqno( void ) noexcept;*/
   void write_send_queue_fast( void ) noexcept;
   void write_send_queue_slow( void ) noexcept;
   void notify_peers( CubeRoute128 &used ) noexcept;
-  void write( void ) noexcept;
   bool check_backlog_warning( KvMsgQueue &ibx ) noexcept;
   bool get_sub_mcast( const char *sub,  size_t len,
                       CubeRoute128 &cr ) noexcept;
@@ -523,12 +515,34 @@ struct KvPubSub : public EvSocket {
   void open_pipe( size_t src ) noexcept;
   void close_pipe( size_t src ) noexcept;
   void close_rcv_pipe( size_t src ) noexcept;
-  void read( void ) noexcept;
   size_t read_inbox( bool read_until_empty ) noexcept;
   size_t read_inbox2( KvInboxKey &ibx,  bool read_until_empty ) noexcept;
-  bool on_msg( EvPublish &pub ) noexcept;
   void publish_status( KvMsgType mtype ) noexcept;
-  bool hash_to_sub( uint32_t h,  char *key,  size_t &keylen ) noexcept;
+  /* EvSocket */
+  virtual void write( void ) noexcept final;
+  virtual void read( void ) noexcept final;
+  virtual void process( void ) noexcept final;
+  virtual bool busy_poll( void ) noexcept final;
+  virtual void release( void ) noexcept final;
+  virtual bool timer_expire( uint64_t tid, uint64_t eid ) noexcept final;
+  virtual bool hash_to_sub( uint32_t h, char *k, size_t &klen ) noexcept final;
+  virtual bool on_msg( EvPublish &pub ) noexcept final;
+  virtual void process_shutdown( void ) noexcept final;
+  virtual void process_close( void ) noexcept final;
+};
+
+struct KvHexDump {
+  char line[ 80 ];
+  uint32_t boff, hex, ascii;
+  uint64_t stream_off;
+
+  KvHexDump();
+  void reset( void );
+  void flush_line( void );
+  static char hex_char( uint8_t x );
+  void init_line( void );
+  uint32_t fill_line( const void *ptr,  uint64_t off,  uint64_t len );
+  static void dump_hex( const void *ptr,  uint64_t size );
 };
 
 }

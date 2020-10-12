@@ -369,7 +369,7 @@ struct RedisExec {
   ExecStatus exec_bgsave( void ) noexcept;
   bool get_peer_match_args( PeerMatchArgs &ka ) noexcept;
   ExecStatus exec_client( void ) noexcept;
-  int client_list( char *buf,  size_t buflen ) noexcept;
+  int exec_client_list( char *buf,  size_t buflen ) noexcept;
   ExecStatus exec_command( void ) noexcept;
   ExecStatus exec_config( void ) noexcept;
   ExecStatus exec_dbsize( void ) noexcept;

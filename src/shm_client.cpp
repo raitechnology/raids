@@ -206,6 +206,11 @@ EvShmClient::data_callback( void ) noexcept
   this->reset();
 }
 
+void EvShmClient::write( void ) noexcept {}
+void EvShmClient::read( void ) noexcept {}
+void EvShmClient::process( void ) noexcept {}
+void EvShmClient::release( void ) noexcept { this->StreamBuf::reset(); }
+
 /* EvShmSvc virtual functions */
 EvShmSvc::~EvShmSvc() noexcept {}
 int EvShmSvc::init_poll( void ) noexcept {
@@ -216,12 +221,14 @@ int EvShmSvc::init_poll( void ) noexcept {
   this->fd = -1;
   return status;
 }
-bool EvShmSvc::timer_expire( uint64_t,  uint64_t ) noexcept { return false; }
-void EvShmSvc::read( void ) noexcept {}
 void EvShmSvc::write( void ) noexcept {}
-bool EvShmSvc::on_msg( EvPublish & ) noexcept { return false; }
-bool EvShmSvc::hash_to_sub( uint32_t,  char *,  size_t & ) noexcept { return false; }
+void EvShmSvc::read( void ) noexcept {}
 void EvShmSvc::process( void ) noexcept {}
+void EvShmSvc::release( void ) noexcept {}
+bool EvShmSvc::timer_expire( uint64_t,  uint64_t ) noexcept { return false; }
+bool EvShmSvc::hash_to_sub( uint32_t,  char *,  size_t & ) noexcept { return false; }
+bool EvShmSvc::on_msg( EvPublish & ) noexcept { return false; }
+void EvShmSvc::key_prefetch( EvKeyCtx & ) noexcept {}
+int  EvShmSvc::key_continue( EvKeyCtx & ) noexcept { return 0; }
 void EvShmSvc::process_shutdown( void ) noexcept {}
 void EvShmSvc::process_close( void ) noexcept {}
-void EvShmSvc::release( void ) noexcept {}

@@ -14,12 +14,9 @@
 #include <sys/signalfd.h>
 
 #include <raids/ev_publish.h>
-#include <raids/ev_capr.h>
 #include <raids/kv_pubsub.h>
 #include <raids/cube_route.h>
-#include <raids/redis_msg.h>
-#include <raimd/md_types.h>
-#include <raimd/hex_dump.h>
+#include <raids/int_str.h>
 
 static bool kv_use_pipes = true;
 /* signal other processes that a message available */
@@ -32,7 +29,6 @@ static const uint64_t kv_busy_loop_rate = 20000 / ( 1000 / kv_timer_ival_ms );
 using namespace rai;
 using namespace kv;
 using namespace ds;
-using namespace md;
 
 static const uint32_t MAX_KV_MSG_SIZE = PipeBuf::CAPACITY / 32 - 512;
 static const uint16_t KV_CTX_BYTES = KV_MAX_CTX_ID / 8;
@@ -97,18 +93,6 @@ KvMsg::msg_type_string( void ) const noexcept
   return KvMsg::msg_type_string( this->msg_type );
 }
 
-static void
-dump_hex( const void *ptr,  uint64_t size )
-{
-  MDHexDump hex;
-  for ( uint64_t off = 0; off < size; ) {
-    off = hex.fill_line( ptr, off, size );
-    printf( "%s\r\n", hex.line );
-    fflush( stdout );
-    hex.flush_line();
-  }
-}
-
 void
 KvMsg::print( void ) noexcept
 {
@@ -149,7 +133,7 @@ KvMsg::print( void ) noexcept
     }
 #endif
   }
-  dump_hex( this, this->size );
+  KvHexDump::dump_hex( this, this->size );
 }
 
 void
@@ -803,7 +787,7 @@ KvPubSub::create_kvsubmsg( uint32_t h,  const char *sub,  size_t sublen,
   if ( msg != NULL ) {
     msg->hash     = h;
     msg->msg_size = 0;
-    msg->code     = CAPR_LISTEN;
+    msg->code     = 'L'; /*CAPR_LISTEN*/
     msg->msg_enc  = 0;
     msg->set_subject( sub, sublen );
     msg->set_reply( rep, rlen );
@@ -823,7 +807,7 @@ KvPubSub::create_kvpsubmsg( uint32_t h,  const char *pattern,  size_t patlen,
   if ( msg != NULL ) {
     msg->hash     = h;
     msg->msg_size = 0;
-    msg->code     = CAPR_LISTEN;
+    msg->code     = 'L'; /*CAPR_LISTEN*/
     msg->msg_enc  = 0;
     msg->set_subject( pattern, patlen );
     msg->set_reply( prefix, prefix_len );
@@ -2105,7 +2089,15 @@ static void
 read_error( size_t src,  const void *data,  size_t data_len )
 {
   fprintf( stderr, "Bad data from %lu\n", src );
-  dump_hex( data, data_len );
+  KvHexDump::dump_hex( data, data_len );
+}
+
+bool
+KvPubSub::busy_poll( void ) noexcept
+{
+  if ( this->read_inbox( false ) == 0 )
+    return false;
+  return true; /* progress made */
 }
 
 size_t
@@ -2299,3 +2291,79 @@ KvPubSub::hash_to_sub( uint32_t h,  char *key,  size_t &keylen ) noexcept
   }
   return false;
 }
+
+void KvPubSub::release( void ) noexcept {}
+
+KvHexDump::KvHexDump() : boff( 0 ), stream_off( 0 ) {
+  this->flush_line();
+}
+
+void
+KvHexDump::reset( void )
+{
+  this->boff = 0;
+  this->stream_off = 0;
+  this->flush_line();
+}
+
+void
+KvHexDump::flush_line( void )
+{
+  this->stream_off += this->boff;
+  this->boff  = 0;
+  this->hex   = 9;
+  this->ascii = 61;
+  this->init_line();
+}
+
+char
+KvHexDump::hex_char( uint8_t x )
+{
+  return x < 10 ? ( '0' + x ) : ( 'a' - 10 + x );
+}
+
+void
+KvHexDump::init_line( void )
+{
+  uint64_t j, k = this->stream_off;
+  ::memset( this->line, ' ', 79 );
+  this->line[ 79 ] = '\0';
+  this->line[ 5 ] = hex_char( k & 0xf );
+  k >>= 4; j = 4;
+  while ( k > 0 ) {
+    this->line[ j ] = hex_char( k & 0xf );
+    if ( j-- == 0 )
+      break;
+    k >>= 4;
+  }
+}
+
+uint32_t
+KvHexDump::fill_line( const void *ptr, uint64_t off,  uint64_t len )
+{
+  while ( off < len && this->boff < 16 ) {
+    uint8_t b = ((uint8_t *) ptr)[ off++ ];
+    this->line[ this->hex ]   = hex_char( b >> 4 );
+    this->line[ this->hex+1 ] = hex_char( b & 0xf );
+    this->hex += 3;
+    if ( b >= ' ' && b <= 127 )
+      line[ this->ascii ] = b;
+    this->ascii++;
+    if ( ( ++this->boff & 0x3 ) == 0 )
+      this->hex++;
+  }
+  return off;
+}
+
+void
+KvHexDump::dump_hex( const void *ptr,  uint64_t size )
+{
+  KvHexDump hex;
+  for ( uint64_t off = 0; off < size; ) {
+    off = hex.fill_line( ptr, off, size );
+    printf( "%s\r\n", hex.line );
+    fflush( stdout );
+    hex.flush_line();
+  }
+}
+

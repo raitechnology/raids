@@ -51,6 +51,12 @@ EvNetClient::process_close( void ) noexcept
 }
 
 void
+EvNetClient::release( void ) noexcept
+{
+  this->EvConnection::release_buffers();
+}
+
+void
 EvUdpClient::send_data( char *data,  size_t size ) noexcept
 {
   if ( ! this->pending() ) {

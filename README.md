@@ -303,7 +303,8 @@ The first test is a well known web benchmark using the
 index.html web page over and over again using `GET /index.html HTTP/1.1`, so it
 does not stress the caching system, since there is only one key retrieved,
 rather it tests the HTTP protocol processing and Redis get value processing.
-The network bandwidth limit of a 109 byte request and 209 byte result is
+The network bandwidth limit of a 109 byte request and 209 byte result (which
+includes TCP framing) is
 
     2 ports * 25 Gigabits / 209 bytes result = 30 million/sec
 

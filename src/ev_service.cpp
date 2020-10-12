@@ -8,26 +8,24 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <sys/socket.h>
+#include <sys/types.h>
+#include <sys/un.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <raids/ev_service.h>
-#include <raids/ev_tcp.h>
-#include <raids/ev_unix.h>
 
 using namespace rai;
 using namespace ds;
 using namespace kv;
 
 EvRedisListen::EvRedisListen( EvPoll &p ) noexcept
-             : EvTcpListen( p, this->ops ),
-               timer_id( (uint64_t) EV_REDIS_SOCK << 56 )
-{
-}
+  : EvTcpListen( p, EvRedisService::EV_REDIS_SOCK, "redis_sock" ) {}
 
 EvRedisUnixListen::EvRedisUnixListen( EvPoll &p ) noexcept
-                 : EvUnixListen( p, this->ops ),
-                   timer_id( (uint64_t) EV_REDIS_SOCK << 48 )
-{
+  : EvUnixListen( p, EvRedisService::EV_REDIS_UNIX_SOCK,
+                  "redis_unix_sock" ) {
+  /* reserve redis sock as well */
+  p.register_type( EvRedisService::EV_REDIS_SOCK, "redis_sock" );
 }
 
 bool
@@ -47,13 +45,13 @@ EvRedisListen::accept( void ) noexcept
   /*char buf[ 80 ];*/
   /*printf( "accept from %s\n", get_ip_str( &addr, buf, sizeof( buf ) ) );*/
   EvRedisService *c =
-    this->poll.get_free_list<EvRedisService>( this->poll.free_redis );
+    this->poll.get_free_list<EvRedisService>(
+      this->poll.free_list[ EvRedisService::EV_REDIS_SOCK ] );
   if ( c == NULL ) {
     perror( "accept: no memory" );
     ::close( sock );
     return false;
   }
-  c->sock_opts = this->sock_opts;
   EvTcpListen::set_sock_opts( this->poll, sock, this->sock_opts );
   ::fcntl( sock, F_SETFL, O_NONBLOCK | ::fcntl( sock, F_GETFL ) );
   c->PeerData::init_peer( sock, (struct sockaddr *) &addr, "redis" );
@@ -66,6 +64,41 @@ EvRedisListen::accept( void ) noexcept
   }
   return true;
 }
+
+bool
+EvRedisUnixListen::accept( void ) noexcept
+{
+  struct sockaddr_un sunaddr;
+  socklen_t addrlen = sizeof( sunaddr );
+  int sock = ::accept( this->fd, (struct sockaddr *) &sunaddr, &addrlen );
+  if ( sock < 0 ) {
+    if ( errno != EINTR ) {
+      if ( errno != EAGAIN )
+	perror( "accept" );
+      this->pop3( EV_READ, EV_READ_LO, EV_READ_HI );
+    }
+    return false;
+  }
+  EvRedisService *c =
+    this->poll.get_free_list<EvRedisService>(
+      this->poll.free_list[ EvRedisService::EV_REDIS_SOCK ] );
+  if ( c == NULL ) {
+    perror( "accept: no memory" );
+    ::close( sock );
+    return false;
+  }
+  ::fcntl( sock, F_SETFL, O_NONBLOCK | ::fcntl( sock, F_GETFL ) );
+  this->PeerData::init_peer( sock, (struct sockaddr *) &sunaddr, "redis" );
+  c->setup_ids( sock, ++this->timer_id );
+
+  if ( this->poll.add_sock( c ) < 0 ) {
+    ::close( sock );
+    c->push_free_list();
+    return false;
+  }
+  return true;
+}
+
 
 void
 EvRedisService::process( void ) noexcept
@@ -189,7 +222,7 @@ EvRedisService::push_free_list( void ) noexcept
     fprintf( stderr, "redis sock should not be in active list\n" );
   else if ( ! this->in_list( IN_FREE_LIST ) ) {
     this->set_list( IN_FREE_LIST );
-    this->poll.free_redis.push_hd( this );
+    this->poll.free_list[ EV_REDIS_SOCK ].push_hd( this );
   }
 }
 
@@ -198,41 +231,37 @@ EvRedisService::pop_free_list( void ) noexcept
 {
   if ( this->in_list( IN_FREE_LIST ) ) {
     this->set_list( IN_NO_LIST );
-    this->poll.free_redis.pop( this );
+    this->poll.free_list[ EV_REDIS_SOCK ].pop( this );
   }
 }
 
 bool
-EvRedisServiceOps::match( PeerData &pd,  PeerMatchArgs &ka ) noexcept
+EvRedisService::match( PeerMatchArgs &ka ) noexcept
 {
-  EvRedisService & svc = (EvRedisService &) pd;
-  if ( svc.sub_tab.sub_count() + svc.pat_tab.sub_count() != 0 ) {
-    if ( this->EvSocketOps::client_match( pd, &ka, MARG( "pubsub" ), NULL ) )
+  if ( this->sub_tab.sub_count() + this->pat_tab.sub_count() != 0 ) {
+    if ( EvSocket::client_match( *this, &ka, MARG( "pubsub" ), NULL ) )
       return true;
   }
   else {
-    if ( this->EvSocketOps::client_match( pd, &ka, MARG( "normal" ), NULL ) )
+    if ( EvSocket::client_match( *this, &ka, MARG( "normal" ), NULL ) )
       return true;
   }
-  return this->EvConnectionOps::match( pd, ka );
+  return this->EvConnection::match( ka );
 }
 
 int
-EvRedisServiceOps::client_list( PeerData &pd,  char *buf,
-                                size_t buflen ) noexcept
+EvRedisService::client_list( char *buf,  size_t buflen ) noexcept
 {
-  int i = this->EvConnectionOps::client_list( pd, buf, buflen );
+  int i = this->EvConnection::client_list( buf, buflen );
   if ( i >= 0 )
-    i += ((EvRedisService &) pd).client_list( &buf[ i ], buflen - i );
+    i += this->exec_client_list( &buf[ i ], buflen - i );
   return i;
 }
 
 void
 EvRedisService::debug( void ) noexcept
 {
-  struct sockaddr_storage addr;
-  socklen_t addrlen;
-  char buf[ 128 ], svc[ 32 ];
+  char buf[ 1024 ];
   EvSocket *s;
   size_t i;
   /*for ( i = 0; i < EvPoll::PREFETCH_SIZE; i++ ) {
@@ -242,17 +271,8 @@ EvRedisService::debug( void ) noexcept
   printf( "heap: " );
   for ( i = 0; i < this->poll.ev_queue.num_elems; i++ ) {
     s = this->poll.ev_queue.heap[ i ];
-    if ( ! s->is_type( EV_LISTEN_SOCK ) ) {
-      addrlen = sizeof( addr );
-      getpeername( s->fd, (struct sockaddr*) &addr, &addrlen );
-      getnameinfo( (struct sockaddr*) &addr, addrlen, buf, sizeof( buf ),
-                   svc, sizeof( svc ), NI_NUMERICHOST | NI_NUMERICSERV );
-    }
-    else {
-      buf[ 0 ] = 'L'; buf[ 1 ] = '\0';
-      svc[ 0 ] = 0;
-    }
-    printf( "%d/%s:%s ", s->fd, buf, svc );
+    int sz = (int) s->client_list( buf, sizeof( buf ) );
+    printf( "%d/%.*s ", s->fd, sz, buf );
   }
   printf( "\n" );
   if ( this->poll.prefetch_queue == NULL ||
@@ -262,3 +282,18 @@ EvRedisService::debug( void ) noexcept
     printf( "prefetch count %lu\n",
 	    this->poll.prefetch_queue->count() );
 }
+
+
+void
+EvRedisService::key_prefetch( EvKeyCtx &ctx ) noexcept
+{
+  this->RedisExec::exec_key_prefetch( ctx );
+}
+
+int
+EvRedisService::key_continue( EvKeyCtx &ctx ) noexcept
+{
+  return this->RedisExec::exec_key_continue( ctx );
+}
+
+

@@ -8,25 +8,14 @@ namespace rai {
 namespace ds {
 
 struct EvUnixListen : public EvListen {
-  EvUnixListen( EvPoll &p,  PeerOps &o ) : EvListen( p, o ) {}
+  EvUnixListen( EvPoll &p,  uint8_t tp,  const char *name )
+    : EvListen( p, tp, name ) {}
   int listen( const char *sock,  const char *k ) noexcept;
   virtual bool accept( void ) noexcept { return false; }
 };
 
-struct EvRedisUnixListen : public EvUnixListen {
-  uint64_t timer_id;
-  EvListenOps ops;
-  void * operator new( size_t, void *ptr ) { return ptr; }
-  EvRedisUnixListen( EvPoll &p ) noexcept;
-  virtual bool accept( void ) noexcept;
-  int listen( const char *sock ) {
-    return this->EvUnixListen::listen( sock, "unix_listen" );
-  }
-};
-
 struct EvUnixClient : public EvNetClient {
-  EvUnixClient( EvPoll &p, EvCallback &callback,
-                EvSockType t = EV_CLIENT_SOCK )
+  EvUnixClient( EvPoll &p, EvCallback &callback, uint8_t t = EV_CLIENT_SOCK )
     : EvNetClient( p, callback, t ) {}
   int connect( const char *sock ) noexcept;
 };

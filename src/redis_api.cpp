@@ -382,6 +382,12 @@ ds_psubscribe_with_cb( ds_t *h,  const ds_msg_t *subject,
 
 } /* extern "C" */
 
+EvShmApi::EvShmApi( EvPoll &p ) noexcept
+  : EvSocket( p, EV_SHM_API ), exec( 0 ), timer_id( 0 )
+{
+  this->pfd[ 0 ] = this->pfd[ 1 ] = -1;
+}
+
 int
 EvShmApi::init_exec( void ) noexcept
 {
@@ -401,7 +407,7 @@ EvShmApi::init_exec( void ) noexcept
 }
 
 bool
-EvShmApi::timer_expire( uint64_t tid,  uint64_t event_id )
+EvShmApi::timer_expire( uint64_t tid,  uint64_t event_id ) noexcept
 {
   if ( this->exec != NULL && tid == this->timer_id ) {
     RedisContinueMsg *cm = NULL;
@@ -454,3 +460,6 @@ EvShmApi::hash_to_sub( uint32_t h,  char *key,  size_t &keylen ) noexcept
   return this->exec != NULL && this->exec->do_hash_to_sub( h, key, keylen );
 }
 
+void EvShmApi::write( void ) noexcept {}
+void EvShmApi::read( void ) noexcept {}
+void EvShmApi::release( void ) noexcept { this->StreamBuf::reset(); }
