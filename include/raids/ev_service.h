@@ -1,21 +1,22 @@
 #ifndef __rai_raids__ev_service_h__
 #define __rai_raids__ev_service_h__
 
-#include <raids/ev_tcp.h>
-#include <raids/ev_unix.h>
+#include <raikv/ev_tcp.h>
+#include <raikv/ev_unix.h>
 #include <raids/redis_exec.h>
 
 namespace rai {
+namespace kv {
+  struct EvPrefetchQueue;
+}
 namespace ds {
 
-struct EvPrefetchQueue;
-
-struct EvRedisService : public EvConnection, public RedisExec {
+struct EvRedisService : public kv::EvConnection, public RedisExec {
   static const uint8_t EV_REDIS_SOCK = 2,
                        EV_REDIS_UNIX_SOCK = 16; /* only for unique timers */
   void * operator new( size_t, void *ptr ) { return ptr; }
 
-  EvRedisService( EvPoll &p ) : EvConnection( p, EV_REDIS_SOCK ),
+  EvRedisService( kv::EvPoll &p ) : kv::EvConnection( p, EV_REDIS_SOCK ),
       RedisExec( *p.map, p.ctx_id, p.dbx_id, *this, p.sub_route, *this ) {}
   void debug( void ) noexcept;
   void push_free_list( void ) noexcept;
@@ -25,29 +26,29 @@ struct EvRedisService : public EvConnection, public RedisExec {
   virtual void release( void ) noexcept final;
   virtual bool timer_expire( uint64_t tid, uint64_t eid ) noexcept final;
   virtual bool hash_to_sub( uint32_t h, char *k, size_t &klen ) noexcept final;
-  virtual bool on_msg( EvPublish &pub ) noexcept final;
-  virtual void key_prefetch( EvKeyCtx &ctx ) noexcept final;
-  virtual int  key_continue( EvKeyCtx &ctx ) noexcept final;
+  virtual bool on_msg( kv::EvPublish &pub ) noexcept final;
+  virtual void key_prefetch( kv::EvKeyCtx &ctx ) noexcept final;
+  virtual int  key_continue( kv::EvKeyCtx &ctx ) noexcept final;
   /* PeerData */
   virtual int client_list( char *buf,  size_t buflen ) noexcept final;
-  virtual bool match( PeerMatchArgs &ka ) noexcept final;
+  virtual bool match( kv::PeerMatchArgs &ka ) noexcept final;
 };
 
-struct EvRedisListen : public EvTcpListen {
+struct EvRedisListen : public kv::EvTcpListen {
   void * operator new( size_t, void *ptr ) { return ptr; }
-  EvRedisListen( EvPoll &p ) noexcept;/* : EvTcpListen( p ) {}*/
+  EvRedisListen( kv::EvPoll &p ) noexcept;/* : EvTcpListen( p ) {}*/
   virtual bool accept( void ) noexcept;
   int listen( const char *ip,  int port,  int opts ) {
-    return this->EvTcpListen::listen( ip, port, opts, "redis_listen" );
+    return this->kv::EvTcpListen::listen( ip, port, opts, "redis_listen" );
   }
 };
 
-struct EvRedisUnixListen : public EvUnixListen {
+struct EvRedisUnixListen : public kv::EvUnixListen {
   void * operator new( size_t, void *ptr ) { return ptr; }
-  EvRedisUnixListen( EvPoll &p ) noexcept;
+  EvRedisUnixListen( kv::EvPoll &p ) noexcept;
   virtual bool accept( void ) noexcept;
   int listen( const char *sock ) {
-    return this->EvUnixListen::listen( sock, "unix_listen" );
+    return this->kv::EvUnixListen::listen( sock, "unix_listen" );
   }
 };
 

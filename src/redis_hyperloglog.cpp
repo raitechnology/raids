@@ -10,6 +10,7 @@
 
 using namespace rai;
 using namespace ds;
+using namespace kv;
 using namespace md;
 
 ExecStatus

@@ -7,6 +7,7 @@
 
 using namespace rai;
 using namespace ds;
+using namespace kv;
 
 ExecStatus
 RedisExec::exec_eval( EvKeyCtx &/*ctx*/ ) noexcept

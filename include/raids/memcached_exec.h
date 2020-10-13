@@ -1,8 +1,8 @@
 #ifndef __rai_raids__memcached_exec_h__
 #define __rai_raids__memcached_exec_h__
 
-#include <raids/ev_key.h>
-#include <raids/stream_buf.h>
+#include <raikv/ev_key.h>
+#include <raikv/stream_buf.h>
 
 namespace rai {
 namespace ds {
@@ -12,9 +12,9 @@ enum MemcachedStatus {
   MEMCACHED_MSG_PARTIAL,  /* need more read */
   MEMCACHED_EMPTY,        /* no command, empty lline */
   MEMCACHED_SETUP_OK,     /* key setup */
-  MEMCACHED_SUCCESS  = EK_SUCCESS,  /* all key status good */
-  MEMCACHED_DEPENDS  = EK_DEPENDS,  /* key depends on another */
-  MEMCACHED_CONTINUE = EK_CONTINUE, /* not all keys complete */
+  MEMCACHED_SUCCESS  = kv::EK_SUCCESS,  /* all key status good */
+  MEMCACHED_DEPENDS  = kv::EK_DEPENDS,  /* key depends on another */
+  MEMCACHED_CONTINUE = kv::EK_CONTINUE, /* not all keys complete */
   MEMCACHED_QUIT,         /* quit command */
   MEMCACHED_VERSION,      /* version command */
   MEMCACHED_ALLOC_FAIL,   /* allocation returned NULL */
@@ -428,9 +428,9 @@ struct MemcachedExec {
   kv::HashSeed     hs;        /* kv map hash seeds, different for each db */
   kv::KeyCtx       kctx;      /* key context used for every key in command */
   kv::WorkAllocT< 1024 > wrk; /* kv work buffer, reset before each key lookup */
-  StreamBuf      & strm;      /* output buffer, result of command execution */
+  kv::StreamBuf  & strm;      /* output buffer, result of command execution */
   MemcachedMsg   * msg;       /* current command msg */
-  EvKeyCtx       * key,       /* currently executing key */
+  kv::EvKeyCtx   * key,       /* currently executing key */
                 ** keys;      /* all of the keys in command */
   uint32_t         key_cnt,   /* total keys[] size */
                    key_done;  /* number of keys processed */
@@ -439,7 +439,7 @@ struct MemcachedExec {
                  & kv_crit;
 
   MemcachedExec( kv::HashTab &map,  uint32_t,  uint32_t dbx_id,
-                 StreamBuf &s,  MemcachedStats &st ) :
+                 kv::StreamBuf &s,  MemcachedStats &st ) :
       kctx( map, dbx_id, NULL ), strm( s ), msg( 0 ),
       key( 0 ), keys( 0 ), key_cnt( 0 ), key_done( 0 ), stat( st ),
       kv_load( map.hdr.load_percent ), kv_crit( map.hdr.critical_load ) {
@@ -447,27 +447,27 @@ struct MemcachedExec {
     this->kctx.set( kv::KEYCTX_NO_COPY_ON_READ );
   }
   MemcachedStatus unpack( void *buf,  size_t &buflen ) noexcept;
-  MemcachedStatus exec_key_setup( EvSocket *own,  EvPrefetchQueue *q,
-                                  EvKeyCtx *&ctx,  uint32_t n,
+  MemcachedStatus exec_key_setup( kv::EvSocket *own,  kv::EvPrefetchQueue *q,
+                                  kv::EvKeyCtx *&ctx,  uint32_t n,
                                   uint32_t idx ) noexcept;
-  MemcachedStatus exec( EvSocket *svc,  EvPrefetchQueue *q ) noexcept;
+  MemcachedStatus exec( kv::EvSocket *svc,  kv::EvPrefetchQueue *q ) noexcept;
   /* set the hash */
-  void exec_key_set( EvKeyCtx &ctx ) { 
+  void exec_key_set( kv::EvKeyCtx &ctx ) { 
     this->key = ctx.set( this->kctx );
   } 
   /* compute the hash and prefetch the ht[] location */
-  void exec_key_prefetch( EvKeyCtx &ctx ) {
+  void exec_key_prefetch( kv::EvKeyCtx &ctx ) {
     ctx.prefetch( this->kctx.ht,
       test_read_only( this->msg->cmd ) ? true : false );
   }
-  kv::KeyStatus exec_key_fetch( EvKeyCtx &ctx,  bool force_read ) noexcept;
-  MemcachedStatus exec_key_continue( EvKeyCtx &ctx ) noexcept;
+  kv::KeyStatus exec_key_fetch( kv::EvKeyCtx &ctx,  bool force_read ) noexcept;
+  MemcachedStatus exec_key_continue( kv::EvKeyCtx &ctx ) noexcept;
   /* fetch key for write and check type matches or is not set */
-  kv::KeyStatus get_key_write( EvKeyCtx &ctx,  uint8_t type ) {
+  kv::KeyStatus get_key_write( kv::EvKeyCtx &ctx,  uint8_t type ) {
     kv::KeyStatus status = this->exec_key_fetch( ctx, false );
     if ( status == KEY_OK && ctx.type != type ) {
       if ( ctx.type == 0 ) {
-        ctx.flags |= EKF_IS_NEW;
+        ctx.flags |= kv::EKF_IS_NEW;
         return KEY_IS_NEW;
       }
       return KEY_NO_VALUE;
@@ -475,36 +475,36 @@ struct MemcachedExec {
     return status;
   }
   /* fetch key for read and check type matches or is not set */
-  kv::KeyStatus get_key_read( EvKeyCtx &ctx,  uint8_t type ) {
+  kv::KeyStatus get_key_read( kv::EvKeyCtx &ctx,  uint8_t type ) {
     kv::KeyStatus status = this->exec_key_fetch( ctx, true );
     if ( status == KEY_OK && ctx.type != type )
       return ( ctx.type == 0 ) ? KEY_NOT_FOUND : KEY_NO_VALUE;
     return status;
   }
   void multi_get_send( void ) noexcept;
-  size_t send_value( EvKeyCtx &ctx,  const void *data,  size_t size ) noexcept;
-  size_t send_bin_value( EvKeyCtx &ctx,  const void *data,
+  size_t send_value( kv::EvKeyCtx &ctx,  const void *data,  size_t size ) noexcept;
+  size_t send_bin_value( kv::EvKeyCtx &ctx,  const void *data,
                          size_t size ) noexcept;
-  bool save_value( EvKeyCtx &ctx,  const void *data,  size_t size ) noexcept;
-  MemcachedStatus exec_store( EvKeyCtx &ctx ) noexcept;
-  MemcachedStatus exec_bin_store( EvKeyCtx &ctx ) noexcept;
-  MemcachedStatus exec_retr( EvKeyCtx &ctx ) noexcept;
-  MemcachedStatus exec_bin_retr( EvKeyCtx &ctx ) noexcept;
-  MemcachedStatus exec_retr_touch( EvKeyCtx &ctx ) noexcept;
-  MemcachedStatus exec_bin_retr_touch( EvKeyCtx &ctx ) noexcept;
-  MemcachedStatus exec_del( EvKeyCtx &ctx ) noexcept;
-  MemcachedStatus exec_bin_del( EvKeyCtx &ctx ) noexcept;
-  MemcachedStatus exec_touch( EvKeyCtx &ctx ) noexcept;
-  MemcachedStatus exec_bin_touch( EvKeyCtx &ctx ) noexcept;
-  MemcachedStatus exec_incr( EvKeyCtx &ctx ) noexcept;
-  MemcachedStatus exec_bin_incr( EvKeyCtx &ctx ) noexcept;
+  bool save_value( kv::EvKeyCtx &ctx,  const void *data,  size_t size ) noexcept;
+  MemcachedStatus exec_store( kv::EvKeyCtx &ctx ) noexcept;
+  MemcachedStatus exec_bin_store( kv::EvKeyCtx &ctx ) noexcept;
+  MemcachedStatus exec_retr( kv::EvKeyCtx &ctx ) noexcept;
+  MemcachedStatus exec_bin_retr( kv::EvKeyCtx &ctx ) noexcept;
+  MemcachedStatus exec_retr_touch( kv::EvKeyCtx &ctx ) noexcept;
+  MemcachedStatus exec_bin_retr_touch( kv::EvKeyCtx &ctx ) noexcept;
+  MemcachedStatus exec_del( kv::EvKeyCtx &ctx ) noexcept;
+  MemcachedStatus exec_bin_del( kv::EvKeyCtx &ctx ) noexcept;
+  MemcachedStatus exec_touch( kv::EvKeyCtx &ctx ) noexcept;
+  MemcachedStatus exec_bin_touch( kv::EvKeyCtx &ctx ) noexcept;
+  MemcachedStatus exec_incr( kv::EvKeyCtx &ctx ) noexcept;
+  MemcachedStatus exec_bin_incr( kv::EvKeyCtx &ctx ) noexcept;
 
   void exec_run_to_completion( void ) noexcept;
   void send_err( int status,  kv::KeyStatus kstatus = KEY_OK ) noexcept;
   size_t send_string( const void *s ) noexcept;
   size_t send_bin_status( uint16_t status, const void *s = NULL,
                           size_t slen = 0 ) noexcept;
-  size_t send_bin_status_key( uint16_t status, EvKeyCtx &ctx ) noexcept;
+  size_t send_bin_status_key( uint16_t status, kv::EvKeyCtx &ctx ) noexcept;
   size_t send_string( const void *s,  size_t slen ) noexcept;
   size_t send_err_kv( kv::KeyStatus kstatus ) noexcept;
   void put_stats( void ) noexcept;

@@ -339,8 +339,8 @@ id=13 addr=[::1]:58808 fd=15 name= kind=redis age=74 idle=74 rbuf=0
 List the clients.  The filters that match the clients which are listed
 are:
 
-- type [ tcp | udp | unix | listen | redis | pubsub | normal | http |
-  nats | capr | rv ] -- filter by connection class.
+- type [ tcp | udp | unix | listen | redis | pubsub | normal | http ] --
+  filter by connection class.
 - id N -- filter by id number
 - addr IP -- filter by IP address
 - skipme -- skip the current connection

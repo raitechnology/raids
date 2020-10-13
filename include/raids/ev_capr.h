@@ -6,22 +6,22 @@ extern "C" {
   struct pcre2_real_match_data_8;
 }
 
-#include <raids/ev_tcp.h>
-#include <raids/route_ht.h>
+#include <raikv/ev_tcp.h>
+#include <raikv/route_ht.h>
 
 namespace rai {
 namespace ds {
 
 struct CaprSession;
 
-struct EvCaprListen : public EvTcpListen {
+struct EvCaprListen : public kv::EvTcpListen {
   CaprSession * sess;
   uint64_t      timer_id;
   void * operator new( size_t, void *ptr ) { return ptr; }
-  EvCaprListen( EvPoll &p ) noexcept;
+  EvCaprListen( kv::EvPoll &p ) noexcept;
   virtual bool accept( void ) noexcept;
   int listen( const char *ip,  int port,  int opts ) {
-    return this->EvTcpListen::listen( ip, port, opts, "capr_listen" );
+    return this->kv::EvTcpListen::listen( ip, port, opts, "capr_listen" );
   }
 };
 
@@ -55,7 +55,7 @@ struct CaprSubRoutePos {
 };
 
 struct CaprSubMap {
-  RouteVec<CaprSubRoute> tab;
+  kv::RouteVec<CaprSubRoute> tab;
 
   bool is_null( void ) const {
     return this->tab.vec_size == 0;
@@ -70,7 +70,7 @@ struct CaprSubMap {
   /* put in new sub
    * tab[ sub ] => {cnt} */
   CaprSubStatus put( uint32_t h,  const char *sub,  size_t len ) {
-    RouteLoc loc;
+    kv::RouteLoc loc;
     CaprSubRoute * rt = this->tab.upsert( h, sub, len, loc );
     if ( rt == NULL )
       return CAPR_SUB_NOT_FOUND;
@@ -130,7 +130,7 @@ struct CaprPatternRoutePos {
 };
 
 struct CaprPatternMap {
-  RouteVec<CaprPatternRoute> tab;
+  kv::RouteVec<CaprPatternRoute> tab;
 
   bool is_null( void ) const {
     return this->tab.vec_size == 0;
@@ -144,7 +144,7 @@ struct CaprPatternMap {
    * tab[ sub ] => {cnt} */
   CaprSubStatus put( uint32_t h,  const char *sub,  size_t len,
                       CaprPatternRoute *&rt ) {
-    RouteLoc loc;
+    kv::RouteLoc loc;
     rt = this->tab.upsert( h, sub, len, loc );
     if ( rt == NULL )
       return CAPR_SUB_NOT_FOUND;
@@ -169,7 +169,7 @@ struct CaprPatternMap {
   }
 };
 
-struct EvCaprService : public EvConnection {
+struct EvCaprService : public kv::EvConnection {
   static const uint8_t EV_CAPR_SOCK = 7;
   void * operator new( size_t, void *ptr ) { return ptr; }
 
@@ -183,7 +183,7 @@ struct EvCaprService : public EvConnection {
   uint32_t       inboxlen;
   uint64_t       sid;
 
-  EvCaprService( EvPoll &p ) : EvConnection( p, EV_CAPR_SOCK ) {}
+  EvCaprService( kv::EvPoll &p ) : kv::EvConnection( p, EV_CAPR_SOCK ) {}
   void initialize_state( uint64_t id ) {
     this->sess = NULL;
     this->ms = this->bs = 0;
@@ -201,9 +201,9 @@ struct EvCaprService : public EvConnection {
   void rem_sub( CaprMsgIn &rec ) noexcept;
   void rem_all_sub( void ) noexcept;
   bool fwd_pub( CaprMsgIn &rec ) noexcept;
-  bool fwd_msg( EvPublish &pub,  const void *sid,  size_t sid_len ) noexcept;
-  bool fwd_inbox( EvPublish &pub ) noexcept;
-  void get_inbox_addr( EvPublish &pub,  const char *&subj,
+  bool fwd_msg( kv::EvPublish &pub,  const void *sid,  size_t sid_len ) noexcept;
+  bool fwd_inbox( kv::EvPublish &pub ) noexcept;
+  void get_inbox_addr( kv::EvPublish &pub,  const char *&subj,
                        uint8_t *addr ) noexcept;
   void push_free_list( void ) noexcept;
   void pop_free_list( void ) noexcept;
@@ -213,7 +213,7 @@ struct EvCaprService : public EvConnection {
   virtual void release( void ) noexcept final;
   virtual bool timer_expire( uint64_t tid, uint64_t eid ) noexcept final;
   virtual bool hash_to_sub( uint32_t h, char *k, size_t &klen ) noexcept final;
-  virtual bool on_msg( EvPublish &pub ) noexcept final;
+  virtual bool on_msg( kv::EvPublish &pub ) noexcept final;
 };
 
 static inline bool is_rng( uint8_t c, uint8_t x, uint8_t y ) {

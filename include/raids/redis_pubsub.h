@@ -12,7 +12,7 @@ struct pcre2_real_match_data_8;
 }
 
 #include <raids/redis_api.h>
-#include <raids/route_ht.h>
+#include <raikv/route_ht.h>
 
 namespace rai {
 namespace ds {
@@ -56,7 +56,7 @@ enum RedisSubStatus {
 
 template <class RedisData>
 struct RedisDataMap {
-  RouteVec<RedisData> tab;
+  kv::RouteVec<RedisData> tab;
 
   bool is_null( void ) const {
     return this->tab.vec_size == 0;
@@ -74,7 +74,7 @@ struct RedisDataMap {
    * tab[ sub ] => {cnt} */
   RedisSubStatus put( uint32_t h,  const char *sub,  size_t len,
                       RedisData *&rt ) {
-    RouteLoc loc;
+    kv::RouteLoc loc;
     rt = this->tab.upsert( h, sub, len, loc );
     if ( rt == NULL )
       return REDIS_SUB_NOT_FOUND;
@@ -95,7 +95,7 @@ struct RedisDataMap {
     return REDIS_SUB_OK;
   }
   RedisSubStatus find( uint32_t h,  const char *sub,  size_t len,
-                       RedisData *&rt,  RouteLoc &loc ) {
+                       RedisData *&rt,  kv::RouteLoc &loc ) {
     rt = this->tab.find( h, sub, len, loc );
     if ( rt == NULL )
       return REDIS_SUB_NOT_FOUND;
@@ -153,7 +153,7 @@ struct RedisPatternRoute {
 
 template <class RedisPatData>
 struct RedisPatDataMap {
-  RouteVec<RedisPatData> tab;
+  kv::RouteVec<RedisPatData> tab;
 
   bool is_null( void ) const {
     return this->tab.vec_size == 0;
@@ -166,7 +166,7 @@ struct RedisPatDataMap {
    * tab[ sub ] => {cnt} */
   RedisSubStatus put( uint32_t h,  const char *sub,  size_t len,
                       RedisPatData *&rt ) {
-    RouteLoc loc;
+    kv::RouteLoc loc;
     rt = this->tab.upsert( h, sub, len, loc );
     if ( rt == NULL )
       return REDIS_SUB_NOT_FOUND;

@@ -5,11 +5,12 @@
 #include <raikv/key_hash.h>
 #include <raikv/util.h>
 #include <raids/redis_pubsub.h>
-#include <raids/route_ht.h>
+#include <raikv/route_ht.h>
 #include <raids/nats_map.h>
 
 using namespace rai;
 using namespace ds;
+using namespace kv;
 
 const char *str[] = {
   "hello", "world", "this", "is", "one", "way", "street", "behind",

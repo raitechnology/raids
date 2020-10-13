@@ -6,15 +6,15 @@ namespace ds {
 
 template <class LIST_CLASS, md::MDType LIST_TYPE>
 struct ExecListCtx {
-  RedisExec   & exec;
-  kv::KeyCtx  & kctx;
-  EvKeyCtx    & ctx;
-  LIST_CLASS  * x,
-                tmp[ 2 ];
-  size_t        retry;
-  int           n;
+  RedisExec    & exec;
+  kv::KeyCtx   & kctx;
+  kv::EvKeyCtx & ctx;
+  LIST_CLASS   * x,
+                 tmp[ 2 ];
+  size_t         retry;
+  int            n;
 
-  ExecListCtx( RedisExec &e,  EvKeyCtx &c )
+  ExecListCtx( RedisExec &e,  kv::EvKeyCtx &c )
     : exec( e ), kctx( e.kctx ), ctx( c ), x( 0 ), retry( 0 ), n( 0 ) {}
 
   kv::KeyStatus get_key_read( void )  { return this->do_key_fetch( true ); }
@@ -41,7 +41,7 @@ struct ExecListCtx {
       this->x = new ( &this->tmp[ this->n++%2 ] ) LIST_CLASS( data, datalen );
       this->x->init( count, ndata );
       this->ctx.type   = LIST_TYPE;
-      this->ctx.flags |= EKF_IS_NEW;
+      this->ctx.flags |= kv::EKF_IS_NEW;
     }
     return this->ctx.kstatus == KEY_OK;
   }

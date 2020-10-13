@@ -20,7 +20,7 @@
 #include <raids/ev_capr.h>
 #include <raids/ev_rv.h>
 #include <raids/ev_client.h>
-#include <raids/kv_pubsub.h>
+#include <raikv/kv_pubsub.h>
 
 using namespace rai;
 using namespace ds;

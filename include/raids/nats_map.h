@@ -6,7 +6,7 @@ extern "C" {
   struct pcre2_real_match_data_8;
 }
 
-#include <raids/route_ht.h>
+#include <raikv/route_ht.h>
 
 namespace rai {
 namespace ds {
@@ -170,8 +170,8 @@ enum NatsSubStatus {
 };
 
 /* the subscription table map hashing methods */
-typedef RouteVec<NatsMapRec>  NatsMap;
-typedef RouteVec<NatsWildRec> NatsWild;
+typedef kv::RouteVec<NatsMapRec>  NatsMap;
+typedef kv::RouteVec<NatsWildRec> NatsWild;
 
 /* iterate over sid -> subjects or subject -> sids */
 struct NatsIter {
@@ -222,7 +222,7 @@ struct NatsIter {
 /* used for expire contexts after publish or unsub */
 struct NatsLookup {
   NatsIter     iter; /* list of subs / sids that are published or unsubed */
-  RouteLoc     loc;  /* location of the sid / subject */
+  kv::RouteLoc loc;  /* location of the sid / subject */
   NatsMapRec * rt;   /* the subject / sid record, containing the list */
 
   NatsLookup() : rt( 0 ) {
@@ -242,7 +242,7 @@ struct NatsSubMap {
     this->wild_map.release();
   }
   NatsWildRec *add_wild( uint32_t h,  NatsStr &subj ) {
-    RouteLoc      loc;
+    kv::RouteLoc  loc;
     NatsWildRec * rt;
     rt = this->wild_map.upsert( h, subj.str, subj.len, loc );
     if ( rt != NULL && loc.is_new ) {
@@ -274,7 +274,7 @@ struct NatsSubMap {
     NatsIter     iter;
     NatsStr      mem;
     NatsMapRec * rt;
-    RouteLoc     loc;
+    kv::RouteLoc loc;
     size_t       off, new_len;
     NatsPair     val( one, &two );
 
@@ -314,7 +314,7 @@ struct NatsSubMap {
   }
   /* after publish, remove sids that are dead */
   NatsSubStatus expire_publish( NatsStr &subj,  NatsLookup &pub ) {
-    RouteLoc     loc;
+    kv::RouteLoc loc;
     NatsStr      sid;
     NatsMapRec * rt;
     uint32_t     max_msgs = pub.rt->max_msgs;
@@ -367,7 +367,7 @@ struct NatsSubMap {
   }
   /* unsub sid <max-msgs>, remove or mark sid with max-msgs */
   NatsSubStatus expire_sid( NatsStr &sid,  uint32_t max_msgs ) {
-    RouteLoc     loc;
+    kv::RouteLoc loc;
     NatsPair     val( sid );
     NatsMapRec * rt = this->sid_map.find( sid.hash(), &val, 0, loc );
     /* if sid exists */
@@ -417,7 +417,7 @@ struct NatsSubMap {
   /* remove subject or mark with max-msgs */
   NatsSubStatus expire_subj( NatsStr &subj,  NatsStr &sid,
                              uint32_t max_msgs ) {
-    RouteLoc     loc;
+    kv::RouteLoc loc;
     NatsPair     val( subj );
     NatsMapRec * rt = this->sub_map.find( subj.hash(), &val, 0, loc );
     /* if subject exists */
@@ -474,7 +474,7 @@ struct NatsSubMap {
       printf( " [%u.%u,%x", i, off, rt->hash );
       if ( rt->hash != one.hash() )
         printf( ",!h!" );
-      RouteLoc loc;
+      kv::RouteLoc loc;
       NatsPair tmp( one );
       if ( map.find( rt->hash, &tmp, 0, loc ) != rt )
         printf( ",!r!" );

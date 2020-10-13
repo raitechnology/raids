@@ -14,16 +14,16 @@ namespace rai {
 namespace ds {
 
 struct ExecRestore : public rdbparser::RdbOutput {
-  RedisExec & exec;
-  EvKeyCtx  * keyp;       /* the key where data is restored */
-  size_t      msg_len;    /* size of the restore data */
-  int64_t     freq;       /* restore lru freq arg */
-  uint64_t    ttl_ns,     /* restore ttl arg */
-              last_ns,    /* the last updated time */
-              ctime_ns;
-  ExecStatus  status;     /* status to return to cmd execution */
-  bool        is_geo,     /* when zset code, if zset or geo type */
-              is_replace; /* if ok to overwrite */
+  RedisExec    & exec;
+  kv::EvKeyCtx * keyp;       /* the key where data is restored */
+  size_t         msg_len;    /* size of the restore data */
+  int64_t        freq;       /* restore lru freq arg */
+  uint64_t       ttl_ns,     /* restore ttl arg */
+                 last_ns,    /* the last updated time */
+                 ctime_ns;
+  ExecStatus     status;     /* status to return to cmd execution */
+  bool           is_geo,     /* when zset code, if zset or geo type */
+                 is_replace; /* if ok to overwrite */
 
   union {
     md::ListData   * list; /* the data to store */
@@ -40,7 +40,7 @@ struct ExecRestore : public rdbparser::RdbOutput {
 
   md::MDMsgMem tmp;
 
-  ExecRestore( rdbparser::RdbDecode &d,  RedisExec &e,  EvKeyCtx *c,
+  ExecRestore( rdbparser::RdbDecode &d,  RedisExec &e,  kv::EvKeyCtx *c,
                size_t len )
     : rdbparser::RdbOutput( d ), exec( e ), keyp( c ), msg_len( len ),
       freq( 0 ), ttl_ns( 0 ), last_ns( 0 ), ctime_ns( 0 ),

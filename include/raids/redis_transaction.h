@@ -3,7 +3,7 @@
 
 #include <raikv/work.h>
 #include <raikv/dlinklist.h>
-#include <raids/ev_key.h>
+#include <raikv/ev_key.h>
 
 namespace rai {
 namespace ds {
@@ -16,7 +16,7 @@ struct RedisMultiMsg {
   RedisMultiMsg * next,
                 * back;
   RedisMsg      * msg;  /* pending multi exec msg */
-  EvKeyCtx     ** keys;
+  kv::EvKeyCtx ** keys;
   kv::KeyCtx   ** kptr;
   kv::KeyCtx    * karr;
   size_t          key_count,
@@ -35,9 +35,9 @@ struct RedisWatchList {
                  * back;
   uint64_t         serial, /* last acquire serial */
                    pos;    /* the location of the watch */
-  EvKeyCtx         key;
+  kv::EvKeyCtx     key;
 
-  RedisWatchList( uint64_t sn,  uint64_t p,  EvKeyCtx &ctx )
+  RedisWatchList( uint64_t sn,  uint64_t p,  kv::EvKeyCtx &ctx )
     : next( 0 ), back( 0 ), serial( sn ), pos( p ), key( ctx ) {}
 };
 
@@ -74,8 +74,9 @@ struct RedisMultiExec {
     this->filter[ off ] |= mask;
     return is_set;
   }
-  kv::KeyCtx * get_dup_kctx( EvKeyCtx &ctx ) const noexcept;
-  EvKeyCtx   * get_dup_key( EvKeyCtx &ctx,  bool post_exec ) const noexcept;
+  kv::KeyCtx   * get_dup_kctx( kv::EvKeyCtx &ctx ) const noexcept;
+  kv::EvKeyCtx * get_dup_key( kv::EvKeyCtx &ctx,
+                              bool post_exec ) const noexcept;
 };
 
 }

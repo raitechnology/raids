@@ -14,6 +14,7 @@
 
 using namespace rai;
 using namespace ds;
+using namespace kv;
 
 void
 EvClient::send_data( char *,  size_t ) noexcept
@@ -57,7 +58,7 @@ EvNetClient::release( void ) noexcept
 }
 
 void
-EvUdpClient::send_data( char *data,  size_t size ) noexcept
+EvMemcachedUdpClient::send_data( char *data,  size_t size ) noexcept
 {
   if ( ! this->pending() ) {
     MemcachedHdr hdr;
@@ -72,7 +73,7 @@ EvUdpClient::send_data( char *data,  size_t size ) noexcept
 }
 
 void
-EvUdpClient::write( void ) noexcept
+EvMemcachedUdpClient::write( void ) noexcept
 {
   StreamBuf & strm = *this;
   uint32_t    out_idx[ 2 ];
@@ -88,7 +89,7 @@ EvUdpClient::write( void ) noexcept
 }
 
 void
-EvUdpClient::process( void ) noexcept
+EvMemcachedUdpClient::process( void ) noexcept
 {
   StreamBuf & strm = *this;
   /* for each UDP message recvd */
@@ -131,13 +132,13 @@ EvUdpClient::process( void ) noexcept
 }
 
 void
-EvUdpClient::process_close( void ) noexcept
+EvMemcachedUdpClient::process_close( void ) noexcept
 {
   this->cb.on_close();
 }
 
 void
-EvUdpClient::release( void ) noexcept
+EvMemcachedUdpClient::release( void ) noexcept
 {
   if ( this->sav != NULL ) {
     this->sav->release();
@@ -157,6 +158,18 @@ void
 EvCallback::on_close( void ) noexcept
 {
   fprintf( stderr, "closed\n" );
+}
+
+void
+EvTerminal::process_close( void ) noexcept
+{
+  this->cb.on_close();
+}
+
+void
+EvTerminal::release( void ) noexcept
+{
+  this->EvConnection::release_buffers();
 }
 
 void

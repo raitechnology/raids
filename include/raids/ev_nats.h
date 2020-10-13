@@ -1,19 +1,19 @@
 #ifndef __rai_raids__ev_nats_h__
 #define __rai_raids__ev_nats_h__
 
-#include <raids/ev_tcp.h>
+#include <raikv/ev_tcp.h>
 #include <raids/nats_map.h>
 
 namespace rai {
 namespace ds {
 
-struct EvNatsListen : public EvTcpListen {
+struct EvNatsListen : public kv::EvTcpListen {
   uint64_t timer_id;
   void * operator new( size_t, void *ptr ) { return ptr; }
-  EvNatsListen( EvPoll &p ) noexcept;
+  EvNatsListen( kv::EvPoll &p ) noexcept;
   virtual bool accept( void ) noexcept;
   int listen( const char *ip,  int port,  int opts ) {
-    return this->EvTcpListen::listen( ip, port, opts, "nats_listen" );
+    return this->kv::EvTcpListen::listen( ip, port, opts, "nats_listen" );
   }
 };
 
@@ -24,7 +24,7 @@ enum NatsState {
   NATS_PUB_STATE = 1  /* parsing PUB message bytes */
 };
 
-struct EvNatsService : public EvConnection {
+struct EvNatsService : public kv::EvConnection {
   static const uint8_t EV_NATS_SOCK = 6;
   void * operator new( size_t, void *ptr ) { return ptr; }
   NatsSubMap map;
@@ -56,7 +56,7 @@ struct EvNatsService : public EvConnection {
            * pass,
            * auth_token;
 
-  EvNatsService( EvPoll &p ) : EvConnection( p, EV_NATS_SOCK ) {}
+  EvNatsService( kv::EvPoll &p ) : kv::EvConnection( p, EV_NATS_SOCK ) {}
   void initialize_state( void ) {
     this->msg_ptr   = NULL;
     this->msg_len   = 0;
@@ -82,7 +82,7 @@ struct EvNatsService : public EvConnection {
   void rem_wild( NatsStr &xsubj ) noexcept;
   void rem_all_sub( void ) noexcept;
   bool fwd_pub( void ) noexcept;
-  bool fwd_msg( EvPublish &pub,  const void *sid,  size_t sid_len ) noexcept;
+  bool fwd_msg( kv::EvPublish &pub,  const void *sid,  size_t sid_len ) noexcept;
   void parse_connect( const char *buf,  size_t sz ) noexcept;
   void push_free_list( void ) noexcept;
   void pop_free_list( void ) noexcept;
@@ -91,7 +91,7 @@ struct EvNatsService : public EvConnection {
   virtual void release( void ) noexcept final;
   virtual bool timer_expire( uint64_t tid, uint64_t eid ) noexcept final;
   virtual bool hash_to_sub( uint32_t h, char *k, size_t &klen ) noexcept final;
-  virtual bool on_msg( EvPublish &pub ) noexcept final;
+  virtual bool on_msg( kv::EvPublish &pub ) noexcept final;
 };
 
 /* presumes little endian, 0xdf masks out 0x20 for toupper() */

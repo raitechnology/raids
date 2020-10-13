@@ -8,7 +8,7 @@
 #include <raids/redis_api.h>
 #include <raids/ev_client.h>
 #include <raids/redis_exec.h>
-#include <raids/kv_pubsub.h>
+#include <raikv/kv_pubsub.h>
 
 using namespace rai;
 using namespace ds;

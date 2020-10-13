@@ -19,6 +19,7 @@
 
 using namespace rai;
 using namespace ds;
+using namespace kv;
 
 FdMap       conn,
             pollin,

@@ -6,8 +6,8 @@ extern "C" {
   struct pcre2_real_match_data_8;
 }
 
-#include <raids/ev_tcp.h>
-#include <raids/route_ht.h>
+#include <raikv/ev_tcp.h>
+#include <raikv/route_ht.h>
 #include <raimd/rv_msg.h>
 
 namespace rai {
@@ -15,15 +15,15 @@ namespace ds {
 
 struct RvSession;
 
-struct EvRvListen : public EvTcpListen {
-  uint64_t    timer_id;
-  uint32_t    ipaddr;
-  uint16_t    ipport;
+struct EvRvListen : public kv::EvTcpListen {
+  uint64_t timer_id;
+  uint32_t ipaddr;
+  uint16_t ipport;
   void * operator new( size_t, void *ptr ) { return ptr; }
-  EvRvListen( EvPoll &p ) noexcept;
+  EvRvListen( kv::EvPoll &p ) noexcept;
   virtual bool accept( void ) noexcept;
   int listen( const char *ip,  int port,  int opts ) {
-    return this->EvTcpListen::listen( ip, port, opts, "rv_listen" );
+    return this->kv::EvTcpListen::listen( ip, port, opts, "rv_listen" );
   }
 };
 
@@ -55,7 +55,7 @@ struct RvSubRoutePos {
 };
 
 struct RvSubMap {
-  RouteVec<RvSubRoute> tab;
+  kv::RouteVec<RvSubRoute> tab;
 
   bool is_null( void ) const {
     return this->tab.vec_size == 0;
@@ -70,7 +70,7 @@ struct RvSubMap {
   /* put in new sub
    * tab[ sub ] => {cnt} */
   RvSubStatus put( uint32_t h,  const char *sub,  size_t len ) {
-    RouteLoc loc;
+    kv::RouteLoc loc;
     RvSubRoute * rt = this->tab.upsert( h, sub, len, loc );
     if ( rt == NULL )
       return RV_SUB_NOT_FOUND;
@@ -130,7 +130,7 @@ struct RvPatternRoutePos {
 };
 
 struct RvPatternMap {
-  RouteVec<RvPatternRoute> tab;
+  kv::RouteVec<RvPatternRoute> tab;
 
   bool is_null( void ) const {
     return this->tab.vec_size == 0;
@@ -144,7 +144,7 @@ struct RvPatternMap {
    * tab[ sub ] => {cnt} */
   RvSubStatus put( uint32_t h,  const char *sub,  size_t len,
                    RvPatternRoute *&rt ) {
-    RouteLoc loc;
+    kv::RouteLoc loc;
     rt = this->tab.upsert( h, sub, len, loc );
     if ( rt == NULL )
       return RV_SUB_NOT_FOUND;
@@ -201,7 +201,7 @@ struct RvMsgIn {
   int unpack( void *msgbuf,  size_t msglen ) noexcept;
 };
 
-struct EvRvService : public EvConnection {
+struct EvRvService : public kv::EvConnection {
   static const uint8_t EV_RV_SOCK = 8;
   void * operator new( size_t, void *ptr ) { return ptr; }
   enum ProtoState {
@@ -227,7 +227,7 @@ struct EvRvService : public EvConnection {
                vmin,
                vupd;
 
-  EvRvService( EvPoll &p ) : EvConnection( p, EV_RV_SOCK ) {}
+  EvRvService( kv::EvPoll &p ) : kv::EvConnection( p, EV_RV_SOCK ) {}
   void initialize_state( uint64_t id ) {
     this->state = VERS_RECV;
     this->ms = this->bs = 0;
@@ -249,7 +249,7 @@ struct EvRvService : public EvConnection {
   bool fwd_pub( void ) noexcept;
   void send( void *hdr,  size_t off,   const void *data,
              size_t data_len ) noexcept;
-  bool fwd_msg( EvPublish &pub,  const void *sid,  size_t sid_len ) noexcept;
+  bool fwd_msg( kv::EvPublish &pub,  const void *sid,  size_t sid_len ) noexcept;
   void push_free_list( void ) noexcept;
   void pop_free_list( void ) noexcept;
   void pub_session( uint8_t code ) noexcept;
@@ -258,7 +258,7 @@ struct EvRvService : public EvConnection {
   virtual void release( void ) noexcept final;
   virtual bool timer_expire( uint64_t tid, uint64_t eid ) noexcept final;
   virtual bool hash_to_sub( uint32_t h, char *k, size_t &klen ) noexcept final;
-  virtual bool on_msg( EvPublish &pub ) noexcept final;
+  virtual bool on_msg( kv::EvPublish &pub ) noexcept final;
 };
 
 }

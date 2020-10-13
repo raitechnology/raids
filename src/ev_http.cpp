@@ -15,6 +15,7 @@
 
 using namespace rai;
 using namespace ds;
+using namespace kv;
 
 EvHttpListen::EvHttpListen( EvPoll &p ) noexcept
   : EvTcpListen( p, EvHttpService::EV_HTTP_SOCK, "http_sock" ) {}

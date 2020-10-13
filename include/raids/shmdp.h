@@ -83,7 +83,7 @@ struct QueuePoll : public EvCallback {
   void * operator new( size_t, void *ptr ) { return ptr; }
   void operator delete( void *ptr ) { ::free( ptr ); }
 
-  EvPoll      poll;
+  kv::EvPoll  poll;
   EvShmClient shm;
   QueueFd  ** fds;
   FdMap       pending;

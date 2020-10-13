@@ -881,8 +881,8 @@ const RedisCmdExtra xtra[ 856 ] = {
 "List the clients.  The filters that match the clients which are listed\n"
 "are:\n"
 "\n"
-"- type [ tcp | udp | unix | listen | redis | pubsub | normal | http |\n"
-"  nats | capr | rv ] -- filter by connection class.\n"
+"- type [ tcp | udp | unix | listen | redis | pubsub | normal | http ] --\n"
+"  filter by connection class.\n"
 "- id N -- filter by id number\n"
 "- addr IP -- filter by IP address\n"
 "- skipme -- skip the current connection\n"},

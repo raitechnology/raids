@@ -5,12 +5,13 @@
 #include <sys/time.h>
 #include <raids/redis_exec.h>
 #include <raids/redis_keyspace.h>
-#include <raids/ev_publish.h>
-#include <raids/route_db.h>
+#include <raikv/ev_publish.h>
+#include <raikv/route_db.h>
 #include <raimd/md_types.h>
 
 using namespace rai;
 using namespace ds;
+using namespace kv;
 using namespace md;
 
 /* alloc temporary space for subject */

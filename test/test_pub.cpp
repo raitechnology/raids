@@ -5,9 +5,9 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <raids/ev_client.h>
-#include <raids/ev_publish.h>
-#include <raids/kv_pubsub.h>
-#include <raids/timer_queue.h>
+#include <raikv/ev_publish.h>
+#include <raikv/kv_pubsub.h>
+#include <raikv/timer_queue.h>
 #include <raimd/md_types.h>
 #include <raimd/tib_msg.h>
 

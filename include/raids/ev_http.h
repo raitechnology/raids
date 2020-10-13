@@ -1,19 +1,19 @@
 #ifndef __rai_raids__ev_http_h__
 #define __rai_raids__ev_http_h__
 
-#include <raids/ev_tcp.h>
+#include <raikv/ev_tcp.h>
 #include <raids/redis_exec.h>
 #include <raids/term.h>
 
 namespace rai {
 namespace ds {
 
-struct EvHttpListen : public EvTcpListen {
+struct EvHttpListen : public kv::EvTcpListen {
   void * operator new( size_t, void *ptr ) { return ptr; }
-  EvHttpListen( EvPoll &p ) noexcept;
+  EvHttpListen( kv::EvPoll &p ) noexcept;
   virtual bool accept( void ) noexcept;
   int listen( const char *ip,  int port,  int opts ) {
-    return this->EvTcpListen::listen( ip, port, opts, "http_listen" );
+    return this->kv::EvTcpListen::listen( ip, port, opts, "http_listen" );
   }
 };
 
@@ -69,7 +69,7 @@ struct HttpOut {
   }
 };
 
-struct EvHttpService : public EvConnection, public RedisExec {
+struct EvHttpService : public kv::EvConnection, public RedisExec {
   static const uint8_t EV_HTTP_SOCK = 3;
   char           * wsbuf;   /* decoded websocket frames */
   size_t           wsoff,   /* start offset of wsbuf */
@@ -82,7 +82,7 @@ struct EvHttpService : public EvConnection, public RedisExec {
   Term             term;
   void * operator new( size_t, void *ptr ) { return ptr; }
 
-  EvHttpService( EvPoll &p ) : EvConnection( p, EV_HTTP_SOCK ),
+  EvHttpService( kv::EvPoll &p ) : kv::EvConnection( p, EV_HTTP_SOCK ),
     RedisExec( *p.map, p.ctx_id, p.dbx_id, *this, p.sub_route, *this ),
     wsbuf( 0 ), wsoff( 0 ), wslen( 0 ), websock_off( 0 ),
     term_int( 0 ), is_using_term( false ) {}
@@ -122,12 +122,12 @@ struct EvHttpService : public EvConnection, public RedisExec {
   virtual void release( void ) noexcept final;
   virtual bool timer_expire( uint64_t tid, uint64_t eid ) noexcept final;
   virtual bool hash_to_sub( uint32_t h, char *k, size_t &klen ) noexcept final;
-  virtual bool on_msg( EvPublish &pub ) noexcept final;
-  virtual void key_prefetch( EvKeyCtx &ctx ) noexcept final;
-  virtual int  key_continue( EvKeyCtx &ctx ) noexcept final;
+  virtual bool on_msg( kv::EvPublish &pub ) noexcept final;
+  virtual void key_prefetch( kv::EvKeyCtx &ctx ) noexcept final;
+  virtual int  key_continue( kv::EvKeyCtx &ctx ) noexcept final;
   /* PeerData */
   virtual int client_list( char *buf,  size_t buflen ) noexcept final;
-  virtual bool match( PeerMatchArgs &ka ) noexcept final;
+  virtual bool match( kv::PeerMatchArgs &ka ) noexcept final;
 };
 
 /*    0                   1                   2                   3

@@ -9,14 +9,14 @@ namespace ds {
 struct ExecStreamCtx {
   RedisExec      & exec;
   kv::KeyCtx     & kctx;
-  EvKeyCtx       & ctx;
+  kv::EvKeyCtx   & ctx;
   md::StreamData * x,
                    tmp[ 2 ];
   int              n;
 
-  ExecStreamCtx( RedisExec &e,  EvKeyCtx &c )
+  ExecStreamCtx( RedisExec &e,  kv::EvKeyCtx &c )
     : exec( e ), kctx( e.kctx ), ctx( c ), x( 0 ), n( 0 ) {
-    c.state |= EKS_NO_UPDATE;
+    c.state |= kv::EKS_NO_UPDATE;
   }
 
   kv::KeyStatus get_key_read( void )  { return this->do_key_fetch( true ); }
@@ -42,7 +42,7 @@ struct ExecStreamCtx {
     if ( (this->ctx.kstatus = this->kctx.resize( &data, datalen )) == KEY_OK ) {
       this->x = geom.make_new( &this->tmp[ this->n++%2 ], data );
       this->ctx.type   = md::MD_STREAM;
-      this->ctx.flags |= EKF_IS_NEW;
+      this->ctx.flags |= kv::EKF_IS_NEW;
     }
     return this->ctx.kstatus == KEY_OK;
   }

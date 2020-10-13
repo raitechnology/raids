@@ -16,8 +16,8 @@
 #include <raids/int_str.h>
 #include <raikv/key_hash.h>
 #include <raikv/util.h>
-#include <raids/ev_publish.h>
-#include <raids/kv_pubsub.h>
+#include <raikv/ev_publish.h>
+#include <raikv/kv_pubsub.h>
 #define PCRE2_CODE_UNIT_WIDTH 8
 #include <pcre2.h>
 #include <raids/pattern_cvt.h>

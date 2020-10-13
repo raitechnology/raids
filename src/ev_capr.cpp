@@ -16,9 +16,9 @@
 #include <raids/redis_msg.h>
 #include <raikv/key_hash.h>
 #include <raikv/util.h>
-#include <raids/ev_publish.h>
-#include <raids/kv_pubsub.h>
-#include <raids/timer_queue.h>
+#include <raikv/ev_publish.h>
+#include <raikv/kv_pubsub.h>
+#include <raikv/timer_queue.h>
 #define PCRE2_CODE_UNIT_WIDTH 8
 #include <pcre2.h>
 #include <raids/pattern_cvt.h>

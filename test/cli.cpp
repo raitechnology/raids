@@ -3,8 +3,9 @@
 #include <string.h>
 #include <stdint.h>
 #include <unistd.h>
-#include <raids/ev_tcp.h>
-#include <raids/ev_unix.h>
+#include <raikv/ev_tcp.h>
+#include <raikv/ev_unix.h>
+#include <raids/ev_client.h>
 #include <raids/ev_memcached.h>
 #include <raikv/util.h>
 
@@ -32,34 +33,32 @@ struct ClientCallback : public EvCallback { /* from socket */
 };
 
 struct MyClient {
-  EvPoll       & poll;
-  ClientCallback clicb;   /* cb when network socket reads msg */
-  TermCallback   termcb;  /* cb when terminal reads msg */
-  EvTcpClient    tclient; /* tcp sock connection */
-  EvUnixClient   xclient; /* unix sock connection */
-  EvShmClient    shm;     /* shm fake connection, executes directly, no wait */
-  EvUdpClient    uclient; /* udp sock */
-  EvTerminal     term;    /* read from keyboard */
-  EvClient     * client;  /* one of the previous clients (tcp, unix, shm) */
-  uint64_t       msg_sent,
-                 msg_recv;
-  RedisMsg       msg;
-  MemcachedMsg   mc_msg;
-  MemcachedRes   mc_res;
+  EvPoll             & poll;
+  ClientCallback       clicb;   /* cb when network socket reads msg */
+  TermCallback         termcb;  /* cb when terminal reads msg */
+  EvNetClient          tclient; /* tcp sock connection */
+  EvShmClient          shm;     /* shm fake connection, direct shm, no wait */
+  EvMemcachedUdpClient uclient; /* udp sock */
+  EvTerminal           term;    /* read from keyboard */
+  EvClient           * client;  /* one of the previous clients (tcp, unix, shm) */
+  uint64_t             msg_sent,
+                       msg_recv;
+  RedisMsg             msg;
+  MemcachedMsg         mc_msg;
+  MemcachedRes         mc_res;
   kv::WorkAllocT< 64 * 1024 > wrk;
   bool is_mc;
 
   MyClient( EvPoll &p ) : poll( p ), clicb( *this ), termcb( *this ),
      tclient( p, this->clicb ),
-     xclient( p, this->clicb ),
      shm( p, this->clicb ),
      uclient( p, this->clicb ),
      term( p, this->termcb ),
      client( 0 ), msg_sent( 0 ), msg_recv( 0 ), is_mc( false ) {}
 
   int tcp_connect( const char *h,  int p,  int o ) {
-    int status;
-    if ( (status = this->tclient.connect( h, p, o )) == 0 )
+    int status = EvTcpConnection::connect( this->tclient, h, p, o );
+    if ( status == 0 )
       this->client = &this->tclient;
     return status;
   }
@@ -70,9 +69,9 @@ struct MyClient {
     return status;
   }
   int unix_connect( const char *path ) {
-    int status;
-    if ( (status = this->xclient.connect( path )) == 0 )
-      this->client = &this->xclient;
+    int status = EvUnixConnection::connect( this->tclient, path );
+    if ( status == 0 )
+      this->client = &this->tclient;
     return status;
   }
   int shm_open( const char *map ) {

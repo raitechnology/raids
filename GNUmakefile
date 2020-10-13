@@ -267,12 +267,12 @@ test_stream_includes     := -Ilinecook/include
 term_includes            := -Ilinecook/include
 redis_rdb_includes       := -Irdbparser/include $(redis_geo_includes)
 
-libraids_files := ev_net ev_service ev_http ev_client ev_tcp ev_unix ev_udp \
-  ev_nats ev_capr ev_rv shm_client stream_buf route_db redis_msg redis_cmd_db \
+libraids_files := ev_service ev_http ev_client \
+  ev_nats ev_capr ev_rv shm_client redis_msg redis_cmd_db \
   redis_exec redis_keyspace redis_geo redis_hash redis_hyperloglog redis_key \
   redis_list redis_pubsub redis_script redis_set redis_sortedset redis_stream \
   redis_string redis_transaction redis_rdb redis_server redis_api \
-  kv_pubsub timer_queue ev_memcached memcached_exec term
+  ev_memcached memcached_exec term
 libraids_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(libraids_files)))
 libraids_dbjs  := $(addprefix $(objd)/, $(addsuffix .fpic.o, $(libraids_files)))
 libraids_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(libraids_files))) \
@@ -433,22 +433,6 @@ test_geo_lnk   := $(raids_dlnk)
 
 $(bind)/test_geo: $(test_geo_objs) $(test_geo_libs)
 
-test_routes_files := test_routes
-test_routes_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(test_routes_files)))
-test_routes_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(test_routes_files)))
-test_routes_libs  := $(raids_dlib)
-test_routes_lnk   := $(raids_dlnk)
-
-$(bind)/test_routes: $(test_routes_objs) $(test_routes_libs)
-
-test_delta_files := test_delta
-test_delta_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(test_delta_files)))
-test_delta_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(test_delta_files)))
-test_delta_libs  := $(raids_dlib)
-test_delta_lnk   := $(raids_dlnk)
-
-$(bind)/test_delta: $(test_delta_objs) $(test_delta_libs)
-
 test_decimal_files := test_decimal
 test_decimal_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(test_decimal_files)))
 test_decimal_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(test_decimal_files)))
@@ -456,22 +440,6 @@ test_decimal_libs  := $(raids_dlib)
 test_decimal_lnk   := $(raids_dlnk)
 
 $(bind)/test_decimal: $(test_decimal_objs) $(test_decimal_libs)
-
-test_cr_files := test_cr
-test_cr_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(test_cr_files)))
-test_cr_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(test_cr_files)))
-test_cr_libs  :=
-test_cr_lnk   :=
-
-$(bind)/test_cr: $(test_cr_objs) $(test_cr_libs)
-
-test_rtht_files := test_rtht
-test_rtht_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(test_rtht_files)))
-test_rtht_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(test_rtht_files)))
-test_rtht_libs  :=
-test_rtht_lnk   :=
-
-$(bind)/test_rtht: $(test_rtht_objs) $(test_rtht_libs)
 
 test_subht_files := test_subht
 test_subht_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(test_subht_files)))
@@ -538,35 +506,32 @@ ds_test_api_lnk := $(ds_lib) $(lnk_lib) -lpcre2-32 -lpcre2-8 -lcrypto -llzf
 #$(bind)/test_api: $(test_api_objs) $(test_api_libs)
 $(bind)/ds_test_api: $(ds_test_api_objs) $(ds_lib) $(lnk_dep)
 
-pubsub_api_files := pubsub_api
-pubsub_api_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(pubsub_api_files)))
-pubsub_api_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(pubsub_api_files)))
-pubsub_api_libs  := $(raids_dlib)
-pubsub_api_static_lnk := $(ds_lib) $(lnk_lib) -lpcre2-32 -lpcre2-8 -lcrypto -llzf
-pubsub_api_lnk   := $(raids_dlnk)
+ds_pubsub_api_files := pubsub_api
+ds_pubsub_api_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(ds_pubsub_api_files)))
+ds_pubsub_api_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(ds_pubsub_api_files)))
+ds_pubsub_api_libs  := $(raids_dlib)
+ds_pubsub_api_static_lnk := $(ds_lib) $(lnk_lib) -lpcre2-32 -lpcre2-8 -lcrypto -llzf
+ds_pubsub_api_lnk   := $(raids_dlnk)
 
-$(bind)/pubsub_api: $(pubsub_api_objs) $(pubsub_api_libs)
-$(bind)/pubsub_api.static: $(pubsub_api_objs) $(ds_lib) $(lnk_dep)
+$(bind)/ds_pubsub_api: $(ds_pubsub_api_objs) $(ds_lib) $(lnk_dep)
 
 all_exes    += $(bind)/client $(bind)/test_msg $(bind)/test_mcmsg \
                $(bind)/redis_cmd $(bind)/test_cmd $(bind)/test_list \
 	       $(bind)/test_hash $(bind)/test_set $(bind)/test_zset \
 	       $(bind)/test_hllnum $(bind)/test_hllw $(bind)/test_hllsub \
-	       $(bind)/test_geo $(bind)/test_routes $(bind)/test_delta \
-	       $(bind)/test_decimal $(bind)/test_cr $(bind)/test_rtht \
+	       $(bind)/test_geo $(bind)/test_decimal \
 	       $(bind)/test_subht $(bind)/test_wild $(bind)/test_timer \
 	       $(bind)/test_ping $(bind)/test_sub $(bind)/test_pub \
 	       $(bind)/test_stream $(bind)/ds_test_api \
-               $(bind)/pubsub_api $(bind)/pubsub_api.static
+               $(bind)/ds_pubsub_api
 all_depends += $(client_deps) $(test_msg_deps) $(test_mcmsg_deps) \
                $(redis_cmd_deps) $(test_cmd_deps) $(test_list_deps) \
 	       $(test_hash_deps) $(test_set_deps) $(test_zset_deps) \
 	       $(test_hllnum_deps) $(test_hllw_deps) $(test_hllsub_deps) \
-	       $(test_geo_deps) $(test_routes_deps) $(test_delta_deps) \
-	       $(test_decimal_deps) $(test_cr_deps) $(test_rtht_deps) \
+	       $(test_geo_deps) $(test_decimal_deps) \
 	       $(test_subht_deps) $(test_wild_deps) $(test_timer_deps) \
 	       $(test_ping_deps) $(test_sub_deps) $(test_pub_deps) \
-	       $(test_stream_deps) $(ds_test_api_deps) $(pubsub_api_deps)
+	       $(test_stream_deps) $(ds_test_api_deps) $(ds_pubsub_api_deps)
 
 all_dirs := $(bind) $(libd) $(objd) $(dependd)
 
