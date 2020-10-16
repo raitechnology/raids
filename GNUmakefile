@@ -79,6 +79,7 @@ dlnk_dep    :=
 # if building submodules, reference them rather than the libs installed
 ifeq (yes,$(have_kv_submodule))
 kv_lib      := raikv/$(libd)/libraikv.a
+kv_lnk      := raikv/$(libd)/libraikv.a
 kv_dll      := raikv/$(libd)/libraikv.so
 lnk_lib     += $(kv_lib)
 lnk_dep     += $(kv_lib)
@@ -86,6 +87,7 @@ dlnk_lib    += -Lraikv/$(libd) -lraikv
 dlnk_dep    += $(kv_dll)
 rpath1       = ,-rpath,$(pwd)/raikv/$(libd)
 else
+kv_lnk       = -lraikv
 lnk_lib     += -lraikv
 dlnk_lib    += -lraikv
 endif
@@ -339,7 +341,7 @@ redis_cmd_files := redis_cmd
 redis_cmd_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(redis_cmd_files)))
 redis_cmd_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(redis_cmd_files)))
 redis_cmd_libs  := $(kv_lib)
-redis_cmd_lnk   := $(kv_lib)
+redis_cmd_lnk   := $(kv_lnk)
 
 $(bind)/redis_cmd: $(redis_cmd_objs) $(redis_cmd_libs)
 
