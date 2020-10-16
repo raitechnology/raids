@@ -110,7 +110,7 @@ struct Loop : public MainLoop<Args> {
 
 template<>
 bool
-MainLoop<Args>::initialize( void ) noexcept
+rai::kv::MainLoop<Args>::initialize( void ) noexcept
 {
   return ((Loop *) this)->init();
 }
