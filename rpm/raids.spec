@@ -13,12 +13,15 @@ Prefix:	        /usr
 BuildRequires:  gcc-c++
 BuildRequires:  chrpath
 BuildRequires:  raikv
+BuildRequires:  raimd
 BuildRequires:  h3
 BuildRequires:  libdecnumber
 BuildRequires:  linecook
 BuildRequires:  pcre2-devel
 BuildRequires:  openssl-devel
+BuildRequires:  git-core
 Requires:       raikv
+Requires:       raimd
 Requires:       h3
 Requires:       libdecnumber
 Requires:       linecook
