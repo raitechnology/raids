@@ -55,8 +55,8 @@ struct Args : public MainLoopVars {
 };
 
 struct Loop : public MainLoop<Args> {
-  Loop( EvShm &m,  Args &args,  int num ) :
-    MainLoop<Args>( m, args, num ) {}
+  Loop( EvShm &m,  Args &args,  int num,  bool (*ini)( void * ) ) :
+    MainLoop<Args>( m, args, num, ini ) {}
 
 #ifdef USE_REDIS
   EvRedisListen   * redis_sv;
@@ -106,13 +106,14 @@ struct Loop : public MainLoop<Args> {
                                this->r.tcp_opts ); }
 #endif
   bool init( void ) noexcept;
+
+  static bool initialize( void *me ) noexcept;
 };
 
-template<>
 bool
-rai::kv::MainLoop<Args>::initialize( void ) noexcept
+Loop::initialize( void *me ) noexcept
 {
-  return ((Loop *) this)->init();
+  return ((Loop *) me)->init();
 }
 
 bool
@@ -215,7 +216,7 @@ main( int argc,  const char *argv[] )
 #ifdef USE_RV
   r.rv_port            = r.parse_port( argc, argv, "-r", "7500" );
 #endif
-  Runner<Args, Loop> runner( r, shm );
+  Runner<Args, Loop> runner( r, shm, Loop::initialize );
   if ( r.thr_error == 0 )
     return 0;
   return 1;
