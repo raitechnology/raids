@@ -21,6 +21,7 @@ BuildRequires:  linecook
 BuildRequires:  pcre2-devel
 BuildRequires:  openssl-devel
 BuildRequires:  git-core
+BuildRequires:  liblzf-devel
 Requires:       raikv
 Requires:       raimd
 Requires:       rdbparser
@@ -29,6 +30,7 @@ Requires:       libdecnumber
 Requires:       linecook
 Requires:       pcre2
 Requires:       openssl
+Requires:       liblzf
 Requires(post): /sbin/ldconfig
 Requires(postun): /sbin/ldconfig
 
