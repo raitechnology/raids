@@ -550,7 +550,7 @@ $(dependd)/depend.make: $(dependd) $(all_depends)
 	@cat $(all_depends) >> $(dependd)/depend.make
 
 .PHONY: dist_bins
-dist_bins: $(all_libs) $(bind)/ds_server $(bind)/ds_server.static
+dist_bins: $(all_libs) $(bind)/ds_server $(bind)/shmdp
 	chrpath -d $(libd)/libraids.so
 	chrpath -d $(libd)/libshmdp.so
 	chrpath -d $(bind)/shmdp
