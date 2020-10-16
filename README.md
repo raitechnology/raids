@@ -1,5 +1,7 @@
 # Rai Distribution Services
 
+[![Copr build status](https://copr.fedorainfracloud.org/coprs/injinj/gold/package/raids/status_image/last_build.png)](https://copr.fedorainfracloud.org/coprs/injinj/gold/package/raids/)
+
 1. [Description of Rai DS](#description-of-rai-ds)
 2. [Features of Rai DS](#features-of-rai-ds)
 3. [How to Build Rai DS](#how-to-build-rai-ds)
