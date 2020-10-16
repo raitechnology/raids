@@ -12,7 +12,7 @@ version     := $(major_num).$(minor_num).$(patch_num)
 ver_build   := $(version)-$(build_num)
 name_ver    := $(name)-$(ver_build)
 rpm_src_dir := rpmbuild/SOURCES/$(name)-$(version)
-srctree     := console src include GNUmakefile .copr .git deb rpm test
+srctree     := console src include GNUmakefile .copr .git deb rpm test doc
 
 .PHONY: srpm
 srpm: $(outdir)/$(name)-$(version)-$(release).src.rpm
