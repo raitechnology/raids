@@ -2,7 +2,7 @@ Source: raids
 Section: devel
 Priority: optional
 Maintainer: Chris Anderson <chris@raitechnology.com>
-Build-Depends: debhelper (>= 9), raikv, git, raimd, h3, libpcre2-dev, linecook, libdecnumber, libssl-dev
+Build-Depends: debhelper (>= 9), raikv, raimd, rdbparser, git, h3, libpcre2-dev, linecook, libdecnumber, libssl-dev
 Standards-Version: 3.9.5
 Homepage: https://www.github.com/raitechnology/raids
 

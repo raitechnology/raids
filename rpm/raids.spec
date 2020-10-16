@@ -14,6 +14,7 @@ BuildRequires:  gcc-c++
 BuildRequires:  chrpath
 BuildRequires:  raikv
 BuildRequires:  raimd
+BuildRequires:  rdbparser
 BuildRequires:  h3
 BuildRequires:  libdecnumber
 BuildRequires:  linecook
@@ -22,6 +23,7 @@ BuildRequires:  openssl-devel
 BuildRequires:  git-core
 Requires:       raikv
 Requires:       raimd
+Requires:       rdbparser
 Requires:       h3
 Requires:       libdecnumber
 Requires:       linecook
