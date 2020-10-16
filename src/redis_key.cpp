@@ -7,7 +7,7 @@
 #include <raimd/md_types.h>
 #define PCRE2_CODE_UNIT_WIDTH 8
 #include <pcre2.h>
-#include <raids/pattern_cvt.h>
+#include <raikv/pattern_cvt.h>
 
 using namespace rai;
 using namespace ds;

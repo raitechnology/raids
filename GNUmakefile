@@ -26,7 +26,7 @@ ifeq (-g,$(findstring -g,$(port_extra)))
 endif
 
 CC          ?= gcc
-CXX         ?= $(CC) -x c++
+CXX         ?= g++
 cc          := $(CC)
 cpp         := $(CXX)
 # if not linking libstdc++
@@ -64,12 +64,12 @@ math_lib    := -lm
 thread_lib  := -pthread -lrt
 
 # test submodules exist (they don't exist for dist_rpm, dist_dpkg targets)
-have_lc_submodule    := $(shell if [ -d ./linecook ]; then echo yes; else echo no; fi )
-have_md_submodule    := $(shell if [ -d ./raimd ]; then echo yes; else echo no; fi )
-have_dec_submodule   := $(shell if [ -d ./raimd/libdecnumber ]; then echo yes; else echo no; fi )
-have_kv_submodule    := $(shell if [ -d ./raikv ]; then echo yes; else echo no; fi )
-have_h3_submodule    := $(shell if [ -d ./h3 ]; then echo yes; else echo no; fi )
-have_rdb_submodule   := $(shell if [ -d ./rdbparser ]; then echo yes; else echo no; fi )
+have_lc_submodule    := $(shell if [ -f ./linecook/GNUmakefile ]; then echo yes; else echo no; fi )
+have_md_submodule    := $(shell if [ -f ./raimd/GNUmakefile ]; then echo yes; else echo no; fi )
+have_dec_submodule   := $(shell if [ -f ./raimd/libdecnumber/GNUmakefile ]; then echo yes; else echo no; fi )
+have_kv_submodule    := $(shell if [ -f ./raikv/GNUmakefile ]; then echo yes; else echo no; fi )
+have_h3_submodule    := $(shell if [ -f ./h3/GNUmakefile ]; then echo yes; else echo no; fi )
+have_rdb_submodule   := $(shell if [ -f ./rdbparser/GNUmakefile ]; then echo yes; else echo no; fi )
 
 lnk_lib     :=
 dlnk_lib    :=
@@ -231,7 +231,7 @@ all_libs    :=
 all_dlls    :=
 all_depends :=
 gen_files   :=
-emain_defines          := -DDS_VER=$(ver_build)
+server_defines         := -DDS_VER=$(ver_build)
 redis_server_defines   := -DDS_VER=$(ver_build) -DGIT_HEAD=$(shell git rev-parse HEAD | cut -c 1-8)
 memcached_exec_defines := -DDS_VER=$(ver_build)
 
@@ -243,12 +243,11 @@ test_stream_includes     := -Ilinecook/include
 term_includes            := -Ilinecook/include
 redis_rdb_includes       := -Irdbparser/include $(redis_geo_includes)
 
-libraids_files := ev_service ev_http ev_client \
-  ev_nats ev_capr ev_rv shm_client redis_msg redis_cmd_db \
-  redis_exec redis_keyspace redis_geo redis_hash redis_hyperloglog redis_key \
-  redis_list redis_pubsub redis_script redis_set redis_sortedset redis_stream \
-  redis_string redis_transaction redis_rdb redis_server redis_api \
-  ev_memcached memcached_exec term
+libraids_files := ev_service ev_http ev_client shm_client redis_msg \
+  redis_cmd_db redis_exec redis_keyspace redis_geo redis_hash \
+  redis_hyperloglog redis_key redis_list redis_pubsub redis_script redis_set \
+  redis_sortedset redis_stream redis_string redis_transaction redis_rdb \
+  redis_server redis_api ev_memcached memcached_exec term
 libraids_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(libraids_files)))
 libraids_dbjs  := $(addprefix $(objd)/, $(addsuffix .fpic.o, $(libraids_files)))
 libraids_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(libraids_files))) \
@@ -279,10 +278,10 @@ $(libd)/libshmdp.so: $(libshmdp_dbjs) $(libshmdp_libs)
 all_libs    += $(libd)/libshmdp.so
 all_depends += $(libshmdp_deps)
 
-ds_server_files := emain
+ds_server_files := server
 ds_server_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(ds_server_files)))
 ds_server_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(ds_server_files)))
-ds_server_libs  := $(libd)/libraids.so
+ds_server_libs  := $(ds_lib)
 ds_server_lnk   := $(ds_lib) $(lnk_lib) -lpcre2-32 -lpcre2-8 -lcrypto -llzf
 #ds_server_static_lnk := $(ds_lib) $(lnk_lib) -lpcre2-32 -lpcre2-8 -lcrypto -llzf
 #ds_server_lnk        := $(raids_dlnk)
@@ -417,22 +416,6 @@ test_decimal_lnk   := $(raids_dlnk)
 
 $(bind)/test_decimal: $(test_decimal_objs) $(test_decimal_libs)
 
-test_subht_files := test_subht
-test_subht_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(test_subht_files)))
-test_subht_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(test_subht_files)))
-test_subht_libs  := $(raids_dlib)
-test_subht_lnk   := $(raids_dlnk)
-
-$(bind)/test_subht: $(test_subht_objs) $(test_subht_libs)
-
-test_wild_files := test_wild
-test_wild_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(test_wild_files)))
-test_wild_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(test_wild_files)))
-test_wild_libs  := $(raids_dlib)
-test_wild_lnk   := $(raids_dlnk)
-
-$(bind)/test_wild: $(test_wild_objs) $(test_wild_libs)
-
 test_timer_files := test_timer
 test_timer_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(test_timer_files)))
 test_timer_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(test_timer_files)))
@@ -476,8 +459,8 @@ $(bind)/test_stream: $(test_stream_objs) $(test_stream_libs)
 ds_test_api_files := test_api
 ds_test_api_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(ds_test_api_files)))
 ds_test_api_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(ds_test_api_files)))
-ds_test_api_libs  := $(raids_dlib)
-ds_test_api_lnk := $(ds_lib) $(lnk_lib) -lpcre2-32 -lpcre2-8 -lcrypto -llzf
+ds_test_api_libs  := $(ds_lib)
+ds_test_api_lnk   := $(ds_lib) $(lnk_lib) -lpcre2-32 -lpcre2-8 -lcrypto -llzf
 
 #$(bind)/test_api: $(test_api_objs) $(test_api_libs)
 $(bind)/ds_test_api: $(ds_test_api_objs) $(ds_lib) $(lnk_dep)
@@ -485,9 +468,8 @@ $(bind)/ds_test_api: $(ds_test_api_objs) $(ds_lib) $(lnk_dep)
 ds_pubsub_api_files := pubsub_api
 ds_pubsub_api_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(ds_pubsub_api_files)))
 ds_pubsub_api_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(ds_pubsub_api_files)))
-ds_pubsub_api_libs  := $(raids_dlib)
-ds_pubsub_api_static_lnk := $(ds_lib) $(lnk_lib) -lpcre2-32 -lpcre2-8 -lcrypto -llzf
-ds_pubsub_api_lnk   := $(raids_dlnk)
+ds_pubsub_api_libs  := $(ds_lib)
+ds_pubsub_api_lnk   := $(ds_lib) $(lnk_lib) -lpcre2-32 -lpcre2-8 -lcrypto -llzf
 
 $(bind)/ds_pubsub_api: $(ds_pubsub_api_objs) $(ds_lib) $(lnk_dep)
 
@@ -495,8 +477,7 @@ all_exes    += $(bind)/client $(bind)/test_msg $(bind)/test_mcmsg \
                $(bind)/redis_cmd $(bind)/test_cmd $(bind)/test_list \
 	       $(bind)/test_hash $(bind)/test_set $(bind)/test_zset \
 	       $(bind)/test_hllnum $(bind)/test_hllw $(bind)/test_hllsub \
-	       $(bind)/test_geo $(bind)/test_decimal \
-	       $(bind)/test_subht $(bind)/test_wild $(bind)/test_timer \
+	       $(bind)/test_geo $(bind)/test_decimal $(bind)/test_timer \
 	       $(bind)/test_ping $(bind)/test_sub $(bind)/test_pub \
 	       $(bind)/test_stream $(bind)/ds_test_api \
                $(bind)/ds_pubsub_api
@@ -504,8 +485,7 @@ all_depends += $(client_deps) $(test_msg_deps) $(test_mcmsg_deps) \
                $(redis_cmd_deps) $(test_cmd_deps) $(test_list_deps) \
 	       $(test_hash_deps) $(test_set_deps) $(test_zset_deps) \
 	       $(test_hllnum_deps) $(test_hllw_deps) $(test_hllsub_deps) \
-	       $(test_geo_deps) $(test_decimal_deps) \
-	       $(test_subht_deps) $(test_wild_deps) $(test_timer_deps) \
+	       $(test_geo_deps) $(test_decimal_deps) $(test_timer_deps) \
 	       $(test_ping_deps) $(test_sub_deps) $(test_pub_deps) \
 	       $(test_stream_deps) $(ds_test_api_deps) $(ds_pubsub_api_deps)
 
@@ -534,11 +514,11 @@ all: $(gen_files) $(all_libs) $(all_dlls) $(all_exes)
 
 .PHONY: dnf_depend
 dnf_depend:
-	sudo dnf -y install make gcc-c++ git redhat-lsb openssl-devel pcre2-devel liblzf-devel zlib-devel libbsd-devel
+	sudo dnf -y install make gcc-c++ git redhat-lsb openssl-devel pcre2-devel chrpath liblzf-devel zlib-devel libbsd-devel
 
 .PHONY: yum_depend
 yum_depend:
-	sudo yum -y install make gcc-c++ git redhat-lsb openssl-devel pcre2-devel liblzf-devel zlib-devel libbsd-devel
+	sudo yum -y install make gcc-c++ git redhat-lsb openssl-devel pcre2-devel chrpath liblzf-devel zlib-devel libbsd-devel
 
 .PHONY: deb_depend
 deb_depend:
@@ -637,20 +617,20 @@ $(bind)/%.static:
 	$(cpplink) $(cflags) -o $@ $($(*)_objs) $($(*)_static_lnk) $(sock_lib) $(math_lib) $(thread_lib) $(malloc_lib) $(dynlink_lib)
 
 $(dependd)/%.d: src/%.cpp
-	gcc -x c++ $(arch_cflags) $(defines) $(includes) $($(notdir $*)_includes) $($(notdir $*)_defines) -MM $< -MT $(objd)/$(*).o -MF $@
+	$(cpp) $(arch_cflags) $(defines) $(includes) $($(notdir $*)_includes) $($(notdir $*)_defines) -MM $< -MT $(objd)/$(*).o -MF $@
 
 $(dependd)/%.d: src/%.c
-	gcc $(arch_cflags) $(defines) $(includes) $($(notdir $*)_includes) $($(notdir $*)_defines) -MM $< -MT $(objd)/$(*).o -MF $@
+	$(cc) $(arch_cflags) $(defines) $(includes) $($(notdir $*)_includes) $($(notdir $*)_defines) -MM $< -MT $(objd)/$(*).o -MF $@
 
 $(dependd)/%.fpic.d: src/%.cpp
-	gcc -x c++ $(arch_cflags) $(defines) $(includes) $($(notdir $*)_includes) $($(notdir $*)_defines) -MM $< -MT $(objd)/$(*).fpic.o -MF $@
+	$(cpp) $(arch_cflags) $(defines) $(includes) $($(notdir $*)_includes) $($(notdir $*)_defines) -MM $< -MT $(objd)/$(*).fpic.o -MF $@
 
 $(dependd)/%.fpic.d: src/%.c
-	gcc $(arch_cflags) $(defines) $(includes) $($(notdir $*)_includes) $($(notdir $*)_defines) -MM $< -MT $(objd)/$(*).fpic.o -MF $@
+	$(cc) $(arch_cflags) $(defines) $(includes) $($(notdir $*)_includes) $($(notdir $*)_defines) -MM $< -MT $(objd)/$(*).fpic.o -MF $@
 
 $(dependd)/%.d: test/%.cpp
-	gcc -x c++ $(arch_cflags) $(defines) $(includes) $($(notdir $*)_includes) $($(notdir $*)_defines) -MM $< -MT $(objd)/$(*).o -MF $@
+	$(cpp) $(arch_cflags) $(defines) $(includes) $($(notdir $*)_includes) $($(notdir $*)_defines) -MM $< -MT $(objd)/$(*).o -MF $@
 
 $(dependd)/%.d: test/%.c
-	gcc $(arch_cflags) $(defines) $(includes) $($(notdir $*)_includes) $($(notdir $*)_defines) -MM $< -MT $(objd)/$(*).o -MF $@
+	$(cc) $(arch_cflags) $(defines) $(includes) $($(notdir $*)_includes) $($(notdir $*)_defines) -MM $< -MT $(objd)/$(*).o -MF $@
 

@@ -8,7 +8,7 @@
 #include <raikv/route_db.h>
 #define PCRE2_CODE_UNIT_WIDTH 8
 #include <pcre2.h>
-#include <raids/pattern_cvt.h>
+#include <raikv/pattern_cvt.h>
 #include <raimd/md_types.h>
 #include <raids/redis_keyspace.h>
 
