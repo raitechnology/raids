@@ -107,14 +107,10 @@ struct Loop : public MainLoop<Args> {
 #endif
   bool init( void ) noexcept;
 
-  static bool initialize( void *me ) noexcept;
+  static bool initialize( void *me ) noexcept {
+    return ((Loop *) me)->init();
+  }
 };
-
-bool
-Loop::initialize( void *me ) noexcept
-{
-  return ((Loop *) me)->init();
-}
 
 bool
 Loop::init( void ) noexcept
@@ -165,7 +161,6 @@ main( int argc,  const char *argv[] )
 {
   EvShm shm;
   Args  r;
-
 #ifdef USE_REDIS
   r.add_desc( "  -p redis = listen redis port     (6379)" );
 #endif
@@ -187,7 +182,6 @@ main( int argc,  const char *argv[] )
 #ifdef USE_RV
   r.add_desc( "  -r rv    = listen rv port        (7500)" );
 #endif
-
   if ( ! r.parse_args( argc, argv ) )
     return 1;
   if ( shm.open( r.map_name, r.db_num ) != 0 )
@@ -221,4 +215,3 @@ main( int argc,  const char *argv[] )
     return 0;
   return 1;
 }
-
