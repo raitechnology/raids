@@ -49,6 +49,8 @@ Distribution services for a raikv, a shared memory key value store.
 %build
 make build_dir=./usr %{?_smp_mflags} dist_bins
 cp -a ./include ./usr/include
+mkdir -p ./usr/share/doc/%{name}
+cp -a ./README.md graph doc console ./usr/share/doc/%{name}/
 
 %install
 rm -rf %{buildroot}
@@ -56,6 +58,13 @@ mkdir -p  %{buildroot}
 
 # in builddir
 cp -a * %{buildroot}
+
+install -p -D -m 644 ./config/limit.conf %{buildroot}%{_sysconfdir}/systemd/system/%{name}.service.d/limit.conf
+sed -e 's:/usr/bin:%{_bindir}:;s:/var:%{_localstatedir}:;s:/etc:%{_sysconfdir}:;s:/usr/libexec:%{_libexecdir}:' \
+     ./config/%{name}.service > tmp_file
+install -p -D -m 644 tmp_file %{buildroot}%{_unitdir}/%{name}.service
+install -p -d -m 755 %{buildroot}%{_mandir}/man1/
+install -p -D -m 644 ./doc/*.1 %{buildroot}%{_mandir}/man1/
 
 %clean
 rm -rf %{buildroot}
@@ -66,9 +75,20 @@ rm -rf %{buildroot}
 /usr/lib64/*
 /usr/include/*
 
+%pre
+getent group %{name} &> /dev/null || \
+groupadd -r %{name} &> /dev/null
+getent passwd %{name} &> /dev/null || \
+useradd -r -g %{name} -d %{_sharedstatedir}/%{name} -s /sbin/nologin -c "Rai KV" %{name}
+exit 0
+
 %post
-echo "${RPM_INSTALL_PREFIX}/lib64" > /etc/ld.so.conf.d/%{name}.conf
+echo "${_prefix}/lib64" > /etc/ld.so.conf.d/%{name}.conf
 /sbin/ldconfig
+%systemd_post %{name}.service
+
+%preun
+%systemd_preun %{name}.service
 
 %postun
 if [ $1 -eq 0 ] ; then

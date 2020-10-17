@@ -19,6 +19,7 @@ objd      := $(build_dir)/obj
 dependd   := $(build_dir)/dep
 
 have_asciidoctor := $(shell if [ -x /usr/bin/asciidoctor ]; then echo true; fi)
+have_pandoc := $(shell if [ -x /usr/bin/pandoc ]; then echo true; fi)
 
 # use 'make port_extra=-g' for debug build
 ifeq (-g,$(findstring -g,$(port_extra)))
@@ -305,13 +306,13 @@ $(bind)/shmdp: $(shmdp_objs) $(shmdp_libs)
 all_exes    += $(bind)/shmdp
 all_depends += $(shmdp_deps)
 
-client_files := cli
-client_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(client_files)))
-client_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(client_files)))
-client_libs  := $(raids_dlib)
-client_lnk   := $(raids_dlnk)
+ds_client_files := cli
+ds_client_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(ds_client_files)))
+ds_client_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(ds_client_files)))
+ds_client_libs  := $(raids_dlib)
+ds_client_lnk   := $(raids_dlnk)
 
-$(bind)/client: $(client_objs) $(client_libs)
+$(bind)/ds_client: $(ds_client_objs) $(ds_client_libs)
 
 test_msg_files := test_msg
 test_msg_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(test_msg_files)))
@@ -475,7 +476,7 @@ ds_pubsub_api_lnk   := $(ds_lib) $(lnk_lib) -lpcre2-32 -lpcre2-8 -lcrypto -llzf
 
 $(bind)/ds_pubsub_api: $(ds_pubsub_api_objs) $(ds_lib) $(lnk_dep)
 
-all_exes    += $(bind)/client $(bind)/test_msg $(bind)/test_mcmsg \
+all_exes    += $(bind)/ds_client $(bind)/test_msg $(bind)/test_mcmsg \
                $(bind)/redis_cmd $(bind)/test_cmd $(bind)/test_list \
 	       $(bind)/test_hash $(bind)/test_set $(bind)/test_zset \
 	       $(bind)/test_hllnum $(bind)/test_hllw $(bind)/test_hllsub \
@@ -483,7 +484,7 @@ all_exes    += $(bind)/client $(bind)/test_msg $(bind)/test_mcmsg \
 	       $(bind)/test_ping $(bind)/test_sub $(bind)/test_pub \
 	       $(bind)/test_stream $(bind)/ds_test_api \
                $(bind)/ds_pubsub_api
-all_depends += $(client_deps) $(test_msg_deps) $(test_mcmsg_deps) \
+all_depends += $(ds_client_deps) $(test_msg_deps) $(test_mcmsg_deps) \
                $(redis_cmd_deps) $(test_cmd_deps) $(test_list_deps) \
 	       $(test_hash_deps) $(test_set_deps) $(test_zset_deps) \
 	       $(test_hllnum_deps) $(test_hllw_deps) $(test_hllsub_deps) \
@@ -492,6 +493,12 @@ all_depends += $(client_deps) $(test_msg_deps) $(test_mcmsg_deps) \
 	       $(test_stream_deps) $(ds_test_api_deps) $(ds_pubsub_api_deps)
 
 all_dirs := $(bind) $(libd) $(objd) $(dependd)
+
+ifeq ($(have_pandoc),true)
+doc/ds_server.1: doc/ds_server.1.md
+	pandoc -s -t man $< -o $@
+gen_files += doc/ds_server.1
+endif
 
 ifeq ($(have_asciidoctor),true)
 doc/redis_cmd.html: doc/redis_cmd.adoc
@@ -552,11 +559,12 @@ $(dependd)/depend.make: $(dependd) $(all_depends)
 	@cat $(all_depends) >> $(dependd)/depend.make
 
 .PHONY: dist_bins
-dist_bins: $(all_libs) $(bind)/ds_server $(bind)/shmdp
+dist_bins: $(all_libs) $(bind)/ds_server $(bind)/shmdp $(bind)/ds_client
 	chrpath -d $(libd)/libraids.so
 	chrpath -d $(libd)/libshmdp.so
 	chrpath -d $(bind)/shmdp
 	chrpath -d $(bind)/ds_server
+	chrpath -d $(bind)/ds_client
 
 .PHONY: dist_rpm
 dist_rpm: srpm
@@ -585,6 +593,7 @@ install: dist_bins
 	done
 	install -m 755 $(bind)/ds_server $(install_prefix)/bin
 	install -m 755 $(bind)/shmdp $(install_prefix)/bin
+	install -m 755 $(bind)/ds_client $(install_prefix)/bin
 	install -m 644 include/raids/*.h $(install_prefix)/include/raids
 
 $(objd)/%.o: src/%.cpp

@@ -1,0 +1,14 @@
+[Unit]
+Description=Rai shared memory distribution services
+After=raikv.service
+
+[Service]
+ExecStart=/usr/bin/ds_server
+KillSignal=SIGINT
+Type=simple
+User=raikv
+Group=raikv
+
+[Install]
+WantedBy=multi-user.target
+
