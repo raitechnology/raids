@@ -71,9 +71,13 @@ rm -rf %{buildroot}
 
 %files
 %defattr(-,root,root,-)
-/usr/bin/*
-/usr/lib64/*
-/usr/include/*
+%{_bindir}/*
+%{_prefix}/lib64/*
+%{_includedir}/*
+%doc %{_docdir}/*
+%doc %{_mandir}/*
+%config(noreplace) %{_sysconfdir}/systemd/system/%{name}.service.d/limit.conf
+%config(noreplace) %{_unitdir}/%{name}.service
 
 %pre
 getent group %{name} &> /dev/null || \

@@ -1,6 +1,6 @@
 [Unit]
 Description=Rai shared memory distribution services
-After=raikv.service
+Requires=raikv.service
 
 [Service]
 ExecStart=/usr/bin/ds_server
