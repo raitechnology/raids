@@ -265,6 +265,46 @@ $ sudo dnf copr enable injinj/gold
 $ sudo dnf install raids
 ```
 
+This has a systemd raids.service configuration which will start a service on
+the network for Redis, Memcached, Http.  After starting this, there should be a
+2GB shared memory segment.  This segment is created by `kv_server`, which is
+also started by systemd.  Any values store in the shared memory will be available
+until `kv_server` is restarted.  Restarting `ds_server` does not affect the
+contents of the shared memory segment.
+
+```console
+# start ds_server and kv_server if it is not already running
+$ sudo systemctl start raids
+$ ipcs -m
+
+------ Shared Memory Segments --------
+key        shmid      owner      perms      bytes      nattch     status
+0x9a6d37aa 98305      raikv      660        2147483648 0
+
+$ ds_client
+connected: 6379 (redis)
+ds@robotron[0]> set hello world
+'OK'
+ds@robotron[1]> get hello
+"world"
+ds@robotron[2]> q
+bye
+
+# stop ds_server
+$ sudo systemctl stop raids
+
+# attach directly to shared memory, must be in group raikv
+$ groups
+users raikv
+
+$ ds_client -m sysv:raikv.shm
+opened: sysv:raikv.shm
+ds@robotron[3]> get hello
+"world"
+ds@robotron[4]> q
+bye
+```
+
 ## Testing Performance of Rai DS
 
 There are 3 performance metrics below.  The first is a http test, the second is

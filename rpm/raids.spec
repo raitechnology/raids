@@ -22,6 +22,7 @@ BuildRequires:  pcre2-devel
 BuildRequires:  openssl-devel
 BuildRequires:  git-core
 BuildRequires:  liblzf-devel
+BuildRequires:  systemd
 Requires:       raikv
 Requires:       raimd
 Requires:       rdbparser
