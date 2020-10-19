@@ -3,10 +3,11 @@
 [![Copr build status](https://copr.fedorainfracloud.org/coprs/injinj/gold/package/raids/status_image/last_build.png)](https://copr.fedorainfracloud.org/coprs/injinj/gold/package/raids/)
 
 1. [Description of Rai DS](#description-of-rai-ds)
-2. [Features of Rai DS](#features-of-rai-ds)
-3. [How to Build Rai DS](#how-to-build-rai-ds)
-4. [Installing Rai DS from COPR](#installing-rai-ds-from-copr)
-5. [Testing Performance of Rai DS](#testing-performance-of-rai-ds)
+2. [Current status of Rai DS](#current-status-of-rai-ds)
+3. [Features of Rai DS](#features-of-rai-ds)
+4. [How to Build Rai DS](#how-to-build-rai-ds)
+5. [Installing Rai DS from COPR](#installing-rai-ds-from-copr)
+6. [Testing Performance of Rai DS](#testing-performance-of-rai-ds)
 
 ## Description of Rai DS
 
@@ -57,6 +58,24 @@ and detach without disrupting each other.  This provides for vertical scaling
 based on external considerations of hardware acceleration or software
 clustering, more instances can be started or stopped at any time.  This is
 scaling based on planning, resouces are used when allocated.
+
+## Current status of Rai DS
+
+The features that are missing but are planned are these:
+
+1.  A backing store.  This is a persistent state saved on interval, but it
+    should also be able to load on demand.  We plan on using
+    [RocksDB](https://rocksdb.org/) for this.
+
+2.  Secondary replication and high availability auto-failover.  In market data
+    systems, this failover is traditionally a heart beat monitored in process
+    and replay of the subscriptions that are open to try to acheive at least
+    once behavior.
+
+3.  Lua scripting using the Redis EVAL command set.
+
+4.  Access control lists.  This would limit access to databases, keys, commands
+    to groups of users.
 
 ## Features of Rai DS
 
