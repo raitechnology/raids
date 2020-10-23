@@ -192,7 +192,7 @@ main( int argc, char *argv[] )
   SignalHandler sighndl;
   EvPoll        poll;
 
-  const char * mn = get_arg( argc, argv, 1, "-m", "sysv2m:shm.test" ),
+  const char * mn = get_arg( argc, argv, 1, "-m", KV_DEFAULT_SHM ),
              * su = get_arg( argc, argv, 1, "-s", "PONG" ),
              * pu = get_arg( argc, argv, 1, "-p", "PING" ),
              * xx = get_arg( argc, argv, 1, "-x", "1" ),
@@ -213,7 +213,7 @@ main( int argc, char *argv[] )
   if ( he != NULL ) {
     printf( "%s"
       " [-m map] [-s sub] [-p pub] [-x rate] [-n cnt] [-i] [-r] [-k] [-b]\n"
-      "  map  = kv shm map name      (sysv2m:shm.test)\n"
+      "  map  = kv shm map name      (" KV_DEFAULT_SHM ")\n"
       "  sub  = subject to subscribe (PONG)\n"
       "  pub  = subject to publish   (PING)\n"
       "  rate = publish rate per sec (1)\n"
@@ -255,8 +255,8 @@ main( int argc, char *argv[] )
     poll.pubsub->flags &= ~KV_DO_NOTIFY;
   }
   while ( poll.quit < 5 ) {
-    bool idle = poll.dispatch(); /* true if idle, false if busy */
-    poll.wait( idle ? 100 : 0 );
+    int idle = poll.dispatch(); /* true if idle, false if busy */
+    poll.wait( idle == EvPoll::DISPATCH_IDLE ? 100 : 0 );
     if ( sighndl.signaled )
       poll.quit++;
   }
