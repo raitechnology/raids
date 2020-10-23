@@ -28,12 +28,12 @@ struct EvClient {
 struct RedisExec;
 struct EvShmClient : public kv::EvShm, public kv::StreamBuf,
                      public kv::EvSocket, public EvClient {
-  static const uint8_t EV_SHM_SOCK = 10; /* local shm client (used with terminal) */
   RedisExec * exec;
   int         pfd[ 2 ];
 
   EvShmClient( kv::EvPoll &p,  EvCallback &callback )
-    : kv::EvSocket( p, EV_SHM_SOCK ), EvClient( callback ), exec( 0 ) {
+    : kv::EvSocket( p, p.register_type( "shm_sock" ) ),
+      EvClient( callback ), exec( 0 ) {
     this->pfd[ 0 ] = this->pfd[ 1 ] = -1;
   }
   ~EvShmClient() noexcept;
@@ -54,7 +54,6 @@ struct EvShmClient : public kv::EvShm, public kv::StreamBuf,
 };
 
 struct EvShmApi : public kv::EvShm, public kv::StreamBuf, public kv::EvSocket {
-  static const uint8_t EV_SHM_API = 11; /* local shm api client */
   RedisExec * exec;
   int         pfd[ 2 ];
   uint64_t    timer_id;
@@ -74,10 +73,9 @@ struct EvShmApi : public kv::EvShm, public kv::StreamBuf, public kv::EvSocket {
 };
 
 struct EvShmSvc : public kv::EvShm, public kv::EvSocket {
-  static const uint8_t EV_SHM_SVC = 12;/* pubsub service */
   void * operator new( size_t, void *ptr ) { return ptr; }
   void operator delete( void *ptr ) { ::free( ptr ); }
-  EvShmSvc( kv::EvPoll &p ) : kv::EvSocket( p, EV_SHM_SVC ) {
+  EvShmSvc( kv::EvPoll &p ) : kv::EvSocket( p, p.register_type( "shm_svc" ) ) {
     this->sock_opts = kv::OPT_NO_POLL | kv::OPT_NO_CLOSE;
   }
   virtual ~EvShmSvc() noexcept;
@@ -98,14 +96,13 @@ struct EvShmSvc : public kv::EvShm, public kv::EvSocket {
 };
 
 struct EvNetClient : public EvClient, public kv::EvConnection {
-  static const uint8_t EV_CLIENT_SOCK = 4; /* redis client protocol */
   void * operator new( size_t, void *ptr ) { return ptr; }
   void operator delete( void *ptr ) { ::free( ptr ); }
   RedisMsg msg;         /* current msg */
 
-  EvNetClient( kv::EvPoll &p, EvCallback &callback,
-               uint8_t t = EV_CLIENT_SOCK )
-    : EvClient( callback ), kv::EvConnection( p, t ) {}
+  EvNetClient( kv::EvPoll &p, EvCallback &callback )
+    : EvClient( callback ),
+      kv::EvConnection( p, p.register_type( "net_client" ) ) {}
   /*virtual void send_msg( RedisMsg &msg );*/
   /* EvSocket */
   virtual void process( void ) noexcept;
@@ -116,7 +113,6 @@ struct EvNetClient : public EvClient, public kv::EvConnection {
 };
 
 struct EvTerminal : public EvClient, public kv::EvConnection {
-  static const uint8_t EV_TERMINAL = 5; /* redis terminal (converts redis proto to json) */
   void * operator new( size_t, void *ptr ) { return ptr; }
   void operator delete( void *ptr ) { ::free( ptr ); }
   Term term;
@@ -124,7 +120,7 @@ struct EvTerminal : public EvClient, public kv::EvConnection {
   size_t line_len;
 
   EvTerminal( kv::EvPoll &p,  EvCallback &callback )
-    : EvClient( callback ), kv::EvConnection( p, EV_TERMINAL ),
+    : EvClient( callback ), kv::EvConnection( p, p.register_type( "term" ) ),
       line( 0 ), line_len( 0 ) {
     /* don't close stdin stdout */
     this->sock_opts = kv::OPT_NO_CLOSE;
@@ -147,16 +143,16 @@ struct EvTerminal : public EvClient, public kv::EvConnection {
 
 struct EvMemcachedMerge;
 struct EvMemcachedUdpClient : public EvClient, public kv::EvUdp {
-  static const uint8_t EV_MEMCACHED_UDP_CLIENT_SOCK = 15; /* udp client */
   void * operator new( size_t, void *ptr ) { return ptr; }
   void operator delete( void *ptr ) { ::free( ptr ); }
 
   EvMemcachedMerge * sav;
   uint16_t           req_id;
 
-  EvMemcachedUdpClient( kv::EvPoll &p, EvCallback &callback,
-                        uint8_t t = EV_MEMCACHED_UDP_CLIENT_SOCK )
-    : EvClient( callback ), kv::EvUdp( p, t ), sav( 0 ), req_id( 0 ) {}
+  EvMemcachedUdpClient( kv::EvPoll &p, EvCallback &callback )
+    : EvClient( callback ),
+      kv::EvUdp( p, p.register_type( "memcached_udp_client" ) ),
+      sav( 0 ), req_id( 0 ) {}
   /* EvSocket */
   virtual void write( void ) noexcept final;
   virtual void process( void ) noexcept final;

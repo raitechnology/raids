@@ -18,7 +18,7 @@ using namespace ds;
 using namespace kv;
 
 EvHttpListen::EvHttpListen( EvPoll &p ) noexcept
-  : EvTcpListen( p, EvHttpService::EV_HTTP_SOCK, "http_sock" ) {}
+  : EvTcpListen( p, "http_listen", "http_sock" ) {}
 
 bool
 EvHttpListen::accept( void ) noexcept
@@ -35,8 +35,7 @@ EvHttpListen::accept( void ) noexcept
     return false;
   }
   EvHttpService *c =
-    this->poll.get_free_list<EvHttpService>(
-      this->poll.free_list[ EvHttpService::EV_HTTP_SOCK ] );
+    this->poll.get_free_list<EvHttpService>( this->accept_sock_type );
   if ( c == NULL ) {
     perror( "accept: no memory" );
     ::close( sock );
@@ -47,9 +46,10 @@ EvHttpListen::accept( void ) noexcept
   c->PeerData::init_peer( sock, (struct sockaddr *) &addr, "http" );
   c->setup_ids( sock, ++this->timer_id );
   c->initialize_state();
+
   if ( this->poll.add_sock( c ) < 0 ) {
     ::close( sock );
-    c->push_free_list();
+    this->poll.push_free_list( c );
     return false;
   }
   return true;
@@ -1285,27 +1285,7 @@ EvHttpService::release( void ) noexcept
     ::free( this->wsbuf );
   this->RedisExec::release();
   this->EvConnection::release_buffers();
-  this->push_free_list();
-}
-
-void
-EvHttpService::push_free_list( void ) noexcept
-{
-  if ( this->in_list( IN_ACTIVE_LIST ) )
-    fprintf( stderr, "redis sock should not be in active list\n" );
-  else if ( ! this->in_list( IN_FREE_LIST ) ) {
-    this->set_list( IN_FREE_LIST );
-    this->poll.free_list[ EV_HTTP_SOCK ].push_hd( this );
-  }
-}
-
-void
-EvHttpService::pop_free_list( void ) noexcept
-{
-  if ( this->in_list( IN_FREE_LIST ) ) {
-    this->set_list( IN_NO_LIST );
-    this->poll.free_list[ EV_HTTP_SOCK ].pop( this );
-  }
+  this->poll.push_free_list( this );
 }
 
 bool

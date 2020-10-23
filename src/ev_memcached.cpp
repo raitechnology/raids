@@ -17,7 +17,7 @@ using namespace kv;
 static MemcachedStats stat;
 
 EvMemcachedListen::EvMemcachedListen( EvPoll &p ) noexcept
-  : EvTcpListen( p, EvMemcachedService::EV_MEMCACHED_SOCK, "memcached_sock" )
+  : EvTcpListen( p, "memcached_listen", "memcached_sock" )
 {
   if ( stat.boot_time == 0 )
     stat.boot_time = kv_current_realtime_ns();
@@ -57,11 +57,10 @@ EvMemcachedListen::accept( void ) noexcept
     }
     return false;
   }
-  bool was_empty =
-    this->poll.free_list[ EvMemcachedService::EV_MEMCACHED_SOCK ].is_empty();
+  bool was_empty = this->poll.free_list[ this->accept_sock_type ].is_empty();
   EvMemcachedService * c =
     this->poll.get_free_list2<EvMemcachedService, MemcachedStats>(
-      this->poll.free_list[ EvMemcachedService::EV_MEMCACHED_SOCK ], stat );
+      this->accept_sock_type, stat );
   if ( c == NULL ) {
     perror( "accept: no memory" );
     ::close( sock );
@@ -76,7 +75,7 @@ EvMemcachedListen::accept( void ) noexcept
 
   if ( this->poll.add_sock( c ) < 0 ) {
     ::close( sock );
-    c->push_free_list();
+    this->poll.push_free_list( c );
     return false;
   }
   stat.curr_connections++;
@@ -643,7 +642,7 @@ EvMemcachedService::release( void ) noexcept
 {
   this->MemcachedExec::release();
   this->EvConnection::release_buffers();
-  this->push_free_list();
+  this->poll.push_free_list( this );
   stat.curr_connections--;
 }
 
@@ -669,26 +668,6 @@ EvMemcachedUdp::release( void ) noexcept
   this->exec->release();
   this->exec = NULL;
   this->EvUdp::release_buffers();
-}
-
-void
-EvMemcachedService::push_free_list( void ) noexcept
-{
-  if ( this->in_list( IN_ACTIVE_LIST ) )
-    fprintf( stderr, "memcached sock should not be in active list\n" );
-  else if ( ! this->in_list(  IN_FREE_LIST ) ) {
-    this->set_list( IN_FREE_LIST );
-    this->poll.free_list[ EV_MEMCACHED_SOCK ].push_hd( this );
-  }
-}
-
-void
-EvMemcachedService::pop_free_list( void ) noexcept
-{
-  if ( this->in_list( IN_FREE_LIST ) ) {
-    this->set_list( IN_NO_LIST );
-    this->poll.free_list[ EV_MEMCACHED_SOCK ].pop( this );
-  }
 }
 
 void

@@ -70,7 +70,6 @@ struct HttpOut {
 };
 
 struct EvHttpService : public kv::EvConnection, public RedisExec {
-  static const uint8_t EV_HTTP_SOCK = 3;
   char           * wsbuf;   /* decoded websocket frames */
   size_t           wsoff,   /* start offset of wsbuf */
                    wslen,   /* length of wsbuf used */
@@ -82,7 +81,7 @@ struct EvHttpService : public kv::EvConnection, public RedisExec {
   Term             term;
   void * operator new( size_t, void *ptr ) { return ptr; }
 
-  EvHttpService( kv::EvPoll &p ) : kv::EvConnection( p, EV_HTTP_SOCK ),
+  EvHttpService( kv::EvPoll &p,  const uint8_t t ) : kv::EvConnection( p, t ),
     RedisExec( *p.map, p.ctx_id, p.dbx_id, *this, p.sub_route, *this ),
     wsbuf( 0 ), wsoff( 0 ), wslen( 0 ), websock_off( 0 ),
     term_int( 0 ), is_using_term( false ) {}
@@ -113,8 +112,6 @@ struct EvHttpService : public kv::EvConnection, public RedisExec {
   bool send_ws_upgrade( const HttpReq &wshdr ) noexcept;
   bool send_ws_pong( const char *payload,  size_t len ) noexcept;
   size_t recv_wsframe( char *start,  char *end ) noexcept;
-  void push_free_list( void ) noexcept;
-  void pop_free_list( void ) noexcept;
 
   /* EvSocket */
   virtual void write( void ) noexcept final;

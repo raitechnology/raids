@@ -14,14 +14,19 @@ using namespace rai;
 using namespace ds;
 using namespace kv;
 
-extern "C" struct ds_s {};
+extern "C" {
+  struct ds_s {
+    uint64_t msg_cnt;
+  };
+}
 
 namespace {
 struct ds_internal : public ds_s, public EvShmApi {
   void * operator new( size_t, void *ptr ) { return ptr; }
 
-  uint64_t msg_cnt;
-  ds_internal( EvPoll &p ) : EvShmApi( p ), msg_cnt( 0 ) {}
+  ds_internal( EvPoll &p ) : EvShmApi( p ) {
+    this->msg_cnt = 0;
+  }
 };
 }
 
@@ -383,7 +388,7 @@ ds_psubscribe_with_cb( ds_t *h,  const ds_msg_t *subject,
 } /* extern "C" */
 
 EvShmApi::EvShmApi( EvPoll &p ) noexcept
-  : EvSocket( p, EV_SHM_API ), exec( 0 ), timer_id( 0 )
+  : EvSocket( p, p.register_type( "shm_api" ) ), exec( 0 ), timer_id( 0 )
 {
   this->pfd[ 0 ] = this->pfd[ 1 ] = -1;
 }
@@ -399,7 +404,7 @@ EvShmApi::init_exec( void ) noexcept
   this->PeerData::init_ctx( this->pfd[ 0 ], this->ctx_id, "shm_api" );
   this->exec = new ( e ) RedisExec( *this->map, this->ctx_id, this->dbx_id,
                                     *this, this->poll.sub_route, *this );
-  this->timer_id = ( (uint64_t) EV_SHM_API << 56 ) |
+  this->timer_id = ( (uint64_t) this->sock_type << 56 ) |
                    ( (uint64_t) this->ctx_id << 40 );
   this->exec->setup_ids( this->fd, this->timer_id );
   this->poll.add_sock( this );

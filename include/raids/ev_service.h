@@ -12,15 +12,11 @@ namespace kv {
 namespace ds {
 
 struct EvRedisService : public kv::EvConnection, public RedisExec {
-  static const uint8_t EV_REDIS_SOCK = 2,
-                       EV_REDIS_UNIX_SOCK = 16; /* only for unique timers */
   void * operator new( size_t, void *ptr ) { return ptr; }
 
-  EvRedisService( kv::EvPoll &p ) : kv::EvConnection( p, EV_REDIS_SOCK ),
+  EvRedisService( kv::EvPoll &p,  const uint8_t t ) : kv::EvConnection( p, t ),
       RedisExec( *p.map, p.ctx_id, p.dbx_id, *this, p.sub_route, *this ) {}
   void debug( void ) noexcept;
-  void push_free_list( void ) noexcept;
-  void pop_free_list( void ) noexcept;
   /* EvSocket */
   virtual void process( void ) noexcept final;
   virtual void release( void ) noexcept final;

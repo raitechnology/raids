@@ -19,14 +19,10 @@ using namespace ds;
 using namespace kv;
 
 EvRedisListen::EvRedisListen( EvPoll &p ) noexcept
-  : EvTcpListen( p, EvRedisService::EV_REDIS_SOCK, "redis_sock" ) {}
+  : EvTcpListen( p, "redis_tcp_listen", "redis_sock" ) {}
 
 EvRedisUnixListen::EvRedisUnixListen( EvPoll &p ) noexcept
-  : EvUnixListen( p, EvRedisService::EV_REDIS_UNIX_SOCK,
-                  "redis_unix_sock" ) {
-  /* reserve redis sock as well */
-  p.register_type( EvRedisService::EV_REDIS_SOCK, "redis_sock" );
-}
+  : EvUnixListen( p, "redis_unix_listen", "redis_sock" ) {}
 
 bool
 EvRedisListen::accept( void ) noexcept
@@ -45,8 +41,7 @@ EvRedisListen::accept( void ) noexcept
   /*char buf[ 80 ];*/
   /*printf( "accept from %s\n", get_ip_str( &addr, buf, sizeof( buf ) ) );*/
   EvRedisService *c =
-    this->poll.get_free_list<EvRedisService>(
-      this->poll.free_list[ EvRedisService::EV_REDIS_SOCK ] );
+    this->poll.get_free_list<EvRedisService>( this->accept_sock_type );
   if ( c == NULL ) {
     perror( "accept: no memory" );
     ::close( sock );
@@ -59,7 +54,7 @@ EvRedisListen::accept( void ) noexcept
 
   if ( this->poll.add_sock( c ) < 0 ) {
     ::close( sock );
-    c->push_free_list();
+    this->poll.push_free_list( c );
     return false;
   }
   return true;
@@ -80,8 +75,7 @@ EvRedisUnixListen::accept( void ) noexcept
     return false;
   }
   EvRedisService *c =
-    this->poll.get_free_list<EvRedisService>(
-      this->poll.free_list[ EvRedisService::EV_REDIS_SOCK ] );
+    this->poll.get_free_list<EvRedisService>( this->accept_sock_type );
   if ( c == NULL ) {
     perror( "accept: no memory" );
     ::close( sock );
@@ -93,7 +87,7 @@ EvRedisUnixListen::accept( void ) noexcept
 
   if ( this->poll.add_sock( c ) < 0 ) {
     ::close( sock );
-    c->push_free_list();
+    this->poll.push_free_list( c );
     return false;
   }
   return true;
@@ -212,27 +206,7 @@ EvRedisService::release( void ) noexcept
 {
   this->RedisExec::release();
   this->EvConnection::release_buffers();
-  this->push_free_list();
-}
-
-void
-EvRedisService::push_free_list( void ) noexcept
-{
-  if ( this->in_list( IN_ACTIVE_LIST ) )
-    fprintf( stderr, "redis sock should not be in active list\n" );
-  else if ( ! this->in_list( IN_FREE_LIST ) ) {
-    this->set_list( IN_FREE_LIST );
-    this->poll.free_list[ EV_REDIS_SOCK ].push_hd( this );
-  }
-}
-
-void
-EvRedisService::pop_free_list( void ) noexcept
-{
-  if ( this->in_list( IN_FREE_LIST ) ) {
-    this->set_list( IN_NO_LIST );
-    this->poll.free_list[ EV_REDIS_SOCK ].pop( this );
-  }
+  this->poll.push_free_list( this );
 }
 
 bool

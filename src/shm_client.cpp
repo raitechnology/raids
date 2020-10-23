@@ -36,7 +36,7 @@ EvShmClient::init_exec( void ) noexcept
   this->PeerData::init_ctx( this->pfd[ 0 ], this->ctx_id, "shm_client" );
   this->exec = new ( e ) RedisExec( *this->map, this->ctx_id, this->dbx_id,
                                     *this, this->poll.sub_route, *this );
-  this->exec->setup_ids( this->fd, (uint64_t) EV_SHM_SOCK << 56 );
+  this->exec->setup_ids( this->fd, (uint64_t) this->sock_type << 56 );
   this->poll.add_sock( this );
   return 0;
 }
