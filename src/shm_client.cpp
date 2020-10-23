@@ -31,14 +31,14 @@ EvShmClient::init_exec( void ) noexcept
   void * e = aligned_malloc( sizeof( RedisExec ) );
   if ( e == NULL )
     return -1;
-  if ( ::pipe2( this->pfd, O_NONBLOCK ) < 0 )
-    return -1;
-  this->PeerData::init_ctx( this->pfd[ 0 ], this->ctx_id, "shm_client" );
+  int status, pfd = this->poll.get_null_fd();
+  this->PeerData::init_ctx( pfd, this->ctx_id, "shm_client" );
   this->exec = new ( e ) RedisExec( *this->map, this->ctx_id, this->dbx_id,
                                     *this, this->poll.sub_route, *this );
-  this->exec->setup_ids( this->fd, (uint64_t) this->sock_type << 56 );
-  this->poll.add_sock( this );
-  return 0;
+  this->exec->setup_ids( pfd, (uint64_t) this->sock_type << 56 );
+  if ( (status = this->poll.add_sock( this )) == 0 )
+    return 0;
+  return status;
 }
 
 bool
@@ -113,11 +113,10 @@ void EvShmClient::release( void ) noexcept { this->StreamBuf::reset(); }
 /* EvShmSvc virtual functions */
 EvShmSvc::~EvShmSvc() noexcept {}
 int EvShmSvc::init_poll( void ) noexcept {
-  int status;
-  this->PeerData::init_peer( 0, NULL, "shm_svc" );
+  int status, pfd = this->poll.get_null_fd();
+  this->PeerData::init_peer( pfd, NULL, "shm_svc" );
   if ( (status = this->poll.add_sock( this )) == 0 )
     return 0;
-  this->fd = -1;
   return status;
 }
 void EvShmSvc::write( void ) noexcept {}

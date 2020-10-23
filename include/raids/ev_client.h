@@ -29,12 +29,11 @@ struct RedisExec;
 struct EvShmClient : public kv::EvShm, public kv::StreamBuf,
                      public kv::EvSocket, public EvClient {
   RedisExec * exec;
-  int         pfd[ 2 ];
 
   EvShmClient( kv::EvPoll &p,  EvCallback &callback )
     : kv::EvSocket( p, p.register_type( "shm_sock" ) ),
       EvClient( callback ), exec( 0 ) {
-    this->pfd[ 0 ] = this->pfd[ 1 ] = -1;
+    this->sock_opts = kv::OPT_NO_POLL;
   }
   ~EvShmClient() noexcept;
 
@@ -55,7 +54,6 @@ struct EvShmClient : public kv::EvShm, public kv::StreamBuf,
 
 struct EvShmApi : public kv::EvShm, public kv::StreamBuf, public kv::EvSocket {
   RedisExec * exec;
-  int         pfd[ 2 ];
   uint64_t    timer_id;
 
   EvShmApi( kv::EvPoll &p ) noexcept;
@@ -76,7 +74,7 @@ struct EvShmSvc : public kv::EvShm, public kv::EvSocket {
   void * operator new( size_t, void *ptr ) { return ptr; }
   void operator delete( void *ptr ) { ::free( ptr ); }
   EvShmSvc( kv::EvPoll &p ) : kv::EvSocket( p, p.register_type( "shm_svc" ) ) {
-    this->sock_opts = kv::OPT_NO_POLL | kv::OPT_NO_CLOSE;
+    this->sock_opts = kv::OPT_NO_POLL;
   }
   virtual ~EvShmSvc() noexcept;
 

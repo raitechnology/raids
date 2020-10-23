@@ -406,8 +406,9 @@ main( int argc, char *argv[] )
     for (;;) {
       if ( poll.quit >= 5 )
         break;
-      bool idle = poll.dispatch(); /* true if idle, false if busy */
-      if ( idle && input_fp != NULL && my.term.line_len == 0 &&
+      int idle = poll.dispatch();
+      if ( idle == EvPoll::DISPATCH_IDLE &&
+           input_fp != NULL && my.term.line_len == 0 &&
            my.msg_sent == my.msg_recv ) {
         char tmp[ 1024 ];
       get_next_line:;
@@ -423,7 +424,7 @@ main( int argc, char *argv[] )
             goto get_next_line;
         }
       }
-      poll.wait( idle ? 100 : 0 );
+      poll.wait( idle == EvPoll::DISPATCH_IDLE ? 100 : 0 );
       if ( sighndl.signaled )
         poll.quit++;
     }

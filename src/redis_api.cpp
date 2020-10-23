@@ -120,9 +120,8 @@ ds_close( ds_t *h )
   for (;;) {
     if ( ds.poll.quit >= 5 )
       break;
-    bool idle = ds.poll.dispatch();
-    if ( idle )
-      ds.poll.wait( idle ? 10 : 0 );
+    int idle = ds.poll.dispatch();
+    ds.poll.wait( idle == EvPoll::DISPATCH_IDLE ? 10 : 0 );
   }
   ds.close();
   ::free( &ds );
@@ -390,7 +389,7 @@ ds_psubscribe_with_cb( ds_t *h,  const ds_msg_t *subject,
 EvShmApi::EvShmApi( EvPoll &p ) noexcept
   : EvSocket( p, p.register_type( "shm_api" ) ), exec( 0 ), timer_id( 0 )
 {
-  this->pfd[ 0 ] = this->pfd[ 1 ] = -1;
+  this->sock_opts = kv::OPT_NO_POLL;
 }
 
 int
@@ -399,16 +398,16 @@ EvShmApi::init_exec( void ) noexcept
   void * e = aligned_malloc( sizeof( RedisExec ) );
   if ( e == NULL )
     return -1;
-  if ( ::pipe2( this->pfd, O_NONBLOCK ) < 0 )
-    return -1;
-  this->PeerData::init_ctx( this->pfd[ 0 ], this->ctx_id, "shm_api" );
+  int status, pfd = this->poll.get_null_fd();
+  this->PeerData::init_ctx( pfd, this->ctx_id, "shm_api" );
   this->exec = new ( e ) RedisExec( *this->map, this->ctx_id, this->dbx_id,
                                     *this, this->poll.sub_route, *this );
   this->timer_id = ( (uint64_t) this->sock_type << 56 ) |
                    ( (uint64_t) this->ctx_id << 40 );
-  this->exec->setup_ids( this->fd, this->timer_id );
-  this->poll.add_sock( this );
-  return 0;
+  this->exec->setup_ids( pfd, this->timer_id );
+  if ( (status = this->poll.add_sock( this )) == 0 )
+    return 0;
+  return status;
 }
 
 bool
