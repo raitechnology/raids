@@ -148,20 +148,38 @@ struct PingTest : public EvShmSvc, public KvSubNotifyList {
       this->poll.pubsub->sub_notifyq.pop( this );
     }
   }
+  static const uint64_t PUB_TIMER = 1;
+#ifdef EV_NET_DBG
+  static const uint64_t DBG_TIMER = 2;
+#endif
   /* start a timer at per_sec interval */
   void start_timer( void ) {
-    if ( this->per_sec >= 1000 ) {
-      this->poll.timer_queue->add_timer_units( this->fd, this->ns_ival,
-                                               IVAL_NANOS, 1, 0 );
+    if ( this->active_ping ) {
+      if ( this->per_sec >= 1000 ) {
+        this->poll.timer_queue->add_timer_units( this->fd, this->ns_ival,
+                                                 IVAL_NANOS, PUB_TIMER, 0 );
+      }
+      else {
+        uint32_t us_ival = this->ns_ival / 1000;
+        this->poll.timer_queue->add_timer_units( this->fd, us_ival,
+                                                 IVAL_MICROS, PUB_TIMER, 0 );
+      }
     }
-    else {
-      uint32_t us_ival = this->ns_ival / 1000;
-      this->poll.timer_queue->add_timer_units( this->fd, us_ival,
-                                               IVAL_MICROS, 1, 0 );
-    }
+#ifdef EV_NET_DBG
+    this->poll.timer_queue->add_timer_seconds( this->fd, 1, DBG_TIMER, 0 );
+#endif
   }
   /* a timer expires every ns_ival, send messages */
-  virtual bool timer_expire( uint64_t, uint64_t ) noexcept {
+  virtual bool timer_expire( uint64_t /*tid*/, uint64_t ) noexcept {
+#ifdef EV_NET_DBG
+    if ( tid == DBG_TIMER ) {
+      for ( EvSocket *s = this->poll.active_list.hd; s != NULL;
+            s = (EvSocket *) s->next ) {
+        s->print_dbg();
+      }
+      return true;
+    }
+#endif
     uint64_t now = this->poll.timer_queue->epoch;
     if ( this->last_time == 0 ) {
       this->last_time = now;
@@ -174,7 +192,10 @@ struct PingTest : public EvShmSvc, public KvSubNotifyList {
       EvPublish p( this->pub, this->plen, this->ibx, this->ilen, &t,
                    sizeof( t ), this->fd, this->ph,
                    NULL, 0, MD_UINT, 'u' );
-      this->poll.forward_msg( p, NULL, 0, NULL );
+      if ( ! this->poll.forward_msg( p, NULL, 0, NULL ) ) {
+        /* back pressure */
+        break;
+      }
       if ( this->per_sec < 100 )
         break;
     }
@@ -245,9 +266,7 @@ main( int argc, char *argv[] )
   printf( "listening on subject %s %x publish %s %x\n", shm.sub, shm.h,
           shm.pub, shm.ph );
   sighndl.install();
-  if ( active_ping ) {
-    shm.start_timer();
-  }
+  shm.start_timer();
   if ( bu != NULL ) {
     poll.pubsub->idle_push( EV_BUSY_POLL );
   }
