@@ -54,7 +54,8 @@ struct ExecListCtx {
   bool open( void ) {
     void * data    = NULL;
     size_t datalen = 0;
-    if ( (this->ctx.kstatus = this->kctx.value( &data, datalen )) == KEY_OK ) {
+    if ( (this->ctx.kstatus =
+          this->kctx.value_update( &data, datalen )) == KEY_OK ) {
       this->x = new ( &this->tmp[ this->n++%2 ] ) LIST_CLASS( data, datalen );
       this->x->open();
     }

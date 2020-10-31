@@ -55,7 +55,8 @@ struct ExecStreamCtx {
   bool open( void ) {
     void * data    = NULL;
     size_t datalen = 0;
-    if ( (this->ctx.kstatus = this->kctx.value( &data, datalen )) == KEY_OK ) {
+    if ( (this->ctx.kstatus =
+          this->kctx.value_update( &data, datalen )) == KEY_OK ) {
       this->x = md::StreamGeom::make_existing( &this->tmp[ this->n++%2 ],
                                                data, datalen );
       if ( this->x == NULL )
