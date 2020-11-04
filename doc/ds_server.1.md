@@ -4,11 +4,11 @@
 
 # NAME
 
-kv_server - Rai key value server
+ds_server - Rai distribution server
 
 # SYNOPSIS
 
-kv_server [*options*]
+ds_server [*options*]
 
 # DESCRIPTION
 
