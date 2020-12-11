@@ -25,7 +25,7 @@ get_arg( int argc, char *argv[], int b, const char *f, const char *def )
   return def; /* default value */
 }
 
-struct PubTest : public EvShmSvc, public KvSubNotifyList {
+struct PubTest : public EvShmSvc, public RouteNotify {
   const char * sub;
   size_t       len;
   uint32_t     h,
@@ -43,16 +43,12 @@ struct PubTest : public EvShmSvc, public KvSubNotifyList {
   }
   /* shutdown before close */
   virtual void process_shutdown( void ) noexcept {
-    if ( this->KvSubNotifyList::in_list ) {
-      this->KvSubNotifyList::in_list = false;
-      this->poll.pubsub->sub_notifyq.pop( this );
-    }
+    this->poll.remove_route_notify( *this );
   }
  /* start a timer at per_sec interval */
   void start_timer( void ) {
     this->h = kv_crc_c( this->sub, this->len, 0 );
-    this->poll.pubsub->sub_notifyq.push_tl( this );
-    this->KvSubNotifyList::in_list = true;
+    this->poll.add_route_notify( *this );
     if ( this->per_sec >= 1000 ) {
       this->poll.timer_queue->add_timer_units( this->fd, this->ns_ival,
                                                IVAL_NANOS, 1, 0 );
@@ -63,6 +59,35 @@ struct PubTest : public EvShmSvc, public KvSubNotifyList {
                                                IVAL_MICROS, 1, 0 );
     }
   }
+  virtual void on_sub( uint32_t,  const char *sub,  size_t sublen,
+                       uint32_t src_fd,  uint32_t,  char,
+                       const char *rep,  size_t rlen ) noexcept {
+    printf( "on_sub src_fd=%u %.*s", src_fd, (int) sublen, sub );
+    if ( rlen != 0 )
+      printf( " reply %.*s", (int) rlen, rep );
+    printf( "\n" );
+
+    if ( rlen > 0 && sublen == this->len &&
+         ::memcmp( sub, this->sub, this->len ) == 0 ) {
+      char buf[ 1600 ];
+      TibMsgWriter tibmsg( buf, sizeof( buf ) );
+      tibmsg.append_string( "hello", 6, "world", 6 );
+      tibmsg.append_uint( "count", 6, this->count );
+      tibmsg.append_uint( "time", 5, this->last_time );
+      size_t sz = tibmsg.update_hdr();
+      printf( "publish reply sz %lu\n", sz );
+
+      EvPublish p( rep, rlen, NULL, 0, buf, sz, this->fd,
+                   kv_crc_c( rep, rlen, 0 ), NULL, 0,
+                   (uint8_t) RAIMSG_TYPE_ID, 'i' );
+      this->poll.forward_msg( p, NULL, 0, NULL );
+    }
+  }
+  virtual void on_unsub( uint32_t,  const char *sub,  size_t sublen,
+                         uint32_t src_fd,  uint32_t,  char ) noexcept {
+    printf( "on_unsub src_fd=%u %.*s\n", src_fd, (int) sublen, sub );
+  }
+#if 0
   virtual void on_sub( KvSubMsg &submsg ) noexcept {
     printf( "on_sub %s %.*s", submsg.msg_type_string(),
             (int) submsg.sublen, submsg.subject() );
@@ -85,6 +110,7 @@ struct PubTest : public EvShmSvc, public KvSubNotifyList {
       this->poll.forward_msg( p, NULL, 0, NULL );
     }
   }
+#endif
   /* a timer expires every ns_ival, send messages */
   virtual bool timer_expire( uint64_t, uint64_t ) noexcept {
     uint64_t now = this->poll.timer_queue->epoch;

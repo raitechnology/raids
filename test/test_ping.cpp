@@ -24,7 +24,7 @@ get_arg( int argc, char *argv[], int b, const char *f, const char *def )
   return def; /* default value */
 }
 
-struct PingTest : public EvShmSvc, public KvSubNotifyList {
+struct PingTest : public EvShmSvc, public RouteNotify {
   const char * sub,
              * pub,
              * ibx;
@@ -56,19 +56,19 @@ struct PingTest : public EvShmSvc, public KvSubNotifyList {
   /* start subcriptions for sub or inbox */
   void subscribe( void ) {
     uint32_t rcnt;
-    this->poll.pubsub->sub_notifyq.push_tl( this );
+    this->poll.add_route_notify( *this );
     this->h  = kv_crc_c( this->sub, this->len, 0 );
     this->ph = kv_crc_c( this->pub, this->plen, 0 );
     this->ih = kv_crc_c( this->ibx, this->ilen, 0 );
     if ( this->round_trip || ! this->active_ping ) {
       /* if using inbox for reply */
       if ( this->active_ping && this->ilen > 0 ) {
-        rcnt = this->poll.sub_route.add_route( this->ih, this->fd );
+        rcnt = this->poll.sub_route.add_sub_route( this->ih, this->fd );
         this->poll.notify_sub( this->ih, this->ibx, this->ilen,
                                this->fd, rcnt, 'K' );
       }
       else {
-        rcnt = this->poll.sub_route.add_route( this->h, this->fd );
+        rcnt = this->poll.sub_route.add_sub_route( this->h, this->fd );
         this->poll.notify_sub( this->h, this->sub, this->len,
                                this->fd, rcnt, 'K' );
       }
@@ -79,12 +79,12 @@ struct PingTest : public EvShmSvc, public KvSubNotifyList {
     uint32_t rcnt;
     if ( this->round_trip || ! this->active_ping ) {
       if ( this->active_ping && this->ilen > 0 ) {
-        rcnt = this->poll.sub_route.del_route( this->ih, this->fd );
+        rcnt = this->poll.sub_route.del_sub_route( this->ih, this->fd );
         this->poll.notify_unsub( this->ih, this->ibx, this->ilen,
                                  this->fd, rcnt, 'K' );
       }
       else {
-        rcnt = this->poll.sub_route.del_route( this->h, this->fd );
+        rcnt = this->poll.sub_route.del_sub_route( this->h, this->fd );
         this->poll.notify_unsub( this->h, this->sub, this->len,
                                  this->fd, rcnt, 'K' );
       }
@@ -130,6 +130,19 @@ struct PingTest : public EvShmSvc, public KvSubNotifyList {
     }
     return true;
   }
+  virtual void on_sub( uint32_t,  const char *sub,  size_t sublen,
+                       uint32_t src_fd,  uint32_t,  char,
+                       const char *rep,  size_t rlen ) noexcept {
+    printf( "on_sub src_fd=%u %.*s", src_fd, (int) sublen, sub );
+    if ( rlen != 0 )
+      printf( " reply %.*s", (int) rlen, rep );
+    printf( "\n" );
+  }
+  virtual void on_unsub( uint32_t,  const char *sub,  size_t sublen,
+                         uint32_t src_fd,  uint32_t,  char ) noexcept {
+    printf( "on_unsub src_fd=%u %.*s\n", src_fd, (int) sublen, sub );
+  }
+#if 0
   virtual void on_sub( KvSubMsg &submsg ) noexcept {
     printf( "on_sub ctx_%u %s %.*s", submsg.src, submsg.msg_type_string(),
             (int) submsg.sublen, submsg.subject() );
@@ -137,16 +150,14 @@ struct PingTest : public EvShmSvc, public KvSubNotifyList {
       printf( " reply %.*s", (int) submsg.replylen , submsg.reply() );
     printf( "\n" );
   }
+#endif
   /* shutdown before close */
   virtual void process_shutdown( void ) noexcept {
     if ( this->h != 0 ) {
       this->unsubscribe();
       this->h = 0;
     }
-    if ( this->KvSubNotifyList::in_list ) {
-      this->KvSubNotifyList::in_list = false;
-      this->poll.pubsub->sub_notifyq.pop( this );
-    }
+    this->poll.remove_route_notify( *this );
   }
   static const uint64_t PUB_TIMER = 1;
 #ifdef EV_NET_DBG

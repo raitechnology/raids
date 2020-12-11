@@ -47,23 +47,24 @@ struct SubTest : public EvShmSvc {
     this->ih = kv_crc_c( this->ibx, this->ilen, 0 );
     /* if using inbox for reply */
     if ( this->ilen > 0 ) {
-      rcnt = this->poll.sub_route.add_route( this->ih, this->fd );
+      rcnt = this->poll.sub_route.add_sub_route( this->ih, this->fd );
       this->poll.notify_sub( this->ih, this->ibx, this->ilen,
                              this->fd, rcnt, 'K' );
     }
-    rcnt = this->poll.sub_route.add_route( this->h, this->fd );
+    rcnt = this->poll.sub_route.add_sub_route( this->h, this->fd );
     this->poll.notify_sub( this->h, this->sub, this->len,
-                           this->fd, rcnt, 'K' );
+                           this->fd, rcnt, 'K',
+                           this->ibx, this->ilen );
   }
   /* remove subcriptions for sub or inbox */
   void unsubscribe( void ) {
     uint32_t rcnt;
     if ( this->ilen > 0 ) {
-      rcnt = this->poll.sub_route.del_route( this->ih, this->fd );
+      rcnt = this->poll.sub_route.del_sub_route( this->ih, this->fd );
       this->poll.notify_unsub( this->ih, this->ibx, this->ilen,
                                this->fd, rcnt, 'K' );
     }
-    rcnt = this->poll.sub_route.del_route( this->h, this->fd );
+    rcnt = this->poll.sub_route.del_sub_route( this->h, this->fd );
     this->poll.notify_unsub( this->h, this->sub, this->len,
                              this->fd, rcnt, 'K' );
   }
@@ -74,7 +75,8 @@ struct SubTest : public EvShmSvc {
                                this->dict, &this->mem );
     if ( m != NULL ) {
       MDOutput mout;
-      printf( "### %.*s", (int) p.subject_len, p.subject );
+      printf( "### %.*s (pub_type=%c)", (int) p.subject_len, p.subject,
+              p.pub_type > ' ' && p.pub_type < 127 ? p.pub_type : '_' );
       if ( p.reply_len != 0 )
         printf( " reply %.*s", (int) p.reply_len, (char *) p.reply );
       printf( "\n" );

@@ -68,15 +68,14 @@ RedisExec::exec_keys( void ) noexcept
     return ERR_BAD_ARGS;
   /* if not matching everything */
   if ( patlen > 1 || pattern[ 0 ] != '*' ) {
-    char       buf[ 1024 ];
     size_t     erroff;
     int        error;
-    PatternCvt cvt( buf, sizeof( buf ) );
+    PatternCvt cvt;
 
     if ( cvt.convert_glob( pattern, patlen ) != 0 )
       return ERR_BAD_ARGS;
 
-    sa.re = pcre2_compile( (uint8_t *) buf, cvt.off, 0, &error, &erroff, 0 );
+    sa.re = pcre2_compile( (uint8_t *) cvt.out, cvt.off, 0, &error, &erroff, 0 );
     if ( sa.re == NULL ) {
       return ERR_BAD_ARGS;
     }
@@ -468,15 +467,14 @@ RedisExec::match_scan_args( ScanArgs &sa,  size_t i ) noexcept
     }
   }
   if ( pattern != NULL ) {
-    char       buf[ 1024 ];
     size_t     erroff;
     int        error;
-    PatternCvt cvt( buf, sizeof( buf ) );
+    PatternCvt cvt;
 
     if ( cvt.convert_glob( pattern, patlen ) != 0 )
       return ERR_BAD_ARGS;
 
-    sa.re = pcre2_compile( (uint8_t *) buf, cvt.off, 0, &error, &erroff, 0 );
+    sa.re = pcre2_compile( (uint8_t *) cvt.out, cvt.off, 0, &error, &erroff, 0 );
     if ( sa.re == NULL ) {
       return ERR_BAD_ARGS;
     }

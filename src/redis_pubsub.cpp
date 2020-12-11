@@ -33,19 +33,18 @@ RedisExec::rem_all_sub( void ) noexcept
   uint32_t             rcnt;
   if ( this->sub_tab.first( pos ) ) {
     do {
-      rcnt = this->sub_route.del_route( pos.rt->hash, this->sub_id );
+      rcnt = this->sub_route.del_sub_route( pos.rt->hash, this->sub_id );
       this->sub_route.rte.notify_unsub( pos.rt->hash, pos.rt->value,
                                         pos.rt->len, this->sub_id, rcnt, 'R' );
     } while ( this->sub_tab.next( pos ) );
   }
   if ( this->pat_tab.first( ppos ) ) {
-    char       buf[ 1024 ];
-    PatternCvt cvt( buf, sizeof( buf ) );
+    PatternCvt cvt;
     do {
       if ( cvt.convert_glob( ppos.rt->value, ppos.rt->len ) == 0 ) {
         rcnt = this->sub_route.del_pattern_route( ppos.rt->hash, this->sub_id,
                                                   cvt.prefixlen );
-        this->sub_route.rte.notify_punsub( ppos.rt->hash, buf, cvt.off,
+        this->sub_route.rte.notify_punsub( ppos.rt->hash, cvt.out, cvt.off,
                                            ppos.rt->value, cvt.prefixlen,
                                            this->sub_id, rcnt, 'R' );
       }
@@ -53,7 +52,7 @@ RedisExec::rem_all_sub( void ) noexcept
   }
   if ( this->continue_tab.first( cpos ) ) {
     do {
-      rcnt = this->sub_route.del_route( cpos.rt->hash, this->sub_id );
+      rcnt = this->sub_route.del_sub_route( cpos.rt->hash, this->sub_id );
       this->sub_route.rte.notify_unsub( cpos.rt->hash, cpos.rt->value,
                                         cpos.rt->len, this->sub_id, rcnt, 'R' );
       RedisContinueMsg *cm = cpos.rt->continue_msg;
@@ -279,7 +278,7 @@ RedisExec::do_pub( EvPublish &pub,  RedisContinueMsg *&cm ) noexcept
           }
           cm->state &= ~CM_CONT_TAB;
           for ( i = 0; i < keycnt; i++ ) {
-            uint32_t rcnt = this->sub_route.del_route( cm->ptr[ i ].hash,
+            uint32_t rcnt = this->sub_route.del_sub_route( cm->ptr[ i ].hash,
                                                        this->sub_id );
             this->sub_route.rte.notify_unsub( cm->ptr[ i ].hash,
                                               cm->ptr[ i ].value,
@@ -363,7 +362,7 @@ RedisExec::pop_continue_tab( RedisContinueMsg *cm ) noexcept
   }
   cm->state &= ~CM_CONT_TAB;
   for ( i = 0; i < keycnt; i++ ) {
-    uint32_t rcnt = this->sub_route.del_route( cm->ptr[ i ].hash,
+    uint32_t rcnt = this->sub_route.del_sub_route( cm->ptr[ i ].hash,
                                                this->sub_id );
     this->sub_route.rte.notify_unsub( cm->ptr[ i ].hash,
                                       cm->ptr[ i ].value,
@@ -426,13 +425,13 @@ RedisExec::exec_pubsub( void ) noexcept
 
       if ( this->msg.get_arg( 2, pattern, patlen ) &&
            ( patlen > 1 || pattern[ 0 ] != '*' ) ) {
-        char       buf[ 1024 ];
         size_t     erroff;
         int        error;
-        PatternCvt cvt( buf, sizeof( buf ) );
+        PatternCvt cvt;
         if ( cvt.convert_glob( pattern, patlen ) != 0 )
           return ERR_BAD_ARGS;
-        re = pcre2_compile( (uint8_t *) buf, cvt.off, 0, &error, &erroff, 0 );
+        re = pcre2_compile( (uint8_t *) cvt.out, cvt.off, 0, &error, &erroff,
+                            0 );
         if ( re == NULL )
           return ERR_BAD_ARGS;
         md = pcre2_match_data_create_from_pattern( re, NULL );
@@ -469,7 +468,7 @@ RedisExec::exec_pubsub( void ) noexcept
         size_t vallen;
         if ( this->msg.get_arg( i, val, vallen ) ) {
           uint32_t h = kv_crc_c( val, vallen, 0 );
-          uint32_t rcnt = this->sub_route.get_route_count( h );
+          uint32_t rcnt = this->sub_route.get_sub_route_count( h );
           q.append_string( val, vallen );
           q.append_uint( rcnt );
         }
@@ -561,7 +560,7 @@ RedisExec::do_unsubscribe( const char *sub,  size_t len ) noexcept
     rcnt = 0;
     /* check for duplicate hashes */
     if ( this->sub_tab.tab.find_by_hash( h ) == NULL )
-      rcnt = this->sub_route.del_route( h, this->sub_id );
+      rcnt = this->sub_route.del_sub_route( h, this->sub_id );
     this->sub_route.rte.notify_unsub( h, sub, len, this->sub_id, rcnt, 'R' );
     this->msg_route_cnt++;
     return EXEC_OK;
@@ -580,7 +579,7 @@ RedisExec::do_subscribe_cb( const char *sub,  size_t len,
   if ( this->sub_tab.put( h, sub, len, rt ) == REDIS_SUB_OK ) {
     rt->callback = cb;
     rt->closure  = cl;
-    rcnt = this->sub_route.add_route( h, this->sub_id );
+    rcnt = this->sub_route.add_sub_route( h, this->sub_id );
     this->sub_route.rte.notify_sub( h, sub, len, this->sub_id, rcnt, 'R' );
     this->msg_route_cnt++;
     return EXEC_OK;
@@ -593,8 +592,7 @@ RedisExec::do_psubscribe_cb( const char *sub,  size_t len,
                              ds_on_msg_t cb,  void *cl ) noexcept
 {
   RedisPatternRoute * rt;
-  char       buf[ 1024 ];
-  PatternCvt cvt( buf, sizeof( buf ) );
+  PatternCvt cvt;
   uint32_t   h, rcnt;
 
   if ( cvt.convert_glob( sub, len ) == 0 ) {
@@ -605,7 +603,8 @@ RedisExec::do_psubscribe_cb( const char *sub,  size_t len,
       int    error;
       rt->callback = cb;
       rt->closure  = cl;
-      rt->re = pcre2_compile( (uint8_t *) buf, cvt.off, 0, &error, &erroff, 0 );
+      rt->re = pcre2_compile( (uint8_t *) cvt.out, cvt.off, 0, &error,
+                              &erroff, 0 );
       if ( rt->re == NULL ) {
         fprintf( stderr, "re failed\n" );
       }
@@ -622,8 +621,8 @@ RedisExec::do_psubscribe_cb( const char *sub,  size_t len,
       else {
         rcnt = this->sub_route.add_pattern_route( h, this->sub_id,
                                                   cvt.prefixlen );
-        this->sub_route.rte.notify_psub( h, buf, cvt.off, sub, cvt.prefixlen,
-                                         this->sub_id, rcnt, 'R' );
+        this->sub_route.rte.notify_psub( h, cvt.out, cvt.off, sub,
+                                         cvt.prefixlen, this->sub_id, rcnt,'R');
         this->msg_route_cnt++;
         return EXEC_OK;
       }
@@ -635,8 +634,7 @@ RedisExec::do_psubscribe_cb( const char *sub,  size_t len,
 ExecStatus
 RedisExec::do_punsubscribe( const char *sub,  size_t len ) noexcept
 {
-  char                buf[ 1024 ];
-  PatternCvt          cvt( buf, sizeof( buf ) );
+  PatternCvt          cvt;
   RouteLoc            loc;
   RedisPatternRoute * rt;
   uint32_t            h, rcnt;
@@ -656,8 +654,8 @@ RedisExec::do_punsubscribe( const char *sub,  size_t len ) noexcept
       this->pat_tab.tab.remove( loc );
       rcnt = this->sub_route.del_pattern_route( h, this->sub_id,
                                                 cvt.prefixlen );
-      this->sub_route.rte.notify_punsub( h, buf, cvt.off, sub, cvt.prefixlen,
-                                         this->sub_id, rcnt, 'R' );
+      this->sub_route.rte.notify_punsub( h, cvt.out, cvt.off, sub,
+                                         cvt.prefixlen, this->sub_id, rcnt,'R');
       this->msg_route_cnt++;
       return EXEC_OK;
     }
@@ -880,7 +878,7 @@ RedisExec::save_blocked_cmd( int64_t timeout_val ) noexcept
     sub = kspc.subj;
     h   = kv_crc_c( sub, len, 0 );
     /* subscribe to the continuation notification (the keyspace subject) */
-    rcnt = this->sub_route.add_route( h, this->sub_id );
+    rcnt = this->sub_route.add_sub_route( h, this->sub_id );
     this->sub_route.rte.notify_sub( h, sub, len, this->sub_id, rcnt, 'R' );
     this->msg_route_cnt++;
     if ( this->continue_tab.put( h, sub, len, rt ) == REDIS_SUB_OK ) {

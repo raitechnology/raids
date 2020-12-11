@@ -15,7 +15,7 @@ extern "C" {
 namespace rai {
 
 namespace kv {
-  struct RouteDB;
+  struct RoutePDB;
   struct PeerData;
   struct PeerMatchArgs;
   struct EvSocket;
@@ -137,7 +137,7 @@ struct RedisExec {
                     step;      /* incr between keys */
   uint64_t          step_mask; /* step key mask */
   size_t            argc;      /* count of args in cmd msg */
-  kv::RouteDB     & sub_route; /* map subject to sub_id */
+  kv::RoutePDB    & sub_route; /* map subject to sub_id */
   kv::PeerData    & peer;      /* name and address of this peer */
   uint64_t          timer_id;  /* timer id of this service */
   kv::KeyFragment * save_key;  /* if key is being saved */
@@ -149,7 +149,7 @@ struct RedisExec {
   RedisContinueMap  continue_tab; /* blocked continuations */
 
   RedisExec( kv::HashTab &map,  uint32_t ,  uint32_t dbx_id,
-             kv::StreamBuf &s,  kv::RouteDB &rdb,  kv::PeerData &pd ) :
+             kv::StreamBuf &s,  kv::RoutePDB &rdb,  kv::PeerData &pd ) :
       kctx( map, dbx_id, NULL ), strm( s ), strm_start( s.pending() ),
       key( 0 ), keys( 0 ), key_cnt( 0 ), key_done( 0 ), multi( 0 ),
       cmd( NO_CMD ), catg( NO_CATG ), blk_state( 0 ), cmd_state( 0 ),
