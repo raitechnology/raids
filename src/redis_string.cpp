@@ -278,7 +278,7 @@ RedisExec::exec_bitfield( EvKeyCtx &ctx ) noexcept
     return ERR_ALLOC_FAIL;
 
   str[ 0 ] = '*';
-  sz = 1 + uint_to_str( k, &str[ 1 ] );
+  sz = 1 + uint64_to_string( k, &str[ 1 ] );
   sz = crlf( str, sz );
   for ( i = 0; i < k; i++ ) {
     const uint8_t  width = bf[ i ].type_width;
@@ -372,8 +372,8 @@ RedisExec::exec_bitfield( EvKeyCtx &ctx ) noexcept
     if ( ! fail ) {
       str[ sz ] = ':';
       sz += 1 + ( tchar == 'I' ?
-                  int_to_str( old_val.ival, &str[ sz + 1 ] ) :
-                  uint_to_str( old_val.ival, &str[ sz + 1 ] ) );
+                  int64_to_string( old_val.ival, &str[ sz + 1 ] ) :
+                  uint64_to_string( old_val.ival, &str[ sz + 1 ] ) );
     }
     /* incrby "overflow fail" failed, XXX this returns nil which is what redis
      * does but documentation says it should return null */
@@ -811,7 +811,7 @@ RedisExec::do_add( EvKeyCtx &ctx,  int64_t incr ) noexcept /* incr/decr value */
       ctx.ival += incr;
       str = this->strm.alloc( 32 );
       str[ 0 ] = ':';
-      sz = 1 + int_to_str( ctx.ival, &str[ 1 ] );
+      sz = 1 + int64_to_string( ctx.ival, &str[ 1 ] );
       sz = crlf( str, sz );
       ctx.kstatus = this->kctx.resize( &data, sz - 3 );
       if ( ctx.kstatus == KEY_OK ) {
@@ -859,7 +859,7 @@ RedisExec::exec_incrbyfloat( EvKeyCtx &ctx ) noexcept
       sz = 32 + fvallen * 2;
       str = this->strm.alloc( sz );
       str[ 0 ] = '$';
-      sz = 1 + int_to_str( fvallen, &str[ 1 ] );
+      sz = 1 + int64_to_string( fvallen, &str[ 1 ] );
       sz = crlf( str, sz );
       ::memcpy( &str[ sz ], fpdata, fvallen );
       sz = crlf( str, sz + fvallen );

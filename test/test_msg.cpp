@@ -135,12 +135,12 @@ main( int, char ** )
         printf( "failed: %s (%ld)\n", num_str[ j ].str, ival );
       else {
         printf( "str_to_int(%s) ok\n", num_str[ j ].str );
-        sz = int_to_str( ival, buf );
+        sz = int64_to_string( ival, buf );
         buf[ sz ] = '\0';
         if ( ::strcmp( num_str[ j ].str, buf ) != 0 )
           printf( "failed: %s %s\n", num_str[ j ].str, buf );
         else
-          printf( "int_to_str(%s) ok\n", buf );
+          printf( "int64_to_string(%s) ok\n", buf );
       }
     }
     else {

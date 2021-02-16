@@ -13,13 +13,13 @@ using namespace kv;
 
 extern "C" {
 
-size_t ds_uint_digits( uint64_t v ) { return uint_digits( v ); }
-size_t ds_int_digits( int64_t v ) { return int_digits( v ); }
+size_t ds_uint_digits( uint64_t v ) { return uint64_digits( v ); }
+size_t ds_int_digits( int64_t v ) { return int64_digits( v ); }
 size_t ds_uint_to_string( uint64_t v,  char *buf,  size_t len ) {
-  return uint_to_str( v, buf, len );
+  return uint64_to_string( v, buf, len );
 }
 size_t ds_int_to_string( int64_t v,  char *buf,  size_t len ) {
-  return int_to_str( v, buf, len );
+  return int64_to_string( v, buf, len );
 }
 int ds_string_to_int( const char *str,  size_t sz,  int64_t *ival ) {
   return string_to_int( str, sz, *ival );
@@ -72,11 +72,11 @@ RedisMsg::pack2( void *buf,  size_t &buflen ) const noexcept
   size_t  i;
 
   if ( this->type == DS_BULK_STRING || this->type == DS_BULK_ARRAY ) {
-    i = int_digits( this->len );
+    i = int64_digits( this->len );
     if ( i + 2 + ( this->len > 0 ? this->len : 0 ) + 2 >= buflen )
       return DS_MSG_STATUS_PARTIAL;
     ptr[ 0 ] = (char) this->type;
-    i = 1 + int_to_str( this->len, &ptr[ 1 ], i );
+    i = 1 + int64_to_string( this->len, &ptr[ 1 ], i );
 
     if ( this->type == DS_BULK_STRING ) {
       if ( this->len >= 0 ) {
@@ -101,11 +101,11 @@ RedisMsg::pack2( void *buf,  size_t &buflen ) const noexcept
     }
   }
   else if ( this->type == DS_INTEGER_VALUE ) {
-    i = int_digits( this->ival );
+    i = int64_digits( this->ival );
     if ( i + 2 >= buflen )
       return DS_MSG_STATUS_PARTIAL;
     ptr[ 0 ] = (char) DS_INTEGER_VALUE;
-    i = 1 + int_to_str( this->ival, &ptr[ 1 ], i );
+    i = 1 + int64_to_string( this->ival, &ptr[ 1 ], i );
   }
   else if ( this->type == DS_SIMPLE_STRING ||
             this->type == DS_ERROR_STRING ) {
@@ -130,7 +130,7 @@ RedisMsg::pack( void *buf ) const noexcept
 
   if ( this->type == DS_BULK_STRING || this->type == DS_BULK_ARRAY ) {
     ptr[ 0 ] = (char) this->type;
-    i = 1 + int_to_str( this->len, &ptr[ 1 ] );
+    i = 1 + int64_to_string( this->len, &ptr[ 1 ] );
     if ( this->type == DS_BULK_STRING ) {
       if ( this->len >= 0 ) {
         i = crlf( ptr, i );
@@ -149,7 +149,7 @@ RedisMsg::pack( void *buf ) const noexcept
   }
   else if ( this->type == DS_INTEGER_VALUE ) {
     ptr[ 0 ] = (char) DS_INTEGER_VALUE;
-    i = 1 + int_to_str( this->ival, &ptr[ 1 ] );
+    i = 1 + int64_to_string( this->ival, &ptr[ 1 ] );
   }
   else if ( this->type == DS_SIMPLE_STRING ||
             this->type == DS_ERROR_STRING ) {
@@ -169,7 +169,7 @@ RedisMsg::pack_size( void ) const noexcept
   size_t i;
 
   if ( this->type == DS_BULK_STRING || this->type == DS_BULK_ARRAY ) {
-    i = 1 + int_digits( this->len );
+    i = 1 + int64_digits( this->len );
     if ( this->type == DS_BULK_STRING ) {
       if ( this->len >= 0 )
         i += 2 + this->len;
@@ -183,7 +183,7 @@ RedisMsg::pack_size( void ) const noexcept
     return i;
   }
   if ( this->type == DS_INTEGER_VALUE )
-    return 1 + int_digits( this->ival ) + 2;
+    return 1 + int64_digits( this->ival ) + 2;
 
   if ( this->type == DS_SIMPLE_STRING || this->type == DS_ERROR_STRING )
     return 1 + this->len + 2;
@@ -811,7 +811,7 @@ RedisMsg::to_almost_json( char *buf,  bool be_weird ) const noexcept
       return 4;
 
     case DS_INTEGER_VALUE:
-      return int_to_str( this->ival, buf );
+      return int64_to_string( this->ival, buf );
 
     case DS_BULK_ARRAY:
       if ( this->len >= 0 ) {
@@ -854,7 +854,7 @@ RedisMsg::to_almost_json_size( bool be_weird ) const noexcept
       return 4; /* null */
 
     case DS_INTEGER_VALUE:
-      return int_digits( this->ival );
+      return int64_digits( this->ival );
 
     case DS_BULK_ARRAY:
       if ( this->len >= 0 ) {

@@ -1659,12 +1659,12 @@ format_value( char *str,  const char *key,  uint16_t keylen,  uint32_t flags,
   ::memcpy( &str[ sz ], key, keylen );
   sz += keylen;
   str[ sz++ ] = ' ';
-  sz += uint_to_str( flags, &str[ sz ] );
+  sz += uint64_to_string( flags, &str[ sz ] );
   str[ sz++ ] = ' ';
-  sz += uint_to_str( size, &str[ sz ] );
+  sz += uint64_to_string( size, &str[ sz ] );
   if ( cas != 0 ) {
     str[ sz++ ] = ' ';
-    sz += uint_to_str( cas, &str[ sz ] );
+    sz += uint64_to_string( cas, &str[ sz ] );
   }
   sz = crlf( str, sz );
   ::memcpy( &str[ sz ], data, size );
@@ -2071,7 +2071,7 @@ MemcachedExec::exec_incr( EvKeyCtx &ctx ) noexcept
           ival = 0;
       }
       str = this->strm.alloc( 32 );
-      sz = uint_to_str( ival, str );
+      sz = uint64_to_string( ival, str );
       sz = crlf( str, sz );
       ctx.kstatus = this->kctx.resize( &data, sz - 2 );
       if ( ctx.kstatus == KEY_OK ) {
@@ -2133,7 +2133,7 @@ MemcachedExec::exec_bin_incr( EvKeyCtx &ctx ) noexcept
           this->stat.decr_miss++;
         ival = this->msg->ini;
       }
-      sz = uint_to_str( ival, str );
+      sz = uint64_to_string( ival, str );
       ctx.kstatus = this->kctx.resize( &data, sz );
       if ( ctx.kstatus == KEY_OK ) {
         ::memcpy( data, str, sz );

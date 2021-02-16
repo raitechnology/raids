@@ -227,13 +227,13 @@ RedisExec::xinfo_streams( ExecStreamCtx &stream ) noexcept
   if ( upd != 0 ) {
     uint64_t ms  = upd / 1000000,
              ser = ( upd % 1000000 );
-    idlen = uint_digits( ms );
-    uint_to_str( ms, id, idlen );
+    idlen = uint64_digits( ms );
+    uint64_to_string( ms, id, idlen );
     id[ idlen++ ] = '-';
     if ( ser == 0 ) /* the first id used in this millisecond */
       id[ idlen++ ] = '0';
     else
-      idlen += uint_to_str( ser, &id[ idlen ] );
+      idlen += uint64_to_string( ser, &id[ idlen ] );
     id[ idlen ] = '\0';
   }
   else {
@@ -279,13 +279,13 @@ get_next_id( kv::KeyCtx &kctx,  char *id,  size_t &idlen )
   }
   /* save the last stamp used */
   kctx.update_stamps( exp, ( ms * 1000000 ) + ser );
-  idlen = uint_digits( ms );
-  uint_to_str( ms, id, idlen );
+  idlen = uint64_digits( ms );
+  uint64_to_string( ms, id, idlen );
   id[ idlen++ ] = '-';
   if ( ser == 0 ) /* the first id used in this millisecond */
     id[ idlen++ ] = '0';
   else
-    idlen += uint_to_str( ser, &id[ idlen ] );
+    idlen += uint64_to_string( ser, &id[ idlen ] );
   id[ idlen ] = '\0';
 }
 
@@ -1407,7 +1407,7 @@ RedisExec::exec_xpending( EvKeyCtx &ctx ) noexcept
       for ( i = 0; i < num_consumers; i++ ) {
         StreamBuf::BufQueue ids( this->strm );
         char s[ 16 ];
-        size_t d = uint_to_str( pend_cnt[ i ], s );
+        size_t d = uint64_to_string( pend_cnt[ i ], s );
         ids.append_string( con_lv[ i ].data, con_lv[ i ].sz,
                            con_lv[ i ].data2, con_lv[ i ].sz2 );
         ids.append_string( s, d );

@@ -249,10 +249,10 @@ RedisExec::exec_client( void ) noexcept
       this->strm.sz += crlf( s, 0 ); /* terminate bulk string with \r\n */
       this->strm.flush();
       /* prepend the $count for bulk string */
-      d = uint_digits( sz - off );
+      d = uint64_digits( sz - off );
       s = this->strm.alloc( 1 + d + 2 ); /* $<d>\r\n */
       s[ 0 ] = '$';
-      uint_to_str( sz - off, &s[ 1 ], d );
+      uint64_to_string( sz - off, &s[ 1 ], d );
       this->strm.sz = crlf( s, 1 + d );
       this->strm.prepend_flush( i );
       return EXEC_OK;
@@ -1073,11 +1073,11 @@ RedisExec::exec_info( void ) noexcept
               mstring( stats.accept_cnt, tmp, 1024 ) );
   }
   size_t n   = len - 32 - sz,
-         dig = uint_digits( n ),
+         dig = uint64_digits( n ),
          off = 32 - ( dig + 3 );
 
   buf[ off ] = '$';
-  uint_to_str( n, &buf[ off + 1 ], dig );
+  uint64_to_string( n, &buf[ off + 1 ], dig );
   crlf( buf, off + 1 + dig );
   crlf( b, 0 );
   this->strm.append_iov( &buf[ off ], n + dig + 3 + 2 );
@@ -1178,8 +1178,8 @@ RedisExec::exec_time( void ) noexcept
            usec = ( x % 1000000000 ) / 1000;
 
   if ( m.string_array( this->strm.tmp, 2,
-                  uint_to_str( sec, sb ), sb,
-                  uint_to_str( usec, ub ), ub ) ) {
+                  uint64_to_string( sec, sb ), sb,
+                  uint64_to_string( usec, ub ), ub ) ) {
     this->send_msg( m );
     return EXEC_OK;
   }

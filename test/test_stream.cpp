@@ -23,8 +23,8 @@ static void
 next_id( char *id,  size_t &idlen )
 {
   uint64_t ms = kv::current_realtime_coarse_ms();
-  idlen = uint_digits( ms );
-  uint_to_str( ms, id, idlen );
+  idlen = kv::uint64_digits( ms );
+  kv::uint64_to_string( ms, id, idlen );
   id[ idlen++ ] = '-';
   id[ idlen++ ] = '0';
   id[ idlen ] = '\0';

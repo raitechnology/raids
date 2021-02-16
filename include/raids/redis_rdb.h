@@ -96,7 +96,7 @@ struct ExecReStrBuf {
       : s( str.s ), len( str.s_len ) {
     if ( str.coding != rdbparser::RDB_STR_VAL ) {
       if ( str.coding == rdbparser::RDB_INT_VAL ) {
-        this->len = int_to_str( str.ival, this->buf );
+        this->len = kv::int64_to_string( str.ival, this->buf );
         this->s   = this->buf;
       }
       else {

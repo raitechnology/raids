@@ -81,7 +81,7 @@ RedisExec::send_string( const void *data,  size_t size ) noexcept
   if ( str == NULL )
     return 0;
   str[ 0 ] = '$';
-  sz = 1 + uint_to_str( size, &str[ 1 ] );
+  sz = 1 + uint64_to_string( size, &str[ 1 ] );
   sz = crlf( str, sz );
   ::memcpy( &str[ sz ], data, size );
   return crlf( str, sz + size );
@@ -107,7 +107,7 @@ RedisExec::send_concat_string( const void *data,  size_t size,
   if ( str == NULL )
     return 0;
   str[ 0 ] = '$';
-  sz = 1 + uint_to_str( size + size2, &str[ 1 ] );
+  sz = 1 + uint64_to_string( size + size2, &str[ 1 ] );
   sz = crlf( str, sz );
   ::memcpy( &str[ sz ], data, size );
   if ( size2 > 0 )
@@ -135,7 +135,7 @@ RedisExec::save_string_result( EvKeyCtx &ctx,  const void *data,
   char *str = ctx.part->data( 0 );
   size_t sz;
   str[ 0 ] = '$';
-  sz = 1 + uint_to_str( size, &str[ 1 ] );
+  sz = 1 + uint64_to_string( size, &str[ 1 ] );
   sz = crlf( str, sz );
   ::memcpy( &str[ sz ], data, size );
   ctx.part->size = crlf( str, sz + size );
@@ -194,7 +194,7 @@ RedisExec::array_string_result( void ) noexcept
   if ( str == NULL )
     return;
   str[ 0 ] = '*';
-  sz = 1 + uint_to_str( this->key_cnt, &str[ 1 ] );
+  sz = 1 + uint64_to_string( this->key_cnt, &str[ 1 ] );
   this->strm.sz += crlf( str, sz );
 
   if ( this->key_cnt > 0 ) {
@@ -1071,11 +1071,11 @@ RedisExec::send_int( int64_t ival ) noexcept
     }
   }
   else {
-    size_t ilen = int_digits( ival );
+    size_t ilen = int64_digits( ival );
     char  * buf = this->strm.alloc( ilen + 3 );
     if ( buf != NULL ) {
       buf[ 0 ] = ':';
-      ilen = 1 + int_to_str( ival, &buf[ 1 ], ilen );
+      ilen = 1 + int64_to_string( ival, &buf[ 1 ], ilen );
       this->strm.sz += crlf( buf, ilen );
     }
   }

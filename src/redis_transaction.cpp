@@ -200,7 +200,7 @@ RedisExec::exec_exec( void ) noexcept
     goto abort_trans;
   }
   str[ 0 ] = '*';
-  sz = 1 + uint_to_str( cnt, &str[ 1 ] );
+  sz = 1 + uint64_to_string( cnt, &str[ 1 ] );
   this->strm.sz += crlf( str, sz );
   /* execute commands in transaction */
   for ( ; mm != NULL; mm = mm->next ) {

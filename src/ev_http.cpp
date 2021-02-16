@@ -1001,10 +1001,10 @@ EvHttpService::process_get( const HttpReq &hreq ) noexcept
     hout.push( clength, sizeof( clength ) - 1 );
 
     n = m.to_almost_json_size( false ) + 2;
-    d = uint_digits( n );
+    d = uint64_digits( n );
     s = this->alloc( n + hout.size + d + 4 );
     j = hout.cat( s );
-    j += uint_to_str( n - off, &s[ j ], d );
+    j += uint64_to_string( n - off, &s[ j ], d );
     j  = crlf( s, j );
     j  = crlf( s, j );
     j += m.to_almost_json( &s[ j ], false );
@@ -1017,10 +1017,10 @@ EvHttpService::process_get( const HttpReq &hreq ) noexcept
 
     this->flush();
     n = this->pending();
-    d = uint_digits( n - off );
+    d = uint64_digits( n - off );
     s = this->alloc( hout.size + d + 4 );
     j = hout.cat( s );
-    j += uint_to_str( n - off, &s[ j ], d );
+    j += uint64_to_string( n - off, &s[ j ], d );
     j  = crlf( s, j );
     this->sz = crlf( s, j );
     this->prepend_flush( i );
@@ -1039,10 +1039,10 @@ EvHttpService::process_get( const HttpReq &hreq ) noexcept
     hout.push( clength, sizeof( clength ) - 1 );
 
     n = m.len;
-    d = uint_digits( n );
+    d = uint64_digits( n );
     s = this->alloc( hout.size + d + 4 );
     j = hout.cat( s );
-    j += uint_to_str( n, &s[ j ], d );
+    j += uint64_to_string( n, &s[ j ], d );
     j  = crlf( s, j );
     this->sz = crlf( s, j );
     this->append_iov( m.strval, n );

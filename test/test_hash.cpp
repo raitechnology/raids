@@ -282,7 +282,7 @@ main( int, char ** )
           if ( mstatus == DS_MSG_STATUS_OK )
             ival += jval;
         }
-        sz = int_to_str( ival, ibuf );
+        sz = kv::int64_to_string( ival, ibuf );
         for (;;) {
           hstat = hk->ht->hupdate( arg, arglen, ibuf, sz, pos );
           if ( hstat != HASH_FULL ) {

@@ -188,9 +188,9 @@ RedisKeyspace::fwd_monitor( void ) noexcept
   timestamp = &msg[ 4 + pack_sz + result_sz ];
   ::memcpy( timestamp, "$17\r\n", 5 );
   ::gettimeofday( &tv, NULL );
-  uint_to_str( tv.tv_sec, &timestamp[ 5 ], 10 ); /* in year 2288 == 11 */
+  uint64_to_string( tv.tv_sec, &timestamp[ 5 ], 10 ); /* in year 2288 == 11 */
   tv.tv_usec += 1000000; /* make all usec digits show */
-  uint_to_str( tv.tv_usec, &timestamp[ 15 ], 7 );
+  uint64_to_string( tv.tv_usec, &timestamp[ 15 ], 7 );
   timestamp[ 15 ] = '.';
   crlf( timestamp, 17 + 5 );
 

@@ -142,7 +142,7 @@ RedisExec::pub_message( EvPublish &pub,  RedisPatternRoute *rt ) noexcept
   char              * msg;
 
   off     = 0;
-  sdigits = uint_digits( pub.subject_len );
+  sdigits = uint64_digits( pub.subject_len );
   pdigits = 0;
 
   if ( pub.msg_enc == MD_MESSAGE &&
@@ -153,7 +153,7 @@ RedisExec::pub_message( EvPublish &pub,  RedisPatternRoute *rt ) noexcept
   }
   else {
     msg_len_digits = ( pub.msg_len_digits > 0 ? pub.msg_len_digits :
-                       uint_digits( pub.msg_len ) );
+                       uint64_digits( pub.msg_len ) );
     msg_len_frame  = 1 + msg_len_digits + 2 + 2;
   }
   if ( rt == NULL ) {
@@ -169,7 +169,7 @@ RedisExec::pub_message( EvPublish &pub,  RedisPatternRoute *rt ) noexcept
     off += hdr_sz;
   }
   else {
-    pdigits = uint_digits( rt->len );
+    pdigits = uint64_digits( rt->len );
         /* *4 .. */
     sz = phdr_sz +
       /* $pattern_len       pattern ..        */
@@ -185,13 +185,13 @@ RedisExec::pub_message( EvPublish &pub,  RedisPatternRoute *rt ) noexcept
     ::memcpy( &msg[ off ], phdr, phdr_sz );
     off += phdr_sz;
     msg[ off++ ] = '$';
-    off += uint_to_str( rt->len, &msg[ off ], pdigits );
+    off += uint64_to_string( rt->len, &msg[ off ], pdigits );
     off  = crlf( msg, off );
     ::memcpy( &msg[ off ], rt->value, rt->len );
     off  = crlf( msg, off + rt->len );
   }
   msg[ off++ ] = '$';
-  off += uint_to_str( pub.subject_len, &msg[ off ], sdigits );
+  off += uint64_to_string( pub.subject_len, &msg[ off ], sdigits );
   off  = crlf( msg, off );
   ::memcpy( &msg[ off ], pub.subject, pub.subject_len );
   off  = crlf( msg, off + pub.subject_len );
@@ -199,7 +199,7 @@ RedisExec::pub_message( EvPublish &pub,  RedisPatternRoute *rt ) noexcept
   if ( msg_len_frame != 0 ) {
     msg[ off++ ] = '$';
     if ( pub.msg_len_digits == 0 )
-      uint_to_str( pub.msg_len, &msg[ off ], msg_len_digits );
+      uint64_to_string( pub.msg_len, &msg[ off ], msg_len_digits );
     else
       ::memcpy( &msg[ off ], pub.msg_len_buf, msg_len_digits );
     off += msg_len_digits;
@@ -517,12 +517,12 @@ RedisExec::exec_publish( void ) noexcept
       return EXEC_SEND_ZERO;
     return EXEC_SEND_ONE;
   }
-  rte_digits = uint_digits( rcount );
+  rte_digits = uint64_digits( rcount );
   buf = this->strm.alloc( rte_digits + 3 ); 
   if ( buf == NULL )
     return ERR_ALLOC_FAIL;
   buf[ 0 ] = ':';
-  uint_to_str( rcount, &buf[ 1 ], rte_digits );
+  uint64_to_string( rcount, &buf[ 1 ], rte_digits );
   crlf( buf, rte_digits + 1 );
   this->strm.sz += rte_digits + 3;
   return EXEC_OK;
@@ -761,9 +761,9 @@ RedisExec::do_sub( int flags ) noexcept
         if ( this->do_punsubscribe( sub[ j ], len[ j ] ) == EXEC_OK )
           cnt--;
       }
-      ldig[ j ] = uint_digits( len[ j ] );
+      ldig[ j ] = uint64_digits( len[ j ] );
       cval[ j ] = cnt;
-      cdig[ j ] = uint_digits( cnt );
+      cdig[ j ] = uint64_digits( cnt );
            /* *3 .. $len ..              subject ..     :cnt */
       sz += hdr_sz + 1 + ldig[ j ] + 2 + len[ j ] + 2 + 1 + cdig[ j ] + 2;
       j++;
@@ -779,12 +779,12 @@ RedisExec::do_sub( int flags ) noexcept
         ::memcpy( &msg[ off ], hdr, hdr_sz );
         off += hdr_sz;
         msg[ off++ ] = '$';
-        off += uint_to_str( len[ k ], &msg[ off ], ldig[ k ] );
+        off += uint64_to_string( len[ k ], &msg[ off ], ldig[ k ] );
         off  = crlf( msg, off );
         ::memcpy( &msg[ off ], sub[ k ], len[ k ] );
         off  = crlf( msg, off + len[ k ] );
         msg[ off++ ] = ':';
-        off += uint_to_str( cval[ k ], &msg[ off ], cdig[ k ] );
+        off += uint64_to_string( cval[ k ], &msg[ off ], cdig[ k ] );
         off  = crlf( msg, off );
       }
       this->strm.sz += sz;

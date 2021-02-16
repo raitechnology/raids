@@ -510,7 +510,7 @@ RedisExec::do_pop( EvKeyCtx &ctx,  int flags ) noexcept
   /* these have the key returned as first array elem */
   if ( ( flags & ( DO_BLPOP | DO_BRPOP ) ) != 0 ) {
     size_t klen   = ctx.kbuf.keylen - 1,
-           klensz = uint_digits( klen ),
+           klensz = uint64_digits( klen ),
            off;
     char * str = this->strm.alloc( /* *2\r\n */   4 +
                                    /* $N\r\n */   klensz + 3 +
@@ -521,7 +521,7 @@ RedisExec::do_pop( EvKeyCtx &ctx,  int flags ) noexcept
     str[ 1 ] = '2';
     off = crlf( str, 2 );
     str[ off++ ] = '$';
-    uint_to_str( klen, &str[ off ], klensz );
+    uint64_to_string( klen, &str[ off ], klensz );
     off = crlf( str, off + klensz );
     ::memcpy( &str[ off ], ctx.kbuf.u.buf, klen );
     off = crlf( str, off + klen );

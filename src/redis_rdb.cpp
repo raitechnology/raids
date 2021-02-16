@@ -8,6 +8,7 @@
 #include <sys/stat.h>
 #include <sys/mman.h>
 #include <raimd/md_types.h>
+#include <raikv/util.h>
 #include <raids/redis_exec.h>
 #include <raids/redis_rdb.h>
 #include <raids/exec_list_ctx.h>
@@ -185,7 +186,7 @@ struct RdbDumpGeom {
     }
     else {
       this->len     = 1 + pack_size + 2 + 8;    /* S data 9 0 crc */
-      this->digs    = uint_digits( this->len ); /* $ nnn <- digits in return */
+      this->digs    = uint64_digits( this->len ); /* $ nnn <- digits in return */
       this->sz      = 1 + this->digs + 2 + this->len + 2;/* $ nnn\r\n len \r\n*/
       this->trail   = 1 + this->digs + 2 + 1 + pack_size;
       this->start   = 1 + this->digs + 3;
@@ -220,7 +221,7 @@ RdbDumpGeom::frame_dump_result( char *p ) noexcept
   else {
     size_t off = this->start - 1;
     p[ 0 ] = '$';
-    uint_to_str( this->len, &p[ 1 ], this->digs ); /* $ nnn */
+    uint64_to_string( this->len, &p[ 1 ], this->digs ); /* $ nnn */
     crlf( p, this->digs + 1 );
     p[ off ] = this->type;
     size_t i = this->trail;
@@ -535,7 +536,7 @@ RedisExec::dump_geo( EvKeyCtx &ctx ) noexcept
     if ( gstatus != GEO_OK )
       break;
     zip.calc_link( gv.sz + gv.sz2 );
-    zip.calc_link( uint_digits( gv.score ) );
+    zip.calc_link( uint64_digits( gv.score ) );
   }
   zip.calc_end();
 
@@ -557,8 +558,8 @@ RedisExec::dump_geo( EvKeyCtx &ctx ) noexcept
     if ( gstatus != GEO_OK )
       break;
     zip.append_link( gv.data, gv.data2, gv.sz, gv.sz2 );
-    fplen = uint_digits( gv.score );
-    uint_to_str( gv.score, fpdata, fplen ); /* $ nnn */
+    fplen = uint64_digits( gv.score );
+    uint64_to_string( gv.score, fpdata, fplen ); /* $ nnn */
     zip.append_link( fpdata, fplen );
   }
   zip.append_end( ( count - 1 ) * 2 );
@@ -1301,9 +1302,9 @@ ExecRestore::d_stream_entry( const RdbStreamEntry &entry ) noexcept
          ndata,
          k, d;
 
-  idlen = uint_to_str( entry.id.ms + entry.diff.ms, id );
+  idlen = uint64_to_string( entry.id.ms + entry.diff.ms, id );
   id[ idlen++ ] = '-';
-  idlen += uint_to_str( entry.id.ser + entry.diff.ser, &id[ idlen ] );
+  idlen += uint64_to_string( entry.id.ser + entry.diff.ser, &id[ idlen ] );
 
   ndata = idlen + 1;
   count = entry.entry_field_count;
@@ -1313,11 +1314,11 @@ ExecRestore::d_stream_entry( const RdbStreamEntry &entry ) noexcept
     if ( f.data != NULL )
       ndata += f.data_len;
     else
-      ndata += int_digits( f.ival );
+      ndata += int64_digits( f.ival );
     if ( v.data != NULL )
       ndata += v.data_len;
     else
-      ndata += int_digits( v.ival );
+      ndata += int64_digits( v.ival );
   }
   count = count * 2 + 1; /* field name + value + id */
 
@@ -1330,13 +1331,13 @@ ExecRestore::d_stream_entry( const RdbStreamEntry &entry ) noexcept
     if ( f.data != NULL )
       xl->rpush( f.data, f.data_len );
     else {
-      d = int_to_str( f.ival, buf );
+      d = int64_to_string( f.ival, buf );
       xl->rpush( buf, d );
     }
     if ( v.data != NULL )
       xl->rpush( v.data, v.data_len );
     else {
-      d = int_to_str( v.ival, buf );
+      d = int64_to_string( v.ival, buf );
       xl->rpush( buf, d );
     }
   }
@@ -1365,9 +1366,9 @@ ExecRestore::d_stream_group( const RdbGroupInfo &group ) noexcept
          count = 2,
          ndata;
 
-  idlen = uint_to_str( group.last.ms, id );
+  idlen = uint64_to_string( group.last.ms, id );
   id[ idlen++ ] = '-';
-  idlen += uint_to_str( group.last.ser, &id[ idlen ] );
+  idlen += uint64_to_string( group.last.ser, &id[ idlen ] );
   ndata = idlen + group.gname_len;
 
   ListData * xl = this->alloc_list( count, ndata );
@@ -1416,9 +1417,9 @@ ExecRestore::d_stream_cons_pend( const RdbConsPendInfo &pend ) noexcept
   uint64_t     ns  = 0;
   uint32_t     cnt = 1;
 
-  idlen = uint_to_str( pend.id.ms, id );
+  idlen = uint64_to_string( pend.id.ms, id );
   id[ idlen++ ] = '-';
-  idlen += uint_to_str( pend.id.ser, &id[ idlen ] );
+  idlen += uint64_to_string( pend.id.ser, &id[ idlen ] );
   gname  = pend.cons.group.gname;
   glen   = pend.cons.group.gname_len;
   cname  = pend.cons.cname;

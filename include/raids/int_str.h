@@ -21,7 +21,7 @@ int ds_string_to_dbl( const char *str,  size_t sz,  double *fval );
 
 namespace rai {
 namespace ds {
-
+#if 0
 /* integer to string routines */
 static inline uint64_t negate( int64_t v ) {
   if ( (uint64_t) v == ( (uint64_t) 1 << 63 ) )
@@ -64,6 +64,7 @@ static inline size_t int_to_str( int64_t v,  char *buf,  size_t len ) {
 static inline size_t int_to_str( int64_t v,  char *buf ) {
   return int_to_str( v, buf, int_digits( v ) );
 }
+#endif
 enum StrCvtStatus {
   STR_CVT_OK             = 0,
   STR_CVT_INT_OVERFLOW   = 1,
