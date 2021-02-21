@@ -88,7 +88,7 @@ useradd -r -g %{name} -d %{_sharedstatedir}/%{name} -s /sbin/nologin -c "Rai KV"
 exit 0
 
 %post
-echo "${_prefix}/lib64" > /etc/ld.so.conf.d/%{name}.conf
+echo "%{_prefix}/lib64" > /etc/ld.so.conf.d/%{name}.conf
 /sbin/ldconfig
 %systemd_post %{name}.service
 
