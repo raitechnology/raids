@@ -4,10 +4,11 @@ spec   := rpm/$(name).spec
 date   := $(shell date +"%a %b %d %Y")
 rpmdir := $(shell pwd)
 
+git_hash    := $(shell git rev-parse --short=8 HEAD)
 major_num   := 1
 minor_num   := 2
 patch_num   := 0
-build_num   := 40
+build_num   := 41_$(git_hash)
 version     := $(major_num).$(minor_num).$(patch_num)
 ver_build   := $(version)-$(build_num)
 name_ver    := $(name)-$(ver_build)

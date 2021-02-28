@@ -419,8 +419,8 @@ RedisExec::exec_pubsub( void ) noexcept
       pcre2_real_code_8       * re = NULL; /* pcre regex compiled */
       pcre2_real_match_data_8 * md = NULL; /* pcre match context  */
       const char * pattern = NULL;
-      size_t       patlen  = 0;
-      uint32_t     pos, h, v;
+      size_t       patlen  = 0, pos;
+      uint32_t     h, v;
       int          rc;
 
       if ( this->msg.get_arg( 2, pattern, patlen ) &&
