@@ -256,7 +256,7 @@ libraids_dbjs  := $(addprefix $(objd)/, $(addsuffix .fpic.o, $(libraids_files)))
 libraids_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(libraids_files))) \
                   $(addprefix $(dependd)/, $(addsuffix .fpic.d, $(libraids_files)))
 libraids_dlnk  := $(dlnk_lib)
-libraids_spec  := $(version)-$(build_num)
+libraids_spec  := $(version)-$(build_num)_$(git_hash)
 libraids_ver   := $(major_num).$(minor_num)
 
 $(libd)/libraids.a: $(libraids_objs)
@@ -273,7 +273,7 @@ libshmdp_dbjs  := $(addprefix $(objd)/, $(addsuffix .fpic.o, $(libshmdp_files)))
 libshmdp_deps  := $(addprefix $(dependd)/, $(addsuffix .fpic.d, $(libshmdp_files)))
 libshmdp_dlnk  := $(raids_dlnk)
 libshmdp_libs  := $(libd)/libraids.so
-libshmdp_spec  := $(version)-$(build_num)
+libshmdp_spec  := $(version)-$(build_num)_$(git_hash)
 libshmdp_ver   := $(major_num).$(minor_num)
 
 $(libd)/libshmdp.so: $(libshmdp_dbjs) $(libshmdp_libs)
