@@ -4,12 +4,14 @@
 extern "C" {
 typedef struct LineCook_s LineCook;
 typedef struct TTYCook_s TTYCook;
+struct Term_s {};
+typedef void (*show_help_cb)( struct Term_s * );
 }
 
 namespace rai {
 namespace ds {
 
-struct Term {
+struct Term : public Term_s {
   LineCook   * lc;
   TTYCook    * tty;
   char       * out_buf;    /* terminal control output */
@@ -24,14 +26,28 @@ struct Term {
                in_len;
   int          interrupt, /* if LINE_STATUS_INTERRUPT */
                suspend;   /* if LINE_STATUS_SUSPEND */
-
+  void       * closure;
+  show_help_cb help_cb;
+  const char * prompt,
+             * prompt2,
+             * ins,
+             * cmd,
+             * emacs,
+             * srch,
+             * comp,
+             * visu,
+             * ouch,
+             * sel1,
+             * sel2,
+             * brk,
+             * qc,
+             * history;
   Term() {
     this->zero();
   }
   void zero( void ) {
     ::memset( this, 0, sizeof( *this ) );
   }
-
   void tty_init( void ) noexcept;
   void tty_out_reset( void ) { this->out_len = 0; }
   void tty_release( void ) noexcept;

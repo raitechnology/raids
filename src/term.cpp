@@ -39,24 +39,38 @@ do_complete( LineCook *state,  const char * /*buf*/,  size_t off,
 void
 Term::tty_init( void ) noexcept
 {
-  static const char * prompt = /*ANSI_RED     "\\U00002764 " ANSI_NORMAL*/
-                               ANSI_CYAN    "ds"    ANSI_NORMAL "@"
-                               ANSI_MAGENTA "\\h"   ANSI_NORMAL
-                               ANSI_BLUE    "["     ANSI_NORMAL
-                               ANSI_RED     "\\#"   ANSI_NORMAL
-                               ANSI_BLUE    "]"     ANSI_NORMAL "> ",
-                    * promp2 = ANSI_BLUE    "> "    ANSI_NORMAL,
-                    * ins    = ANSI_GREEN   "<-"    ANSI_NORMAL,
-                    * cmd    = ANSI_MAGENTA "|="    ANSI_NORMAL,
-                    * emacs  = ANSI_GREEN   "<e"    ANSI_NORMAL,
-                    * srch   = ANSI_CYAN    "/_"    ANSI_NORMAL,
-                    * comp   = ANSI_MAGENTA "TAB"   ANSI_NORMAL,
-                    * visu   = ANSI_CYAN    "[-]"   ANSI_NORMAL,
-                    * ouch   = ANSI_RED     "?@&!" ANSI_NORMAL,
-                    * sel1   = ANSI_RED     "["     ANSI_NORMAL,
-                    * sel2   = ANSI_RED     "]"     ANSI_NORMAL,
-                    * brk    = " \t\n\\'`><=;|&{()}",
-                    * qc     = " \t\n\\\"'@<>=;|&()#$`?*[!:{";
+  if ( this->prompt == NULL )
+    this->prompt = ANSI_CYAN    "ds"    ANSI_NORMAL "@"
+                   ANSI_MAGENTA "\\h"   ANSI_NORMAL
+                   ANSI_BLUE    "["     ANSI_NORMAL
+                   ANSI_RED     "\\#"   ANSI_NORMAL
+                   ANSI_BLUE    "]"     ANSI_NORMAL "> ";
+  if ( this->prompt2 == NULL )
+    this->prompt2= ANSI_BLUE    "> "    ANSI_NORMAL;
+  if ( this->ins == NULL )
+    this->ins    = ANSI_GREEN   "<-"    ANSI_NORMAL;
+  if ( this->cmd == NULL )
+    this->cmd    = ANSI_MAGENTA "|="    ANSI_NORMAL;
+  if ( this->emacs == NULL )
+    this->emacs  = ANSI_GREEN   "<e"    ANSI_NORMAL;
+  if ( this->srch == NULL )
+    this->srch   = ANSI_CYAN    "/_"    ANSI_NORMAL;
+  if ( this->comp == NULL )
+    this->comp   = ANSI_MAGENTA "TAB"   ANSI_NORMAL;
+  if ( this->visu == NULL )
+    this->visu   = ANSI_CYAN    "[-]"   ANSI_NORMAL;
+  if ( this->ouch == NULL )
+    this->ouch   = ANSI_RED     "?@&!"  ANSI_NORMAL;
+  if ( this->sel1 == NULL )
+    this->sel1   = ANSI_RED     "["     ANSI_NORMAL;
+  if ( this->sel2 == NULL )
+    this->sel2   = ANSI_RED     "]"     ANSI_NORMAL;
+  if ( this->brk == NULL )
+    this->brk    = " \t\n\\'`><=;|&{()}";
+  if ( this->qc == NULL )
+    this->qc     = " \t\n\\\"'@<>=;|&()#$`?*[!:{";
+  if ( this->history == NULL )
+    this->history = ".console_history";
 
   this->lc              = lc_create_state( 120, 50 );
   this->lc->closure     = this;
@@ -66,22 +80,22 @@ Term::tty_init( void ) noexcept
   this->tty             = lc_tty_create( this->lc );
 
   /*lc_tty_set_locale(); */
-  lc_set_completion_break( this->tty->lc, brk, strlen( brk ) );
-  lc_set_quotables( this->tty->lc, qc, strlen( qc ), '\"' );
-  lc_tty_open_history( this->tty, ".console_history" );
+  lc_set_completion_break( this->tty->lc, this->brk, strlen( this->brk ) );
+  lc_set_quotables( this->tty->lc, this->qc, strlen( this->qc ), '\"' );
+  lc_tty_open_history( this->tty, this->history );
 
   /* init i/o fd, prompt vars, geometry, SIGWINCH */
-  lc_tty_set_prompt( this->tty, TTYP_PROMPT1, prompt );
-  lc_tty_set_prompt( this->tty, TTYP_PROMPT2, promp2 );
-  lc_tty_set_prompt( this->tty, TTYP_R_INS,   ins );
-  lc_tty_set_prompt( this->tty, TTYP_R_CMD,   cmd );
-  lc_tty_set_prompt( this->tty, TTYP_R_EMACS, emacs );
-  lc_tty_set_prompt( this->tty, TTYP_R_SRCH,  srch );
-  lc_tty_set_prompt( this->tty, TTYP_R_COMP,  comp );
-  lc_tty_set_prompt( this->tty, TTYP_R_VISU,  visu );
-  lc_tty_set_prompt( this->tty, TTYP_R_OUCH,  ouch );
-  lc_tty_set_prompt( this->tty, TTYP_R_SEL1,  sel1 );
-  lc_tty_set_prompt( this->tty, TTYP_R_SEL2,  sel2 );
+  lc_tty_set_prompt( this->tty, TTYP_PROMPT1, this->prompt );
+  lc_tty_set_prompt( this->tty, TTYP_PROMPT2, this->prompt2 );
+  lc_tty_set_prompt( this->tty, TTYP_R_INS,   this->ins );
+  lc_tty_set_prompt( this->tty, TTYP_R_CMD,   this->cmd );
+  lc_tty_set_prompt( this->tty, TTYP_R_EMACS, this->emacs );
+  lc_tty_set_prompt( this->tty, TTYP_R_SRCH,  this->srch );
+  lc_tty_set_prompt( this->tty, TTYP_R_COMP,  this->comp );
+  lc_tty_set_prompt( this->tty, TTYP_R_VISU,  this->visu );
+  lc_tty_set_prompt( this->tty, TTYP_R_OUCH,  this->ouch );
+  lc_tty_set_prompt( this->tty, TTYP_R_SEL1,  this->sel1 );
+  lc_tty_set_prompt( this->tty, TTYP_R_SEL2,  this->sel2 );
 }
 
 bool
@@ -177,8 +191,12 @@ Term::tty_input( const void *buf,  size_t buflen ) noexcept
       }
       if ( this->tty->lc_status == LINE_STATUS_COMPLETE ) {
         CompleteType ctype = lc_get_complete_type( lc );
-        if ( ctype == COMPLETE_HELP )
-          this->show_help();
+        if ( ctype == COMPLETE_HELP ) {
+          if ( this->help_cb != NULL )
+            this->help_cb( this );
+          else
+            this->show_help();
+        }
       }
       if ( this->tty->lc_status == LINE_STATUS_EXEC ) {
         size_t len = this->tty->line_len;

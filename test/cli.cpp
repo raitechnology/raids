@@ -68,8 +68,8 @@ struct MyClient {
       this->client = &this->uclient;
     return status;
   }
-  int unix_connect( const char *path ) {
-    int status = EvUnixConnection::connect( this->tclient, path );
+  int unix_connect( const char *path,  int o ) {
+    int status = EvUnixConnection::connect( this->tclient, path, o );
     if ( status == 0 )
       this->client = &this->tclient;
     return status;
@@ -359,7 +359,7 @@ main( int argc, char *argv[] )
   }
   poll.init( 5, false/*, false*/ );
   if ( pa != NULL ) {
-    if ( my.unix_connect( pa ) != 0 ) {
+    if ( my.unix_connect( pa, 0 ) != 0 ) {
       fprintf( stderr, "unable to connect unix socket to %s\n", pa );
       status = 1; /* bad path */
     }

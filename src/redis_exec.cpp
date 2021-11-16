@@ -517,7 +517,7 @@ RedisExec::exec( EvSocket *svc,  EvPrefetchQueue *q ) noexcept
   /* cmd has no key when first == 0 */
   status = this->exec_nokeys();
   /* does this go here for EKF_MONITOR? */
-  if ( ( this->key_flags & this->sub_route.rte.key_flags ) != 0 )
+  if ( ( this->key_flags & this->sub_route.key_flags ) != 0 )
     RedisKeyspace::pub_keyspace_events( *this );
   /* if "client reply skip" cmd run, this eats the result and turns of skip */
   if ( status != EXEC_SKIP &&
@@ -1021,7 +1021,7 @@ RedisExec::exec_key_continue( EvKeyCtx &ctx ) noexcept
     return EXEC_CONTINUE;
 success:;
   /* publish keyspace events (maybe "client reply skip" mutes monitor?) */
-  if ( ( this->key_flags & this->sub_route.rte.key_flags ) != 0 )
+  if ( ( this->key_flags & this->sub_route.key_flags ) != 0 )
     RedisKeyspace::pub_keyspace_events( *this );
 
   /* if "client reply skip" cmd run, this eats the result and turns of skip */

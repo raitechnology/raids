@@ -43,8 +43,8 @@ struct EvRedisUnixListen : public kv::EvUnixListen {
   void * operator new( size_t, void *ptr ) { return ptr; }
   EvRedisUnixListen( kv::EvPoll &p ) noexcept;
   virtual bool accept( void ) noexcept;
-  int listen( const char *sock ) {
-    return this->kv::EvUnixListen::listen( sock, "unix_listen" );
+  int listen( const char *sock,  int opts ) {
+    return this->kv::EvUnixListen::listen( sock, opts, "unix_listen" );
   }
 };
 

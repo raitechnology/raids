@@ -26,6 +26,7 @@ get_arg( int argc, char *argv[], int b, const char *f, const char *def )
 }
 
 struct PubTest : public EvShmSvc, public RouteNotify {
+  RoutePDB   & sub_route;
   const char * sub;
   size_t       len;
   uint32_t     h,
@@ -37,26 +38,23 @@ struct PubTest : public EvShmSvc, public RouteNotify {
   MDDict     * dict;
 
   PubTest( EvPoll &poll,  const char *s,  uint32_t ps_rate )
-    : EvShmSvc( poll ), sub( s ), len( ::strlen( s ) ),
-      h( 0 ), per_sec( ps_rate ), ns_ival( 1e9 / ps_rate ),
-      count( 0 ), last_time( 0 ), dict( 0 ) {
-  }
+    : EvShmSvc( poll ), sub_route( poll.sub_route ), sub( s ),
+      len( ::strlen( s ) ), h( 0 ), per_sec( ps_rate ),
+      ns_ival( 1e9 / ps_rate ), count( 0 ), last_time( 0 ), dict( 0 ) {}
   /* shutdown before close */
   virtual void process_shutdown( void ) noexcept {
-    this->poll.remove_route_notify( *this );
+    this->sub_route.remove_route_notify( *this );
   }
  /* start a timer at per_sec interval */
   void start_timer( void ) {
     this->h = kv_crc_c( this->sub, this->len, 0 );
-    this->poll.add_route_notify( *this );
+    this->sub_route.add_route_notify( *this );
     if ( this->per_sec >= 1000 ) {
-      this->poll.timer_queue->add_timer_units( this->fd, this->ns_ival,
-                                               IVAL_NANOS, 1, 0 );
+      this->poll.timer.add_timer_nanos( this->fd, this->ns_ival, 1, 0 );
     }
     else {
       uint32_t us_ival = this->ns_ival / 1000;
-      this->poll.timer_queue->add_timer_units( this->fd, us_ival,
-                                               IVAL_MICROS, 1, 0 );
+      this->poll.timer.add_timer_micros( this->fd, us_ival, 1, 0 );
     }
   }
   virtual void on_sub( uint32_t,  const char *sub,  size_t sublen,
@@ -80,7 +78,7 @@ struct PubTest : public EvShmSvc, public RouteNotify {
       EvPublish p( rep, rlen, NULL, 0, buf, sz, this->fd,
                    kv_crc_c( rep, rlen, 0 ), NULL, 0,
                    (uint8_t) RAIMSG_TYPE_ID, 'i' );
-      this->poll.forward_msg( p, NULL, 0, NULL );
+      this->sub_route.forward_msg( p, NULL, 0, NULL );
     }
   }
   virtual void on_unsub( uint32_t,  const char *sub,  size_t sublen,
@@ -107,13 +105,13 @@ struct PubTest : public EvShmSvc, public RouteNotify {
       EvPublish p( submsg.reply(), submsg.replylen, NULL, 0, buf,
                    sz, this->fd, this->h,
                    NULL, 0, (uint8_t) RAIMSG_TYPE_ID, 'i' );
-      this->poll.forward_msg( p, NULL, 0, NULL );
+      this->sub_route.forward_msg( p, NULL, 0, NULL );
     }
   }
 #endif
   /* a timer expires every ns_ival, send messages */
   virtual bool timer_expire( uint64_t, uint64_t ) noexcept {
-    uint64_t now = this->poll.timer_queue->epoch;
+    uint64_t now = this->poll.timer.queue->epoch;
     if ( this->last_time == 0 ) {
       this->last_time = now;
       return true;
@@ -129,7 +127,7 @@ struct PubTest : public EvShmSvc, public RouteNotify {
       EvPublish p( this->sub, this->len, NULL, 0, buf,
                    sz, this->fd, this->h,
                    NULL, 0, (uint8_t) RAIMSG_TYPE_ID, 'u' );
-      this->poll.forward_msg( p, NULL, 0, NULL );
+      this->sub_route.forward_msg( p, NULL, 0, NULL );
       if ( this->per_sec < 100 )
         break;
     }

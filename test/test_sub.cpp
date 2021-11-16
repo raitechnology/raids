@@ -26,6 +26,7 @@ get_arg( int argc, char *argv[], int b, const char *f, const char *def )
 }
 
 struct SubTest : public EvShmSvc {
+  RoutePDB   & sub_route;
   const char * sub,
              * ibx;
   size_t       len,
@@ -36,7 +37,7 @@ struct SubTest : public EvShmSvc {
   MDDict     * dict;
 
   SubTest( EvPoll &poll,  const char *s,  const char *i )
-    : EvShmSvc( poll ), sub( s ), ibx( i ),
+    : EvShmSvc( poll ), sub_route( poll.sub_route ), sub( s ), ibx( i ),
       len( ::strlen( s ) ), ilen( i ? ::strlen( i ) : 0 ),
       h( 0 ), ih( 0 ), dict( 0 ) {
   }
@@ -47,26 +48,25 @@ struct SubTest : public EvShmSvc {
     this->ih = kv_crc_c( this->ibx, this->ilen, 0 );
     /* if using inbox for reply */
     if ( this->ilen > 0 ) {
-      rcnt = this->poll.sub_route.add_sub_route( this->ih, this->fd );
-      this->poll.notify_sub( this->ih, this->ibx, this->ilen,
-                             this->fd, rcnt, 'K' );
+      rcnt = this->sub_route.add_sub_route( this->ih, this->fd );
+      this->sub_route.notify_sub( this->ih, this->ibx, this->ilen,
+                                  this->fd, rcnt, 'K' );
     }
-    rcnt = this->poll.sub_route.add_sub_route( this->h, this->fd );
-    this->poll.notify_sub( this->h, this->sub, this->len,
-                           this->fd, rcnt, 'K',
-                           this->ibx, this->ilen );
+    rcnt = this->sub_route.add_sub_route( this->h, this->fd );
+    this->sub_route.notify_sub( this->h, this->sub, this->len,
+                                this->fd, rcnt, 'K', this->ibx, this->ilen );
   }
   /* remove subcriptions for sub or inbox */
   void unsubscribe( void ) {
     uint32_t rcnt;
     if ( this->ilen > 0 ) {
-      rcnt = this->poll.sub_route.del_sub_route( this->ih, this->fd );
-      this->poll.notify_unsub( this->ih, this->ibx, this->ilen,
-                               this->fd, rcnt, 'K' );
+      rcnt = this->sub_route.del_sub_route( this->ih, this->fd );
+      this->sub_route.notify_unsub( this->ih, this->ibx, this->ilen,
+                                    this->fd, rcnt, 'K' );
     }
-    rcnt = this->poll.sub_route.del_sub_route( this->h, this->fd );
-    this->poll.notify_unsub( this->h, this->sub, this->len,
-                             this->fd, rcnt, 'K' );
+    rcnt = this->sub_route.del_sub_route( this->h, this->fd );
+    this->sub_route.notify_unsub( this->h, this->sub, this->len,
+                                  this->fd, rcnt, 'K' );
   }
   /* recv an incoming message from a subscription above, sent from a peer or
    * myself if subscribing to the same subject as publishing */

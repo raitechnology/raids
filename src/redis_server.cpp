@@ -949,7 +949,7 @@ RedisExec::exec_info( void ) noexcept
     ka.set_type( MARG( "listen" ) );
     for ( p = iter.first(); p != NULL; p = iter.next() ) {
       xnprintf( b, sz, "%s: %*s%s\r\n", p->kind,
-                20 - (int) ::strlen( p->kind ), "", p->peer_address );
+                20 - (int) ::strlen( p->kind ), "", p->peer_address.buf );
     }
   }
 

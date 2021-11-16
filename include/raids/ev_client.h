@@ -116,22 +116,20 @@ struct EvTerminal : public EvClient, public kv::EvConnection {
   Term term;
   char * line;
   size_t line_len;
+  int    stdin_fd, stdout_fd;
 
-  EvTerminal( kv::EvPoll &p,  EvCallback &callback )
-    : EvClient( callback ), kv::EvConnection( p, p.register_type( "term" ) ),
-      line( 0 ), line_len( 0 ) {
-    /* don't close stdin stdout */
-    this->sock_opts = kv::OPT_NO_CLOSE;
-  }
+  EvTerminal( kv::EvPoll &p,  EvCallback &callback );
   int start( void ) noexcept;
   void flush_out( void ) noexcept;
   void finish( void ) noexcept;
-  void printf( const char *fmt,  ... ) noexcept
+  void output( const char *buf,  size_t buflen ) noexcept;
+  int printf( const char *fmt,  ... ) noexcept
 #if defined( __GNUC__ )
       __attribute__((format(printf,2,3)));
 #else
       ;
 #endif
+  int vprintf( const char *fmt, va_list args ) noexcept;
   void process_line( const char *line ) noexcept;
   /* EvConnection */
   virtual void process( void ) noexcept final;

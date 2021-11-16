@@ -308,7 +308,7 @@ RedisExec::multi_queued( EvSocket *svc ) noexcept
   }
   return EXEC_OK;
 }
-
+#if 0
 static inline void *aligned_malloc( size_t sz ) {
 #ifdef _ISOC11_SOURCE
   return ::aligned_alloc( sizeof( BufAlign64 ), sz ); /* >= RH7 */
@@ -316,7 +316,7 @@ static inline void *aligned_malloc( size_t sz ) {
   return ::memalign( sizeof( BufAlign64 ), sz ); /* RH5, RH6.. */
 #endif
 }
-
+#endif
 KeyCtx *
 RedisMultiExec::get_dup_kctx( EvKeyCtx &ctx ) const noexcept
 {

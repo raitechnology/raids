@@ -160,6 +160,14 @@ EvCallback::on_close( void ) noexcept
   fprintf( stderr, "closed\n" );
 }
 
+EvTerminal::EvTerminal( kv::EvPoll &p,  EvCallback &callback )
+  : EvClient( callback ), kv::EvConnection( p, p.register_type( "term" ) ),
+    line( 0 ), line_len( 0 ),
+    stdin_fd( STDIN_FILENO ), stdout_fd( STDOUT_FILENO )
+{
+  this->sock_opts = OPT_NO_CLOSE;
+}
+
 void
 EvTerminal::process_close( void ) noexcept
 {
@@ -197,7 +205,7 @@ EvTerminal::process( void ) noexcept
     this->term.tty_prompt();
   this->flush_out();
 
-  if ( this->line_len > 0 ) {
+  if ( this->line_len > 0 ) { /* this is to inject a line not from tty */
     if ( this->cb.on_data( this->line, this->line_len ) ) {
       ::free( this->line );
       this->line = NULL;
@@ -223,20 +231,42 @@ void
 EvTerminal::flush_out( void ) noexcept
 {
   for ( size_t i = 0;;) {
-    if ( i == this->term.out_len ) {
+    if ( i >= this->term.out_len ) {
       this->term.tty_out_reset();
       return;
     }
-    int n = ::write( STDOUT_FILENO, &this->term.out_buf[ i ],
-                     this->term.out_len - i );
-    if ( n < 0 ) {
-      if ( errno != EAGAIN && errno != EINTR ) {
-        this->cb.on_close();
-        return;
+    size_t left = this->term.out_len - i;
+    char * ptr  = &this->term.out_buf[ i ];
+    char * eol;
+    bool   need_cr = true;
+    int    n;
+    if ( (eol = (char *) ::memchr( ptr, '\n', left )) != NULL ) {
+      if ( eol > ptr ) {
+        if ( *( eol - 1 ) == '\r' ) {
+          eol++;
+          need_cr = false;
+        }
       }
+      left = eol - ptr;
     }
     else {
-      i += (size_t) n;
+      need_cr = false;
+    }
+    if ( left > 0 ) {
+      n = ::write( this->stdout_fd, ptr, left );
+      if ( n < 0 ) {
+        if ( errno != EAGAIN && errno != EINTR ) {
+          this->cb.on_close();
+          return;
+        }
+      }
+      else {
+        i += (size_t) n;
+      }
+    }
+    if ( need_cr ) {
+      n = ::write( this->stdout_fd, "\r\n", 2 );
+      i++;
     }
   }
 }
@@ -244,10 +274,10 @@ EvTerminal::flush_out( void ) noexcept
 int
 EvTerminal::start( void ) noexcept
 {
-  this->PeerData::init_peer( STDIN_FILENO, NULL, "term" );
+  this->PeerData::init_peer( this->stdin_fd, NULL, "term" );
   lc_tty_set_locale();
   this->term.tty_init();
-  lc_tty_init_fd( this->term.tty, STDIN_FILENO, STDOUT_FILENO );
+  lc_tty_init_fd( this->term.tty, this->stdin_fd, this->stdout_fd );
   lc_tty_init_geom( this->term.tty );     /* try to determine lines/cols */
   lc_tty_init_sigwinch( this->term.tty ); /* install sigwinch handler */
   this->term.tty_prompt();
@@ -267,17 +297,56 @@ EvTerminal::finish( void ) noexcept
 }
 
 void
-EvTerminal::printf( const char *fmt, ... ) noexcept
+EvTerminal::output( const char *buf,  size_t buflen ) noexcept
 {
-  va_list args;
   lc_tty_clear_line( this->term.tty );
   this->flush_out();
   lc_tty_normal_mode( this->term.tty );
-  va_start( args, fmt );
-  vprintf( fmt, args );
-  va_end( args );
-  fflush( stdout );
+  this->term.tty_write( buf, buflen );
   this->term.tty_prompt();
   this->flush_out();
+}
+
+int
+EvTerminal::vprintf( const char *fmt, va_list args ) noexcept
+{
+  lc_tty_clear_line( this->term.tty );
+  this->flush_out();
+  lc_tty_normal_mode( this->term.tty );
+  size_t amt = 256;
+  int n;
+  for (;;) {
+    size_t avail = this->term.out_buflen - this->term.out_len;
+
+    if ( avail < amt ) {
+      void *p = ::realloc( this->term.out_buf, amt + this->term.out_buflen );
+      if ( p == NULL )
+        return -1;
+      this->term.out_buf     = (char *) p;
+      this->term.out_buflen += amt;
+      avail += amt;
+      amt += 256;
+    }
+    if ( (n = ::vsnprintf( &this->term.out_buf[ this->term.out_len ], avail,
+                          fmt, args )) < (int) avail ) {
+      this->term.out_len += n;
+      break;
+    }
+    if ( n < 0 )
+      return -1;
+  }
+  this->term.tty_prompt();
+  this->flush_out();
+  return n;
+}
+
+int
+EvTerminal::printf( const char *fmt, ... ) noexcept
+{
+  va_list args;
+  va_start( args, fmt );
+  int n = this->vprintf( fmt, args );
+  va_end( args );
+  return n;
 }
 

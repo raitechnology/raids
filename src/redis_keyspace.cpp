@@ -95,7 +95,7 @@ RedisKeyspace::fwd_bsubj( const char *blk ) noexcept
                  this->exec.sub_id, kv_crc_c( this->subj, subj_len, 0 ),
                  NULL, 0, MD_STRING, ':' );
   /*printf( "%s <- %s\n", this->subj, this->evt );*/
-  b = this->exec.sub_route.rte.forward_msg( pub, &rcount, 0, NULL );
+  b = this->exec.sub_route.forward_msg( pub, &rcount, 0, NULL );
   this->exec.msg_route_cnt += rcount;
   return b;
 }
@@ -119,7 +119,7 @@ RedisKeyspace::fwd_keyevent( void ) noexcept
                  this->exec.sub_id, kv_crc_c( this->subj, subj_len, 0 ),
                  NULL, 0, MD_STRING, ';' );
   /*printf( "%s <- %s\n", this->subj, this->key );*/
-  b = this->exec.sub_route.rte.forward_msg( pub, &rcount, 0, NULL );
+  b = this->exec.sub_route.forward_msg( pub, &rcount, 0, NULL );
   this->exec.msg_route_cnt += rcount;
   return b;
 }
@@ -155,7 +155,7 @@ RedisKeyspace::fwd_monitor( void ) noexcept
   if ( msg == NULL )
     return false;
   if ( addr_len > 0 ) {
-    ::memcpy( &this->subj[ subj_len ], this->exec.peer.peer_address,
+    ::memcpy( &this->subj[ subj_len ], this->exec.peer.peer_address.buf,
               addr_len );
     subj_len += addr_len;
     this->subj[ subj_len ] = '\0';
@@ -197,7 +197,7 @@ RedisKeyspace::fwd_monitor( void ) noexcept
   EvPublish pub( this->subj, subj_len, NULL, 0, msg, msg_sz,
                  this->exec.sub_id, kv_crc_c( this->subj, subj_len, 0 ),
                  NULL, 0, MD_MESSAGE, '<' );
-  b = this->exec.sub_route.rte.forward_msg( pub, &rcount, 0, NULL );
+  b = this->exec.sub_route.forward_msg( pub, &rcount, 0, NULL );
   this->exec.msg_route_cnt += rcount;
   return b;
 }
@@ -210,7 +210,7 @@ RedisKeyspace::pub_keyspace_events( RedisExec &exec ) noexcept
   const char  * e      = NULL;
   size_t        elen   = 0;
   uint32_t      i;
-  uint16_t      key_fl = exec.sub_route.rte.key_flags |
+  uint16_t      key_fl = exec.sub_route.key_flags |
                          EKF_KEYSPACE_DEL | EKF_KEYSPACE_TRIM | EKF_IS_EXPIRED;
   bool          b      = true;
   /* take care of expired keys */
@@ -426,7 +426,7 @@ RedisKeyspace::pub_keyspace_events( RedisExec &exec ) noexcept
       }
     }
   }
-  if ( ( exec.sub_route.rte.key_flags & EKF_MONITOR ) != 0 )
+  if ( ( exec.sub_route.key_flags & EKF_MONITOR ) != 0 )
     b &= ev.fwd_monitor();
   return b;
 }

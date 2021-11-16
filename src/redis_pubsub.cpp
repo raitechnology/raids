@@ -34,8 +34,8 @@ RedisExec::rem_all_sub( void ) noexcept
   if ( this->sub_tab.first( pos ) ) {
     do {
       rcnt = this->sub_route.del_sub_route( pos.rt->hash, this->sub_id );
-      this->sub_route.rte.notify_unsub( pos.rt->hash, pos.rt->value,
-                                        pos.rt->len, this->sub_id, rcnt, 'R' );
+      this->sub_route.notify_unsub( pos.rt->hash, pos.rt->value,
+                                    pos.rt->len, this->sub_id, rcnt, 'R' );
     } while ( this->sub_tab.next( pos ) );
   }
   if ( this->pat_tab.first( ppos ) ) {
@@ -44,17 +44,17 @@ RedisExec::rem_all_sub( void ) noexcept
       if ( cvt.convert_glob( ppos.rt->value, ppos.rt->len ) == 0 ) {
         rcnt = this->sub_route.del_pattern_route( ppos.rt->hash, this->sub_id,
                                                   cvt.prefixlen );
-        this->sub_route.rte.notify_punsub( ppos.rt->hash, cvt.out, cvt.off,
-                                           ppos.rt->value, cvt.prefixlen,
-                                           this->sub_id, rcnt, 'R' );
+        this->sub_route.notify_punsub( ppos.rt->hash, cvt.out, cvt.off,
+                                       ppos.rt->value, cvt.prefixlen,
+                                       this->sub_id, rcnt, 'R' );
       }
     } while ( this->pat_tab.next( ppos ) );
   }
   if ( this->continue_tab.first( cpos ) ) {
     do {
       rcnt = this->sub_route.del_sub_route( cpos.rt->hash, this->sub_id );
-      this->sub_route.rte.notify_unsub( cpos.rt->hash, cpos.rt->value,
-                                        cpos.rt->len, this->sub_id, rcnt, 'R' );
+      this->sub_route.notify_unsub( cpos.rt->hash, cpos.rt->value,
+                                    cpos.rt->len, this->sub_id, rcnt, 'R' );
       RedisContinueMsg *cm = cpos.rt->continue_msg;
       if ( (cm->state & CM_WAIT_LIST) != 0 )
         this->wait_list.pop( cm );
@@ -280,10 +280,10 @@ RedisExec::do_pub( EvPublish &pub,  RedisContinueMsg *&cm ) noexcept
           for ( i = 0; i < keycnt; i++ ) {
             uint32_t rcnt = this->sub_route.del_sub_route( cm->ptr[ i ].hash,
                                                        this->sub_id );
-            this->sub_route.rte.notify_unsub( cm->ptr[ i ].hash,
-                                              cm->ptr[ i ].value,
-                                              cm->ptr[ i ].len,
-                                              this->sub_id, rcnt, 'R' );
+            this->sub_route.notify_unsub( cm->ptr[ i ].hash,
+                                          cm->ptr[ i ].value,
+                                          cm->ptr[ i ].len,
+                                          this->sub_id, rcnt, 'R' );
           }
 #endif
         }
@@ -364,10 +364,10 @@ RedisExec::pop_continue_tab( RedisContinueMsg *cm ) noexcept
   for ( i = 0; i < keycnt; i++ ) {
     uint32_t rcnt = this->sub_route.del_sub_route( cm->ptr[ i ].hash,
                                                this->sub_id );
-    this->sub_route.rte.notify_unsub( cm->ptr[ i ].hash,
-                                      cm->ptr[ i ].value,
-                                      cm->ptr[ i ].len,
-                                      this->sub_id, rcnt, 'R' );
+    this->sub_route.notify_unsub( cm->ptr[ i ].hash,
+                                  cm->ptr[ i ].value,
+                                  cm->ptr[ i ].len,
+                                  this->sub_id, rcnt, 'R' );
   }
   this->msg_route_cnt++;
 }
@@ -440,13 +440,18 @@ RedisExec::exec_pubsub( void ) noexcept
           return ERR_BAD_ARGS;
         }
       }
-      if ( this->sub_route.first_hash( pos, h, v ) ) {
+      UIntHashTab * xht = this->sub_route.rt_hash[ SUB_RTE ];
+      if ( xht->elem_count > 0 && xht->first( pos ) ) {
         rc = 1;
         do {
-          uint32_t id = this->sub_route.decompress_one( v );
-          char   key[ 256 ];
-          size_t keylen;
-          if ( this->sub_route.rte.hash_to_sub( id, h, key, keylen ) ) {
+          h  = xht->tab[ pos ].hash;
+          v  = xht->tab[ pos ].val;
+
+          uint32_t id = this->sub_route.zip.decompress_one( v );
+          char     key[ 256 ];
+          size_t   keylen;
+
+          if ( this->sub_route.hash_to_sub( id, h, key, keylen ) ) {
             if ( re != NULL )
               rc = pcre2_match( re, (PCRE2_SPTR8) key, keylen, 0, 0, md, 0 );
             if ( rc > 0 ) {
@@ -454,7 +459,7 @@ RedisExec::exec_pubsub( void ) noexcept
               cnt++;
             }
           }
-        } while ( this->sub_route.next_hash( pos, h, v ) );
+        } while ( xht->next( pos ) );
       }
       if ( re != NULL ) {
         pcre2_match_data_free( md );
@@ -510,7 +515,7 @@ RedisExec::exec_publish( void ) noexcept
   uint32_t h = kv_crc_c( subj, subj_len, 0 );
   EvPublish pub( subj, subj_len, NULL, 0, msg, msg_len,
                  this->sub_id, h, NULL, 0, MD_STRING, 'p' );
-  this->sub_route.rte.forward_msg( pub, &rcount, 0, NULL );
+  this->sub_route.forward_msg( pub, &rcount, 0, NULL );
   this->msg_route_cnt += rcount;
   if ( rcount <= 1 ) {
     if ( rcount == 0 )
@@ -561,7 +566,7 @@ RedisExec::do_unsubscribe( const char *sub,  size_t len ) noexcept
     /* check for duplicate hashes */
     if ( this->sub_tab.tab.find_by_hash( h ) == NULL )
       rcnt = this->sub_route.del_sub_route( h, this->sub_id );
-    this->sub_route.rte.notify_unsub( h, sub, len, this->sub_id, rcnt, 'R' );
+    this->sub_route.notify_unsub( h, sub, len, this->sub_id, rcnt, 'R' );
     this->msg_route_cnt++;
     return EXEC_OK;
   }
@@ -580,7 +585,7 @@ RedisExec::do_subscribe_cb( const char *sub,  size_t len,
     rt->callback = cb;
     rt->closure  = cl;
     rcnt = this->sub_route.add_sub_route( h, this->sub_id );
-    this->sub_route.rte.notify_sub( h, sub, len, this->sub_id, rcnt, 'R' );
+    this->sub_route.notify_sub( h, sub, len, this->sub_id, rcnt, 'R' );
     this->msg_route_cnt++;
     return EXEC_OK;
   }
@@ -621,8 +626,8 @@ RedisExec::do_psubscribe_cb( const char *sub,  size_t len,
       else {
         rcnt = this->sub_route.add_pattern_route( h, this->sub_id,
                                                   cvt.prefixlen );
-        this->sub_route.rte.notify_psub( h, cvt.out, cvt.off, sub,
-                                         cvt.prefixlen, this->sub_id, rcnt,'R');
+        this->sub_route.notify_psub( h, cvt.out, cvt.off, sub,
+                                     cvt.prefixlen, this->sub_id, rcnt,'R');
         this->msg_route_cnt++;
         return EXEC_OK;
       }
@@ -654,7 +659,7 @@ RedisExec::do_punsubscribe( const char *sub,  size_t len ) noexcept
       this->pat_tab.tab.remove( loc );
       rcnt = this->sub_route.del_pattern_route( h, this->sub_id,
                                                 cvt.prefixlen );
-      this->sub_route.rte.notify_punsub( h, cvt.out, cvt.off, sub,
+      this->sub_route.notify_punsub( h, cvt.out, cvt.off, sub,
                                          cvt.prefixlen, this->sub_id, rcnt,'R');
       this->msg_route_cnt++;
       return EXEC_OK;
@@ -879,7 +884,7 @@ RedisExec::save_blocked_cmd( int64_t timeout_val ) noexcept
     h   = kv_crc_c( sub, len, 0 );
     /* subscribe to the continuation notification (the keyspace subject) */
     rcnt = this->sub_route.add_sub_route( h, this->sub_id );
-    this->sub_route.rte.notify_sub( h, sub, len, this->sub_id, rcnt, 'R' );
+    this->sub_route.notify_sub( h, sub, len, this->sub_id, rcnt, 'R' );
     this->msg_route_cnt++;
     if ( this->continue_tab.put( h, sub, len, rt ) == REDIS_SUB_OK ) {
       rt->continue_msg = cm; /* continue msg and ptrs to other subject keys */
@@ -902,11 +907,11 @@ RedisExec::save_blocked_cmd( int64_t timeout_val ) noexcept
     bool b;
     cm->msgid = ++this->next_event_id;
     if ( this->catg == STREAM_CATG ) /* blocked in millisecs */
-      b = this->sub_route.rte.add_timer_millis( this->sub_id, timeout_val,
-                                                this->timer_id, cm->msgid );
+      b = this->sub_route.timer.add_timer_millis( this->sub_id, timeout_val,
+                                                  this->timer_id, cm->msgid );
     else /* others are in seconds */
-      b = this->sub_route.rte.add_timer_seconds( this->sub_id, timeout_val,
-                                                 this->timer_id, cm->msgid );
+      b = this->sub_route.timer.add_timer_seconds( this->sub_id, timeout_val,
+                                                   this->timer_id, cm->msgid );
     if ( b ) {
       this->wait_list.push_tl( cm );
       cm->state |= CM_WAIT_LIST | CM_TIMER;

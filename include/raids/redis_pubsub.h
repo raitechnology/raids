@@ -33,12 +33,6 @@ struct RedisSubRoute {
   void incr( void ) {
     this->msg_cnt++;
   }
-  bool equals( const void *s,  uint16_t l ) const {
-    return l == this->len && ::memcmp( s, this->value, l ) == 0;
-  }
-  void copy( const void *s,  uint16_t l ) {
-    ::memcpy( this->value, s, l );
-  }
 };
 
 template <class RedisData>
@@ -142,12 +136,6 @@ struct RedisPatternRoute {
   void incr( void ) {
     this->msg_cnt++;
   }
-  bool equals( const void *s,  uint16_t l ) const {
-    return l == this->len && ::memcmp( s, this->value, l ) == 0;
-  }
-  void copy( const void *s,  uint16_t l ) {
-    ::memcpy( this->value, s, l );
-  }
   void release( void );
 };
 
@@ -238,12 +226,6 @@ struct RedisContinue {
     this->keycnt = 1;
   }
   void incr( void ) {}
-  bool equals( const void *s,  uint16_t l ) const {
-    return l == this->len && ::memcmp( s, this->value, l ) == 0;
-  }
-  void copy( const void *s,  uint16_t l ) {
-    ::memcpy( this->value, s, l );
-  }
 };
 
 typedef RedisDataRoutePos< RedisContinue > RedisContinuePos;
