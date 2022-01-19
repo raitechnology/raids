@@ -90,7 +90,7 @@ struct MemcachedUdpFraming {
 struct EvMemcachedListen : public kv::EvTcpListen {
   void * operator new( size_t, void *ptr ) { return ptr; }
   EvMemcachedListen( kv::EvPoll &p ) noexcept;
-  int listen( const char *ip,  int port,  int opts ) noexcept;
+  virtual int listen( const char *ip,  int port,  int opts ) noexcept;
   virtual bool accept( void ) noexcept;
 };
 

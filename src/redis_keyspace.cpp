@@ -92,8 +92,8 @@ RedisKeyspace::fwd_bsubj( const char *blk ) noexcept
     return false;
 
   EvPublish pub( this->subj, subj_len, NULL, 0, this->evt, this->evtlen,
-                 this->exec.sub_id, kv_crc_c( this->subj, subj_len, 0 ),
-                 NULL, 0, MD_STRING, ':' );
+                 this->exec.sub_route, this->exec.sub_id,
+                 kv_crc_c( this->subj, subj_len, 0 ), MD_STRING, ':' );
   /*printf( "%s <- %s\n", this->subj, this->evt );*/
   b = this->exec.sub_route.forward_msg( pub, &rcount, 0, NULL );
   this->exec.msg_route_cnt += rcount;
@@ -116,8 +116,8 @@ RedisKeyspace::fwd_keyevent( void ) noexcept
   this->subj[ subj_len ] = '\0';
 
   EvPublish pub( this->subj, subj_len, NULL, 0, this->key, this->keylen,
-                 this->exec.sub_id, kv_crc_c( this->subj, subj_len, 0 ),
-                 NULL, 0, MD_STRING, ';' );
+                 this->exec.sub_route, this->exec.sub_id,
+                 kv_crc_c( this->subj, subj_len, 0 ), MD_STRING, ';' );
   /*printf( "%s <- %s\n", this->subj, this->key );*/
   b = this->exec.sub_route.forward_msg( pub, &rcount, 0, NULL );
   this->exec.msg_route_cnt += rcount;
@@ -195,8 +195,8 @@ RedisKeyspace::fwd_monitor( void ) noexcept
   crlf( timestamp, 17 + 5 );
 
   EvPublish pub( this->subj, subj_len, NULL, 0, msg, msg_sz,
-                 this->exec.sub_id, kv_crc_c( this->subj, subj_len, 0 ),
-                 NULL, 0, MD_MESSAGE, '<' );
+                 this->exec.sub_route, this->exec.sub_id,
+                 kv_crc_c( this->subj, subj_len, 0 ), MD_MESSAGE, '<' );
   b = this->exec.sub_route.forward_msg( pub, &rcount, 0, NULL );
   this->exec.msg_route_cnt += rcount;
   return b;

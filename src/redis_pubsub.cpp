@@ -5,7 +5,7 @@
 #include <raikv/util.h>
 #include <raids/redis_exec.h>
 #include <raikv/ev_publish.h>
-#include <raikv/route_db.h>
+#include <raikv/ev_net.h>
 #define PCRE2_CODE_UNIT_WIDTH 8
 #include <pcre2.h>
 #include <raikv/pattern_cvt.h>
@@ -29,59 +29,103 @@ RedisExec::rem_all_sub( void ) noexcept
 {
   RedisSubRoutePos     pos;
   RedisPatternRoutePos ppos;
-  RedisContinuePos     cpos;
-  uint32_t             rcnt;
   if ( this->sub_tab.first( pos ) ) {
     do {
-      rcnt = this->sub_route.del_sub_route( pos.rt->hash, this->sub_id );
-      this->sub_route.notify_unsub( pos.rt->hash, pos.rt->value,
-                                    pos.rt->len, this->sub_id, rcnt, 'R' );
+      bool coll = this->sub_tab.rem_collision( pos.rt );
+      NotifySub nsub( pos.rt->value, pos.rt->len, pos.rt->hash,
+                      this->sub_id, coll, 'R' );
+      this->sub_route.del_sub( nsub );
+      if ( pos.rt->is_continue() ) {
+        RedisContinueMsg *cm = pos.rt->cont().continue_msg;
+        if ( (cm->state & CM_WAIT_LIST) != 0 )
+          this->wait_list.pop( cm );
+        if ( (cm->state & CM_CONT_LIST) != 0 )
+          this->cont_list.pop( cm );
+        cm->state &= ~( CM_WAIT_LIST | CM_CONT_LIST );
+      }
     } while ( this->sub_tab.next( pos ) );
   }
   if ( this->pat_tab.first( ppos ) ) {
-    PatternCvt cvt;
     do {
-      if ( cvt.convert_glob( ppos.rt->value, ppos.rt->len ) == 0 ) {
-        rcnt = this->sub_route.del_pattern_route( ppos.rt->hash, this->sub_id,
-                                                  cvt.prefixlen );
-        this->sub_route.notify_punsub( ppos.rt->hash, cvt.out, cvt.off,
-                                       ppos.rt->value, cvt.prefixlen,
-                                       this->sub_id, rcnt, 'R' );
+      for ( RedisWildMatch *m = ppos.rt->list.hd; m != NULL; m = m->next ) {
+        PatternCvt cvt;
+        if ( cvt.convert_glob( m->value, m->len ) == 0 ) {
+          bool coll = this->pat_tab.rem_collision( ppos.rt, m );
+          NotifyPattern npat( cvt, m->value, m->len, ppos.rt->hash,
+                              this->sub_id, coll, 'R' );
+          this->sub_route.del_pat( npat );
+        }
       }
     } while ( this->pat_tab.next( ppos ) );
   }
-  if ( this->continue_tab.first( cpos ) ) {
-    do {
-      rcnt = this->sub_route.del_sub_route( cpos.rt->hash, this->sub_id );
-      this->sub_route.notify_unsub( cpos.rt->hash, cpos.rt->value,
-                                    cpos.rt->len, this->sub_id, rcnt, 'R' );
-      RedisContinueMsg *cm = cpos.rt->continue_msg;
-      if ( (cm->state & CM_WAIT_LIST) != 0 )
-        this->wait_list.pop( cm );
-      if ( (cm->state & CM_CONT_LIST) != 0 )
-        this->cont_list.pop( cm );
-      cm->state &= ~( CM_WAIT_LIST | CM_CONT_LIST );
-    } while ( this->continue_tab.next( cpos ) );
+}
+
+uint8_t
+RedisExec::test_subscribed( const NotifySub &sub ) noexcept
+{
+  uint8_t v     = 0;
+  bool    coll  = false;
+  RedisSubStatus r1;
+  r1 = this->sub_tab.find( sub.subj_hash, sub.subject, sub.subject_len, coll );
+  if ( r1 == REDIS_SUB_OK )
+    v |= EV_SUBSCRIBED;
+  else
+    v |= EV_NOT_SUBSCRIBED;
+  if ( coll )
+    v |= EV_COLLISION;
+  return v;
+}
+
+uint8_t
+RedisExec::test_psubscribed( const NotifyPattern &pat ) noexcept
+{
+  uint8_t v    = 0;
+  bool    coll = false;
+  const PatternCvt & cvt = pat.cvt;
+  RedisPatternRoute * rt;
+  if ( this->pat_tab.find( pat.prefix_hash, pat.pattern, cvt.prefixlen,
+                           rt, coll ) == REDIS_SUB_OK ) {
+    RedisWildMatch *m;
+    for ( m = rt->list.hd; m != NULL; m = m->next ) {
+      if ( m->len == pat.pattern_len &&
+           ::memcmp( pat.pattern, m->value, m->len ) == 0 ) {
+        v |= EV_SUBSCRIBED;
+        break;
+      }
+    }
+    if ( m == NULL )
+      v |= EV_NOT_SUBSCRIBED | EV_COLLISION;
+    else if ( rt->count > 1 )
+      v |= EV_COLLISION;
+  }
+  else {
+    v |= EV_NOT_SUBSCRIBED;
+  }
+  if ( coll )
+    v |= EV_COLLISION;
+  return v;
+}
+
+void
+RedisPatternRoute::release( void ) noexcept
+{
+  RedisWildMatch *next;
+  for ( RedisWildMatch *m = this->list.hd; m != NULL; m = next ) {
+    next = m->next;
+    if ( m->md != NULL ) {
+      pcre2_match_data_free( m->md );
+      m->md = NULL;
+    }
+    if ( m->re != NULL ) {
+      pcre2_code_free( m->re );
+      m->re = NULL;
+    }
+    delete m;
   }
 }
 
 void
-RedisPatternRoute::release( void )
-{
-  if ( this->md != NULL ) {
-    pcre2_match_data_free( this->md );
-    this->md = NULL;
-  }
-  if ( this->re != NULL ) {
-    pcre2_code_free( this->re );
-    this->re = NULL;
-  }
-}
-
-namespace rai {
-namespace ds {
-template <>
-void RedisPatDataMap<RedisPatternRoute>::release( void ) noexcept
+RedisPatternMap::release( void ) noexcept
 {
   RedisPatternRoutePos ppos;
 
@@ -93,42 +137,36 @@ void RedisPatDataMap<RedisPatternRoute>::release( void ) noexcept
   this->tab.release();
 }
 
-template <>
-void RedisDataMap<RedisSubRoute>::release( void ) noexcept
-{
-  this->tab.release();
-}
-
-template <>
-void RedisDataMap<RedisContinue>::release( void ) noexcept
+void
+RedisSubMap::release( void ) noexcept
 {
   kv::DLinkList<RedisContinueMsg> list;
   RedisContinueMsg *cm;
-  RedisContinuePos cpos;
+  RedisSubRoutePos pos;
 
-  if ( this->first( cpos ) ) {
+  if ( this->first( pos ) ) {
     do {
-      cm = cpos.rt->continue_msg;
-      if ( cm != NULL ) {
-        if ( ( cm->state & CM_RELEASE ) == 0 ) {
-          list.push_tl( cm );
-          cm->state |= CM_RELEASE;
+      if ( pos.rt->is_continue() ) {
+        cm = pos.rt->cont().continue_msg;
+        if ( cm != NULL ) {
+          if ( ( cm->state & CM_RELEASE ) == 0 ) {
+            list.push_tl( cm );
+            cm->state |= CM_RELEASE;
+          }
         }
       }
-    } while ( this->next( cpos ) );
+    } while ( this->next( pos ) );
   }
-  this->tab.release();
 
   while ( ! list.is_empty() ) {
     cm = list.pop_hd();
     delete cm;
   }
-}
-}
+  this->tab.release();
 }
 
 bool
-RedisExec::pub_message( EvPublish &pub,  RedisPatternRoute *rt ) noexcept
+RedisExec::pub_message( EvPublish &pub,  RedisWildMatch *m ) noexcept
 {
   static const char   hdr[]   = "*3\r\n$7\r\nmessage\r\n",
                       phdr[]  = "*4\r\n$8\r\npmessage\r\n";
@@ -152,11 +190,10 @@ RedisExec::pub_message( EvPublish &pub,  RedisPatternRoute *rt ) noexcept
     msg_len_frame  = 0;
   }
   else {
-    msg_len_digits = ( pub.msg_len_digits > 0 ? pub.msg_len_digits :
-                       uint64_digits( pub.msg_len ) );
+    msg_len_digits = uint64_digits( pub.msg_len );
     msg_len_frame  = 1 + msg_len_digits + 2 + 2;
   }
-  if ( rt == NULL ) {
+  if ( m == NULL ) {
         /* *3 .. $subject_len       subject ..        */
     sz = hdr_sz + 1 + sdigits + 2 + pub.subject_len + 2 +
       /* $msg_len ..     msg */
@@ -169,11 +206,11 @@ RedisExec::pub_message( EvPublish &pub,  RedisPatternRoute *rt ) noexcept
     off += hdr_sz;
   }
   else {
-    pdigits = uint64_digits( rt->len );
+    pdigits = uint64_digits( m->len );
         /* *4 .. */
     sz = phdr_sz +
       /* $pattern_len       pattern ..        */
-         1 + pdigits + 2 + rt->len + 2 +
+         1 + pdigits + 2 + m->len + 2 +
       /* $subject_len       subject ..        */
          1 + sdigits + 2 + pub.subject_len + 2 +
       /* $msg_len ..     msg */
@@ -185,10 +222,10 @@ RedisExec::pub_message( EvPublish &pub,  RedisPatternRoute *rt ) noexcept
     ::memcpy( &msg[ off ], phdr, phdr_sz );
     off += phdr_sz;
     msg[ off++ ] = '$';
-    off += uint64_to_string( rt->len, &msg[ off ], pdigits );
+    off += uint64_to_string( m->len, &msg[ off ], pdigits );
     off  = crlf( msg, off );
-    ::memcpy( &msg[ off ], rt->value, rt->len );
-    off  = crlf( msg, off + rt->len );
+    ::memcpy( &msg[ off ], m->value, m->len );
+    off  = crlf( msg, off + m->len );
   }
   msg[ off++ ] = '$';
   off += uint64_to_string( pub.subject_len, &msg[ off ], sdigits );
@@ -198,10 +235,7 @@ RedisExec::pub_message( EvPublish &pub,  RedisPatternRoute *rt ) noexcept
 
   if ( msg_len_frame != 0 ) {
     msg[ off++ ] = '$';
-    if ( pub.msg_len_digits == 0 )
-      uint64_to_string( pub.msg_len, &msg[ off ], msg_len_digits );
-    else
-      ::memcpy( &msg[ off ], pub.msg_len_buf, msg_len_digits );
+    uint64_to_string( pub.msg_len, &msg[ off ], msg_len_digits );
     off += msg_len_digits;
     off  = crlf( msg, off );
     ::memcpy( &msg[ off ], pub.msg, pub.msg_len );
@@ -218,49 +252,89 @@ int
 RedisExec::do_pub( EvPublish &pub,  RedisContinueMsg *&cm ) noexcept
 {
   int status = 0;
+  RedisSubStatus ret;
   /* don't publish to self ?? (redis does not allow pub w/sub on same conn) */
   if ( (uint32_t) this->sub_id == pub.src_route )
     return 0;
   uint32_t pub_cnt = 0;
   for ( uint8_t cnt = 0; cnt < pub.prefix_cnt; cnt++ ) {
     if ( pub.subj_hash == pub.hash[ cnt ] ) {
-      RedisSubRoute * rt;;
-      RedisSubStatus  ret;
-      ret = this->sub_tab.updcnt( pub.subj_hash, pub.subject, pub.subject_len,
-                                  rt );
+      RedisSubRoute * rt;
+      ret = this->sub_tab.find( pub.subj_hash, pub.subject, pub.subject_len,
+                                rt );
       if ( ret == REDIS_SUB_OK ) {
         pub_cnt++;
-        if ( rt->callback == NULL ) {
-          this->pub_message( pub, NULL );
+        rt->msg_cnt++;
+        if ( rt->is_route() ) {
+          RedisRouteData &rte = rt->rte();
+          if ( rte.callback == NULL ) {
+            this->pub_message( pub, NULL );
+          }
+          else {
+            ds_event_t event;
+
+            event.subject.strval = (char *) pub.subject;
+            event.subject.len    = pub.subject_len;
+            event.subject.type   = DS_BULK_STRING;
+            event.subscription   = event.subject;
+            event.reply.strval   = (char *) pub.reply;
+            event.reply.len      = pub.reply_len;
+            event.reply.type     = DS_BULK_STRING;
+            msg.strval           = (char *) pub.msg;
+            msg.len              = pub.msg_len;
+            msg.type             = DS_BULK_STRING;
+            rte.callback( &event, &msg, rte.closure );
+          }
         }
         else {
-          ds_event_t event;
-
-          event.subject.strval = (char *) pub.subject;
-          event.subject.len    = pub.subject_len;
-          event.subject.type   = DS_BULK_STRING;
-          event.subscription   = event.subject;
-          event.reply.strval   = (char *) pub.reply;
-          event.reply.len      = pub.reply_len;
-          event.reply.type     = DS_BULK_STRING;
-          msg.strval           = (char *) pub.msg;
-          msg.len              = pub.msg_len;
-          msg.type             = DS_BULK_STRING;
-          rt->callback( &event, &msg, rt->closure );
-        }
-      }
-      if ( pub.subject_len > 10 && pub.subject[ 0 ] == '_' &&
-           ! this->continue_tab.is_null() ) {
-        RedisContinue * rt;
-        RouteLoc        loc;
-        ret = this->continue_tab.find( pub.subj_hash, pub.subject,
-                                       pub.subject_len, rt, loc );
-        if ( ret == REDIS_SUB_OK ) {
-          if ( ( rt->continue_msg->state & CM_PUB_HIT ) == 0 ) {
-            cm         = rt->continue_msg;
+          RedisContinueData & cont = rt->cont();
+          if ( ( cont.continue_msg->state & CM_PUB_HIT ) == 0 ) {
+            cm         = cont.continue_msg;
             cm->state |= CM_PUB_HIT;
             status    |= RPUB_CONTINUE_MSG;
           }
+        }
+      }
+    }
+    else {
+      RedisPatternRoute * rt = NULL;
+      ret = this->pat_tab.find( pub.hash[ cnt ], pub.subject, pub.prefix[ cnt ],
+                                rt );
+      if ( ret == REDIS_SUB_OK ) {
+        for ( RedisWildMatch *m = rt->list.hd; m != NULL; m = m->next ) {
+          if ( m->re == NULL ||
+               pcre2_match( m->re, (const uint8_t *) pub.subject,
+                            pub.subject_len, 0, 0, m->md, 0 ) == 1 ) {
+            m->msg_cnt++;
+            pub_cnt++;
+            if ( m->callback == NULL ) {
+              this->pub_message( pub, m );
+            }
+            else {
+              ds_event_t event;
+
+              event.subject.strval      = (char *) pub.subject;
+              event.subject.len         = pub.subject_len;
+              event.subject.type        = DS_BULK_STRING;
+              event.subscription.strval = m->value;
+              event.subscription.len    = m->len;
+              event.subscription.type   = DS_BULK_STRING;
+              event.reply.strval        = (char *) pub.reply;
+              event.reply.len           = pub.reply_len;
+              event.reply.type          = DS_BULK_STRING;
+              msg.strval                = (char *) pub.msg;
+              msg.len                   = pub.msg_len;
+              msg.type                  = DS_BULK_STRING;
+              m->callback( &event, &msg, m->closure );
+            }
+          }
+        }
+      }
+    }
+  }
+  if ( pub_cnt > 0 )
+    status |= RPUB_FORWARD_MSG;
+  return status;
 #if 0
           uint32_t keynum, keycnt, i;
           keynum = rt->keynum;
@@ -286,53 +360,10 @@ RedisExec::do_pub( EvPublish &pub,  RedisContinueMsg *&cm ) noexcept
                                           this->sub_id, rcnt, 'R' );
           }
 #endif
-        }
-      }
-    }
-    else {
-      RedisPatternRoute * rt = NULL;
-      RouteLoc            loc;
-      rt = this->pat_tab.tab.find_by_hash( pub.hash[ cnt ], loc );
-      for (;;) {
-        if ( rt == NULL )
-          break;
-        if ( pcre2_match( rt->re, (const uint8_t *) pub.subject,
-                          pub.subject_len, 0, 0, rt->md, 0 ) == 1 ) {
-          rt->incr();
-          pub_cnt++;
-          if ( rt->callback == NULL ) {
-            this->pub_message( pub, rt );
-          }
-          else {
-            ds_event_t event;
-
-            event.subject.strval      = (char *) pub.subject;
-            event.subject.len         = pub.subject_len;
-            event.subject.type        = DS_BULK_STRING;
-            event.subscription.strval = rt->value;
-            event.subscription.len    = rt->len;
-            event.subscription.type   = DS_BULK_STRING;
-            event.reply.strval        = (char *) pub.reply;
-            event.reply.len           = pub.reply_len;
-            event.reply.type          = DS_BULK_STRING;
-            msg.strval                = (char *) pub.msg;
-            msg.len                   = pub.msg_len;
-            msg.type                  = DS_BULK_STRING;
-            rt->callback( &event, &msg, rt->closure );
-          }
-        }
-        rt = this->pat_tab.tab.find_next_by_hash( pub.hash[ cnt ], loc );
-      }
-    }
-  }
-  if ( pub_cnt > 0 )
-    status |= RPUB_FORWARD_MSG;
-  return status;
 }
 
 bool
-RedisExec::continue_expire( uint64_t event_id,
-                            RedisContinueMsg *&cm ) noexcept
+RedisExec::continue_expire( uint64_t event_id,  RedisContinueMsg *&cm ) noexcept
 {
   for ( cm = this->wait_list.hd; cm != NULL; cm = cm->next ) {
     if ( cm->msgid == (uint32_t) event_id ) {
@@ -356,18 +387,26 @@ RedisExec::pop_continue_tab( RedisContinueMsg *cm ) noexcept
   uint32_t keycnt, i;
   keycnt = cm->keycnt;
   for ( i = 0; i < keycnt; i++ ) {
-    this->continue_tab.tab.remove( cm->ptr[ i ].hash,
-                                   cm->ptr[ i ].value,
-                                   cm->ptr[ i ].len );
+    bool coll = false;
+    RedisSubStatus r;
+    r = this->sub_tab.rem( cm->ptr[ i ].hash, cm->ptr[ i ].value,
+                           cm->ptr[ i ].len, SUB_STATE_CONTINUE_DATA, coll );
+    if ( r == REDIS_SUB_OK ) {
+      cm->ptr[ i ].save_len = ( coll ? 1 : 0 );
+      this->sub_tab.cont_count--;
+    }
+    else {
+      cm->ptr[ i ].save_len = 2;
+    }
   }
   cm->state &= ~CM_CONT_TAB;
   for ( i = 0; i < keycnt; i++ ) {
-    uint32_t rcnt = this->sub_route.del_sub_route( cm->ptr[ i ].hash,
-                                               this->sub_id );
-    this->sub_route.notify_unsub( cm->ptr[ i ].hash,
-                                  cm->ptr[ i ].value,
-                                  cm->ptr[ i ].len,
-                                  this->sub_id, rcnt, 'R' );
+    if ( cm->ptr[ i ].save_len < 2 ) {
+      NotifySub nsub( cm->ptr[ i ].value, cm->ptr[ i ].len,
+                      cm->ptr[ i ].hash, this->sub_id,
+                      cm->ptr[ i ].save_len, 'R' );
+      this->sub_route.del_sub( nsub );
+    }
   }
   this->msg_route_cnt++;
 }
@@ -514,7 +553,7 @@ RedisExec::exec_publish( void ) noexcept
 
   uint32_t h = kv_crc_c( subj, subj_len, 0 );
   EvPublish pub( subj, subj_len, NULL, 0, msg, msg_len,
-                 this->sub_id, h, NULL, 0, MD_STRING, 'p' );
+                 this->sub_route, this->sub_id, h, MD_STRING, 'p' );
   this->sub_route.forward_msg( pub, &rcount, 0, NULL );
   this->msg_route_cnt += rcount;
   if ( rcount <= 1 ) {
@@ -558,15 +597,15 @@ RedisExec::exec_unsubscribe( void ) noexcept
 ExecStatus
 RedisExec::do_unsubscribe( const char *sub,  size_t len ) noexcept
 {
-  uint32_t h, rcnt;
+  uint32_t h;
+  bool     coll = false;
 
   h = kv_crc_c( sub, len, 0 );
-  if ( this->sub_tab.rem( h, sub, len ) == REDIS_SUB_OK ) {
-    rcnt = 0;
-    /* check for duplicate hashes */
-    if ( this->sub_tab.tab.find_by_hash( h ) == NULL )
-      rcnt = this->sub_route.del_sub_route( h, this->sub_id );
-    this->sub_route.notify_unsub( h, sub, len, this->sub_id, rcnt, 'R' );
+  if ( this->sub_tab.rem( h, sub, len, SUB_STATE_ROUTE_DATA,
+                          coll ) == REDIS_SUB_OK ) {
+    this->sub_tab.sub_count--;
+    NotifySub nsub( sub, len, h, this->sub_id, coll, 'R' );
+    this->sub_route.del_sub( nsub );
     this->msg_route_cnt++;
     return EXEC_OK;
   }
@@ -578,15 +617,19 @@ RedisExec::do_subscribe_cb( const char *sub,  size_t len,
                             ds_on_msg_t cb,  void *cl ) noexcept
 {
   RedisSubRoute * rt;
-  uint32_t h, rcnt;
+  uint32_t h;
+  bool     coll = false;
 
   h = kv_crc_c( sub, len, 0 );
-  if ( this->sub_tab.put( h, sub, len, rt ) == REDIS_SUB_OK ) {
-    rt->callback = cb;
-    rt->closure  = cl;
-    rcnt = this->sub_route.add_sub_route( h, this->sub_id );
-    this->sub_route.notify_sub( h, sub, len, this->sub_id, rcnt, 'R' );
+  if ( this->sub_tab.put( h, sub, len, rt, coll ) == REDIS_SUB_OK ) {
+    this->sub_tab.sub_count++;
+    rt->state    = SUB_STATE_ROUTE_DATA;
+    RedisRouteData & rte = rt->rte();
+    rte.callback = cb;
+    rte.closure  = cl;
     this->msg_route_cnt++;
+    NotifySub nsub( sub, len, h, this->sub_id, coll, 'R' );
+    this->sub_route.add_sub( nsub );
     return EXEC_OK;
   }
   return ERR_KEY_EXISTS;
@@ -598,38 +641,63 @@ RedisExec::do_psubscribe_cb( const char *sub,  size_t len,
 {
   RedisPatternRoute * rt;
   PatternCvt cvt;
-  uint32_t   h, rcnt;
+  uint32_t   h;
+  bool       coll = false;
 
   if ( cvt.convert_glob( sub, len ) == 0 ) {
     h = kv_crc_c( sub, cvt.prefixlen,
                   this->sub_route.prefix_seed( cvt.prefixlen ) );
-    if ( this->pat_tab.put( h, sub, len, rt ) == REDIS_SUB_OK ) {
-      size_t erroff;
-      int    error;
-      rt->callback = cb;
-      rt->closure  = cl;
-      rt->re = pcre2_compile( (uint8_t *) cvt.out, cvt.off, 0, &error,
-                              &erroff, 0 );
-      if ( rt->re == NULL ) {
-        fprintf( stderr, "re failed\n" );
+    if ( this->pat_tab.put( h, sub, cvt.prefixlen, rt, coll ) == REDIS_SUB_OK ){
+      RedisWildMatch * m;
+      for ( m = rt->list.hd; m != NULL; m = m->next ) {
+        if ( m->len == len && ::memcmp( sub, m->value, len ) == 0 )
+          break;
       }
-      else {
-        rt->md = pcre2_match_data_create_from_pattern( rt->re, NULL );
-        if ( rt->md == NULL ) {
-          pcre2_code_free( rt->re );
-          rt->re = NULL;
-          fprintf( stderr, "md failed\n" );
+      if ( m == NULL ) {
+        pcre2_real_code_8       * re = NULL;
+        pcre2_real_match_data_8 * md = NULL;
+        size_t erroff;
+        int    error;
+        bool   pattern_success = false;
+        /* if prefix matches, no need for pcre2 */
+        if ( cvt.prefixlen + 1 == len && sub[ cvt.prefixlen ] == '>' )
+          pattern_success = true;
+        else {
+          re = pcre2_compile( (uint8_t *) cvt.out, cvt.off, 0, &error,
+                              &erroff, 0 );
+          if ( re == NULL ) {
+            fprintf( stderr, "re failed\n" );
+          }
+          else {
+            md = pcre2_match_data_create_from_pattern( re, NULL );
+            if ( md == NULL )
+              fprintf( stderr, "md failed\n" );
+            else
+              pattern_success = true;
+          }
         }
-      } 
-      if ( rt->re == NULL )
-        this->pat_tab.tab.remove( h, sub, len );
-      else {
-        rcnt = this->sub_route.add_pattern_route( h, this->sub_id,
-                                                  cvt.prefixlen );
-        this->sub_route.notify_psub( h, cvt.out, cvt.off, sub,
-                                     cvt.prefixlen, this->sub_id, rcnt,'R');
-        this->msg_route_cnt++;
-        return EXEC_OK;
+        if ( pattern_success &&
+             (m = RedisWildMatch::create( len, sub, re, md )) != NULL ) {
+          rt->list.push_hd( m );
+          m->callback = cb;
+          m->closure  = cl;
+          if ( rt->count++ > 0 )
+            coll = true;
+
+          NotifyPattern npat( cvt, sub, len, h, this->sub_id, coll, 'R' );
+          this->sub_route.add_pat( npat );
+          this->msg_route_cnt++;
+          return EXEC_OK;
+        }
+        else {
+          fprintf( stderr, "wildcard failed\n" );
+          if ( rt->count == 0 )
+            this->pat_tab.tab.remove( h, sub, len );
+          if ( md != NULL )
+            pcre2_match_data_free( md );
+          if ( re != NULL )
+            pcre2_code_free( re );
+        }
       }
     }
   }
@@ -642,27 +710,37 @@ RedisExec::do_punsubscribe( const char *sub,  size_t len ) noexcept
   PatternCvt          cvt;
   RouteLoc            loc;
   RedisPatternRoute * rt;
-  uint32_t            h, rcnt;
+  uint32_t            h;
+  bool                coll = false;
 
   if ( cvt.convert_glob( sub, len ) == 0 ) {
     h = kv_crc_c( sub, cvt.prefixlen,
                   this->sub_route.prefix_seed( cvt.prefixlen ) );
-    if ( (rt = this->pat_tab.tab.find( h, sub, len, loc )) != NULL ) {
-      if ( rt->md != NULL ) {
-        pcre2_match_data_free( rt->md );
-        rt->md = NULL;
+    if ( this->pat_tab.find( h, sub, cvt.prefixlen, loc, rt,
+                             coll ) == REDIS_SUB_OK ) {
+      for ( RedisWildMatch *m = rt->list.hd; m != NULL; m = m->next ) {
+        if ( m->len == len && ::memcmp( m->value, sub, len ) == 0 ) {
+          if ( m->md != NULL ) {
+            pcre2_match_data_free( m->md );
+            m->md = NULL;
+          }
+          if ( m->re != NULL ) {
+            pcre2_code_free( m->re );
+            m->re = NULL;
+          }
+          rt->list.pop( m );
+          if ( --rt->count > 0 )
+            coll = true;
+          delete m;
+          if ( rt->count == 0 )
+            this->pat_tab.tab.remove( loc );
+
+          NotifyPattern npat( cvt, sub, len, h, this->sub_id, coll, 'R' );
+          this->sub_route.del_pat( npat );
+          this->msg_route_cnt++;
+          return EXEC_OK;
+        }
       }
-      if ( rt->re != NULL ) {
-        pcre2_code_free( rt->re );
-        rt->re = NULL;
-      }
-      this->pat_tab.tab.remove( loc );
-      rcnt = this->sub_route.del_pattern_route( h, this->sub_id,
-                                                cvt.prefixlen );
-      this->sub_route.notify_punsub( h, cvt.out, cvt.off, sub,
-                                         cvt.prefixlen, this->sub_id, rcnt,'R');
-      this->msg_route_cnt++;
-      return EXEC_OK;
     }
   }
   return ERR_KEY_DOESNT_EXIST;
@@ -672,8 +750,8 @@ ExecStatus
 RedisExec::do_sub( int flags ) noexcept
 {
   const char * hdr;
-  size_t       hdr_sz;
-  size_t       cnt = this->sub_tab.sub_count() + this->pat_tab.sub_count(),
+  size_t       hdr_sz,
+               cnt = this->sub_tab.sub_count + this->pat_tab.sub_count(),
                i   = 1,
                j   = 0,
                k   = 0,
@@ -816,13 +894,12 @@ RedisExec::save_blocked_cmd( int64_t timeout_val ) noexcept
   size_t             msglen = this->msg.pack_size();
   char             * buf;
   RedisKeyspace      kspc( *this );
-  RedisContinue    * rt;
   RedisContinueMsg * cm;
   void             * p;
   char             * sub;
   size_t             len,
                      save_len = 0;
-  uint32_t           h, rcnt, i, sz;
+  uint32_t           h, i, sz;
 
   /* calculate length of buf[] */
   len = 0;
@@ -883,15 +960,21 @@ RedisExec::save_blocked_cmd( int64_t timeout_val ) noexcept
     sub = kspc.subj;
     h   = kv_crc_c( sub, len, 0 );
     /* subscribe to the continuation notification (the keyspace subject) */
-    rcnt = this->sub_route.add_sub_route( h, this->sub_id );
-    this->sub_route.notify_sub( h, sub, len, this->sub_id, rcnt, 'R' );
-    this->msg_route_cnt++;
-    if ( this->continue_tab.put( h, sub, len, rt ) == REDIS_SUB_OK ) {
-      rt->continue_msg = cm; /* continue msg and ptrs to other subject keys */
-      rt->keynum = i;
-      rt->keycnt = this->key_cnt;
+    bool coll = false;
+    RedisSubRoute * rt;
+    if ( this->sub_tab.put( h, sub, len, rt, coll ) == REDIS_SUB_OK ) {
+      this->sub_tab.cont_count++;
+      rt->state = SUB_STATE_CONTINUE_DATA;
+      RedisContinueData & cont = rt->cont();
+      cont.continue_msg = cm; /* continue msg and ptrs to other subject keys */
+      cont.keynum = i;
+      cont.keycnt = this->key_cnt;
       cm->state |= CM_CONT_TAB;
+
+      NotifySub nsub( sub, len, h, this->sub_id, coll, 'R' );
+      this->sub_route.add_sub( nsub );
     }
+    this->msg_route_cnt++;
     /* save the ptr to the subject and hash */
     ::memcpy( p, sub, len );
     if ( save_len != 0 )

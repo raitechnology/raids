@@ -311,11 +311,11 @@ RedisExec::exec_client_list( char *buf,  size_t buflen ) noexcept
      u: the client is unblocked
      U: the client is connected via a Unix domain socket
      x: the client is in a MULTI/EXEC context                    x  */
-  if ( this->continue_tab.sub_count() > 0 )
+  if ( this->sub_tab.cont_count > 0 )
     flags[ i++ ] = 'b'; /* blocking operation in progress */
   if ( ( this->cmd_state & CMD_STATE_MONITOR ) != 0 )
     flags[ i++ ] = 'O'; /* subscribed to monitor */
-  if ( this->sub_tab.sub_count() + this->pat_tab.sub_count() != 0 )
+  if ( this->sub_tab.sub_count + this->pat_tab.sub_count() != 0 )
     flags[ i++ ] = 'P'; /* subscribed to something */
   if ( this->multi != NULL )
     flags[ i++ ] = 'x'; /* has a multi */
@@ -326,7 +326,7 @@ RedisExec::exec_client_list( char *buf,  size_t buflen ) noexcept
     "flags=%s db=%u sub=%lu psub=%lu multi=%d cmd=%s ",
     flags,
     this->kctx.db_num,
-    this->sub_tab.sub_count(),
+    this->sub_tab.sub_count,
     this->pat_tab.sub_count(),
     ( this->multi == NULL ? -1 : (int) this->multi->msg_count ),
     cmd_db[ this->cmd ].name );

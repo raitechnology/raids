@@ -46,6 +46,8 @@ struct EvShmClient : public kv::EvShm, public kv::StreamBuf,
   virtual bool hash_to_sub( uint32_t h,  char *key,
                             size_t &keylen ) noexcept final;
   virtual bool on_msg( kv::EvPublish &pub ) noexcept final;
+  virtual uint8_t is_subscribed( const kv::NotifySub &sub ) noexcept final;
+  virtual uint8_t is_psubscribed( const kv::NotifyPattern &pat ) noexcept final;
   virtual void process_shutdown( void ) noexcept final;
   /* EvClient */
   virtual void send_data( char *buf,  size_t size ) noexcept final;
@@ -67,12 +69,13 @@ struct EvShmApi : public kv::EvShm, public kv::StreamBuf, public kv::EvSocket {
   virtual bool hash_to_sub( uint32_t h,  char *key,
                             size_t &keylen ) noexcept final;
   virtual bool on_msg( kv::EvPublish &pub ) noexcept final;
+  virtual uint8_t is_subscribed( const kv::NotifySub &sub ) noexcept final;
+  virtual uint8_t is_psubscribed( const kv::NotifyPattern &pat ) noexcept final;
   virtual void process_shutdown( void ) noexcept final;
 };
 
 struct EvShmSvc : public kv::EvShm, public kv::EvSocket {
   void * operator new( size_t, void *ptr ) { return ptr; }
-  void operator delete( void *ptr ) { ::free( ptr ); }
   EvShmSvc( kv::EvPoll &p ) : kv::EvSocket( p, p.register_type( "shm_svc" ) ) {
     this->sock_opts = kv::OPT_NO_POLL;
   }

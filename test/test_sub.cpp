@@ -43,30 +43,25 @@ struct SubTest : public EvShmSvc {
   }
   /* start subcriptions for sub or inbox */
   void subscribe( void ) {
-    uint32_t rcnt;
     this->h  = kv_crc_c( this->sub, this->len, 0 );
     this->ih = kv_crc_c( this->ibx, this->ilen, 0 );
     /* if using inbox for reply */
     if ( this->ilen > 0 ) {
-      rcnt = this->sub_route.add_sub_route( this->ih, this->fd );
-      this->sub_route.notify_sub( this->ih, this->ibx, this->ilen,
-                                  this->fd, rcnt, 'K' );
+      NotifySub nibx( this->ibx, this->ilen, this->ih, this->fd, false, 'K' );
+      this->sub_route.add_sub( nibx );
     }
-    rcnt = this->sub_route.add_sub_route( this->h, this->fd );
-    this->sub_route.notify_sub( this->h, this->sub, this->len,
-                                this->fd, rcnt, 'K', this->ibx, this->ilen );
+    NotifySub nsub( this->sub, this->len, this->ibx, this->ilen, this->h,
+                    this->fd, false, 'K' );
+    this->sub_route.add_sub( nsub );
   }
   /* remove subcriptions for sub or inbox */
   void unsubscribe( void ) {
-    uint32_t rcnt;
     if ( this->ilen > 0 ) {
-      rcnt = this->sub_route.del_sub_route( this->ih, this->fd );
-      this->sub_route.notify_unsub( this->ih, this->ibx, this->ilen,
-                                    this->fd, rcnt, 'K' );
+      NotifySub nibx( this->ibx, this->ilen, this->ih, this->fd, false, 'K' );
+      this->sub_route.del_sub( nibx );
     }
-    rcnt = this->sub_route.del_sub_route( this->h, this->fd );
-    this->sub_route.notify_unsub( this->h, this->sub, this->len,
-                                  this->fd, rcnt, 'K' );
+    NotifySub nsub( this->sub, this->len, this->h, this->fd, false, 'K' );
+    this->sub_route.del_sub( nsub );
   }
   /* recv an incoming message from a subscription above, sent from a peer or
    * myself if subscribing to the same subject as publishing */

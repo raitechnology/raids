@@ -53,6 +53,18 @@ EvShmClient::on_msg( EvPublish &pub ) noexcept
   return true;
 }
 
+uint8_t
+EvShmClient::is_subscribed( const NotifySub &sub ) noexcept
+{
+  return this->exec->test_subscribed( sub );
+}
+
+uint8_t
+EvShmClient::is_psubscribed( const NotifyPattern &pat ) noexcept
+{
+  return this->exec->test_psubscribed( pat );
+}
+
 bool
 EvShmClient::hash_to_sub( uint32_t h,  char *key,  size_t &keylen ) noexcept
 {

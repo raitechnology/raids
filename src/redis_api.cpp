@@ -450,6 +450,22 @@ EvShmApi::on_msg( EvPublish &pub ) noexcept
   return true;
 }
 
+uint8_t
+EvShmApi::is_subscribed( const NotifySub &sub ) noexcept
+{
+  if ( this->exec != NULL )
+    return this->exec->test_subscribed( sub );
+  return EV_NOT_SUBSCRIBED;
+}
+
+uint8_t
+EvShmApi::is_psubscribed( const NotifyPattern &pat ) noexcept
+{
+  if ( this->exec != NULL )
+    return this->exec->test_psubscribed( pat );
+  return EV_NOT_SUBSCRIBED;
+}
+
 void
 EvShmApi::process_shutdown( void ) noexcept
 {

@@ -589,6 +589,18 @@ EvHttpService::on_msg( EvPublish &pub ) noexcept
   return flow_good;
 }
 
+uint8_t
+EvHttpService::is_subscribed( const NotifySub &sub ) noexcept
+{
+  return this->RedisExec::test_subscribed( sub );
+}
+
+uint8_t
+EvHttpService::is_psubscribed( const NotifyPattern &pat ) noexcept
+{
+  return this->RedisExec::test_psubscribed( pat );
+}
+
 bool
 EvHttpService::timer_expire( uint64_t tid,  uint64_t event_id ) noexcept
 {
@@ -1291,7 +1303,7 @@ EvHttpService::release( void ) noexcept
 bool
 EvHttpService::match( PeerMatchArgs &ka ) noexcept
 {
-  if ( this->sub_tab.sub_count() + this->pat_tab.sub_count() != 0 ) {
+  if ( this->sub_tab.sub_count + this->pat_tab.sub_count() != 0 ) {
     if ( EvSocket::client_match( *this, &ka, MARG( "pubsub" ),
                                              MARG( "http" ), NULL ) )
       return true;

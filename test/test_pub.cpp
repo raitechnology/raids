@@ -38,7 +38,8 @@ struct PubTest : public EvShmSvc, public RouteNotify {
   MDDict     * dict;
 
   PubTest( EvPoll &poll,  const char *s,  uint32_t ps_rate )
-    : EvShmSvc( poll ), sub_route( poll.sub_route ), sub( s ),
+    : EvShmSvc( poll ), RouteNotify( poll.sub_route ),
+      sub_route( poll.sub_route ), sub( s ),
       len( ::strlen( s ) ), h( 0 ), per_sec( ps_rate ),
       ns_ival( 1e9 / ps_rate ), count( 0 ), last_time( 0 ), dict( 0 ) {}
   /* shutdown before close */
@@ -57,16 +58,15 @@ struct PubTest : public EvShmSvc, public RouteNotify {
       this->poll.timer.add_timer_micros( this->fd, us_ival, 1, 0 );
     }
   }
-  virtual void on_sub( uint32_t,  const char *sub,  size_t sublen,
-                       uint32_t src_fd,  uint32_t,  char,
-                       const char *rep,  size_t rlen ) noexcept {
-    printf( "on_sub src_fd=%u %.*s", src_fd, (int) sublen, sub );
-    if ( rlen != 0 )
-      printf( " reply %.*s", (int) rlen, rep );
+  virtual void on_sub( const NotifySub &sub ) noexcept {
+    printf( "on_sub src_fd=%u %.*s", sub.src_fd, (int) sub.subject_len,
+            sub.subject );
+    if ( sub.reply_len != 0 )
+      printf( " reply %.*s", (int) sub.reply_len, sub.reply );
     printf( "\n" );
 
-    if ( rlen > 0 && sublen == this->len &&
-         ::memcmp( sub, this->sub, this->len ) == 0 ) {
+    if ( sub.reply_len > 0 && sub.subject_len == this->len &&
+         ::memcmp( sub.subject, this->sub, this->len ) == 0 ) {
       char buf[ 1600 ];
       TibMsgWriter tibmsg( buf, sizeof( buf ) );
       tibmsg.append_string( "hello", 6, "world", 6 );
@@ -75,15 +75,16 @@ struct PubTest : public EvShmSvc, public RouteNotify {
       size_t sz = tibmsg.update_hdr();
       printf( "publish reply sz %lu\n", sz );
 
-      EvPublish p( rep, rlen, NULL, 0, buf, sz, this->fd,
-                   kv_crc_c( rep, rlen, 0 ), NULL, 0,
+      EvPublish p( sub.reply, sub.reply_len, NULL, 0, buf, sz,
+                   this->sub_route, this->fd,
+                   kv_crc_c( sub.reply, sub.reply_len, 0 ),
                    (uint8_t) RAIMSG_TYPE_ID, 'i' );
       this->sub_route.forward_msg( p, NULL, 0, NULL );
     }
   }
-  virtual void on_unsub( uint32_t,  const char *sub,  size_t sublen,
-                         uint32_t src_fd,  uint32_t,  char ) noexcept {
-    printf( "on_unsub src_fd=%u %.*s\n", src_fd, (int) sublen, sub );
+  virtual void on_unsub( const NotifySub &sub ) noexcept {
+    printf( "on_unsub src_fd=%u %.*s\n", sub.src_fd, (int) sub.subject_len,
+            sub.subject );
   }
 #if 0
   virtual void on_sub( KvSubMsg &submsg ) noexcept {
@@ -125,8 +126,8 @@ struct PubTest : public EvShmSvc, public RouteNotify {
       size_t sz = tibmsg.update_hdr();
 
       EvPublish p( this->sub, this->len, NULL, 0, buf,
-                   sz, this->fd, this->h,
-                   NULL, 0, (uint8_t) RAIMSG_TYPE_ID, 'u' );
+                   sz, this->sub_route, this->fd, this->h,
+                   (uint8_t) RAIMSG_TYPE_ID, 'u' );
       this->sub_route.forward_msg( p, NULL, 0, NULL );
       if ( this->per_sec < 100 )
         break;

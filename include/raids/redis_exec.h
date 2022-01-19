@@ -23,6 +23,8 @@ namespace kv {
   struct KvPubSub;
   struct EvPrefetchQueue;
   struct EvPoll;
+  struct NotifySub;
+  struct NotifyPattern;
 }
 
 namespace ds {
@@ -146,7 +148,6 @@ struct RedisExec {
                     next_event_id; /* next event id for timers */
   RedisSubMap       sub_tab;   /* pub/sub subscription table */
   RedisPatternMap   pat_tab;   /* pub/sub pattern sub table */
-  RedisContinueMap  continue_tab; /* blocked continuations */
 
   RedisExec( kv::HashTab &map,  uint32_t ,  uint32_t dbx_id,
              kv::StreamBuf &s,  kv::RoutePDB &rdb,  kv::PeerData &pd ) :
@@ -363,8 +364,10 @@ struct RedisExec {
                              ds_on_msg_t cb = NULL,  void *cl = NULL ) noexcept;
   ExecStatus do_punsubscribe( const char *sub,  size_t len ) noexcept;
   ExecStatus do_sub( int flags ) noexcept;
-  bool pub_message( kv::EvPublish &pub,  RedisPatternRoute *rt ) noexcept;
+  bool pub_message( kv::EvPublish &pub,  RedisWildMatch *m ) noexcept;
   int do_pub( kv::EvPublish &pub,  RedisContinueMsg *&cm ) noexcept;
+  uint8_t test_subscribed( const kv::NotifySub &sub ) noexcept;
+  uint8_t test_psubscribed( const kv::NotifyPattern &pat ) noexcept;
   bool do_hash_to_sub( uint32_t h,  char *key,  size_t &keylen ) noexcept;
   /* SCRIPT */
   ExecStatus exec_eval( kv::EvKeyCtx &ctx ) noexcept;

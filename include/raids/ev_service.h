@@ -23,6 +23,8 @@ struct EvRedisService : public kv::EvConnection, public RedisExec {
   virtual bool timer_expire( uint64_t tid, uint64_t eid ) noexcept final;
   virtual bool hash_to_sub( uint32_t h, char *k, size_t &klen ) noexcept final;
   virtual bool on_msg( kv::EvPublish &pub ) noexcept final;
+  virtual uint8_t is_subscribed( const kv::NotifySub &sub ) noexcept final;
+  virtual uint8_t is_psubscribed( const kv::NotifyPattern &pat ) noexcept final;
   virtual void key_prefetch( kv::EvKeyCtx &ctx ) noexcept final;
   virtual int  key_continue( kv::EvKeyCtx &ctx ) noexcept final;
   /* PeerData */
@@ -34,7 +36,7 @@ struct EvRedisListen : public kv::EvTcpListen {
   void * operator new( size_t, void *ptr ) { return ptr; }
   EvRedisListen( kv::EvPoll &p ) noexcept;/* : EvTcpListen( p ) {}*/
   virtual bool accept( void ) noexcept;
-  int listen( const char *ip,  int port,  int opts ) {
+  virtual int listen( const char *ip,  int port,  int opts ) noexcept {
     return this->kv::EvTcpListen::listen( ip, port, opts, "redis_listen" );
   }
 };
