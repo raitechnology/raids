@@ -990,11 +990,11 @@ RedisExec::save_blocked_cmd( int64_t timeout_val ) noexcept
     bool b;
     cm->msgid = ++this->next_event_id;
     if ( this->catg == STREAM_CATG ) /* blocked in millisecs */
-      b = this->sub_route.timer.add_timer_millis( this->sub_id, timeout_val,
-                                                  this->timer_id, cm->msgid );
+      b = this->timer.add_timer_millis( this->sub_id, timeout_val,
+                                        this->timer_id, cm->msgid );
     else /* others are in seconds */
-      b = this->sub_route.timer.add_timer_seconds( this->sub_id, timeout_val,
-                                                   this->timer_id, cm->msgid );
+      b = this->timer.add_timer_seconds( this->sub_id, timeout_val,
+                                         this->timer_id, cm->msgid );
     if ( b ) {
       this->wait_list.push_tl( cm );
       cm->state |= CM_WAIT_LIST | CM_TIMER;

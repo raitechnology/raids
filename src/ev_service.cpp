@@ -19,10 +19,20 @@ using namespace ds;
 using namespace kv;
 
 EvRedisListen::EvRedisListen( EvPoll &p ) noexcept
-  : EvTcpListen( p, "redis_tcp_listen", "redis_sock" ) {}
+  : EvTcpListen( p, "redis_tcp_listen", "redis_sock" ),
+    sub_route( p.sub_route ) {}
 
 EvRedisUnixListen::EvRedisUnixListen( EvPoll &p ) noexcept
-  : EvUnixListen( p, "redis_unix_listen", "redis_sock" ) {}
+  : EvUnixListen( p, "redis_unix_listen", "redis_sock" ),
+    sub_route( p.sub_route ) {}
+
+EvRedisListen::EvRedisListen( EvPoll &p,  RoutePublish &sr ) noexcept
+  : EvTcpListen( p, "redis_tcp_listen", "redis_sock" ),
+    sub_route( sr ) {}
+
+EvRedisUnixListen::EvRedisUnixListen( EvPoll &p,  RoutePublish &sr ) noexcept
+  : EvUnixListen( p, "redis_unix_listen", "redis_sock" ),
+    sub_route( sr ) {}
 
 bool
 EvRedisListen::accept( void ) noexcept
@@ -41,7 +51,8 @@ EvRedisListen::accept( void ) noexcept
   /*char buf[ 80 ];*/
   /*printf( "accept from %s\n", get_ip_str( &addr, buf, sizeof( buf ) ) );*/
   EvRedisService *c =
-    this->poll.get_free_list<EvRedisService>( this->accept_sock_type );
+    this->poll.get_free_list2<EvRedisService, RoutePublish>(
+      this->accept_sock_type, this->sub_route );
   if ( c == NULL ) {
     perror( "accept: no memory" );
     ::close( sock );
@@ -75,7 +86,8 @@ EvRedisUnixListen::accept( void ) noexcept
     return false;
   }
   EvRedisService *c =
-    this->poll.get_free_list<EvRedisService>( this->accept_sock_type );
+    this->poll.get_free_list2<EvRedisService, RoutePublish>(
+       this->accept_sock_type, this->sub_route );
   if ( c == NULL ) {
     perror( "accept: no memory" );
     ::close( sock );

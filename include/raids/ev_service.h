@@ -14,8 +14,9 @@ namespace ds {
 struct EvRedisService : public kv::EvConnection, public RedisExec {
   void * operator new( size_t, void *ptr ) { return ptr; }
 
-  EvRedisService( kv::EvPoll &p,  const uint8_t t ) : kv::EvConnection( p, t ),
-      RedisExec( *p.map, p.ctx_id, p.dbx_id, *this, p.sub_route, *this ) {}
+  EvRedisService( kv::EvPoll &p,  const uint8_t t,
+                  kv::RoutePublish &sr ) : kv::EvConnection( p, t ),
+      RedisExec( *p.map, p.ctx_id, p.dbx_id, *this, sr, *this, p.timer ) {}
   void debug( void ) noexcept;
   /* EvSocket */
   virtual void process( void ) noexcept final;
@@ -34,7 +35,9 @@ struct EvRedisService : public kv::EvConnection, public RedisExec {
 
 struct EvRedisListen : public kv::EvTcpListen {
   void * operator new( size_t, void *ptr ) { return ptr; }
-  EvRedisListen( kv::EvPoll &p ) noexcept;/* : EvTcpListen( p ) {}*/
+  kv::RoutePublish & sub_route;
+  EvRedisListen( kv::EvPoll &p, kv::RoutePublish &sr ) noexcept;
+  EvRedisListen( kv::EvPoll &p ) noexcept;
   virtual bool accept( void ) noexcept;
   virtual int listen( const char *ip,  int port,  int opts ) noexcept {
     return this->kv::EvTcpListen::listen( ip, port, opts, "redis_listen" );
@@ -43,6 +46,8 @@ struct EvRedisListen : public kv::EvTcpListen {
 
 struct EvRedisUnixListen : public kv::EvUnixListen {
   void * operator new( size_t, void *ptr ) { return ptr; }
+  kv::RoutePublish & sub_route;
+  EvRedisUnixListen( kv::EvPoll &p, kv::RoutePublish &sr ) noexcept;
   EvRedisUnixListen( kv::EvPoll &p ) noexcept;
   virtual bool accept( void ) noexcept;
   int listen( const char *sock,  int opts ) {

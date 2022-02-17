@@ -401,7 +401,8 @@ EvShmApi::init_exec( void ) noexcept
   int status, pfd = this->poll.get_null_fd();
   this->PeerData::init_ctx( pfd, this->ctx_id, "shm_api" );
   this->exec = new ( e ) RedisExec( *this->map, this->ctx_id, this->dbx_id,
-                                    *this, this->poll.sub_route, *this );
+                                    *this, this->poll.sub_route, *this,
+                                    this->poll.timer );
   this->timer_id = ( (uint64_t) this->sock_type << 56 ) |
                    ( (uint64_t) this->ctx_id << 40 );
   this->exec->setup_ids( pfd, this->timer_id );

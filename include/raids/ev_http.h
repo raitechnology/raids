@@ -82,7 +82,7 @@ struct EvHttpService : public kv::EvConnection, public RedisExec {
   void * operator new( size_t, void *ptr ) { return ptr; }
 
   EvHttpService( kv::EvPoll &p,  const uint8_t t ) : kv::EvConnection( p, t ),
-    RedisExec( *p.map, p.ctx_id, p.dbx_id, *this, p.sub_route, *this ),
+    RedisExec( *p.map, p.ctx_id, p.dbx_id, *this, p.sub_route, *this, p.timer ),
     wsbuf( 0 ), wsoff( 0 ), wslen( 0 ), websock_off( 0 ),
     term_int( 0 ), is_using_term( false ) {}
   void initialize_state( void ) {
