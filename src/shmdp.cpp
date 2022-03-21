@@ -635,7 +635,7 @@ QueuePoll::read( int fd, char *buf, size_t count ) noexcept
   if ( p == NULL )
     return 0;
   if ( p->out_off < p->out_len ) {
-    size = kv::min<size_t>( count, p->out_len - p->out_off );
+    size = kv::min_int<size_t>( count, p->out_len - p->out_off );
     ::memcpy( &buf[ off ], &p->out_buf[ p->out_off ], size );
     off += size;
     p->out_off += size;
@@ -680,7 +680,7 @@ QueuePoll::read( int fd, char *buf, size_t count ) noexcept
     for ( i = 0; i < this->shm.idx; i++ ) {
       size_t len  = this->shm.iov[ i ].iov_len;
       void * base = this->shm.iov[ i ].iov_base;
-      size = kv::min<size_t>( count - off, len );
+      size = kv::min_int<size_t>( count - off, len );
       ::memcpy( &buf[ off ], base, size );
       off += size;
       /* save the rest, no space in read buf */

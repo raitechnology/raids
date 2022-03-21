@@ -6,7 +6,7 @@
 #include <fcntl.h>
 #include <raids/ev_client.h>
 #include <raikv/ev_publish.h>
-#include <raikv/kv_pubsub.h>
+/*#include <raikv/kv_pubsub.h>*/
 #include <raikv/timer_queue.h>
 #include <raimd/md_types.h>
 #include <raimd/tib_msg.h>
@@ -79,7 +79,7 @@ struct PubTest : public EvShmSvc, public RouteNotify {
                    this->sub_route, this->fd,
                    kv_crc_c( sub.reply, sub.reply_len, 0 ),
                    (uint8_t) RAIMSG_TYPE_ID, 'i' );
-      this->sub_route.forward_msg( p, NULL, 0, NULL );
+      this->sub_route.forward_msg( p );
     }
   }
   virtual void on_unsub( const NotifySub &sub ) noexcept {
@@ -106,7 +106,7 @@ struct PubTest : public EvShmSvc, public RouteNotify {
       EvPublish p( submsg.reply(), submsg.replylen, NULL, 0, buf,
                    sz, this->fd, this->h,
                    NULL, 0, (uint8_t) RAIMSG_TYPE_ID, 'i' );
-      this->sub_route.forward_msg( p, NULL, 0, NULL );
+      this->sub_route.forward_msg( p );
     }
   }
 #endif
@@ -128,7 +128,7 @@ struct PubTest : public EvShmSvc, public RouteNotify {
       EvPublish p( this->sub, this->len, NULL, 0, buf,
                    sz, this->sub_route, this->fd, this->h,
                    (uint8_t) RAIMSG_TYPE_ID, 'u' );
-      this->sub_route.forward_msg( p, NULL, 0, NULL );
+      this->sub_route.forward_msg( p );
       if ( this->per_sec < 100 )
         break;
     }
@@ -145,8 +145,8 @@ main( int argc, char *argv[] )
   const char * mn = get_arg( argc, argv, 1, "-m", KV_DEFAULT_SHM ),
              * su = get_arg( argc, argv, 1, "-s", "PING" ),
              * xx = get_arg( argc, argv, 1, "-x", "1" ),
-             * bu = get_arg( argc, argv, 0, "-b", 0 ),
-             * no = get_arg( argc, argv, 0, "-k", 0 ),
+            /* bu = get_arg( argc, argv, 0, "-b", 0 ),
+             * no = get_arg( argc, argv, 0, "-k", 0 ),*/
              * he = get_arg( argc, argv, 0, "-h", 0 );
   uint32_t per_sec = atoi( xx );
 
@@ -156,8 +156,9 @@ main( int argc, char *argv[] )
       "  map  = kv shm map name      (" KV_DEFAULT_SHM ")\n"
       "  sub  = subject to subscribe (PING)\n"
       "  rate = publish rate per sec (1)\n"
-      "  -k   = don't use signal USR1 pub notification\n"
-      "  -b   = busy poll\n", argv[ 0 ] );
+   /* "  -k   = don't use signal USR1 pub notification\n"
+      "  -b   = busy poll\n"*/
+      , argv[ 0 ] );
     return 0;
   }
 
@@ -170,12 +171,14 @@ main( int argc, char *argv[] )
     return 1;
   sighndl.install();
   shm.start_timer();
+#if 0
   if ( bu != NULL ) {
     poll.pubsub->idle_push( EV_BUSY_POLL );
   }
   if ( no != NULL ) {
     poll.pubsub->flags &= ~KV_DO_NOTIFY;
   }
+#endif
   while ( poll.quit < 5 ) {
     int idle = poll.dispatch(); /* true if idle, false if busy */
     poll.wait( idle == EvPoll::DISPATCH_IDLE ? 100 : 0 );

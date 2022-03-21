@@ -23,35 +23,14 @@ EvHttpListen::EvHttpListen( EvPoll &p ) noexcept
 bool
 EvHttpListen::accept( void ) noexcept
 {
-  struct sockaddr_storage addr;
-  socklen_t addrlen = sizeof( addr );
-  int sock = ::accept( this->fd, (struct sockaddr *) &addr, &addrlen );
-  if ( sock < 0 ) {
-    if ( errno != EINTR ) {
-      if ( errno != EAGAIN )
-        perror( "accept" );
-      this->pop3( EV_READ, EV_READ_LO, EV_READ_HI );
-    }
-    return false;
-  }
   EvHttpService *c =
     this->poll.get_free_list<EvHttpService>( this->accept_sock_type );
-  if ( c == NULL ) {
-    perror( "accept: no memory" );
-    ::close( sock );
+  if ( c == NULL )
     return false;
-  }
-  EvTcpListen::set_sock_opts( this->poll, sock, this->sock_opts );
-  ::fcntl( sock, F_SETFL, O_NONBLOCK | ::fcntl( sock, F_GETFL ) );
-  c->PeerData::init_peer( sock, (struct sockaddr *) &addr, "http" );
-  c->setup_ids( sock, ++this->timer_id );
+  if ( ! this->accept2( *c, "http" ) )
+    return false;
+  c->setup_ids( c->fd, ++this->timer_id );
   c->initialize_state();
-
-  if ( this->poll.add_sock( c ) < 0 ) {
-    ::close( sock );
-    this->poll.push_free_list( c );
-    return false;
-  }
   return true;
 }
 
@@ -564,7 +543,7 @@ EvHttpService::flush_term( void ) noexcept
   uint8_t msg[ 2 + 255 ];
   for ( size_t i = 0; i < buflen; i += 255 ) {
     msg[ 0 ] = '@';
-    msg[ 1 ] = (uint8_t) kv::min<size_t>( 255, buflen - i );
+    msg[ 1 ] = (uint8_t) kv::min_int<size_t>( 255, buflen - i );
     ::memcpy( &msg[ 2 ], &buf[ i ], msg[ 1 ] );
     this->append( msg, (size_t) msg[ 1 ] + 2 );
   }
@@ -1297,7 +1276,6 @@ EvHttpService::release( void ) noexcept
     ::free( this->wsbuf );
   this->RedisExec::release();
   this->EvConnection::release_buffers();
-  this->poll.push_free_list( this );
 }
 
 bool

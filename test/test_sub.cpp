@@ -6,7 +6,7 @@
 #include <fcntl.h>
 #include <raids/ev_client.h>
 #include <raikv/ev_publish.h>
-#include <raikv/kv_pubsub.h>
+/*#include <raikv/kv_pubsub.h>*/
 #include <raikv/timer_queue.h>
 #include <raimd/md_types.h>
 #include <raimd/md_msg.h>
@@ -98,8 +98,8 @@ main( int argc, char *argv[] )
   const char * mn = get_arg( argc, argv, 1, "-m", KV_DEFAULT_SHM ),
              * su = get_arg( argc, argv, 1, "-s", "PING" ),
              * ib = get_arg( argc, argv, 0, "-i", 0 ),
-             * bu = get_arg( argc, argv, 0, "-b", 0 ),
-             * no = get_arg( argc, argv, 0, "-k", 0 ),
+             /* bu = get_arg( argc, argv, 0, "-b", 0 ),
+             * no = get_arg( argc, argv, 0, "-k", 0 ),*/
              * he = get_arg( argc, argv, 0, "-h", 0 ),
              * inbox = NULL;
   char inbox_buf[ 24 ];
@@ -110,8 +110,9 @@ main( int argc, char *argv[] )
       "  map  = kv shm map name      (" KV_DEFAULT_SHM ")\n"
       "  sub  = subject to subscribe (PING)\n"
       "  -i   = use inbox reply\n"
-      "  -k   = don't use signal USR1 pub notification\n"
-      "  -b   = busy poll\n", argv[ 0 ] );
+    /*"  -k   = don't use signal USR1 pub notification\n"
+      "  -b   = busy poll\n"*/
+      , argv[ 0 ] );
     return 0;
   }
   if ( ib != NULL ) {
@@ -128,12 +129,14 @@ main( int argc, char *argv[] )
     return 1;
   shm.subscribe();
   sighndl.install();
+#if 0
   if ( bu != NULL ) {
     poll.pubsub->idle_push( EV_BUSY_POLL );
   }
   if ( no != NULL ) {
     poll.pubsub->flags &= ~KV_DO_NOTIFY;
   }
+#endif
   while ( poll.quit < 5 ) {
     int idle = poll.dispatch(); /* true if idle, false if busy */
     poll.wait( idle == EvPoll::DISPATCH_IDLE ? 100 : 0 );

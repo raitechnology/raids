@@ -13,7 +13,7 @@ struct EvHttpListen : public kv::EvTcpListen {
   EvHttpListen( kv::EvPoll &p ) noexcept;
   virtual bool accept( void ) noexcept;
   virtual int listen( const char *ip,  int port,  int opts ) noexcept {
-    return this->kv::EvTcpListen::listen( ip, port, opts, "http_listen" );
+    return this->kv::EvTcpListen::listen2( ip, port, opts, "http_listen" );
   }
 };
 

@@ -95,7 +95,7 @@ RedisKeyspace::fwd_bsubj( const char *blk ) noexcept
                  this->exec.sub_route, this->exec.sub_id,
                  kv_crc_c( this->subj, subj_len, 0 ), MD_STRING, ':' );
   /*printf( "%s <- %s\n", this->subj, this->evt );*/
-  b = this->exec.sub_route.forward_msg( pub, &rcount, 0, NULL );
+  b = this->exec.sub_route.forward_with_cnt( pub, rcount );
   this->exec.msg_route_cnt += rcount;
   return b;
 }
@@ -119,7 +119,7 @@ RedisKeyspace::fwd_keyevent( void ) noexcept
                  this->exec.sub_route, this->exec.sub_id,
                  kv_crc_c( this->subj, subj_len, 0 ), MD_STRING, ';' );
   /*printf( "%s <- %s\n", this->subj, this->key );*/
-  b = this->exec.sub_route.forward_msg( pub, &rcount, 0, NULL );
+  b = this->exec.sub_route.forward_with_cnt( pub, rcount );
   this->exec.msg_route_cnt += rcount;
   return b;
 }
@@ -197,7 +197,7 @@ RedisKeyspace::fwd_monitor( void ) noexcept
   EvPublish pub( this->subj, subj_len, NULL, 0, msg, msg_sz,
                  this->exec.sub_route, this->exec.sub_id,
                  kv_crc_c( this->subj, subj_len, 0 ), MD_MESSAGE, '<' );
-  b = this->exec.sub_route.forward_msg( pub, &rcount, 0, NULL );
+  b = this->exec.sub_route.forward_with_cnt( pub, rcount );
   this->exec.msg_route_cnt += rcount;
   return b;
 }

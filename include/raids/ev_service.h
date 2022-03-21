@@ -21,6 +21,7 @@ struct EvRedisService : public kv::EvConnection, public RedisExec {
   /* EvSocket */
   virtual void process( void ) noexcept final;
   virtual void release( void ) noexcept final;
+  virtual void process_close( void ) noexcept final;
   virtual bool timer_expire( uint64_t tid, uint64_t eid ) noexcept final;
   virtual bool hash_to_sub( uint32_t h, char *k, size_t &klen ) noexcept final;
   virtual bool on_msg( kv::EvPublish &pub ) noexcept final;
@@ -40,7 +41,7 @@ struct EvRedisListen : public kv::EvTcpListen {
   EvRedisListen( kv::EvPoll &p ) noexcept;
   virtual bool accept( void ) noexcept;
   virtual int listen( const char *ip,  int port,  int opts ) noexcept {
-    return this->kv::EvTcpListen::listen( ip, port, opts, "redis_listen" );
+    return this->kv::EvTcpListen::listen2( ip, port, opts, "redis_listen" );
   }
 };
 
@@ -50,8 +51,8 @@ struct EvRedisUnixListen : public kv::EvUnixListen {
   EvRedisUnixListen( kv::EvPoll &p, kv::RoutePublish &sr ) noexcept;
   EvRedisUnixListen( kv::EvPoll &p ) noexcept;
   virtual bool accept( void ) noexcept;
-  int listen( const char *sock,  int opts ) {
-    return this->kv::EvUnixListen::listen( sock, opts, "unix_listen" );
+  int listen( const char *sock,  int opts ) noexcept {
+    return this->kv::EvUnixListen::listen2( sock, opts, "unix_listen" );
   }
 };
 

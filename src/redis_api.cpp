@@ -8,7 +8,7 @@
 #include <raids/redis_api.h>
 #include <raids/ev_client.h>
 #include <raids/redis_exec.h>
-#include <raikv/kv_pubsub.h>
+/*#include <raikv/kv_pubsub.h>*/
 
 using namespace rai;
 using namespace ds;
@@ -34,7 +34,7 @@ extern "C" {
 
 int
 ds_create( ds_t **h,  const char *map_name,  uint8_t db_num,
-           int use_busy_poll,  kv_geom_t *geom,  int map_mode )
+           int /*use_busy_poll*/,  kv_geom_t *geom,  int map_mode )
 {
   size_t        sz   = align<size_t>( sizeof( ds_internal ), 64 );
   void        * m    = aligned_malloc( sz + sizeof( EvPoll ) );
@@ -56,10 +56,10 @@ ds_create( ds_t **h,  const char *map_name,  uint8_t db_num,
       while ( ds_dispatch( ds, 0 ) != 0 )
         ;
     }
-    if ( use_busy_poll ) {
+    /*if ( use_busy_poll ) {
       poll->pubsub->idle_push( EV_BUSY_POLL );
       poll->pubsub->flags &= ~KV_DO_NOTIFY;
-    }
+    }*/
   }
   if ( status != 0 ) {
     ds_close( ds );
@@ -72,7 +72,7 @@ ds_create( ds_t **h,  const char *map_name,  uint8_t db_num,
 
 int
 ds_open( ds_t **h,  const char *map_name,  uint8_t db_num,
-         int use_busy_poll )
+         int /*use_busy_poll*/ )
 {
   size_t        sz   = align<size_t>( sizeof( ds_internal ), 64 );
   void        * m    = aligned_malloc( sz + sizeof( EvPoll ) );
@@ -96,10 +96,10 @@ ds_open( ds_t **h,  const char *map_name,  uint8_t db_num,
       while ( ds_dispatch( ds, 0 ) != 0 )
         ;
     }
-    if ( use_busy_poll ) {
+    /*if ( use_busy_poll ) {
       poll->pubsub->idle_push( EV_BUSY_POLL );
       poll->pubsub->flags &= ~KV_DO_NOTIFY;
-    }
+    }*/
   }
   if ( status != 0 ) {
     ds_close( ds );
@@ -115,8 +115,8 @@ ds_close( ds_t *h )
 {
   ds_internal & ds = *(ds_internal *) h;
   ds.poll.quit++;
-  if ( ds.poll.pubsub != NULL )
-    ds.poll.pubsub->print_backlog();
+  /*if ( ds.poll.pubsub != NULL )
+    ds.poll.pubsub->print_backlog();*/
   for (;;) {
     if ( ds.poll.quit >= 5 )
       break;

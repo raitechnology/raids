@@ -105,6 +105,7 @@ struct EvMemcachedService : public kv::EvConnection, public MemcachedExec {
   virtual void write( void ) noexcept final;
   virtual void process( void ) noexcept final;
   virtual void release( void ) noexcept final;
+  virtual void process_close( void ) noexcept final;
   virtual bool timer_expire( uint64_t tid, uint64_t eid ) noexcept final;
   virtual bool hash_to_sub( uint32_t h, char *k, size_t &klen ) noexcept final;
   virtual bool on_msg( kv::EvPublish &pub ) noexcept final;

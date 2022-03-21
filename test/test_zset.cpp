@@ -297,8 +297,8 @@ main( int, char ** )
           ival = count + ival;
         if ( jval < 0 )
           jval = count + jval;
-        ival = kv::min<int64_t>( count, kv::max<int64_t>( 0, ival ) );
-        jval = kv::min<int64_t>( count, kv::max<int64_t>( 0, jval + 1 ) );
+        ival = kv::min_int<int64_t>( count, kv::max_int<int64_t>( 0, ival ) );
+        jval = kv::min_int<int64_t>( count, kv::max_int<int64_t>( 0, jval + 1 ) );
         if ( cmd == ZREMRANGEBYRANK_CMD )
           goto do_rem_range;
       do_range:;
@@ -339,9 +339,9 @@ main( int, char ** )
         for (;;) {
           zstat = sk->zset->zindex( i, zv );
           if ( zstat == ZSET_OK ) {
-            keylen = kv::min<size_t>( zv.sz, sizeof( key ) );
+            keylen = kv::min_int<size_t>( zv.sz, sizeof( key ) );
             ::memcpy( key, zv.data, keylen );
-            sz = kv::min<size_t>( sizeof( key ) - keylen, zv.sz2 );
+            sz = kv::min_int<size_t>( sizeof( key ) - keylen, zv.sz2 );
             ::memcpy( &key[ keylen ], zv.data2, sz );
             keylen += sz;
             pos.init( key, keylen );

@@ -164,8 +164,8 @@ main( int, char ** )
           ival = cnt + ival;
         if ( jval < 0 )
           jval = cnt + jval;
-        ival = kv::min<int64_t>( cnt, kv::max<int64_t>( 0, ival ) );
-        jval = kv::min<int64_t>( cnt, kv::max<int64_t>( 0, jval + 1 ) );
+        ival = kv::min_int<int64_t>( cnt, kv::max_int<int64_t>( 0, ival ) );
+        jval = kv::min_int<int64_t>( cnt, kv::max_int<int64_t>( 0, jval + 1 ) );
         if ( ival < jval ) {
           for ( int64_t i = 0; ival < jval; ival++ ) {
             lstat = list->lindex( ival, lv );
@@ -238,8 +238,8 @@ main( int, char ** )
           ival = cnt + ival;
         if ( jval < 0 )
           jval = cnt + jval;
-        ival = kv::min<int64_t>( cnt, kv::max<int64_t>( 0, ival ) );
-        jval = kv::min<int64_t>( cnt, kv::max<int64_t>( 0, jval + 1 ) );
+        ival = kv::min_int<int64_t>( cnt, kv::max_int<int64_t>( 0, ival ) );
+        jval = kv::min_int<int64_t>( cnt, kv::max_int<int64_t>( 0, jval + 1 ) );
         jval = cnt - jval;
         list->ltrim( ival );
         list->rtrim( jval );

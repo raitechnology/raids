@@ -6,7 +6,7 @@
 #include <fcntl.h>
 #include <raids/ev_client.h>
 #include <raikv/ev_publish.h>
-#include <raikv/kv_pubsub.h>
+/*#include <raikv/kv_pubsub.h>*/
 #include <raikv/timer_queue.h>
 #include <raimd/md_types.h>
 
@@ -107,7 +107,7 @@ struct PingTest : public EvShmSvc, public RouteNotify {
       EvPublish rp( out, out_len, NULL, 0, p.msg,
                     p.msg_len, this->sub_route, this->fd,
                     out_hash, p.msg_enc, p.pub_type );
-      this->sub_route.forward_msg( rp, NULL, 0, NULL );
+      this->sub_route.forward_msg( rp );
     }
     /* the active pinger or one way prints */
     else {
@@ -187,7 +187,7 @@ struct PingTest : public EvShmSvc, public RouteNotify {
       EvPublish p( this->pub, this->plen, this->ibx, this->ilen, &t,
                    sizeof( t ), this->sub_route, this->fd, this->ph,
                    MD_UINT, 'u' );
-      if ( ! this->sub_route.forward_msg( p, NULL, 0, NULL ) ) {
+      if ( ! this->sub_route.forward_msg( p ) ) {
         /* back pressure */
         break;
       }
@@ -216,8 +216,8 @@ main( int argc, char *argv[] )
              * ib = get_arg( argc, argv, 0, "-i", 0 ),
              * _1 = get_arg( argc, argv, 0, "-1", 0 ),
              * re = get_arg( argc, argv, 0, "-r", 0 ),
-             * bu = get_arg( argc, argv, 0, "-b", 0 ),
-             * no = get_arg( argc, argv, 0, "-k", 0 ),
+             /* bu = get_arg( argc, argv, 0, "-b", 0 ),
+             * no = get_arg( argc, argv, 0, "-k", 0 ),*/
              * he = get_arg( argc, argv, 0, "-h", 0 ),
              * inbox = NULL;
   char     inbox_buf[ 24 ];
@@ -237,8 +237,9 @@ main( int argc, char *argv[] )
       "  -i   = use inbox reply instead\n"
       "  -1   = time one way, not round trip\n"
       "  -r   = passively reflect/reverse pub/sub\n"
-      "  -k   = don't use signal USR1 pub notification\n"
-      "  -b   = busy poll\n", argv[ 0 ] );
+   /* "  -k   = don't use signal USR1 pub notification\n"
+      "  -b   = busy poll\n" */
+      , argv[ 0 ] );
     return 0;
   }
   if ( ! active_ping ) {
@@ -262,12 +263,14 @@ main( int argc, char *argv[] )
           shm.pub, shm.ph );
   sighndl.install();
   shm.start_timer();
+#if 0
   if ( bu != NULL ) {
     poll.pubsub->idle_push( EV_BUSY_POLL );
   }
   if ( no != NULL ) {
     poll.pubsub->flags &= ~KV_DO_NOTIFY;
   }
+#endif
   while ( poll.quit < 5 ) {
     int idle = poll.dispatch(); /* true if idle, false if busy */
     poll.wait( idle == EvPoll::DISPATCH_IDLE ? 100 : 0 );

@@ -77,8 +77,8 @@ RedisExec::exec_bitcount( EvKeyCtx &ctx ) noexcept
 
         start_off = ( start < 0 ) ? (int64_t) size + start : start;
         end_off   = ( end   < 0 ) ? (int64_t) size + end   : end;
-        start_off = min<int64_t>( max<int64_t>( start_off, 0 ), size - 1 );
-        end_off   = max<int64_t>( min<int64_t>( end_off, size - 1 ), 0 );
+        start_off = min_int<int64_t>( max_int<int64_t>( start_off, 0 ), size - 1 );
+        end_off   = max_int<int64_t>( min_int<int64_t>( end_off, size - 1 ), 0 );
         if ( end_off >= start_off )
           len = ( end_off + 1 ) - start_off;
 
@@ -452,7 +452,7 @@ RedisExec::exec_bitop( EvKeyCtx &ctx ) noexcept
       return EXEC_DEPENDS;
     ctx.ival = 0;
     for ( size_t i = 1; i < this->key_cnt; i++ )
-      ctx.ival = max<size_t>( this->keys[ i ]->part->size, ctx.ival );
+      ctx.ival = max_int<size_t>( this->keys[ i ]->part->size, ctx.ival );
 
     switch ( this->msg.match_arg( 1, MARG( "and" ),
                                      MARG( "or" ),
@@ -486,7 +486,7 @@ RedisExec::exec_bitop( EvKeyCtx &ctx ) noexcept
           for ( uint32_t k = 2; k < this->key_cnt; k++ ) { /* other src keys */
             part_data = this->keys[ k ]->part->data( 0 );
             part_size = this->keys[ k ]->part->size;
-            sz        = min<size_t>( part_size, ctx.ival );
+            sz        = min_int<size_t>( part_size, ctx.ival );
             extra_sz  = (size_t) ctx.ival - part_size;
             switch ( op ) {
               case BIT_AND_OP:
@@ -713,8 +713,8 @@ RedisExec::exec_getrange( EvKeyCtx &ctx ) noexcept
             status = EXEC_SEND_ZERO_STRING;
           else {
             /* clip segment [start, end] to [0, size-1] */
-            start_off = min<int64_t>( max<int64_t>( start_off, 0 ), size - 1 );
-            end_off   = max<int64_t>( min<int64_t>( end_off, size - 1 ), 0 );
+            start_off = min_int<int64_t>( max_int<int64_t>( start_off, 0 ), size - 1 );
+            end_off   = max_int<int64_t>( min_int<int64_t>( end_off, size - 1 ), 0 );
             if ( end_off >= start_off )
               len = ( end_off + 1 ) - start_off;
 
@@ -1081,7 +1081,7 @@ RedisExec::exec_setbit( EvKeyCtx &ctx ) noexcept
       ctx.kstatus = this->kctx.get_size( data_sz );
       if ( ctx.kstatus == KEY_OK ) {
     case KEY_IS_NEW:
-        new_sz = max<uint64_t>( data_sz, byte_off + 1 );
+        new_sz = max_int<uint64_t>( data_sz, byte_off + 1 );
         ctx.kstatus = this->kctx.resize( &data, new_sz, true );
         if ( ctx.kstatus == KEY_OK && new_sz > data_sz )
           ::memset( &((uint8_t *) data)[ data_sz ], 0, new_sz - data_sz );
@@ -1139,7 +1139,7 @@ RedisExec::exec_setrange( EvKeyCtx &ctx ) noexcept
       ctx.kstatus = this->kctx.get_size( data_sz );
       if ( ctx.kstatus == KEY_OK ) {
     case KEY_IS_NEW:
-        new_sz = max<uint64_t>( data_sz, off + valuelen );
+        new_sz = max_int<uint64_t>( data_sz, off + valuelen );
         ctx.ival = (int64_t) new_sz;
         ctx.kstatus = this->kctx.resize( &data, new_sz, true );
         if ( ctx.kstatus == KEY_OK ) {

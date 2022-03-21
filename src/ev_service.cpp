@@ -37,74 +37,30 @@ EvRedisUnixListen::EvRedisUnixListen( EvPoll &p,  RoutePublish &sr ) noexcept
 bool
 EvRedisListen::accept( void ) noexcept
 {
-  struct sockaddr_storage addr;
-  socklen_t addrlen = sizeof( addr );
-  int sock = ::accept( this->fd, (struct sockaddr *) &addr, &addrlen );
-  if ( sock < 0 ) {
-    if ( errno != EINTR ) {
-      if ( errno != EAGAIN )
-	perror( "accept" );
-      this->pop3( EV_READ, EV_READ_LO, EV_READ_HI );
-    }
-    return false;
-  }
-  /*char buf[ 80 ];*/
-  /*printf( "accept from %s\n", get_ip_str( &addr, buf, sizeof( buf ) ) );*/
   EvRedisService *c =
-    this->poll.get_free_list2<EvRedisService, RoutePublish>(
+    this->poll.get_free_list<EvRedisService, RoutePublish &>(
       this->accept_sock_type, this->sub_route );
-  if ( c == NULL ) {
-    perror( "accept: no memory" );
-    ::close( sock );
+  if ( c == NULL )
     return false;
-  }
-  EvTcpListen::set_sock_opts( this->poll, sock, this->sock_opts );
-  ::fcntl( sock, F_SETFL, O_NONBLOCK | ::fcntl( sock, F_GETFL ) );
-  c->PeerData::init_peer( sock, (struct sockaddr *) &addr, "redis" );
-  c->setup_ids( sock, ++this->timer_id );
-
-  if ( this->poll.add_sock( c ) < 0 ) {
-    ::close( sock );
-    this->poll.push_free_list( c );
+  if ( ! this->accept2( *c, "redis" ) )
     return false;
-  }
+  c->setup_ids( c->fd, ++this->timer_id );
   return true;
 }
 
 bool
 EvRedisUnixListen::accept( void ) noexcept
 {
-  struct sockaddr_un sunaddr;
-  socklen_t addrlen = sizeof( sunaddr );
-  int sock = ::accept( this->fd, (struct sockaddr *) &sunaddr, &addrlen );
-  if ( sock < 0 ) {
-    if ( errno != EINTR ) {
-      if ( errno != EAGAIN )
-	perror( "accept" );
-      this->pop3( EV_READ, EV_READ_LO, EV_READ_HI );
-    }
-    return false;
-  }
   EvRedisService *c =
-    this->poll.get_free_list2<EvRedisService, RoutePublish>(
-       this->accept_sock_type, this->sub_route );
-  if ( c == NULL ) {
-    perror( "accept: no memory" );
-    ::close( sock );
+    this->poll.get_free_list<EvRedisService, RoutePublish &>(
+      this->accept_sock_type, this->sub_route );
+  if ( c == NULL )
     return false;
-  }
-  ::fcntl( sock, F_SETFL, O_NONBLOCK | ::fcntl( sock, F_GETFL ) );
-  this->PeerData::init_peer( sock, (struct sockaddr *) &sunaddr, "redis" );
-  c->setup_ids( sock, ++this->timer_id );
-
-  if ( this->poll.add_sock( c ) < 0 ) {
-    ::close( sock );
-    this->poll.push_free_list( c );
+  if ( ! this->accept2( *c, "redis" ) )
     return false;
-  }
+  c->setup_ids( c->fd, ++this->timer_id );
   return true;
 }
-
 
 void
 EvRedisService::process( void ) noexcept
@@ -230,7 +186,11 @@ EvRedisService::release( void ) noexcept
 {
   this->RedisExec::release();
   this->EvConnection::release_buffers();
-  this->poll.push_free_list( this );
+}
+
+void
+EvRedisService::process_close( void ) noexcept
+{
 }
 
 bool

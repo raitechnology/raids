@@ -717,8 +717,8 @@ RedisExec::do_zmultiscan( EvKeyCtx &ctx,  int flags,  ScanArgs *sa ) noexcept
         ival = count + ival;
       if ( jval < 0 )
         jval = count + jval;
-      ival = min<int64_t>( count, max<int64_t>( 0, ival ) );
-      jval = min<int64_t>( count, max<int64_t>( 0, jval + 1 ) );
+      ival = min_int<int64_t>( count, max_int<int64_t>( 0, ival ) );
+      jval = min_int<int64_t>( count, max_int<int64_t>( 0, jval + 1 ) );
       if ( ival >= jval )
         goto finished;
       i = ival;
@@ -828,8 +828,8 @@ RedisExec::do_zmultiscan( EvKeyCtx &ctx,  int flags,  ScanArgs *sa ) noexcept
         ival = count + ival;
       if ( jval < 0 )
         jval = count + jval;
-      ival = min<int64_t>( count, max<int64_t>( 0, ival ) );
-      jval = min<int64_t>( count, max<int64_t>( 0, jval + 1 ) );
+      ival = min_int<int64_t>( count, max_int<int64_t>( 0, ival ) );
+      jval = min_int<int64_t>( count, max_int<int64_t>( 0, jval + 1 ) );
       if ( ival >= jval )
         goto finished;
       i = ival;
@@ -1016,8 +1016,8 @@ RedisExec::do_zremrange( EvKeyCtx &ctx,  int flags ) noexcept
         ival = count + ival;
       if ( jval < 0 )
         jval = count + jval;
-      ival = min<int64_t>( count, max<int64_t>( 0, ival ) );
-      jval = min<int64_t>( count, max<int64_t>( 0, jval + 1 ) );
+      ival = min_int<int64_t>( count, max_int<int64_t>( 0, ival ) );
+      jval = min_int<int64_t>( count, max_int<int64_t>( 0, jval + 1 ) );
       if ( ival >= jval )
         return EXEC_SEND_ZERO;
       i = ival;
@@ -1131,8 +1131,8 @@ RedisExec::do_zremrange( EvKeyCtx &ctx,  int flags ) noexcept
         ival = count + ival;
       if ( jval < 0 )
         jval = count + jval;
-      ival = min<int64_t>( count, max<int64_t>( 0, ival ) );
-      jval = min<int64_t>( count, max<int64_t>( 0, jval + 1 ) );
+      ival = min_int<int64_t>( count, max_int<int64_t>( 0, ival ) );
+      jval = min_int<int64_t>( count, max_int<int64_t>( 0, jval + 1 ) );
       if ( ival >= jval )
         return EXEC_SEND_ZERO;
       i = ival;

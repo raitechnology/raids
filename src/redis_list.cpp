@@ -198,8 +198,8 @@ RedisExec::exec_lrange( EvKeyCtx &ctx ) noexcept
       from = count + from;
     if ( to < 0 )
       to = count + to;
-    from = min<int64_t>( count, max<int64_t>( 0, from ) );
-    to   = min<int64_t>( count, max<int64_t>( 0, to + 1 ) );
+    from = min_int<int64_t>( count, max_int<int64_t>( 0, from ) );
+    to   = min_int<int64_t>( count, max_int<int64_t>( 0, to + 1 ) );
 
     for ( ; from < to; from++ ) {
       lstatus = list.x->lindex( from, lv );
@@ -483,8 +483,8 @@ RedisExec::do_pop( EvKeyCtx &ctx,  int flags ) noexcept
         start = cnt + start;
       if ( stop < 0 )
         stop = cnt + stop;
-      start = min<int64_t>( cnt, max<int64_t>( 0, start ) );
-      stop = min<int64_t>( cnt, max<int64_t>( 0, stop + 1 ) );
+      start = min_int<int64_t>( cnt, max_int<int64_t>( 0, start ) );
+      stop = min_int<int64_t>( cnt, max_int<int64_t>( 0, stop + 1 ) );
       stop = cnt - stop;
       /* gen event even when no elems are rm */
       ctx.flags |= EKF_KEYSPACE_EVENT | EKF_KEYSPACE_LIST;

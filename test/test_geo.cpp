@@ -550,8 +550,8 @@ main( int, char ** )
           ival = count + ival;
         if ( jval < 0 )
           jval = count + jval;
-        ival = kv::min<int64_t>( count, kv::max<int64_t>( 0, ival ) );
-        jval = kv::min<int64_t>( count, kv::max<int64_t>( 0, jval + 1 ) );
+        ival = kv::min_int<int64_t>( count, kv::max_int<int64_t>( 0, ival ) );
+        jval = kv::min_int<int64_t>( count, kv::max_int<int64_t>( 0, jval + 1 ) );
         if ( ival >= jval ) {
           printf( "null range\n" );
           break;
@@ -585,9 +585,9 @@ main( int, char ** )
         for (;;) {
           gstat =  sk->geo->geoindex( i, gv );
           if ( gstat == GEO_OK ) {
-            keylen = kv::min<size_t>( gv.sz, sizeof( key ) );
+            keylen = kv::min_int<size_t>( gv.sz, sizeof( key ) );
             ::memcpy( key, gv.data, keylen );
-            sz = kv::min<size_t>( sizeof( key ) - keylen, gv.sz2 );
+            sz = kv::min_int<size_t>( sizeof( key ) - keylen, gv.sz2 );
             ::memcpy( &key[ keylen ], gv.data2, sz );
             keylen += sz;
             pos.init( key, keylen );

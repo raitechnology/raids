@@ -30,7 +30,7 @@ EvMemcachedListen::listen( const char *ip,  int port,  int opts ) noexcept
     ::strncpy( stat.interface, ip, sizeof( stat.interface ) - 1 );
   stat.tcpport = port;
   stat.max_connections = this->poll.nfds;
-  return this->EvTcpListen::listen( ip, port, opts, "memcached_listen" );
+  return this->EvTcpListen::listen2( ip, port, opts, "memcached_listen" );
 }
 
 int
@@ -40,44 +40,20 @@ EvMemcachedUdp::listen( const char *ip,  int port,  int opts ) noexcept
     ::strncpy( stat.interface, ip, sizeof( stat.interface ) - 1 );
   stat.udpport = port;
   stat.max_connections = this->poll.nfds;
-  return this->EvUdp::listen( ip, port, opts, "memcached_udp" );
+  return this->EvUdp::listen2( ip, port, opts, "memcached_udp" );
 }
 
 bool
 EvMemcachedListen::accept( void ) noexcept
 {
-  struct sockaddr_storage addr;
-  socklen_t addrlen = sizeof( addr );
-  int sock = ::accept( this->fd, (struct sockaddr *) &addr, &addrlen );
-  if ( sock < 0 ) {
-    if ( errno != EINTR ) {
-      if ( errno != EAGAIN )
-	perror( "accept" );
-      this->pop3( EV_READ, EV_READ_LO, EV_READ_HI );
-    }
-    return false;
-  }
-  bool was_empty = this->poll.free_list[ this->accept_sock_type ].is_empty();
   EvMemcachedService * c =
-    this->poll.get_free_list2<EvMemcachedService, MemcachedStats>(
+    this->poll.get_free_list<EvMemcachedService, MemcachedStats &>(
       this->accept_sock_type, stat );
-  if ( c == NULL ) {
-    perror( "accept: no memory" );
-    ::close( sock );
+  if ( c == NULL )
     return false;
-  }
-  if ( was_empty )
-    stat.conn_structs += EvPoll::ALLOC_INCR;
-
-  EvTcpListen::set_sock_opts( this->poll, sock, this->sock_opts );
-  ::fcntl( sock, F_SETFL, O_NONBLOCK | ::fcntl( sock, F_GETFL ) );
-  c->PeerData::init_peer( sock, (struct sockaddr *) &addr, "memcached" );
-
-  if ( this->poll.add_sock( c ) < 0 ) {
-    ::close( sock );
-    this->poll.push_free_list( c );
+  if ( ! this->accept2( *c, "memcached" ) )
     return false;
-  }
+  stat.conn_structs += sizeof( *c );
   stat.curr_connections++;
   stat.total_connections++;
   if ( stat.curr_connections > stat.max_connections )
@@ -642,8 +618,13 @@ EvMemcachedService::release( void ) noexcept
 {
   this->MemcachedExec::release();
   this->EvConnection::release_buffers();
-  this->poll.push_free_list( this );
+}
+
+void
+EvMemcachedService::process_close( void ) noexcept
+{
   stat.curr_connections--;
+  stat.conn_structs -= sizeof( *this );
 }
 
 void

@@ -261,9 +261,9 @@ main( int, char ** )
         for ( i = 1; i < count; i++ ) {
           sstat = (SetStatus) sk->set->lindex( i, lv );
           if ( sstat == SET_OK ) {
-            keylen = kv::min<size_t>( lv.sz, sizeof( key ) );
+            keylen = kv::min_int<size_t>( lv.sz, sizeof( key ) );
             ::memcpy( key, lv.data, keylen );
-            sz = kv::min<size_t>( sizeof( key ) - keylen, lv.sz2 );
+            sz = kv::min_int<size_t>( sizeof( key ) - keylen, lv.sz2 );
             ::memcpy( &key[ keylen ], lv.data2, sz );
             keylen += sz;
             pos.init( key, keylen );
