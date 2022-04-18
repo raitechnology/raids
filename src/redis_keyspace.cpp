@@ -2,7 +2,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
-#include <sys/time.h>
 #include <raids/redis_exec.h>
 #include <raids/redis_keyspace.h>
 #include <raikv/ev_publish.h>
@@ -147,7 +146,6 @@ RedisKeyspace::fwd_monitor( void ) noexcept
                        3  + 2 +
                       /* 1578737366.890420 \r\n*/
                        17 + 2;
-  timeval tv;
   char  * msg = strm.alloc_temp( msg_sz );
   uint32_t rcount;
   bool b;
@@ -187,10 +185,10 @@ RedisKeyspace::fwd_monitor( void ) noexcept
 
   timestamp = &msg[ 4 + pack_sz + result_sz ];
   ::memcpy( timestamp, "$17\r\n", 5 );
-  ::gettimeofday( &tv, NULL );
-  uint64_to_string( tv.tv_sec, &timestamp[ 5 ], 10 ); /* in year 2288 == 11 */
-  tv.tv_usec += 1000000; /* make all usec digits show */
-  uint64_to_string( tv.tv_usec, &timestamp[ 15 ], 7 );
+  uint64_t us = current_realtime_us();
+  uint64_to_string( us / 1000000, &timestamp[ 5 ], 10 ); /* in year 2288 == 11 */
+  us = ( us % 1000000 ) + 1000000; /* make all usec digits show */
+  uint64_to_string( us, &timestamp[ 15 ], 7 );
   timestamp[ 15 ] = '.';
   crlf( timestamp, 17 + 5 );
 

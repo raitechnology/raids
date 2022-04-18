@@ -2,6 +2,8 @@
 #include <string.h>
 #include <stdint.h>
 #include <stdlib.h>
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
 #include <math.h>
 #include <raikv/key_hash.h>
 #define HLL_GLOBAL_VARS
@@ -32,7 +34,7 @@ main( int argc, char *argv[] )
   he5.init( 0 );
   he6.init( 0 );
   blsize = sizeof( he1 ) * 6;
-  printf( "size %ld\n", blsize );
+  printf( "size %" PRId64 "\n", blsize );
   bloom = (uint8_t *) malloc( blsize );
   ::memset( bloom, 0, blsize );
 
@@ -44,7 +46,7 @@ main( int argc, char *argv[] )
     he2.add( h2 );
     ht[ h1 & mask ] = h1;
     n = h1 % ( blsize * 8 );
-    m = 1 << ( n % 8 );
+    m = (size_t) 1 << ( n % 8 );
     n /= 8;
     bloom[ n ] |= m;
     he3.add( ( h1 >> 32 ) | ( h2 << 32 ) );
@@ -82,7 +84,7 @@ main( int argc, char *argv[] )
       cnt++;
 
       n = h1 % ( blsize * 8 );
-      m = 1 << ( n % 8 );
+      m = (size_t) 1 << ( n % 8 );
       n /= 8;
       match = false;
       if ( ( bloom[ n ] & m ) == 0 )

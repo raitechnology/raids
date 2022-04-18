@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
 #include <raids/memcached_exec.h>
 #include <raikv/util.h>
 #include <raikv/work.h>
@@ -61,7 +63,7 @@ main( int, char ** )
   for ( i = 0; i < sizeof( examples ) / sizeof( examples[ 0 ] ); i++ ) {
     sz = examples[ i ].len;
     x = m.unpack( examples[ i ].ex, sz, wrk );
-    printf( "unpack=%d/%s sz %lu len %lu \"%.*s\"\n",
+    printf( "unpack=%d/%s sz %" PRIu64 " len %" PRIu64 " \"%.*s\"\n",
             x, memcached_status_string( x ), sz, examples[ i ].len,
             (int) m.msglen, m.msg );
     if ( x == MEMCACHED_OK )
@@ -71,7 +73,7 @@ main( int, char ** )
   for ( i = 0; i < sizeof( results ) / sizeof( results[ 0 ] ); i++ ) {
     sz = results[ i ].len;
     x = r.unpack( results[ i ].ex, sz, wrk );
-    printf( "unpack=%d/%s sz %lu len %lu \"%.*s\"\n",
+    printf( "unpack=%d/%s sz %" PRIu64 " len %" PRIu64 " \"%.*s\"\n",
             x, memcached_status_string( x ), sz, results[ i ].len,
             (int) r.msglen, r.msg );
     if ( x == MEMCACHED_OK )

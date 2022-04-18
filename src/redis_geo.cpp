@@ -560,10 +560,10 @@ RedisExec::do_gradius( EvKeyCtx &ctx,  int flags ) noexcept
   }
   for ( i = 0; i < 15; i++ ) { /* find hexagon where radius fits inside */
     cell = 15 - i;
-    if ( edgeLengthM( cell ) >= radius )
+    if ( edgeLengthM( (int) cell ) >= radius )
       break;
   }
-  h3i = geoToH3( &coordi, cell ); /* get parent cell */
+  h3i = geoToH3( &coordi, (int) cell ); /* get parent cell */
   ::memset( h3k, 0, sizeof( h3k ) );
   hexRange( h3i, 1, h3k );
   /* order h3 indexes low to high, as that is the search order */
@@ -599,7 +599,7 @@ RedisExec::do_gradius( EvKeyCtx &ctx,  int flags ) noexcept
     }
   }
   /* combine hexigons which are h3 index neighbors */
-  shift = ( 15 - cell ) * 3;
+  shift = (int) ( ( 15 - cell ) * 3 );
   k = 0;
   for ( i = 0; i < hcnt; i++ ) {
     h3ToGeoBoundary( h3k[ i ], &bound );

@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
 #include <raids/redis_cmd.h>
 #include <raids/redis_msg.h>
 #include <raids/redis_exec.h>
@@ -29,7 +31,7 @@ resize_list( ListData *curr,  size_t add_len )
     count    += count / 2 + 2;
   }
   size_t asize = ListData::alloc_size( count, data_len );
-  printf( "asize %ld, count %ld, data_len %ld\n", asize, count, data_len );
+  printf( "asize %" PRId64 ", count %" PRId64 ", data_len %" PRId64 "\n", asize, count, data_len );
   void *m = malloc( sizeof( ListData ) + asize );
   void *p = &((char *) m)[ sizeof( ListData ) ];
   ListData *newbe = new ( m ) ListData( p, asize );
@@ -64,7 +66,7 @@ main( int, char ** )
   RedisCmd cmd;
   ListStatus lstat;
 
-  printf( "alloc size %lu, index count %lu, data size %lu\n",
+  printf( "alloc size %" PRIu64 ", index count %" PRIu64 ", data size %" PRIu64 "\n",
           list->size, list->max_count(), list->data_size() );
   printf( "> " ); fflush( stdout );
   for (;;) {
@@ -102,12 +104,12 @@ main( int, char ** )
           goto bad_args;
         lstat = list->lindex( ival, lv );
         if ( lstat == LIST_OK ) {
-          printf( "%ld. %.*s", ival, (int) lv.sz, (char *) lv.data );
+          printf( "%" PRId64 ". %.*s", ival, (int) lv.sz, (char *) lv.data );
           if ( lv.sz2 > 0 ) printf( "%.*s", (int) lv.sz2, (char *) lv.data2 );
           printf( "\n" );
         }
         else {
-          printf( "%ld: not found\n", ival );
+          printf( "%" PRId64 ": not found\n", ival );
         }
         break;
       case LINSERT_CMD: /* LINSERT key [before|after] piv val */
@@ -169,9 +171,9 @@ main( int, char ** )
         if ( ival < jval ) {
           for ( int64_t i = 0; ival < jval; ival++ ) {
             lstat = list->lindex( ival, lv );
-            printf( "%ld. off(%ld) ", i, list->offset( ival ) );
+            printf( "%" PRId64 ". off(%" PRId64 ") ", i, list->offset( ival ) );
             if ( ival != i )
-              printf( "[%ld] ", ival );
+              printf( "[%" PRId64 "] ", ival );
             if ( lstat != LIST_NOT_FOUND ) {
               printf( "[%.*s]", (int) lv.sz, (char *) lv.data );
               if ( lv.sz2 > 0 )
@@ -183,10 +185,10 @@ main( int, char ** )
             printf( "\n" );
             i++;
           }
-          printf( " + off(%ld)\n", list->offset( ival ) );
-          printf( "count %lu of %lu\n", (size_t) cnt,
+          printf( " + off(%" PRId64 ")\n", list->offset( ival ) );
+          printf( "count %" PRIu64 " of %" PRIu64 "\n", (size_t) cnt,
                   list->max_count() );
-          printf( "bytes %lu of %lu\n", (size_t) list->data_len(),
+          printf( "bytes %" PRIu64 " of %" PRIu64 "\n", (size_t) list->data_len(),
                   list->data_size() );
         }
         else
@@ -199,10 +201,10 @@ main( int, char ** )
         if ( ival < 0 ) {
           pos = list->count();
           do {
-            printf( "scan_rev %ld\n", pos );
+            printf( "scan_rev %" PRId64 "\n", pos );
             if ( list->scan_rev( arg, arglen, pos ) == LIST_NOT_FOUND )
               break;
-            printf( "match %ld\n", pos );
+            printf( "match %" PRId64 "\n", pos );
             list->lrem( pos );
             cnt++;
           } while ( ++ival != 0 );
@@ -210,15 +212,15 @@ main( int, char ** )
         else {
           pos = 0;
           do {
-            printf( "scan_fwd %ld\n", pos );
+            printf( "scan_fwd %" PRId64 "\n", pos );
             if ( list->scan_fwd( arg, arglen, pos ) == LIST_NOT_FOUND )
               break;
-            printf( "match %ld\n", pos );
+            printf( "match %" PRId64 "\n", pos );
             list->lrem( pos );
             cnt++;
           } while ( --ival != 0 );
         }
-        printf( "%ld items matched\n", cnt );
+        printf( "%" PRId64 " items matched\n", cnt );
         break;
       case LSET_CMD:    /* LSET key idx value */
         if ( ! msg.get_arg( 3, arg, arglen ) || ! msg.get_arg( 2, ival ) )

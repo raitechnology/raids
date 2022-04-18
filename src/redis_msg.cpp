@@ -6,6 +6,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <raids/redis_msg.h>
+#include <raikv/util.h>
 
 using namespace rai;
 using namespace ds;
@@ -195,7 +196,8 @@ RedisMsg::alloc_array( ScratchMem &wrk,  int64_t sz ) noexcept
 {
   this->type  = DS_BULK_ARRAY;
   this->array = NULL;
-  if ( (this->len = sz) < 0 )
+  this->len   = (int32_t) sz;
+  if ( this->len < 0 )
     this->len = -1;
   else if ( sz > 0 ) {
     this->array = (RedisMsg *) wrk.alloc( sizeof( RedisMsg ) * sz );
@@ -216,7 +218,7 @@ RedisMsg::string_array( ScratchMem &wrk,  int64_t sz,  ... ) noexcept
     va_start( args, sz );
     do {
       this->array[ k ].type   = DS_BULK_STRING;
-      this->array[ k ].len    = va_arg( args, size_t );
+      this->array[ k ].len    = (int32_t) va_arg( args, size_t );
       this->array[ k ].strval = va_arg( args, char * );
     } while ( ++k < sz );
     va_end( args );
@@ -244,7 +246,7 @@ RedisMsg::split( ScratchMem &wrk ) noexcept
   for (;;) {
     if ( ++ptr == end || *ptr <= ' ' ) {
       tmp[ cnt ].type = DS_BULK_STRING;
-      tmp[ cnt ].len  = ptr - tmp[ cnt ].strval;
+      tmp[ cnt ].len  = (int32_t) ( ptr - tmp[ cnt ].strval );
       cnt++;
       while ( ptr < end && *ptr <= ' ' )
         ptr++; 
@@ -262,7 +264,7 @@ RedisMsg::split( ScratchMem &wrk ) noexcept
   }   
 finished:;
   this->type  = DS_BULK_ARRAY;
-  this->len   = cnt;
+  this->len   = (int32_t) cnt;
   this->array = tmp;
   return DS_MSG_STATUS_OK;
 }
@@ -353,13 +355,13 @@ RedisMsg::unpack( void *buf,  size_t &buflen,  ScratchMem &wrk ) noexcept
   else if ( this->type == DS_SIMPLE_STRING ||
             this->type == DS_ERROR_STRING ) {
     /* no lengths, simple string or error */
-    this->len = i;
+    this->len    = (int32_t) i;
     this->strval = &ptr[ 1 ];
   }
   else {
     /* inline command */
     this->type   = DS_SIMPLE_STRING;
-    this->len    = i + 1;
+    this->len    = (int32_t) ( i + 1 );
     this->strval = ptr;
     buflen = j + off;
     return this->split( wrk );
@@ -453,13 +455,13 @@ RedisMsg::unpack2( void *buf,  size_t bsz,  ScratchMem &wrk ) noexcept
   else if ( this->type == DS_SIMPLE_STRING ||
             this->type == DS_ERROR_STRING ) {
     /* no lengths, simple string or error */
-    this->len = i;
+    this->len    = (int32_t) i;
     this->strval = &ptr[ 1 ];
   }
   else {
     /* inline command */
     this->type   = DS_SIMPLE_STRING;
-    this->len    = i + 1;
+    this->len    = (int32_t) ( i + 1 );
     this->strval = ptr;
     return this->split( wrk );
   }
@@ -510,7 +512,7 @@ RedisMsg::dup2( ScratchMem &wrk,  RedisMsg &cpy ) noexcept
   return &cpy;
 }
 
-size_t
+int
 RedisMsg::match_arg( size_t n,  const char *str,  size_t sz,
                      ... ) const noexcept
 {
@@ -527,7 +529,7 @@ RedisMsg::match_arg( size_t n,  const char *str,  size_t sz,
 
   va_start( args, sz );
   for ( k = 1; ; k++ ) {
-    if ( (size_t) m.len == sz && ::strncasecmp( str, m.strval, sz ) == 0 )
+    if ( (size_t) m.len == sz && kv_strncasecmp( str, m.strval, sz ) == 0 )
       break; /* match */
     str = va_arg( args, const char * );
     /* args are terminated with NULL */
@@ -538,7 +540,7 @@ RedisMsg::match_arg( size_t n,  const char *str,  size_t sz,
     sz = va_arg( args, size_t );
   }
   va_end( args );
-  return k;
+  return (int) k;
 }
 
 int
@@ -886,9 +888,9 @@ static const int JSON_EOF = 256;
 struct JsonInput {
   const char * json;
   size_t       offset,
-               length;
-  uint32_t     lineStart,
-               lineCount;
+               length,
+               line_start,
+               line_count;
   ScratchMem & wrk;
 
   int cur( void ) {
@@ -912,11 +914,11 @@ struct JsonInput {
     this->init( js, off, len );
   }
   void init( const char *js,  size_t off,  size_t len ) {
-    this->json      = js;
-    this->offset    = off;
-    this->length    = len;
-    this->lineStart = 0;
-    this->lineCount = 0;
+    this->json       = js;
+    this->offset     = off;
+    this->length     = len;
+    this->line_start = 0;
+    this->line_count = 0;
   }
   void * alloc( size_t sz ) {
     return this->wrk.alloc( sz );
@@ -951,8 +953,8 @@ JsonInput::eat_white( void ) noexcept
   if ( isspace( c ) ) {
     do {
       if ( c == '\n' ) {
-        this->lineCount++;
-        this->lineStart = this->offset + 1;
+        this->line_count++;
+        this->line_start = this->offset + 1;
       }
       c = this->forward();
     } while ( isspace( c ) );
@@ -1092,7 +1094,7 @@ RedisMsg::parse_array( JsonInput &input ) noexcept
       for ( j = 1; j < tos; j++ )
         sz += end[ j ] - val[ j ];
       this->type  = DS_BULK_ARRAY;
-      this->len   = sz;
+      this->len   = (int32_t) sz;
       this->array = (RedisMsg *) input.alloc( sizeof( RedisMsg ) * sz );
       if ( this->array == NULL )
         return DS_MSG_STATUS_ALLOC_FAIL;
@@ -1158,7 +1160,7 @@ RedisMsg::parse_string( JsonInput &input ) noexcept
         this->type = DS_SIMPLE_STRING;
       else
         this->type = DS_ERROR_STRING;
-      this->len  = (int64_t) ( str - this->strval );
+      this->len  = (int32_t) ( str - this->strval );
       return DS_MSG_STATUS_OK;
     }
     if ( c != '\\' ) {

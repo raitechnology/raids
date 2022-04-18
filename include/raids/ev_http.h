@@ -207,13 +207,13 @@ struct WebSocketFrame {
       case 126:
         if ( buflen < i + 2 )
           return 0;
-        this->payload_len = __builtin_bswap16( *(const uint16_t *) &buf[ i ] );
+        this->payload_len = kv_bswap16( *(const uint16_t *) &buf[ i ] );
         i += 2;
         break;
       case 127:
         if ( buflen < i + 8 )
           return 0;
-        this->payload_len = __builtin_bswap64( *(const uint64_t *) &buf[ i ] );
+        this->payload_len = kv_bswap64( *(const uint64_t *) &buf[ i ] );
         i += 8;
         break;
     }

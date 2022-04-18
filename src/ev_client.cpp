@@ -3,10 +3,15 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdarg.h>
-#include <unistd.h>
-#include <fcntl.h>
 #include <errno.h>
+#ifndef _MSC_VER
+#include <unistd.h>
 #include <sys/socket.h>
+#else
+#include <raikv/win.h>
+#endif
+#include <raikv/util.h>
+#include <raikv/os_file.h>
 #include <raids/ev_client.h>
 #include <linecook/linecook.h>
 #include <linecook/ttycook.h>
@@ -37,7 +42,7 @@ EvNetClient::process( void ) noexcept
     if ( buflen == 0 )
       break;
     if ( this->cb.on_data( buf, buflen ) )
-      this->off += buflen;
+      this->off += (uint32_t) buflen;
     else
       break;
   }
@@ -62,9 +67,9 @@ EvMemcachedUdpClient::send_data( char *data,  size_t size ) noexcept
 {
   if ( ! this->pending() ) {
     MemcachedHdr hdr;
-    hdr.req_id = __builtin_bswap16( this->req_id++ );
+    hdr.req_id = kv_bswap16( this->req_id++ );
     hdr.seqno  = 0;
-    hdr.total  = __builtin_bswap16( 1 );
+    hdr.total  = kv_bswap16( 1 );
     hdr.opaque = 0;
     this->append( &hdr, sizeof( hdr ) );
   }
@@ -81,7 +86,7 @@ EvMemcachedUdpClient::write( void ) noexcept
   if ( strm.sz > 0 )
     strm.flush();
   out_idx[ 0 ] = 0;
-  out_idx[ 1 ] = strm.idx; /* extent of iov[] array */
+  out_idx[ 1 ] = (uint32_t) strm.idx; /* extent of iov[] array */
   g.construct_frames();
   this->out_nmsgs = g.out_nmsgs;
   this->out_mhdr  = g.out_mhdr;
@@ -103,7 +108,7 @@ EvMemcachedUdpClient::process( void ) noexcept
       MemcachedHdr * h   = (MemcachedHdr *) (void *) buf;
       uint16_t       total;
 
-      total = __builtin_bswap16( h->total );
+      total = kv_bswap16( h->total );
       if ( total != 1 ) {
         if ( this->sav == NULL ) {
           this->sav = new ( ::malloc( sizeof( EvMemcachedMerge ) ) )
@@ -119,7 +124,7 @@ EvMemcachedUdpClient::process( void ) noexcept
         for ( uint32_t off = MC_HDR_SIZE; off < len; ) {
           buflen = len - off;
           if ( this->cb.on_data( &buf[ off ], buflen ) )
-            off += buflen;
+            off += (uint32_t) buflen;
           else
             break;
         }
@@ -235,11 +240,11 @@ EvTerminal::flush_out( void ) noexcept
       this->term.tty_out_reset();
       return;
     }
-    size_t left = this->term.out_len - i;
-    char * ptr  = &this->term.out_buf[ i ];
-    char * eol;
-    bool   need_cr = true;
-    int    n;
+    size_t  left = this->term.out_len - i;
+    char  * ptr  = &this->term.out_buf[ i ];
+    char  * eol;
+    bool    need_cr = true;
+    ssize_t n;
     if ( (eol = (char *) ::memchr( ptr, '\n', left )) != NULL ) {
       if ( eol > ptr ) {
         if ( *( eol - 1 ) == '\r' ) {
@@ -253,9 +258,9 @@ EvTerminal::flush_out( void ) noexcept
       need_cr = false;
     }
     if ( left > 0 ) {
-      n = ::write( this->stdout_fd, ptr, left );
+      n = os_write( this->stdout_fd, ptr, left );
       if ( n < 0 ) {
-        if ( errno != EAGAIN && errno != EINTR ) {
+        if ( ! ev_would_block( errno ) ) {
           this->cb.on_close();
           return;
         }
@@ -265,7 +270,7 @@ EvTerminal::flush_out( void ) noexcept
       }
     }
     if ( need_cr ) {
-      n = ::write( this->stdout_fd, "\r\n", 2 );
+      n = os_write( this->stdout_fd, "\r\n", 2 );
       i++;
     }
   }

@@ -1,12 +1,17 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdint.h>
 #include <stdarg.h>
+#include <stdint.h>
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
+#ifndef _MSC_VER
 #include <unistd.h>
-#include <ctype.h>
 #include <sys/time.h>
 #include <sys/resource.h>
+#else
+#include <raikv/win.h>
+#endif
 #include <raikv/util.h>
 #include <raids/memcached_exec.h>
 #include <raids/int_str.h>
@@ -112,12 +117,12 @@ MemcachedMsg::print( void ) noexcept
     case MC_APPEND:
     case MC_REPLACE:
     case MC_PREPEND: /* SET key flags ttl msglen */
-      printf( " %.*s %u %lu %lu",
+      printf( " %.*s %u %" PRIu64 " %" PRIu64 "",
               (int) this->args[ 0 ].len, this->args[ 0 ].str,
               this->flags, this->ttl, this->msglen );
       break;
     case MC_CAS:    /* CAS key flags ttl msglen cas-id */
-      printf( " %.*s %u %lu %lu %lu",
+      printf( " %.*s %u %" PRIu64 " %" PRIu64 " %" PRIu64 "",
               (int) this->args[ 0 ].len, this->args[ 0 ].str,
               this->flags, this->ttl, this->msglen, this->cas );
       break;
@@ -129,7 +134,7 @@ MemcachedMsg::print( void ) noexcept
       break;
     case MC_GAT:
     case MC_GATS: /* GAT ttl key [key2 ...] */
-      printf( " %lu", this->ttl );
+      printf( " %" PRIu64 "", this->ttl );
       i = this->first;
       for ( j = 0; j < this->keycnt; j++, i++ )
         printf( " %.*s", (int) this->args[ i ].len, this->args[ i ].str );
@@ -138,12 +143,12 @@ MemcachedMsg::print( void ) noexcept
       printf( " %.*s", (int) this->args[ 0 ].len, this->args[ 0 ].str );
       break;
     case MC_TOUCH:  /* TOUCH key ttl */
-      printf( " %.*s %lu", (int) this->args[ 0 ].len, this->args[ 0 ].str,
+      printf( " %.*s %" PRIu64 "", (int) this->args[ 0 ].len, this->args[ 0 ].str,
               this->ttl );
       break;
     case MC_DECR:
     case MC_INCR:   /* INC key val */
-      printf( " %.*s %lu", (int) this->args[ 0 ].len, this->args[ 0 ].str,
+      printf( " %.*s %" PRIu64 "", (int) this->args[ 0 ].len, this->args[ 0 ].str,
               this->inc );
       break;
     default:
@@ -188,15 +193,15 @@ void
 MemcachedRes::print( void ) noexcept
 {
   if ( this->res == MR_INT ) {
-    printf( "%lu", this->ival );
+    printf( "%" PRIu64 "", this->ival );
   }
   else {
     printf( "%s", memcached_res_string( this->res ) );
     if ( this->res == MR_VALUE ) { /* VALUE key flags msglen [cas] */
-      printf( " %.*s %u %lu",
+      printf( " %.*s %u %" PRIu64 "",
               (int) this->keylen, this->key, this->flags, this->msglen );
       if ( this->argcnt == 4 )
-        printf( " %lu", this->cas );
+        printf( " %" PRIu64 "", this->cas );
     }
   }
   printf( "\n" );
@@ -430,7 +435,7 @@ not_an_empty_line:;
   uint32_t kw = C4_KW( s[ 0 ], s[ 1 ], s[ 2 ], s[ 3 ] );
   
   this->args   = &this->xarg;
-  this->argcnt = parse_mcargs( ptr, end, wrk, this->args );
+  this->argcnt = (uint32_t) parse_mcargs( ptr, end, wrk, this->args );
   size_t bytes_left = buflen - j;
   buflen = j;
 
@@ -540,7 +545,7 @@ MemcachedRes::unpack( void *buf,  size_t &buflen,  ScratchMem &wrk ) noexcept
         if ( *ptr++ == ' ' )
           break;
       this->args   = &this->xarg;
-      this->argcnt = parse_mcargs( ptr, end, wrk, this->args );
+      this->argcnt = (uint32_t) parse_mcargs( ptr, end, wrk, this->args );
       if ( result == MR_VALUE ) {
         r = this->parse_value_result();
         if ( r == MEMCACHED_OK ) {
@@ -574,7 +579,7 @@ MemcachedRes::parse_value_result( void ) noexcept
   if ( this->argcnt != 3 && this->argcnt != 4 )
     return MEMCACHED_BAD_ARGS;
   this->key    = this->args[ 0 ].str;
-  this->keylen = this->args[ 0 ].len;
+  this->keylen = (uint16_t) this->args[ 0 ].len;
   r = get_u32( this->args[ 1 ].str, this->args[ 1 ].len, this->flags );
   if ( r == MEMCACHED_OK )
     r = get_u64( this->args[ 2 ].str, this->args[ 2 ].len, this->msglen );
@@ -729,8 +734,8 @@ MemcachedMsg::parse_bin_store( MemcachedBinHdr &b,  char *ptr,
                                size_t &buflen ) noexcept
 {
   /* SET, ADD, REPLACE:  has key, has extra flags+ttl, may have msg */
-  size_t keylen  = __builtin_bswap16( b.keylen ),
-         datalen = __builtin_bswap32( b.datalen ),
+  size_t keylen  = kv_bswap16( b.keylen ),
+         datalen = kv_bswap32( b.datalen ),
          exlen   = b.extralen;
   uint32_t ex[ 2 ];
 
@@ -746,9 +751,9 @@ MemcachedMsg::parse_bin_store( MemcachedBinHdr &b,  char *ptr,
   this->first    = 0;
   ::memcpy( ex, ptr, sizeof( ex ) );
   ptr = &ptr[ sizeof( ex ) ];
-  this->flags    = __builtin_bswap32( ex[ 0 ] );
-  this->ttl      = __builtin_bswap32( ex[ 1 ] );
-  this->cas      = __builtin_bswap64( b.cas );
+  this->flags    = kv_bswap32( ex[ 0 ] );
+  this->ttl      = kv_bswap32( ex[ 1 ] );
+  this->cas      = kv_bswap64( b.cas );
   this->msglen   = datalen - ( exlen + keylen );
   this->inc      = 0;
   this->xarg.str = ptr; /* the key */
@@ -762,8 +767,8 @@ MemcachedMsg::parse_bin_pend( MemcachedBinHdr &b,  char *ptr,
                               size_t &buflen ) noexcept
 {
   /* APPEND, PREPEND:  has key, has msg */
-  size_t keylen  = __builtin_bswap16( b.keylen ),
-         datalen = __builtin_bswap32( b.datalen ),
+  size_t keylen  = kv_bswap16( b.keylen ),
+         datalen = kv_bswap32( b.datalen ),
          exlen   = b.extralen;
 
   if ( datalen > buflen )
@@ -792,8 +797,8 @@ MemcachedMsg::parse_bin_retr( MemcachedBinHdr &b,  char *ptr,
                               size_t &buflen ) noexcept
 {
   /* DELETE, GET, GETQ, GETK, GETKQ:  has key */
-  size_t keylen  = __builtin_bswap16( b.keylen ),
-         datalen = __builtin_bswap32( b.datalen ),
+  size_t keylen  = kv_bswap16( b.keylen ),
+         datalen = kv_bswap32( b.datalen ),
          exlen   = b.extralen;
 
   if ( datalen > buflen )
@@ -822,8 +827,8 @@ MemcachedMsg::parse_bin_touch( MemcachedBinHdr &b,  char *ptr,
                                size_t &buflen ) noexcept
 {
   /* TOUCH, GAT, GATQ:  has key, has extra ttl */
-  size_t keylen  = __builtin_bswap16( b.keylen ),
-         datalen = __builtin_bswap32( b.datalen ),
+  size_t keylen  = kv_bswap16( b.keylen ),
+         datalen = kv_bswap32( b.datalen ),
          exlen   = b.extralen;
   uint32_t ex[ 1 ];
 
@@ -840,7 +845,7 @@ MemcachedMsg::parse_bin_touch( MemcachedBinHdr &b,  char *ptr,
   this->flags    = 0;
   ::memcpy( ex, ptr, sizeof( ex ) );
   ptr = &ptr[ sizeof( ex ) ];
-  this->ttl      = __builtin_bswap32( ex[ 0 ] );
+  this->ttl      = kv_bswap32( ex[ 0 ] );
   this->cas      = 0;
   this->msglen   = 0;
   this->inc      = 0;
@@ -855,8 +860,8 @@ MemcachedMsg::parse_bin_incr( MemcachedBinHdr &b,  char *ptr,
                               size_t &buflen ) noexcept
 {
   /* INCR, DECR:  has key, has extra inc+ini+ttl */
-  size_t keylen  = __builtin_bswap16( b.keylen ),
-         datalen = __builtin_bswap32( b.datalen ),
+  size_t keylen  = kv_bswap16( b.keylen ),
+         datalen = kv_bswap32( b.datalen ),
          exlen   = b.extralen;
   uint32_t ex[ 1 ];
 
@@ -872,11 +877,11 @@ MemcachedMsg::parse_bin_incr( MemcachedBinHdr &b,  char *ptr,
   this->first    = 0;
   this->flags    = 0;
   ::memcpy( &this->inc, ptr, sizeof( this->inc ) );
-  this->inc = __builtin_bswap64( this->inc );
+  this->inc = kv_bswap64( this->inc );
   ::memcpy( &this->ini, &ptr[ 8 ], sizeof( this->ini ) );
-  this->ini = __builtin_bswap64( this->ini );/* initial value */
+  this->ini = kv_bswap64( this->ini );/* initial value */
   ::memcpy( ex, &ptr[ 16 ], sizeof( ex ) );
-  this->ttl = __builtin_bswap32( ex[ 0 ] );
+  this->ttl = kv_bswap32( ex[ 0 ] );
   ptr = &ptr[ 20 ];
   this->msglen   = 0;
   this->xarg.str = ptr; /* the key */
@@ -890,8 +895,8 @@ MemcachedMsg::parse_bin_op( MemcachedBinHdr &b,  char *ptr,  size_t &buflen,
                             size_t extra_sz ) noexcept
 {
   /* QUIT, VERSION:  no key, may have extra */
-  size_t keylen  = __builtin_bswap16( b.keylen ),
-         datalen = __builtin_bswap32( b.datalen ),
+  size_t keylen  = kv_bswap16( b.keylen ),
+         datalen = kv_bswap32( b.datalen ),
          exlen   = b.extralen;
   uint32_t ex[ 1 ];
 
@@ -909,7 +914,7 @@ MemcachedMsg::parse_bin_op( MemcachedBinHdr &b,  char *ptr,  size_t &buflen,
   this->inc      = 0;
   if ( extra_sz == 4 ) {
     ::memcpy( ex, ptr, 4 );
-    this->ttl = __builtin_bswap32( ex[ 0 ] );
+    this->ttl = kv_bswap32( ex[ 0 ] );
   }
   else {
     this->ttl = 0;
@@ -1062,8 +1067,8 @@ MemcachedExec::send_bin_status( uint16_t status,  const void *s,
     hdr.magic   = 0x81;
     hdr.opcode  = this->msg->opcode;
     hdr.opaque  = this->msg->opaque; /* could be a serial number */
-    hdr.status  = __builtin_bswap16( status );
-    hdr.datalen = __builtin_bswap32( slen );
+    hdr.status  = kv_bswap16( status );
+    hdr.datalen = kv_bswap32( (uint32_t) slen );
     ::memcpy( buf, &hdr, sizeof( hdr ) );
     ::memcpy( &buf[ sizeof( hdr ) ], s, slen );
     return sizeof( hdr ) + slen;
@@ -1084,9 +1089,9 @@ MemcachedExec::send_bin_status_key( uint16_t status,  EvKeyCtx &ctx ) noexcept
     hdr.magic   = 0x81;
     hdr.opcode  = this->msg->opcode;
     hdr.opaque  = this->msg->opaque; /* could be a serial number */
-    hdr.status  = __builtin_bswap16( status );
-    hdr.keylen  = __builtin_bswap16( keylen );
-    hdr.datalen = __builtin_bswap32( keylen );
+    hdr.status  = kv_bswap16( status );
+    hdr.keylen  = kv_bswap16( keylen );
+    hdr.datalen = kv_bswap32( keylen );
     ::memcpy( buf, &hdr, sizeof( hdr ) );
     ::memcpy( &buf[ sizeof( hdr ) ], key, keylen );
     return sizeof( hdr ) + keylen;
@@ -1620,7 +1625,7 @@ MemcachedExec::exec_bin_store( EvKeyCtx &ctx ) noexcept
             hdr.magic   = 0x81;
             hdr.opcode  = this->msg->opcode;
             hdr.opaque  = this->msg->opaque; /* could be a serial number */
-            hdr.cas     = __builtin_bswap64( 1ULL + this->kctx.serial -
+            hdr.cas     = kv_bswap64( 1ULL + this->kctx.serial -
                                    ( this->kctx.key & ValueCtr::SERIAL_MASK ) );
             ::memcpy( buf, &hdr, sizeof( hdr ) );
             this->strm.sz += sizeof( hdr );
@@ -1701,20 +1706,20 @@ MemcachedExec::send_bin_value( EvKeyCtx &ctx,  const void *s,
 {
   /* binary GET[Qk] result: flags + cas + maybe key + data */
   uint16_t keylen  = ( this->msg->wants_key() ? ctx.kbuf.keylen - 1 : 0 );
-  uint32_t datalen = slen + 4 + keylen;
+  uint32_t datalen = (uint32_t) ( slen + 4 + keylen );
   char   * buf     = this->strm.alloc( sizeof( MemcachedBinHdr ) + datalen );
 
   if ( buf != NULL ) {
     MemcachedBinHdr hdr;
-    uint32_t flags = __builtin_bswap32( this->kctx.get_val() );
+    uint32_t flags = kv_bswap32( this->kctx.get_val() );
     ::memset( &hdr, 0, sizeof( hdr ) );
     hdr.magic    = 0x81;
     hdr.opcode   = this->msg->opcode;
     hdr.opaque   = this->msg->opaque; /* could be a serial number */
-    hdr.keylen   = __builtin_bswap16( keylen );
+    hdr.keylen   = kv_bswap16( keylen );
     hdr.extralen = 4;
-    hdr.datalen  = __builtin_bswap32( slen + 4 );
-    hdr.cas      = __builtin_bswap64( 1ULL + this->kctx.serial -
+    hdr.datalen  = kv_bswap32( (uint32_t) ( slen + 4 ) );
+    hdr.cas      = kv_bswap64( 1ULL + this->kctx.serial -
                                    ( this->kctx.key & ValueCtr::SERIAL_MASK ) );
     ::memcpy( buf, &hdr, sizeof( hdr ) );
     ::memcpy( &buf[ sizeof( hdr ) ], &flags, 4 );
@@ -2137,7 +2142,7 @@ MemcachedExec::exec_bin_incr( EvKeyCtx &ctx ) noexcept
       ctx.kstatus = this->kctx.resize( &data, sz );
       if ( ctx.kstatus == KEY_OK ) {
         ::memcpy( data, str, sz );
-        ival = __builtin_bswap64( ival );
+        ival = kv_bswap64( ival );
 
         char * buf = this->strm.alloc( sizeof( MemcachedBinHdr ) + 8 );
         if ( buf != NULL ) {
@@ -2146,8 +2151,8 @@ MemcachedExec::exec_bin_incr( EvKeyCtx &ctx ) noexcept
           hdr.magic   = 0x81;
           hdr.opcode  = this->msg->opcode;
           hdr.opaque  = this->msg->opaque; /* could be a serial number */
-          hdr.datalen = __builtin_bswap32( 8 );
-          hdr.cas     = __builtin_bswap64( 1ULL + this->kctx.serial -
+          hdr.datalen = kv_bswap32( 8 );
+          hdr.cas     = kv_bswap64( 1ULL + this->kctx.serial -
                                    ( this->kctx.key & ValueCtr::SERIAL_MASK ) );
           ::memcpy( buf, &hdr, sizeof( hdr ) );
           ::memcpy( &buf[ sizeof( hdr ) ], &ival, 8 );
@@ -2184,11 +2189,11 @@ MemcachedExec::put_stats( void ) noexcept
   uint64_t now = kv_current_realtime_ns();
   StatFmt fmt( this->strm.alloc( 4 * 1024 ), 4 * 1024 );
   fmt.printf( "STAT pid %u\r\n", getpid() );
-  fmt.printf( "STAT uptime %lu\r\n",
+  fmt.printf( "STAT uptime %" PRIu64 "\r\n",
               ( now - this->stat.boot_time ) / 1000000000 );
-  fmt.printf( "STAT time %lu\r\n", now / 1000000000 );
+  fmt.printf( "STAT time %" PRIu64 "\r\n", now / 1000000000 );
   fmt.printf( "STAT version %s\r\n", kv_stringify( DS_VER ) );
-
+#ifndef _MSC_VER
   struct rusage usage;
   ::getrusage( RUSAGE_SELF, &usage );
   fmt.printf( "STAT rusage_user %.6f\r\n",
@@ -2197,6 +2202,7 @@ MemcachedExec::put_stats( void ) noexcept
   fmt.printf( "STAT rusage_system %.6f\r\n",
               (double) usage.ru_stime.tv_sec +
               (double) usage.ru_stime.tv_usec / 1000000.0 );
+#endif
   fmt.printf( "STAT max_connections %u\r\n", this->stat.max_connections );
   fmt.printf( "STAT curr_connections %u\r\n", this->stat.curr_connections );
   fmt.printf( "STAT total_connections %u\r\n", this->stat.total_connections );
@@ -2204,30 +2210,30 @@ MemcachedExec::put_stats( void ) noexcept
   fmt.printf( "STAT connection_structures %u\r\n", this->stat.conn_structs );
   fmt.printf( "STAT reserved_fds 0\r\n" );
 
-  fmt.printf( "STAT cmd_get %lu\r\n", this->stat.get_cnt );
-  fmt.printf( "STAT cmd_set %lu\r\n", this->stat.set_cnt );
-  fmt.printf( "STAT cmd_flush %lu\r\n", this->stat.flush_cnt );
-  fmt.printf( "STAT cmd_touch %lu\r\n", this->stat.touch_cnt );
-  fmt.printf( "STAT get_hits %lu\r\n", this->stat.get_hit );
-  fmt.printf( "STAT get_misses %lu\r\n", this->stat.get_miss );
-  fmt.printf( "STAT get_expired %lu\r\n", this->stat.get_expired );
-  fmt.printf( "STAT get_flushed %lu\r\n", this->stat.get_flushed );
-  fmt.printf( "STAT delete_misses %lu\r\n", this->stat.delete_miss );
-  fmt.printf( "STAT delete_hits %lu\r\n", this->stat.delete_hit );
-  fmt.printf( "STAT incr_misses %lu\r\n", this->stat.incr_miss );
-  fmt.printf( "STAT incr_hits %lu\r\n", this->stat.incr_hit );
-  fmt.printf( "STAT decr_misses %lu\r\n", this->stat.decr_miss );
-  fmt.printf( "STAT decr_hits %lu\r\n", this->stat.decr_hit );
-  fmt.printf( "STAT cas_misses %lu\r\n", this->stat.cas_miss );
-  fmt.printf( "STAT cas_hits %lu\r\n", this->stat.cas_miss );
-  fmt.printf( "STAT cas_badval %lu\r\n", this->stat.cas_badval );
-  fmt.printf( "STAT touch_hits %lu\r\n", this->stat.touch_hit );
-  fmt.printf( "STAT touch_misses %lu\r\n", this->stat.touch_miss );
-  fmt.printf( "STAT auth_cmds %lu\r\n", this->stat.auth_cmds );
-  fmt.printf( "STAT auth_errors %lu\r\n", this->stat.auth_errors );
-  fmt.printf( "STAT bytes_read %lu\r\n", this->stat.bytes_read );
-  fmt.printf( "STAT bytes_written %lu\r\n", this->stat.bytes_written );
-  fmt.printf( "STAT limit_maxbytes %lu\r\n", this->kctx.ht.hdr.map_size );
+  fmt.printf( "STAT cmd_get %" PRIu64 "\r\n", this->stat.get_cnt );
+  fmt.printf( "STAT cmd_set %" PRIu64 "\r\n", this->stat.set_cnt );
+  fmt.printf( "STAT cmd_flush %" PRIu64 "\r\n", this->stat.flush_cnt );
+  fmt.printf( "STAT cmd_touch %" PRIu64 "\r\n", this->stat.touch_cnt );
+  fmt.printf( "STAT get_hits %" PRIu64 "\r\n", this->stat.get_hit );
+  fmt.printf( "STAT get_misses %" PRIu64 "\r\n", this->stat.get_miss );
+  fmt.printf( "STAT get_expired %" PRIu64 "\r\n", this->stat.get_expired );
+  fmt.printf( "STAT get_flushed %" PRIu64 "\r\n", this->stat.get_flushed );
+  fmt.printf( "STAT delete_misses %" PRIu64 "\r\n", this->stat.delete_miss );
+  fmt.printf( "STAT delete_hits %" PRIu64 "\r\n", this->stat.delete_hit );
+  fmt.printf( "STAT incr_misses %" PRIu64 "\r\n", this->stat.incr_miss );
+  fmt.printf( "STAT incr_hits %" PRIu64 "\r\n", this->stat.incr_hit );
+  fmt.printf( "STAT decr_misses %" PRIu64 "\r\n", this->stat.decr_miss );
+  fmt.printf( "STAT decr_hits %" PRIu64 "\r\n", this->stat.decr_hit );
+  fmt.printf( "STAT cas_misses %" PRIu64 "\r\n", this->stat.cas_miss );
+  fmt.printf( "STAT cas_hits %" PRIu64 "\r\n", this->stat.cas_miss );
+  fmt.printf( "STAT cas_badval %" PRIu64 "\r\n", this->stat.cas_badval );
+  fmt.printf( "STAT touch_hits %" PRIu64 "\r\n", this->stat.touch_hit );
+  fmt.printf( "STAT touch_misses %" PRIu64 "\r\n", this->stat.touch_miss );
+  fmt.printf( "STAT auth_cmds %" PRIu64 "\r\n", this->stat.auth_cmds );
+  fmt.printf( "STAT auth_errors %" PRIu64 "\r\n", this->stat.auth_errors );
+  fmt.printf( "STAT bytes_read %" PRIu64 "\r\n", this->stat.bytes_read );
+  fmt.printf( "STAT bytes_written %" PRIu64 "\r\n", this->stat.bytes_written );
+  fmt.printf( "STAT limit_maxbytes %" PRIu64 "\r\n", this->kctx.ht.hdr.map_size );
 
   this->strm.sz += fmt.off;
 }
@@ -2237,7 +2243,7 @@ MemcachedExec::put_stats_settings( void ) noexcept
 {
   StatFmt fmt( this->strm.alloc( 4 * 1024 ), 4 * 1024 );
 
-  fmt.printf( "STAT maxbytes %lu\r\n", this->kctx.ht.hdr.map_size );
+  fmt.printf( "STAT maxbytes %" PRIu64 "\r\n", this->kctx.ht.hdr.map_size );
   fmt.printf( "STAT maxconns %u\r\n", this->stat.max_connections );
   fmt.printf( "STAT tcpport %u\r\n", this->stat.tcpport );
   fmt.printf( "STAT udpport %u\r\n", this->stat.udpport );

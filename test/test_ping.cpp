@@ -2,8 +2,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
+#ifndef _MSC_VER
 #include <unistd.h>
-#include <fcntl.h>
+#else
+#include <raikv/win.h>
+#endif
 #include <raids/ev_client.h>
 #include <raikv/ev_publish.h>
 /*#include <raikv/kv_pubsub.h>*/
@@ -52,9 +57,9 @@ struct PingTest : public EvShmSvc, public RouteNotify {
       ibx( i ), len( ::strlen( s ) ), plen( ::strlen( p ) ),
       ilen( i ? ::strlen( i ) : 0 ),
       h( 0 ), ph( 0 ), ih( 0 ), per_sec( ps_rate ), pub_left( pub_cnt ),
-      ns_ival( 1e9 / ps_rate ), sum( 0 ), count( 0 ), print_count( 0 ),
-      last_time( 0 ), active_ping( act ), round_trip( round ) {
-  }
+      ns_ival( (uint32_t) ( 1e9 / ps_rate ) ), sum( 0 ), count( 0 ),
+      print_count( 0 ), last_time( 0 ), active_ping( act ),
+      round_trip( round ) {}
   /* start subcriptions for sub or inbox */
   void subscribe( void ) {
     this->sub_route.add_route_notify( *this );
@@ -118,7 +123,7 @@ struct PingTest : public EvShmSvc, public RouteNotify {
         ::memcpy( &s, p.msg, 8 );
         this->sum += ( t - s );
         if ( this->count++ == this->print_count ) {
-          printf( "recv ping %lu nanos, cnt %lu\n", t - s, this->count );
+          printf( "recv ping %" PRIu64 " nanos, cnt %" PRIu64 "\n", t - s, this->count );
           this->print_count += this->per_sec;
         }
       }
@@ -279,7 +284,7 @@ main( int argc, char *argv[] )
   }
   shm.close();
   if ( shm.count > 0 ) {
-    printf( "count %lu avg %lu nanos\n", shm.count, shm.sum / shm.count );
+    printf( "count %" PRIu64 " avg %" PRIu64 " nanos\n", shm.count, shm.sum / shm.count );
   }
 
   return 0;

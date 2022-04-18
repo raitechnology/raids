@@ -561,7 +561,7 @@ RedisExec::exec_publish( void ) noexcept
       return EXEC_SEND_ZERO;
     return EXEC_SEND_ONE;
   }
-  rte_digits = uint64_digits( rcount );
+  rte_digits = (uint32_t) uint64_digits( rcount );
   buf = this->strm.alloc( rte_digits + 3 ); 
   if ( buf == NULL )
     return ERR_ALLOC_FAIL;
@@ -898,8 +898,9 @@ RedisExec::save_blocked_cmd( int64_t timeout_val ) noexcept
   void             * p;
   char             * sub;
   size_t             len,
-                     save_len = 0;
-  uint32_t           h, i, sz;
+                     save_len = 0,
+                     sz;
+  uint32_t           h, i;
 
   /* calculate length of buf[] */
   len = 0;
@@ -981,26 +982,31 @@ RedisExec::save_blocked_cmd( int64_t timeout_val ) noexcept
       ::memcpy( &((char *) p)[ len ], this->keys[ i ]->part->data( 0 ),
                 save_len );
     cm->ptr[ i ].hash     = h;
-    cm->ptr[ i ].len      = len;
-    cm->ptr[ i ].save_len = save_len;
+    cm->ptr[ i ].len      = (uint16_t) len;
+    cm->ptr[ i ].save_len = (uint16_t) save_len;
     cm->ptr[ i ].value    = (char *) p;
     p = &((char *) p)[ len + save_len ];
   }
-  if ( timeout_val != 0 ) {
+  if ( timeout_val > 0 ) {
     bool b;
+    int  units = IVAL_NANOS; /* timeout_val is in nanos */
     cm->msgid = ++this->next_event_id;
-    if ( this->catg == STREAM_CATG ) /* blocked in millisecs */
-      b = this->timer.add_timer_millis( this->sub_id, timeout_val,
-                                        this->timer_id, cm->msgid );
-    else /* others are in seconds */
-      b = this->timer.add_timer_seconds( this->sub_id, timeout_val,
-                                         this->timer_id, cm->msgid );
+    while ( timeout_val > 1000000000 ) { /* until small enough for int32 */
+      timeout_val /= 1000;
+      units--; /* -> usecs, ms, secs */
+    }
+    b = ( units >= 0 );
+    if ( b )
+      b = this->timer.add_timer_units( this->sub_id, (uint32_t) timeout_val,
+                                       (TimerUnits) units,
+                                       this->timer_id, cm->msgid );
     if ( b ) {
       this->wait_list.push_tl( cm );
       cm->state |= CM_WAIT_LIST | CM_TIMER;
     }
     else {
-      fprintf( stderr, "add_timer failed\n" );
+      fprintf( stderr, "add_timer failed (%u) units=%d\n",
+               (uint32_t) timeout_val, units );
     }
   }
   return EXEC_OK;

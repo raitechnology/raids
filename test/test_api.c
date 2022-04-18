@@ -1,18 +1,25 @@
+#ifndef _MSC_VER
 #define _GNU_SOURCE /* for sched_setaffinity */
+#endif
 #include <stdio.h>
 #include <string.h>
 #include <stdint.h>
 #include <stdlib.h>
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
 #include <ctype.h>
-#include <signal.h>
+#ifndef _MSC_VER
 #include <sched.h>
+#else
+#define strncasecmp _strnicmp
+#endif
 #include <raids/redis_api.h>
 #include <raids/int_str.h>
 #include <raikv/shm_ht.h>
 #include <raikv/util.h>
 
-static int was_signaled, err;
-static void sighndlr( int sig ) { was_signaled = sig; }
+static kv_signal_handler_t hndlr;
+static int err;
 
 static char key[]  = "key:__rand_int__",     /* set,get */
             kcnt[] = "counter:__rand_int__", /* incr */
@@ -21,12 +28,12 @@ static char key[]  = "key:__rand_int__",     /* set,get */
             lkey[] = "mylist",               /* xpush,xpop,lrange */
             skey[] = "myset";                /* sadd,spop */
 
-static void mk_key( ds_msg_t *k )      { mk_str( k, key, sizeof( key )-1 ); }
-static void mk_counter( ds_msg_t *k )  { mk_str( k, kcnt, sizeof( kcnt )-1 ); }
-static void mk_hash_key( ds_msg_t *k ) { mk_str( k, hkey, sizeof( hkey )-1 ); }
-static void mk_elem( ds_msg_t *k )     { mk_str( k, elem, sizeof( elem )-1 ); }
-static void mk_list_key( ds_msg_t *k ) { mk_str( k, lkey, sizeof( lkey )-1 ); }
-static void mk_set_key( ds_msg_t *k )  { mk_str( k, skey, sizeof( skey )-1 ); }
+static void mk_key( ds_msg_t *k )      { mk_str( k, key, (int32_t) sizeof( key )-1 ); }
+static void mk_counter( ds_msg_t *k )  { mk_str( k, kcnt, (int32_t) sizeof( kcnt )-1 ); }
+static void mk_hash_key( ds_msg_t *k ) { mk_str( k, hkey, (int32_t) sizeof( hkey )-1 ); }
+static void mk_elem( ds_msg_t *k )     { mk_str( k, elem, (int32_t) sizeof( elem )-1 ); }
+static void mk_list_key( ds_msg_t *k ) { mk_str( k, lkey, (int32_t) sizeof( lkey )-1 ); }
+static void mk_set_key( ds_msg_t *k )  { mk_str( k, skey, (int32_t) sizeof( skey )-1 ); }
 
 static uint64_t rand_state[ 2 ] = { 0x9e3779b9U, 0x7f4a7c13U };
 
@@ -153,11 +160,11 @@ test_ping( ds_t *h,  size_t nrequests )
 {
   ds_msg_t r;
   size_t i;
-  for ( i = 0; i < nrequests && ! was_signaled; i++ ) {
+  for ( i = 0; i < nrequests && ! hndlr.signaled; i++ ) {
     err += ds_ping( h, &r, NULL );
     ds_release_mem( h );
   }
-  return was_signaled;
+  return hndlr.signaled;
 }
 
 static int
@@ -167,19 +174,19 @@ test_get( ds_t *h,  size_t nrequests,  size_t randomcnt )
   size_t i;
   mk_key( &k ); /* key:__rand_int__ */
   if ( randomcnt <= 1 ) {
-    for ( i = 0; i < nrequests && ! was_signaled; i++ ) {
+    for ( i = 0; i < nrequests && ! hndlr.signaled; i++ ) {
       err += ds_get( h, &r, &k );
       ds_release_mem( h );
     }
   }
   else {
-    for ( i = 0; i < nrequests && ! was_signaled; i++ ) {
+    for ( i = 0; i < nrequests && ! hndlr.signaled; i++ ) {
       rand_key( randomcnt ); /* change key:__rand_int__ */
       err += ds_get( h, &r, &k );
       ds_release_mem( h );
     }
   }
-  return was_signaled;
+  return hndlr.signaled;
 }
 
 static int
@@ -189,21 +196,21 @@ test_set( ds_t *h,  size_t nrequests,  size_t randomcnt,  char *data,
   ds_msg_t r, k, v;
   size_t i;
   mk_key( &k );             /* key:__rand_int__ */
-  mk_str( &v, data, size ); /* xxx */
+  mk_str( &v, data, (int32_t) size ); /* xxx */
   if ( randomcnt <= 1 ) {
-    for ( i = 0; i < nrequests && ! was_signaled; i++ ) {
+    for ( i = 0; i < nrequests && ! hndlr.signaled; i++ ) {
       err += ds_set( h, &r, &k, &v, NULL );
       ds_release_mem( h );
     }
   }
   else {
-    for ( i = 0; i < nrequests && ! was_signaled; i++ ) {
+    for ( i = 0; i < nrequests && ! hndlr.signaled; i++ ) {
       rand_key( randomcnt ); /* change key:__rand_int__ */
       err += ds_set( h, &r, &k, &v, NULL );
       ds_release_mem( h );
     }
   }
-  return was_signaled;
+  return hndlr.signaled;
 }
 
 static int
@@ -213,19 +220,19 @@ test_incr( ds_t *h, size_t nrequests, size_t randomcnt )
   size_t i;
   mk_counter( &k ); /* counter:__rand_int__ */
   if ( randomcnt <= 1 ) {
-    for ( i = 0; i < nrequests && ! was_signaled; i++ ) {
+    for ( i = 0; i < nrequests && ! hndlr.signaled; i++ ) {
       err += ds_incr( h, &r, &k );
       ds_release_mem( h );
     }
   }
   else {
-    for ( i = 0; i < nrequests && ! was_signaled; i++ ) {
+    for ( i = 0; i < nrequests && ! hndlr.signaled; i++ ) {
       rand_cnt_key( randomcnt ); /* cnange counter:__rand_int__ */
       err += ds_incr( h, &r, &k );
       ds_release_mem( h );
     }
   }
-  return was_signaled;
+  return hndlr.signaled;
 }
 
 static int
@@ -234,12 +241,12 @@ test_lpush( ds_t *h, size_t nrequests, char *data, size_t size )
   ds_msg_t r, k, v;
   size_t i;
   mk_list_key( &k );        /* mylist */
-  mk_str( &v, data, size ); /* xxx */
-  for ( i = 0; i < nrequests && ! was_signaled; i++ ) {
+  mk_str( &v, data, (int32_t) size ); /* xxx */
+  for ( i = 0; i < nrequests && ! hndlr.signaled; i++ ) {
     err += ds_lpush( h, &r, &k, &v, NULL );
     ds_release_mem( h );
   }
-  return was_signaled;
+  return hndlr.signaled;
 }
 
 static int
@@ -248,12 +255,12 @@ test_rpush( ds_t *h, size_t nrequests, char *data, size_t size )
   ds_msg_t r, k, v;
   size_t i;
   mk_list_key( &k );        /* mylist */
-  mk_str( &v, data, size ); /* xxx */
-  for ( i = 0; i < nrequests && ! was_signaled; i++ ) {
+  mk_str( &v, data, (int32_t) size ); /* xxx */
+  for ( i = 0; i < nrequests && ! hndlr.signaled; i++ ) {
     err += ds_rpush( h, &r, &k, &v, NULL );
     ds_release_mem( h );
   }
-  return was_signaled;
+  return hndlr.signaled;
 }
 
 static int
@@ -262,11 +269,11 @@ test_lpop( ds_t *h, size_t nrequests )
   ds_msg_t r, k;
   size_t i;
   mk_list_key( &k ); /* mylist */
-  for ( i = 0; i < nrequests && ! was_signaled; i++ ) {
+  for ( i = 0; i < nrequests && ! hndlr.signaled; i++ ) {
     err += ds_lpop( h, &r, &k );
     ds_release_mem( h );
   }
-  return was_signaled;
+  return hndlr.signaled;
 }
 
 static int
@@ -275,11 +282,11 @@ test_rpop( ds_t *h, size_t nrequests )
   ds_msg_t r, k;
   size_t i;
   mk_list_key( &k ); /* mylist */
-  for ( i = 0; i < nrequests && ! was_signaled; i++ ) {
+  for ( i = 0; i < nrequests && ! hndlr.signaled; i++ ) {
     err += ds_rpop( h, &r, &k );
     ds_release_mem( h );
   }
-  return was_signaled;
+  return hndlr.signaled;
 }
 
 static int
@@ -290,19 +297,19 @@ test_sadd( ds_t *h, size_t nrequests, size_t randomcnt )
   mk_set_key( &k ); /* myset */
   mk_elem( &v );    /* element:__rand_int__ */
   if ( randomcnt <= 1 ) {
-    for ( i = 0; i < nrequests && ! was_signaled; i++ ) {
+    for ( i = 0; i < nrequests && ! hndlr.signaled; i++ ) {
       err += ds_sadd( h, &r, &k, &v, NULL );
       ds_release_mem( h );
     }
   }
   else {
-    for ( i = 0; i < nrequests && ! was_signaled; i++ ) {
+    for ( i = 0; i < nrequests && ! hndlr.signaled; i++ ) {
       rand_elem( randomcnt );     /* change element:__rand_int__ */
       err += ds_sadd( h, &r, &k, &v, NULL );
       ds_release_mem( h );
     }
   }
-  return was_signaled;
+  return hndlr.signaled;
 }
 
 static int
@@ -312,22 +319,22 @@ test_hset( ds_t *h, size_t nrequests, size_t randomcnt, char *data, size_t size 
   size_t i;
   mk_hash_key( &k );        /* myset:__rand_int__ */
   mk_elem( &f );            /* element:__rand_int__ */
-  mk_str( &v, data, size ); /* xxx */
+  mk_str( &v, data, (int32_t) size ); /* xxx */
   if ( randomcnt <= 1 ) {
-    for ( i = 0; i < nrequests && ! was_signaled; i++ ) {
+    for ( i = 0; i < nrequests && ! hndlr.signaled; i++ ) {
       err += ds_hset( h, &r, &k, &f, &v, NULL );
       ds_release_mem( h );
     }
   }
   else {
-    for ( i = 0; i < nrequests && ! was_signaled; i++ ) {
+    for ( i = 0; i < nrequests && ! hndlr.signaled; i++ ) {
       rand_hash_key( randomcnt ); /* change myset:__rand_int__ */
       rand_elem( randomcnt );     /* change element:__rand_int__ */
       err += ds_hset( h, &r, &k, &f, &v, NULL );
       ds_release_mem( h );
     }
   }
-  return was_signaled;
+  return hndlr.signaled;
 }
 
 static int
@@ -336,11 +343,11 @@ test_spop( ds_t *h, size_t nrequests )
   ds_msg_t r, k;
   size_t i;
   mk_set_key( &k );
-  for ( i = 0; i < nrequests && ! was_signaled; i++ ) {
+  for ( i = 0; i < nrequests && ! hndlr.signaled; i++ ) {
     err += ds_spop( h, &r, &k, NULL );
     ds_release_mem( h );
   }
-  return was_signaled;
+  return hndlr.signaled;
 }
 
 static int
@@ -351,11 +358,11 @@ test_lrange( ds_t *h, size_t nrequests, size_t cnt )
   mk_list_key( &k );
   mk_int( &z, 0 );
   mk_int( &n, cnt );
-  for ( i = 0; i < nrequests && ! was_signaled; i++ ) {
+  for ( i = 0; i < nrequests && ! hndlr.signaled; i++ ) {
     err += ds_lrange( h, &r, &k, &z, &n );
     ds_release_mem( h );
   }
-  return was_signaled;
+  return hndlr.signaled;
 }
 
 static int
@@ -372,20 +379,20 @@ test_mset( ds_t *h, size_t nrequests, size_t randomcnt, size_t nkeys,
   mk_str( &ar[ 0 ], "mset", 4 );
   for ( k = 0; k < nkeys; k++ ) {
     memcpy( kp, key, sizeof( key ) );
-    mk_str( &ar[ 1 + k * 2 ], kp, sizeof( key ) - 1 );
-    mk_str( &ar[ 1 + k * 2 + 1 ], data, size );
+    mk_str( &ar[ 1 + k * 2 ], kp, (int32_t) ( sizeof( key ) - 1 ) );
+    mk_str( &ar[ 1 + k * 2 + 1 ], data, (int32_t) size );
     kp = &kp[ sizeof( key ) ];
   }
-  mk_arr( &m, nkeys + 1, ar );
+  mk_arr( &m, (int32_t) ( nkeys + 1 ), ar );
 
   if ( randomcnt <= 1 ) {
-    for ( i = 0; i < nrequests && ! was_signaled; i++ ) {
+    for ( i = 0; i < nrequests && ! hndlr.signaled; i++ ) {
       err += ds_run_cmd( h, &r, &m );
       ds_release_mem( h );
     }
   }
   else {
-    for ( i = 0; i < nrequests && ! was_signaled; i++ ) {
+    for ( i = 0; i < nrequests && ! hndlr.signaled; i++ ) {
       kp = kbuf;
       for ( k = 0; k < nkeys; k++ ) {
         rand_12( &kp[ 4 ], randomcnt ); /* randomize key:__rand_int__ */
@@ -397,7 +404,7 @@ test_mset( ds_t *h, size_t nrequests, size_t randomcnt, size_t nkeys,
   }
   free( ar );
   free( kbuf );
-  return was_signaled;
+  return hndlr.signaled;
 }
 
 static void
@@ -437,6 +444,7 @@ run_ping_busy_loop( ds_t *h,  double total )
   }
 }
 
+#ifndef _MSC_VER
 static int
 set_affinity( int cpu )
 {
@@ -449,10 +457,12 @@ set_affinity( int cpu )
   }
   return -1;
 }
+#endif
 
 static int
 warm_up_cpu( ds_t *h,  const char *affinity )
 {
+#ifndef _MSC_VER
   int cpu = -1;
   /* warm up */
   if ( affinity != NULL ) {
@@ -467,6 +477,10 @@ warm_up_cpu( ds_t *h,  const char *affinity )
       cpu = set_affinity( cpu );
   }
   return cpu;
+#else
+  run_ping_busy_loop( h, 0.1 );
+  return 0;
+#endif
 }
 
 static const char *
@@ -574,7 +588,7 @@ main( int argc,  char *argv[] )
     return 1;
   }
   if ( data == NULL ) {
-    fprintf( stderr, "malloc %ld bytes failed\n", size );
+    fprintf( stderr, "malloc %" PRId64 " bytes failed\n", size );
     return 2;
   }
   memset( data, 'x', size );
@@ -592,9 +606,7 @@ main( int argc,  char *argv[] )
   if ( cpu >= 0 && ! csv )
     printf( "cpu affinity %d\n", cpu );
 
-  signal( SIGHUP, sighndlr );
-  signal( SIGINT, sighndlr );
-  signal( SIGTERM, sighndlr );
+  kv_sighndl_install( &hndlr );
   /* if looping, goto here */
   for (;;) {
     if ( ( fl & DO_PING ) != 0 ) {
@@ -703,8 +715,8 @@ main( int argc,  char *argv[] )
       break;
   }
 
-  if ( was_signaled && ! csv )
-    printf( "Caught signal %d\n", was_signaled );
+  if ( hndlr.signaled && ! csv )
+    printf( "Caught signal %d\n", hndlr.sig );
   if ( clean_keys && ! csv ) {
     printf( "Removing test keys\n" );
     if ( ( fl & ( DO_MSET | DO_SET ) ) != 0 )

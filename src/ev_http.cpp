@@ -2,20 +2,18 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
 #include <ctype.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <errno.h>
-#include <sys/socket.h>
-#include <sys/stat.h>
-#include <netinet/tcp.h>
-#include <netdb.h>
-#include <openssl/sha.h>
+#include <raikv/util.h>
+#include <raikv/os_file.h>
 #include <raids/ev_http.h>
 
 using namespace rai;
 using namespace ds;
 using namespace kv;
+
+static void SHA1( const uint8_t *data, size_t len, uint8_t digest[20] ) noexcept;
 
 EvHttpListen::EvHttpListen( EvPoll &p ) noexcept
   : EvTcpListen( p, "http_listen", "http_sock" ) {}
@@ -101,7 +99,7 @@ EvHttpService::process_http( void ) noexcept
     hreq.data = &start[ used ];
     if ( &start[ used + hreq.content_length ] > end )
       return false;
-    this->off += used + hreq.content_length;
+    this->off += (uint32_t) ( used + hreq.content_length );
 
     /* GET path HTTP/1.1 */
     switch ( http_request[ 0 ] ) {
@@ -257,7 +255,7 @@ HttpReq::parse_version( const char *line,  size_t len ) noexcept
       len -= 1;
   }
   if ( len > 9 ) {
-    if ( ::strncasecmp( &line[ len - 8 ], "HTTP/1.1", 8 ) == 0 )
+    if ( kv_strncasecmp( &line[ len - 8 ], "HTTP/1.1", 8 ) == 0 )
       this->opts |= HTTP_1_1;
     if ( line[ len - 9 ] == ' ' ) {
       len -= 9;
@@ -288,7 +286,7 @@ HttpReq::parse_header( const char *line,  size_t len ) noexcept
       static const size_t auth_len = sizeof( auth ) - 1;
       /*HttpDigestAuth auth( this->svc.nonce.nonce, &this->svc.htDigestDb );*/
 
-      if ( ::strncasecmp( line, auth, auth_len ) == 0 ) {
+      if ( kv_strncasecmp( line, auth, auth_len ) == 0 ) {
         len -= auth_len;
         for ( i = 0; i < len; i++ ) {
           if ( i == STR_SZ - 1 )
@@ -310,7 +308,7 @@ HttpReq::parse_header( const char *line,  size_t len ) noexcept
       static const size_t ctyp_len = sizeof( ctyp ) - 1;
 
       /* Connection: Close */
-      if ( ::strncasecmp( line, conn, conn_len ) == 0 ) {
+      if ( kv_strncasecmp( line, conn, conn_len ) == 0 ) {
         /* upgrade */
         if ( line[ conn_len ] == 'U' || line[ conn_len ] == 'u' )
           this->opts |= UPGRADE;
@@ -322,13 +320,13 @@ HttpReq::parse_header( const char *line,  size_t len ) noexcept
           this->opts |= CLOSE;
       }
       /* Content-Lenth: 1234 */
-      else if ( ::strncasecmp( line, clen, clen_len ) == 0 ) {
+      else if ( kv_strncasecmp( line, clen, clen_len ) == 0 ) {
         for ( i = 0; isdigit( line[ i + clen_len ] ); i++ )
           ;
         string_to_uint( &line[ clen_len ], i, this->content_length );
       }
       /* Content-Type: text/plain; charset=UTF-8 */
-      else if ( ::strncasecmp( line, ctyp, ctyp_len ) == 0 ) {
+      else if ( kv_strncasecmp( line, ctyp, ctyp_len ) == 0 ) {
         len -= ctyp_len;
         for ( i = 0; i < len; i++ ) {
           if ( i == STR_SZ - 1 )
@@ -344,7 +342,7 @@ HttpReq::parse_header( const char *line,  size_t len ) noexcept
     case 'U': case 'u':  { /* Upgrade: websocket */
       static const char   uwsk[]   = "Upgrade: websocket";
       static const size_t uwsk_len = sizeof( uwsk ) - 1;
-      if ( ::strncasecmp( line, uwsk, uwsk_len ) == 0 )
+      if ( kv_strncasecmp( line, uwsk, uwsk_len ) == 0 )
         this->opts |= WEBSOCKET;
       break;
     }
@@ -358,19 +356,19 @@ HttpReq::parse_header( const char *line,  size_t len ) noexcept
       static const char   prot[]   = "Protocol: ";
       static const size_t prot_len = sizeof( prot ) - 1;
 
-      if ( ::strncasecmp( line, secw, secw_len ) == 0 ) {
+      if ( kv_strncasecmp( line, secw, secw_len ) == 0 ) {
         const char * ptr   = &line[ secw_len ];
         char       * str   = NULL;
         size_t       start = 0;
-        if ( ::strncasecmp( ptr, vers, vers_len ) == 0 ) {
+        if ( kv_strncasecmp( ptr, vers, vers_len ) == 0 ) {
           str   = this->wsver;
           start = secw_len + vers_len;
         }
-        else if ( ::strncasecmp( ptr, key, key_len ) == 0 ) {
+        else if ( kv_strncasecmp( ptr, key, key_len ) == 0 ) {
           str   = this->wskey;
           start = secw_len + key_len;
         }
-        else if ( ::strncasecmp( ptr, prot, prot_len ) == 0 ) {
+        else if ( kv_strncasecmp( ptr, prot, prot_len ) == 0 ) {
           str   = this->wspro;
           start = secw_len + prot_len;
         }
@@ -423,7 +421,7 @@ EvHttpService::process_websock( void ) noexcept
         return false;
       return true;
     }
-    this->off += used;
+    this->off += (uint32_t) used;
     msgcnt = 0;
     nlcnt  = 0;
 
@@ -865,7 +863,7 @@ decode_uri( const char *s,  const char *e,  char *q )
         break;
       case '&':
         for ( i = 0; i < 5; i++ ) {
-          if ( ::strncasecmp( &s[ 1 ], amp_str[ i ], amp_len[ i ] ) == 0 ) {
+          if ( kv_strncasecmp( &s[ 1 ], amp_str[ i ], amp_len[ i ] ) == 0 ) {
             *q = amp_chr[ i ]; s = &s[ amp_len[ i ] + 1 ];
             break;
           }
@@ -944,7 +942,7 @@ EvHttpService::process_get( const HttpReq &hreq ) noexcept
     ar[ 0 ].len     = 0;
     ar[ 0 ].ival    = GET_CMD;
     ar[ 1 ].type    = DS_BULK_STRING;
-    ar[ 1 ].len     = len;
+    ar[ 1 ].len     = (int32_t) len;
     ar[ 1 ].strval  = buf;
   }
   if ( this->sz > 0 )
@@ -1068,10 +1066,10 @@ EvHttpService::process_post( const HttpReq &hreq ) noexcept
   ar[ 0 ].len     = 0;
   ar[ 0 ].ival    = SET_CMD;
   ar[ 1 ].type    = DS_BULK_STRING;
-  ar[ 1 ].len     = len;
+  ar[ 1 ].len     = (int32_t) len;
   ar[ 1 ].strval  = buf;
   ar[ 2 ].type    = DS_BULK_STRING;
-  ar[ 2 ].len     = hreq.content_length;
+  ar[ 2 ].len     = (int32_t) hreq.content_length;
   ar[ 2 ].strval  = (char *) hreq.data;
 
   if ( this->sz > 0 )
@@ -1100,37 +1098,45 @@ EvHttpService::process_post( const HttpReq &hreq ) noexcept
 bool
 EvHttpService::send_file( const char *path,  size_t len ) noexcept
 {
-  struct stat statbuf;
-  int    fd;
-  bool   res = false;
-  if ( (fd = ::open( path, O_RDONLY )) < 0 )
+  StreamBuf::BufQueue q( this->strm );
+  int  fd;
+  bool res = false,
+       toolarge = false;
+  os_stat statbuf;
+  if ( (fd = os_open( path, O_RDONLY, 0 )) < 0 ||
+       os_fstat( fd, &statbuf ) < 0 )
     return false;
-  if ( ::fstat( fd, &statbuf ) == 0 && statbuf.st_size != 0 ) {
-    if ( statbuf.st_size <= 10 * 1024 * 1024 ) {
-      char * p = this->alloc_temp( 256 + statbuf.st_size );
-      size_t mlen;
-      if ( p != NULL &&
-           ::read( fd, &p[ 256 ], statbuf.st_size ) == statbuf.st_size ) {
-        int n = ::snprintf( p, 256,
-          "HTTP/1.1 200 OK\r\n"
-          "Connection: keep-alive\r\n"
-          "Cache-Control: no-cache\r\n"
-          "Content-Type: %s\r\n"
-          "Content-Length: %u\r\n"
-          "\r\n", get_mime_type( path, len, mlen ), (int) statbuf.st_size );
-        if ( n > 0 && n < 256 ) {
-          ::memmove( &p[ 256 - n ], p, n );
-          p = &p[ 256 - n ];
-          this->append_iov( p, statbuf.st_size + (size_t) n );
-          res = true;
-        }
+
+  if ( (size_t) statbuf.st_size > (size_t) ( 10 * 1024 * 1024 ) ) {
+    fprintf( stderr, "File %s too large: %" PRIu64 "\n", path,
+             statbuf.st_size );
+    toolarge = true;
+  }
+  else {
+    StreamBuf::BufList * p = q.get_buf( 256 );
+    size_t mlen;
+    int n = ::snprintf( p->buf( 0 ), 256,
+                        "HTTP/1.1 200 OK\r\n"
+                        "Connection: keep-alive\r\n"
+                        "Cache-Control: no-cache\r\n"
+                        "Content-Type: %s\r\n"
+                        "Content-Length: %u\r\n"
+                        "\r\n",
+        get_mime_type( path, len, mlen ), (int) statbuf.st_size );
+    if ( n > 0 && n < 256 ) {
+      p->used += n;
+      p = q.get_buf( statbuf.st_size );
+      ssize_t len = os_read( fd, p->buf( 0 ), statbuf.st_size );
+      if ( (size_t) len == (size_t) statbuf.st_size ) {
+        p->used += statbuf.st_size;
+        this->append_iov( q );
+        res = true;
       }
     }
-    else {
-      fprintf( stderr, "File too large: %lu\n", statbuf.st_size );
-    }
   }
-  ::close( fd );
+  if ( ! toolarge )
+    perror( path );
+  os_close( fd );
   return res;
 }
 
@@ -1210,7 +1216,8 @@ EvHttpService::recv_wsframe( char *start,  char *end ) noexcept
   if ( hdrsize <= 1 ) /* 0 == not enough data for hdr, 1 == closed */
     return hdrsize;
   if ( ws.payload_len > (uint64_t) 10 * 1024 * 1024 ) {
-    fprintf( stderr, "Websocket payload too large: %lu\n", ws.payload_len );
+    fprintf( stderr, "Websocket payload too large: %" PRIu64 "\n",
+             ws.payload_len );
     return 1; /* close */
   }
   char *p = &start[ hdrsize ];
@@ -1303,3 +1310,202 @@ EvHttpService::client_list( char *buf,  size_t buflen ) noexcept
   return i;
 }
 
+
+/* ================ sha1.c ================ */
+/*
+SHA-1 in C
+By Steve Reid <steve@edmweb.com>
+100% Public Domain
+
+Test Vectors (from FIPS PUB 180-1)
+"abc"
+  A9993E36 4706816A BA3E2571 7850C26C 9CD0D89D
+"abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"
+  84983E44 1C3BD26E BAAE4AA1 F95129E5 E54670F1
+A million repetitions of "a"
+  34AA973C D4C4DAA4 F61EEB2B DBAD2731 6534016F
+*/
+
+typedef struct {
+    uint32_t state[5];
+    uint32_t count[2];
+    uint8_t buffer[64];
+} SHA1_CTX;
+
+#define rol(value, bits) (((value) << (bits)) | ((value) >> (32 - (bits))))
+
+/* blk0() and blk() perform the initial expand. */
+/* I got the idea of expanding during the round function from SSLeay */
+#if BYTE_ORDER == LITTLE_ENDIAN
+#define blk0(i) (block->l[i] = (rol(block->l[i],24)&0xFF00FF00) \
+    |(rol(block->l[i],8)&0x00FF00FF))
+
+#elif BYTE_ORDER == BIG_ENDIAN
+#define blk0(i) block->l[i]
+
+#else
+#error "Endianness not defined!"
+#endif
+
+#define blk(i) (block->l[i&15] = rol(block->l[(i+13)&15]^block->l[(i+8)&15] \
+    ^block->l[(i+2)&15]^block->l[i&15],1))
+
+/* (R0+R1), R2, R3, R4 are the different operations used in SHA1 */
+#define R0(v,w,x,y,z,i) z+=((w&(x^y))^y)+blk0(i)+0x5A827999+rol(v,5);w=rol(w,30);
+#define R1(v,w,x,y,z,i) z+=((w&(x^y))^y)+blk(i)+0x5A827999+rol(v,5);w=rol(w,30);
+#define R2(v,w,x,y,z,i) z+=(w^x^y)+blk(i)+0x6ED9EBA1+rol(v,5);w=rol(w,30);
+#define R3(v,w,x,y,z,i) z+=(((w|x)&y)|(w&x))+blk(i)+0x8F1BBCDC+rol(v,5);w=rol(w,30);
+#define R4(v,w,x,y,z,i) z+=(w^x^y)+blk(i)+0xCA62C1D6+rol(v,5);w=rol(w,30);
+
+/* Hash a single 512-bit block. This is the core of the algorithm. */
+static void
+SHA1Transform(uint32_t state[5], const uint8_t buffer[64]) noexcept
+{
+    uint32_t a, b, c, d, e;
+    typedef union {
+        uint8_t c[64];
+        uint32_t l[16];
+    } CHAR64LONG16;
+    CHAR64LONG16 block[1];  /* use array to appear as a pointer */
+    memcpy(block, buffer, 64);
+    /* Copy context->state[] to working vars */
+    a = state[0];
+    b = state[1];
+    c = state[2];
+    d = state[3];
+    e = state[4];
+    /* 4 rounds of 20 operations each. Loop unrolled. */
+    R0(a,b,c,d,e, 0); R0(e,a,b,c,d, 1); R0(d,e,a,b,c, 2); R0(c,d,e,a,b, 3);
+    R0(b,c,d,e,a, 4); R0(a,b,c,d,e, 5); R0(e,a,b,c,d, 6); R0(d,e,a,b,c, 7);
+    R0(c,d,e,a,b, 8); R0(b,c,d,e,a, 9); R0(a,b,c,d,e,10); R0(e,a,b,c,d,11);
+    R0(d,e,a,b,c,12); R0(c,d,e,a,b,13); R0(b,c,d,e,a,14); R0(a,b,c,d,e,15);
+    R1(e,a,b,c,d,16); R1(d,e,a,b,c,17); R1(c,d,e,a,b,18); R1(b,c,d,e,a,19);
+    R2(a,b,c,d,e,20); R2(e,a,b,c,d,21); R2(d,e,a,b,c,22); R2(c,d,e,a,b,23);
+    R2(b,c,d,e,a,24); R2(a,b,c,d,e,25); R2(e,a,b,c,d,26); R2(d,e,a,b,c,27);
+    R2(c,d,e,a,b,28); R2(b,c,d,e,a,29); R2(a,b,c,d,e,30); R2(e,a,b,c,d,31);
+    R2(d,e,a,b,c,32); R2(c,d,e,a,b,33); R2(b,c,d,e,a,34); R2(a,b,c,d,e,35);
+    R2(e,a,b,c,d,36); R2(d,e,a,b,c,37); R2(c,d,e,a,b,38); R2(b,c,d,e,a,39);
+    R3(a,b,c,d,e,40); R3(e,a,b,c,d,41); R3(d,e,a,b,c,42); R3(c,d,e,a,b,43);
+    R3(b,c,d,e,a,44); R3(a,b,c,d,e,45); R3(e,a,b,c,d,46); R3(d,e,a,b,c,47);
+    R3(c,d,e,a,b,48); R3(b,c,d,e,a,49); R3(a,b,c,d,e,50); R3(e,a,b,c,d,51);
+    R3(d,e,a,b,c,52); R3(c,d,e,a,b,53); R3(b,c,d,e,a,54); R3(a,b,c,d,e,55);
+    R3(e,a,b,c,d,56); R3(d,e,a,b,c,57); R3(c,d,e,a,b,58); R3(b,c,d,e,a,59);
+    R4(a,b,c,d,e,60); R4(e,a,b,c,d,61); R4(d,e,a,b,c,62); R4(c,d,e,a,b,63);
+    R4(b,c,d,e,a,64); R4(a,b,c,d,e,65); R4(e,a,b,c,d,66); R4(d,e,a,b,c,67);
+    R4(c,d,e,a,b,68); R4(b,c,d,e,a,69); R4(a,b,c,d,e,70); R4(e,a,b,c,d,71);
+    R4(d,e,a,b,c,72); R4(c,d,e,a,b,73); R4(b,c,d,e,a,74); R4(a,b,c,d,e,75);
+    R4(e,a,b,c,d,76); R4(d,e,a,b,c,77); R4(c,d,e,a,b,78); R4(b,c,d,e,a,79);
+    /* Add the working vars back into context.state[] */
+    state[0] += a;
+    state[1] += b;
+    state[2] += c;
+    state[3] += d;
+    state[4] += e;
+}
+/* SHA1Init - Initialize new context */
+static void
+SHA1Init(SHA1_CTX* context) noexcept
+{
+    /* SHA1 initialization constants */
+    context->state[0] = 0x67452301;
+    context->state[1] = 0xEFCDAB89;
+    context->state[2] = 0x98BADCFE;
+    context->state[3] = 0x10325476;
+    context->state[4] = 0xC3D2E1F0;
+    context->count[0] = context->count[1] = 0;
+}
+/* Run your data through this. */
+static void
+SHA1Update(SHA1_CTX* context, const uint8_t* data, uint32_t len) noexcept
+{
+    uint32_t i, j;
+
+    j = context->count[0];
+    if ((context->count[0] += len << 3) < j)
+        context->count[1]++;
+    context->count[1] += (len>>29);
+    j = (j >> 3) & 63;
+    if ((j + len) > 63) {
+        memcpy(&context->buffer[j], data, (i = 64-j));
+        SHA1Transform(context->state, context->buffer);
+        for ( ; i + 63 < len; i += 64) {
+            SHA1Transform(context->state, &data[i]);
+        }
+        j = 0;
+    }
+    else i = 0;
+    memcpy(&context->buffer[j], &data[i], len - i);
+}
+/* Add padding and return the message digest. */
+static void
+SHA1Final(uint8_t digest[20], SHA1_CTX* context) noexcept
+{
+    unsigned i;
+    uint8_t finalcount[8];
+    uint8_t c;
+
+    for (i = 0; i < 8; i++) {
+        finalcount[i] = (uint8_t)((context->count[(i >= 4 ? 0 : 1)]
+         >> ((3-(i & 3)) * 8) ) & 255);  /* Endian independent */
+    }
+    c = 0200;
+    SHA1Update(context, &c, 1);
+    while ((context->count[0] & 504) != 448) {
+	c = 0000;
+        SHA1Update(context, &c, 1);
+    }
+    SHA1Update(context, finalcount, 8);  /* Should cause a SHA1Transform() */
+    for (i = 0; i < 20; i++) {
+        digest[i] = (uint8_t)
+         ((context->state[i>>2] >> ((3-(i & 3)) * 8) ) & 255);
+    }
+    /* Wipe variables */
+    memset(context, '\0', sizeof(*context));
+    memset(&finalcount, '\0', sizeof(finalcount));
+}
+/* ================ end of sha1.c ================ */
+
+static void
+SHA1( const uint8_t *data, size_t len, uint8_t digest[20] ) noexcept
+{
+  SHA1_CTX ctx;
+  SHA1Init( &ctx );
+  for (;;) {
+    uint32_t sz = len & (size_t) 0xffffffffU;
+    SHA1Update( &ctx, data, sz );
+    if ( len == (size_t) sz )
+      break;
+    len -= (size_t) sz;
+    data = &data[ sz ];
+  }
+  SHA1Final( digest, &ctx );
+}
+
+#ifdef TEST_SHA1
+#define BUFSIZE 4096
+
+#define UNUSED(x) (void)(x)
+int sha1Test(int argc, char **argv)
+{
+    SHA1_CTX ctx;
+    uint8_t hash[20], buf[BUFSIZE];
+    int i;
+
+    UNUSED(argc);
+    UNUSED(argv);
+
+    for(i=0;i<BUFSIZE;i++)
+        buf[i] = i;
+
+    SHA1Init(&ctx);
+    for(i=0;i<1000;i++)
+        SHA1Update(&ctx, buf, BUFSIZE);
+    SHA1Final(hash, &ctx);
+
+    printf("SHA1=");
+    for(i=0;i<20;i++)
+        printf("%02x", hash[i]);
+    printf("\n");
+    return 0;
+}
+#endif

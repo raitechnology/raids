@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
 #include <raids/redis_cmd.h>
 #include <raids/redis_msg.h>
 #include <raids/redis_exec.h>
@@ -31,7 +33,7 @@ resize_hash( HashData *curr,  size_t add_len,  bool is_copy = false )
     count    += count / 2 + 2;
   }
   size_t asize = HashData::alloc_size( count, data_len );
-  printf( "asize %ld, count %ld, data_len %ld\n", asize, count, data_len );
+  printf( "asize %" PRId64 ", count %" PRId64 ", data_len %" PRId64 "\n", asize, count, data_len );
   void *m = malloc( sizeof( HashData ) + asize );
   void *p = &((char *) m)[ sizeof( HashData ) ];
   HashData *newbe = new ( m ) HashData( p, asize );
@@ -215,7 +217,7 @@ main( int, char ** )
           if ( hstat == HASH_OK )
             sz++;
         }
-        printf( "%ld\n", sz );
+        printf( "%" PRId64 "\n", sz );
         break;
       case HEXISTS_CMD: /* HEXISTS key field */
         if ( ! msg.get_arg( 2, arg, arglen ) )
@@ -229,7 +231,7 @@ main( int, char ** )
         for ( i = 1; i < count; i++ ) {
           hstat = hk->ht->hindex( i, kv );
           if ( hstat == HASH_OK ) {
-            printf( "%ld. off(%ld) %.*s: ", i, hk->ht->offset( i ),
+            printf( "%" PRId64 ". off(%" PRId64 ") %.*s: ", i, hk->ht->offset( i ),
                     (int) kv.keylen, kv.key );
             printf( "%.*s", (int) kv.sz, (const char *) kv.data );
             if ( kv.sz2 > 0 )
@@ -237,9 +239,9 @@ main( int, char ** )
             printf( "\n" );
           }
         }
-        printf( "count %lu of %lu\n", count > 0 ? (size_t) count - 1 : 0,
+        printf( "count %" PRIu64 " of %" PRIu64 "\n", count > 0 ? (size_t) count - 1 : 0,
                 hk->ht->max_count() - 1 );
-        printf( "bytes %lu of %lu\n", (size_t) hk->ht->data_len(),
+        printf( "bytes %" PRIu64 " of %" PRIu64 "\n", (size_t) hk->ht->data_len(),
                 hk->ht->data_size() );
         printf( "[" ); hk->ht->print_hashes(); printf( "]\n" );
 
@@ -249,14 +251,14 @@ main( int, char ** )
             pos.init( kv.key, kv.keylen );
             hstat = hk->ht->hget( kv.key, kv.keylen, lv, pos );
             if ( hstat == HASH_OK )
-              printf( "%ld. idx(%ld) h(%u) %.*s\n", i, pos.i, (uint8_t) pos.h,
+              printf( "%" PRId64 ". idx(%" PRId64 ") h(%u) %.*s\n", i, pos.i, (uint8_t) pos.h,
                       (int) kv.keylen, kv.key );
             else
-              printf( "%ld. idx(****) h(%u) %.*s\n", i, (uint8_t) pos.h,
+              printf( "%" PRId64 ". idx(****) h(%u) %.*s\n", i, (uint8_t) pos.h,
                       (int) kv.keylen, kv.key );
           }
           else {
-            printf( "%ld. status=%d\n", i, (int) hstat );
+            printf( "%" PRId64 ". status=%d\n", i, (int) hstat );
           }
         }
         break;
@@ -325,13 +327,13 @@ main( int, char ** )
         for ( i = 1; i < count; i++ ) {
           hstat = hk->ht->hindex( i, kv );
           if ( hstat == HASH_OK )
-            printf( "%ld. %.*s\n", i, (int) kv.keylen, kv.key );
+            printf( "%" PRId64 ". %.*s\n", i, (int) kv.keylen, kv.key );
         }
         break;
       case HLEN_CMD:    /* HLEN key */
         count = hk->ht->count();
         if ( count > 0 ) count -= 1;
-        printf( "%ld\n", count );
+        printf( "%" PRId64 "\n", count );
         break;
       case HMGET_CMD:   /* HMGET key field [field ...] */
       case HGET_CMD:    /* HGET key field */
@@ -385,7 +387,7 @@ main( int, char ** )
         hstat = hk->ht->hget( arg, arglen, kv, pos );
         printf( "%.*s: ", (int) arglen, arg );
         if ( hstat == HASH_OK )
-          printf( "%ld\n", kv.sz + kv.sz2 );
+          printf( "%" PRId64 "\n", kv.sz + kv.sz2 );
         else
           printf( "not found\n" );
         break;
@@ -394,7 +396,7 @@ main( int, char ** )
         for ( i = 1; i < count; i++ ) {
           hstat = hk->ht->hindex( i, kv );
           if ( hstat == HASH_OK ) {
-            printf( "%ld. ", i );
+            printf( "%" PRId64 ". ", i );
             printf( "%.*s", (int) kv.sz, (const char *) kv.data );
             if ( kv.sz2 > 0 )
               printf( "%.*s", (int) kv.sz2, (const char *) kv.data2 );

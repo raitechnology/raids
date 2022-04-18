@@ -2,16 +2,6 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdint.h>
-#include <netdb.h>
-#include <errno.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <errno.h>
-#include <sys/socket.h>
-#include <sys/types.h>
-#include <sys/un.h>
-#include <netinet/in.h>
-#include <netinet/tcp.h>
 #include <raids/ev_service.h>
 
 using namespace rai;
@@ -82,8 +72,8 @@ EvRedisService::process( void ) noexcept
     mstatus = this->msg.unpack( &this->recv[ this->off ], buflen, strm.tmp );
     if ( mstatus != DS_MSG_STATUS_OK ) {
       if ( mstatus != DS_MSG_STATUS_PARTIAL ) {
-        fprintf( stderr, "protocol error(%d/%s), ignoring %lu bytes\n",
-                 mstatus, ds_msg_status_string( mstatus ), buflen );
+        fprintf( stderr, "protocol error(%d/%s), ignoring %u bytes\n",
+                 mstatus, ds_msg_status_string( mstatus ), (uint32_t) buflen );
         this->off = this->len;
         /*this->pushpop( EV_CLOSE, EV_PROCESS );*/
         this->pop( EV_PROCESS );
@@ -94,7 +84,7 @@ EvRedisService::process( void ) noexcept
       this->pop( EV_PROCESS );
       break;
     }
-    this->off += buflen;
+    this->off += (uint32_t) buflen;
     this->msgs_recv++;
 
     if ( (status = this->exec( this, q )) == EXEC_OK )
@@ -237,8 +227,8 @@ EvRedisService::debug( void ) noexcept
        this->poll.prefetch_queue->is_empty() )
     printf( "prefetch empty\n" );
   else
-    printf( "prefetch count %lu\n",
-	    this->poll.prefetch_queue->count() );
+    printf( "prefetch count %u\n",
+	    (uint32_t) this->poll.prefetch_queue->count() );
 }
 
 

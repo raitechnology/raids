@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
 #include <raids/redis_cmd.h>
 #include <raids/redis_msg.h>
 #include <raids/redis_exec.h>
@@ -31,7 +33,7 @@ resize_set( SetData *curr,  size_t add_len,  bool is_copy = false )
     count    += count / 2 + 2;
   }
   size_t asize = SetData::alloc_size( count, data_len );
-  printf( "asize %ld, count %ld, data_len %ld\n", asize, count, data_len );
+  printf( "asize %" PRId64 ", count %" PRId64 ", data_len %" PRId64 "\n", asize, count, data_len );
   void *m = malloc( sizeof( SetData ) + asize );
   void *p = &((char *) m)[ sizeof( SetData ) ];
   SetData *newbe = new ( m ) SetData( p, asize );
@@ -134,7 +136,7 @@ main( int, char ** )
   SetStatus sstat;
 
   uint64_t t = kv::current_monotonic_time_ns();
-  printf( "%lx\n", t );
+  printf( "%" PRIx64 "\n", t );
   rand.init( &t, 8 );
   printf( "> " ); fflush( stdout );
   for (;;) {
@@ -197,7 +199,7 @@ main( int, char ** )
       case SCARD_CMD:       /* SCARD key */
         count = sk->set->count();
         if ( count > 0 ) count -= 1;
-        printf( "%ld\n", count );
+        printf( "%" PRId64 "\n", count );
         break;
       case SISMEMBER_CMD:   /* SISMEMBER key mem */
         if ( ! msg.get_arg( 2, arg, arglen ) )
@@ -245,16 +247,16 @@ main( int, char ** )
         for ( i = 1; i < count; i++ ) {
           sstat = (SetStatus) sk->set->lindex( i, lv );
           if ( sstat == SET_OK ) {
-            printf( "%ld. off(%ld) ", i, sk->set->offset( i ) );
+            printf( "%" PRId64 ". off(%" PRId64 ") ", i, sk->set->offset( i ) );
             printf( "%.*s", (int) lv.sz, (const char *) lv.data );
             if ( lv.sz2 > 0 )
               printf( "%.*s", (int) lv.sz2, (const char *) lv.data2 );
             printf( "\n" );
           }
         }
-        printf( "count %lu of %lu\n", count > 0 ? (size_t) count - 1 : 0,
+        printf( "count %" PRIu64 " of %" PRIu64 "\n", count > 0 ? (size_t) count - 1 : 0,
                 sk->set->max_count() - 1 );
-        printf( "bytes %lu of %lu\n", (size_t) sk->set->data_len(),
+        printf( "bytes %" PRIu64 " of %" PRIu64 "\n", (size_t) sk->set->data_len(),
                 sk->set->data_size() );
         printf( "[" ); sk->set->print_hashes(); printf( "]\n" );
 
@@ -269,14 +271,14 @@ main( int, char ** )
             pos.init( key, keylen );
             sstat = sk->set->sismember( key, keylen, pos );
             if ( sstat == SET_OK )
-              printf( "%ld. idx(%ld) h(%u) %.*s\n", i, pos.i, (uint8_t) pos.h,
+              printf( "%" PRId64 ". idx(%" PRId64 ") h(%u) %.*s\n", i, pos.i, (uint8_t) pos.h,
                       (int) keylen, key );
             else
-              printf( "%ld. idx(****) h(%u) %.*s\n", i, (uint8_t) pos.h,
+              printf( "%" PRId64 ". idx(****) h(%u) %.*s\n", i, (uint8_t) pos.h,
                       (int) keylen, key );
           }
           else {
-            printf( "%ld. status=%d\n", i, (int) sstat );
+            printf( "%" PRId64 ". status=%d\n", i, (int) sstat );
           }
         }
         if ( cmd != SMEMBERS_CMD ) {
@@ -360,14 +362,14 @@ main( int, char ** )
           i += 1;
           sstat = (SetStatus) sk->set->lindex( i, lv );
           if ( sstat == SET_OK ) {
-            printf( "%ld. off(%ld) ", i, sk->set->offset( i ) );
+            printf( "%" PRId64 ". off(%" PRId64 ") ", i, sk->set->offset( i ) );
             printf( "%.*s", (int) lv.sz, (const char *) lv.data );
             if ( lv.sz2 > 0 )
               printf( "%.*s", (int) lv.sz2, (const char *) lv.data2 );
             printf( "\n" );
           }
           else {
-            printf( "%ld. %s\n", i, set_status_string[ sstat ] );
+            printf( "%" PRId64 ". %s\n", i, set_status_string[ sstat ] );
           }
         }
         printf( "backward\n" );
@@ -377,14 +379,14 @@ main( int, char ** )
           i = j + 1;
           sstat = (SetStatus) sk->set->lindex( i, lv );
           if ( sstat == SET_OK ) {
-            printf( "%ld. off(%ld) ", i, sk->set->offset( i ) );
+            printf( "%" PRId64 ". off(%" PRId64 ") ", i, sk->set->offset( i ) );
             printf( "%.*s", (int) lv.sz, (const char *) lv.data );
             if ( lv.sz2 > 0 )
               printf( "%.*s", (int) lv.sz2, (const char *) lv.data2 );
             printf( "\n" );
           }
           else {
-            printf( "%ld. %s\n", i, set_status_string[ sstat ] );
+            printf( "%" PRId64 ". %s\n", i, set_status_string[ sstat ] );
           }
         }
         if ( sstat == SET_OK && cmd == SPOP_CMD ) {
@@ -406,7 +408,7 @@ main( int, char ** )
           if ( sstat == SET_OK )
             sz++;
         }
-        printf( "%ld\n", sz );
+        printf( "%" PRId64 "\n", sz );
         break;
       case SSCAN_CMD:       /* SSCAN key curs [match pat] [count cnt] */
         break;

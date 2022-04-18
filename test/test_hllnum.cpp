@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdint.h>
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
 #include <math.h>
 #include <raikv/key_hash.h>
 #define HLL_GLOBAL_VARS
@@ -38,7 +40,7 @@ struct Stats {
     }
   }
   void print( const char *s ) {
-    printf( "%s: minerr %.1f%% (%lu-%lu) maxerr %.1f%% (%lu-%lu)\n",
+    printf( "%s: minerr %.1f%% (%" PRIu64 "-%" PRIu64 ") maxerr %.1f%% (%" PRIu64 "-%" PRIu64 ")\n",
             s, this->minerr, this->mink, this->mine, this->maxerr,
             this->maxk, this->maxe );
   }
@@ -66,14 +68,14 @@ main( int , char ** )
   he5.init( 4 ); he6.init( 5 );
   for ( n = 0; n < 12; n++ ) {
     char fn[ 16 ];
-    ::sprintf( fn, "out%u.la%d_n", he1.ht_bits, n );
+    ::snprintf( fn, sizeof( fn ), "out%u.la%d_n", he1.ht_bits, n );
     fp[ n ] = fopen( fn, "w" );
   }
-  printf( "size6 = %lu\n", he1.size() + he2.size() + he3.size() + he4.size() +
+  printf( "size6 = %" PRIu64 "\n", he1.size() + he2.size() + he3.size() + he4.size() +
           he5.size() + he6.size() );
-  printf( "size4 = %lu\n", he1.size() + he2.size() + he3.size() + he4.size() );
-  printf( "size2 = %lu\n", he1.size() + he2.size() );
-  printf( "size  = %lu\n", he1.size() );
+  printf( "size4 = %" PRIu64 "\n", he1.size() + he2.size() + he3.size() + he4.size() );
+  printf( "size2 = %" PRIu64 "\n", he1.size() + he2.size() );
+  printf( "size  = %" PRIu64 "\n", he1.size() );
   for ( k = 0; k < 100ULL * 1000ULL; k++ ) {
     //e1.zero(); e2.zero(); e3.zero();
     h1 = 0;
@@ -107,30 +109,30 @@ main( int , char ** )
     e6 = he6.estimate( l6 ); //s6 = islin[ l6?1:0 ];
     kf = (double) ( k + 1 );
     //if ( ( k + 1 ) % 100000 == 0 ) {
-      fprintf( fp[ 0 ], "%lu %.0f\n", k + 1, e1 - kf );
-      fprintf( fp[ 1 ], "%lu %.0f\n", k + 1, e2 - kf );
-      fprintf( fp[ 2 ], "%lu %.0f\n", k + 1, e3 - kf );
-      fprintf( fp[ 3 ], "%lu %.0f\n", k + 1, e4 - kf );
-      fprintf( fp[ 4 ], "%lu %.0f\n", k + 1, e5 - kf );
-      fprintf( fp[ 5 ], "%lu %.0f\n", k + 1, e6 - kf );
-      fprintf( fp[ 6 ], "%lu %.0f\n", k + 1,
+      fprintf( fp[ 0 ], "%" PRIu64 " %.0f\n", k + 1, e1 - kf );
+      fprintf( fp[ 1 ], "%" PRIu64 " %.0f\n", k + 1, e2 - kf );
+      fprintf( fp[ 2 ], "%" PRIu64 " %.0f\n", k + 1, e3 - kf );
+      fprintf( fp[ 3 ], "%" PRIu64 " %.0f\n", k + 1, e4 - kf );
+      fprintf( fp[ 4 ], "%" PRIu64 " %.0f\n", k + 1, e5 - kf );
+      fprintf( fp[ 5 ], "%" PRIu64 " %.0f\n", k + 1, e6 - kf );
+      fprintf( fp[ 6 ], "%" PRIu64 " %.0f\n", k + 1,
                ( e1 + e2 + e3 + e4 + e5 + e6 ) / 6.0 - kf );
-      fprintf( fp[ 7 ], "%lu %.0f\n", k + 1,
+      fprintf( fp[ 7 ], "%" PRIu64 " %.0f\n", k + 1,
                ( e1 + e2 + e3 + e4 ) / 4.0 - kf );
-      fprintf( fp[ 8 ], "%lu %.0f\n", k + 1,
+      fprintf( fp[ 8 ], "%" PRIu64 " %.0f\n", k + 1,
                ( e1 + e2 + e5 + e6 ) / 4.0 - kf );
-      fprintf( fp[ 9 ], "%lu %.0f\n", k + 1,
+      fprintf( fp[ 9 ], "%" PRIu64 " %.0f\n", k + 1,
                ( e1 + e2 ) / 2.0 - kf );
-      fprintf( fp[ 10 ], "%lu %.0f\n", k + 1,
+      fprintf( fp[ 10 ], "%" PRIu64 " %.0f\n", k + 1,
                ( e3 + e4 ) / 2.0 - kf );
-      fprintf( fp[ 11 ], "%lu %.0f\n", k + 1,
+      fprintf( fp[ 11 ], "%" PRIu64 " %.0f\n", k + 1,
                ( e5 + e6 ) / 2.0 - kf );
     //}
   }
   for ( n = 0; n < 12; n++ )
     fclose( fp[ n ] );
 #if 0
-  printf( "k: %lu, e: %.1f  %.1f  %.1f,%.1f,%1.f,%.1f\n",
+  printf( "k: %" PRIu64 ", e: %.1f  %.1f  %.1f,%.1f,%1.f,%.1f\n",
            k, ( e1 + e2 + e3 + e4 ) / 4.0,
               ( e1 + e3 ) / 2.0, e1, e2, e3, e4 );
   s1.print( "1" );

@@ -2,8 +2,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
-#include <unistd.h>
-#include <sys/time.h>
 #include <raikv/util.h>
 #include <raikv/route_db.h>
 #include <raids/redis_exec.h>
@@ -273,13 +271,13 @@ RedisExec::locate_movablekeys( void ) noexcept
     case GEORADIUSBYMEMBER_CMD:
       this->first = this->last = 1; /* source key */
       this->step  = 1;
-      this->step_mask = 1 << this->first;
+      this->step_mask = (uint64_t) 1 << this->first;
       if ( this->argc > 2 &&
            this->msg.match_arg( this->argc - 2,
                                 MARG( "STORE" ),
                                 MARG( "STOREDIST" ), NULL ) != 0 ) {
-        this->last = this->argc - 1;
-        this->step_mask = 1 << this->last;
+        this->last = (uint16_t) ( this->argc - 1 );
+        this->step_mask = (uint64_t) 1 << this->last;
         this->step = this->last - this->first;
       }
       return true;
@@ -297,8 +295,8 @@ RedisExec::locate_movablekeys( void ) noexcept
       /* mask which args are keys */
       this->step_mask  = ( ( (uint64_t) 1 << i ) - 1 ) << 3;
       this->first      = 1;
-      this->step_mask |= 1 << this->first; /* the dest key */
-      this->last       = 2 + i; /* the last key = 2 + nkeys */
+      this->step_mask |= (uint64_t) 1 << this->first; /* the dest key */
+      this->last       = (uint16_t) ( 2 + i ); /* the last key = 2 + nkeys */
       this->step       = 1;     /* step through step_mask 1 bit at a time */
       if ( (size_t) ( 3 + i ) > this->argc ) /* if args above fit into argc */
         return false;
@@ -319,8 +317,8 @@ RedisExec::locate_movablekeys( void ) noexcept
             break;
           case 3: /* streams */
             if ( (size_t) ++i < this->argc ) {
-              this->first = i;
-              this->last  = i + ( this->argc - i ) / 2 - 1;
+              this->first = (uint16_t) i;
+              this->last  = (uint16_t) ( i + ( this->argc - i ) / 2 - 1 );
               this->step  = 1;
               if ( (size_t) ( this->first +
                               ( this->last - this->first + 1 ) * 2 ) == 
@@ -356,8 +354,8 @@ RedisExec::locate_movablekeys( void ) noexcept
             break;
           case 5: /* streams */
             if ( (size_t) ++i < this->argc ) {
-              this->first = i;
-              this->last  = i + ( this->argc - i ) / 2 - 1;
+              this->first = (uint16_t) i;
+              this->last  = (uint16_t) ( i + ( this->argc - i ) / 2 - 1 );
               this->step  = 1;
               if ( (size_t) ( this->first +
                               ( this->last - this->first + 1 ) * 2 ) == 
@@ -396,7 +394,7 @@ RedisExec::calc_key_count( void ) noexcept
 {
   /* how many keys are in the command */
   if ( this->step_mask != 0 )
-    return __builtin_popcountl( this->step_mask );
+    return kv_popcountl( this->step_mask );
   if ( this->last > 0 )
     return ( this->last + 1 - this->first ) / this->step;
   if ( this->last < 0 )

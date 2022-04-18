@@ -2,7 +2,14 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
+#ifndef _MSC_VER
 #include <unistd.h>
+#else
+#define STDIN_FILENO _fileno( stdin )
+#define STDOUT_FILENO _fileno( stdout )
+#endif
 #include <raids/redis_cmd.h>
 #include <raids/redis_msg.h>
 #include <raids/redis_exec.h>
@@ -283,7 +290,7 @@ main( int, char ** )
                     }
                   }
                 }
-                printf( "pending %lu, consumers %lu: [", pending_cnt,
+                printf( "pending %" PRIu64 ", consumers %" PRIu64 ": [", pending_cnt,
                         consumer_cnt );
                 for ( j = 0; j < consumer_cnt; j++ ) {
                   lv = cons_lv[ j ];
@@ -300,11 +307,11 @@ main( int, char ** )
             break;
           case 3: /* [STREAM key] */
             cnt = hk->li->stream.count();
-            printf( "len: %lu\n" , cnt );
+            printf( "len: %" PRIu64 "\n" , cnt );
             cnt = hk->li->group.count();
-            printf( "groups: %lu\n" , cnt );
+            printf( "groups: %" PRIu64 "\n" , cnt );
             cnt = hk->li->pending.count();
-            printf( "pending: %lu\n" , cnt );
+            printf( "pending: %" PRIu64 "\n" , cnt );
             /* ["length",5,
              *  "radix-tree-keys",1
              *  "radix-tree-nodes",2,
@@ -348,7 +355,7 @@ main( int, char ** )
         }
         idxsz = argcount - 2;
         asz = ListData::alloc_size( idxsz, sz );
-        printf( "alloc idx %lu data %lu sz %lu\n", idxsz, sz,
+        printf( "alloc idx %" PRIu64 " data %" PRIu64 " sz %" PRIu64 "\n", idxsz, sz,
                 sizeof( ListData ) + asz );
         tmp.alloc( sizeof( ListData ) + asz, &mem );
         p   = &((char *) mem)[ sizeof( ListData ) ];
@@ -425,7 +432,7 @@ main( int, char ** )
             i = i + 1;
         }
         if ( x == y ) {
-          printf( "null range (%lu->%lu)\n", x, y );
+          printf( "null range (%" PRIu64 "->%" PRIu64 ")\n", x, y );
         }
         break;
 
@@ -466,7 +473,7 @@ main( int, char ** )
         break;
 
       case XLEN_CMD:  /* XLEN key  */
-        printf( "%ld\n", hk->li->stream.count() );
+        printf( "%" PRId64 "\n", hk->li->stream.count() );
         break;
 
         /* XREAD [COUNT count] [BLOCK ms] STREAMS key [key ...] id [id ...] */
@@ -788,7 +795,7 @@ main( int, char ** )
           }
           if ( ld.lindex( 3, lv ) == LIST_OK ) {
             uint64_t ns = kv::current_realtime_coarse_ns();
-            printf( " idle %lu", ( ns - lv.u64() ) / 1000000 );
+            printf( " idle %" PRIu64 "", ( ns - lv.u64() ) / 1000000 );
           }
           if ( ld.lindex( 4, lv ) == LIST_OK ) {
             printf( " cnt %u", lv.u32() );

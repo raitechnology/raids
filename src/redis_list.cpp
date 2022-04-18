@@ -36,12 +36,15 @@ RedisExec::exec_blpop( EvKeyCtx &ctx ) noexcept
   /* BLPOP key [key...] timeout */
   ExecStatus status = this->do_pop( ctx, DO_BLPOP );
   switch ( status ) {
-    case EXEC_SEND_NIL:
-      if ( ! this->msg.get_arg( this->argc - 1, ctx.ival ) )
-        ctx.ival = 0;
+    case EXEC_SEND_NIL: {
+      double timeout;
+      if ( ! this->msg.get_arg( this->argc - 1, timeout ) || timeout <= 0.0 )
+        timeout = 0;
+      ctx.ival = (int64_t) ( timeout * 1000000000.0 );
       return EXEC_BLOCKED;
-    case EXEC_OK:       return EXEC_SEND_DATA;
-    default:            return status;
+    }
+    case EXEC_OK: return EXEC_SEND_DATA;
+    default:      return status;
   }
 }
 
@@ -51,12 +54,15 @@ RedisExec::exec_brpop( EvKeyCtx &ctx ) noexcept
   /* BRPOP key [key...] timeout */
   ExecStatus status = this->do_pop( ctx, DO_BRPOP );
   switch ( status ) {
-    case EXEC_SEND_NIL:
-      if ( ! this->msg.get_arg( this->argc - 1, ctx.ival ) )
-        ctx.ival = 0;
+    case EXEC_SEND_NIL: {
+      double timeout;
+      if ( ! this->msg.get_arg( this->argc - 1, timeout ) || timeout <= 0.0 )
+        timeout = 0;
+      ctx.ival = (int64_t) ( timeout * 1000000000.0 );
       return EXEC_BLOCKED;
-    case EXEC_OK:       return EXEC_SEND_DATA;
-    default:            return status;
+    }
+    case EXEC_OK: return EXEC_SEND_DATA;
+    default:      return status;
   }
 }
 
@@ -67,12 +73,15 @@ RedisExec::exec_brpoplpush( EvKeyCtx &ctx ) noexcept
   if ( ctx.argn == 1 ) {
     ExecStatus status = this->do_pop( ctx, DO_RPOPLPUSH );
     switch ( status ) {
-      case EXEC_ABORT_SEND_NIL:
-        if ( ! this->msg.get_arg( this->argc - 1, ctx.ival ) )
-          ctx.ival = 0;
+      case EXEC_ABORT_SEND_NIL: {
+        double timeout;
+        if ( ! this->msg.get_arg( this->argc - 1, timeout ) || timeout <= 0.0 )
+          timeout = 0;
+        ctx.ival = (int64_t) ( timeout * 1000000000.0 );
         return EXEC_BLOCKED;
-      case EXEC_OK:             return EXEC_OK;
-      default:                  return status;
+      }
+      case EXEC_OK: return EXEC_OK;
+      default:      return status;
     }
   }
   if ( this->key_cnt != this->key_done + 1 )

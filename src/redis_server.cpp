@@ -3,12 +3,18 @@
 #include <string.h>
 #include <stdint.h>
 #include <stdarg.h>
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
+#ifndef _MSC_VER
 #include <unistd.h>
 #include <fcntl.h>
 #include <math.h>
 #include <sys/time.h>
 #include <sys/utsname.h>
 #include <sys/resource.h>
+#else
+#include <raikv/win.h>
+#endif
 #define SPRINTF_RELA_TIME
 #include <raikv/rela_ts.h>
 #include <raikv/util.h>
@@ -22,10 +28,10 @@ using namespace rai;
 using namespace ds;
 using namespace kv;
 using namespace md;
-
+#ifndef _MSC_VER
 static void xnprintf( char *&b,  size_t &sz,  const char *format, ... )
   __attribute__((format(printf,3,4)));
-
+#endif
 static void
 xnprintf( char *&b,  size_t &sz,  const char *format, ... )
 {
@@ -33,10 +39,8 @@ xnprintf( char *&b,  size_t &sz,  const char *format, ... )
   size_t  x;
   if ( sz > 0 ) {
     va_start( args, format );
-    /* I don't trust vsnprintf return value, printf is a plugable fmt system */
-    /*x =*/ vsnprintf( b, sz, format, args );
+    x   = (size_t) vsnprintf( b, sz, format, args );
     va_end( args );
-    x   = ::strnlen( b, sz );
     b   = &b[ x ];
     sz -= x;
   }
@@ -323,7 +327,7 @@ RedisExec::exec_client_list( char *buf,  size_t buflen ) noexcept
     flags[ i++ ] = 'N'; /* no specific flags */
   flags[ i ] = '\0';
   return ::snprintf( buf, buflen,
-    "flags=%s db=%u sub=%lu psub=%lu multi=%d cmd=%s ",
+    "flags=%s db=%u sub=%" PRIu64 " psub=%" PRIu64 " multi=%d cmd=%s ",
     flags,
     this->kctx.db_num,
     this->sub_tab.sub_count,
@@ -412,7 +416,7 @@ RedisExec::exec_command( void ) noexcept
         if ( this->mstatus != DS_MSG_STATUS_OK )
           break;
       }
-      m.len = j;
+      m.len = (int32_t) j;
       break;
     }
     case 1: { /* info */
@@ -424,7 +428,7 @@ RedisExec::exec_command( void ) noexcept
                         tmp, sizeof( tmp ) );
           m.arr( j++ ).unpack_json( tmp, this->strm.tmp );
         }
-        m.len = j;
+        m.len = (int32_t) j;
       }
       break;
     }
@@ -447,7 +451,7 @@ RedisExec::exec_command( void ) noexcept
         m.arr( j++ ).set_simple_string( (char *) cmd_db[ COMMAND_CMD ].name );
         m.arr( j++ ).set_simple_string( tmp );
       }
-      m.len = j;
+      m.len = (int32_t) j;
       break;
     }
     default:
@@ -593,7 +597,7 @@ RedisExec::debug_object( void ) noexcept
   xnprintf( b, n, "hash:        %08lx:%08lx\r\n",
                   ctx->hash1, ctx->hash2 );
   this->kctx.get_pos_info( natural_pos, pos_off );
-  xnprintf( b, n, "pos:         [%lu]+%u.%lu\r\n",
+  xnprintf( b, n, "pos:         [%" PRIu64 "]+%u.%" PRIu64 "\r\n",
        this->kctx.pos, this->kctx.inc, pos_off );
 
   if ( ctx->kstatus != KEY_OK ) {
@@ -629,7 +633,7 @@ RedisExec::debug_object( void ) noexcept
 
     xnprintf( b, n, "db:          %u\r\n"
                     "val:         %u\r\n"
-                    "seqno:       %lu\r\n",
+                    "seqno:       %" PRIu64 "\r\n",
                     this->kctx.get_db(), this->kctx.get_val(), sno );
 
     if ( this->kctx.entry->test( FL_SEGMENT_VALUE ) ) {
@@ -637,14 +641,14 @@ RedisExec::debug_object( void ) noexcept
       this->kctx.entry->get_value_geom( this->kctx.hash_entry_size, geom,
                                         this->kctx.ht.hdr.seg_align_shift );
       xnprintf( b, n, "segment:     %u\r\n"
-                      "size:        %lu\r\n"
-                      "offset:      %lu\r\n",
+                      "size:        %" PRIu64 "\r\n"
+                      "offset:      %" PRIu64 "\r\n",
                       geom.segment, geom.size, geom.offset );
     }
     else if ( this->kctx.entry->test( FL_IMMEDIATE_VALUE ) ) {
       uint64_t sz = 0;
       this->kctx.get_size( sz );
-      xnprintf( b, n, "size:        %lu\r\n", sz );
+      xnprintf( b, n, "size:        %" PRIu64 "\r\n", sz );
     }
   }
   this->strm.sz += this->send_string( s, len - n );
@@ -667,39 +671,39 @@ RedisExec::debug_htstats( void ) noexcept
   this->kctx.ht.get_db_stats( tot, this->kctx.db_num );
   xnprintf( b, n, "db_num:  %u\r\n", this->kctx.db_num );
   xnprintf( b, n, "\r\n-= totals =-\r\n" );
-  xnprintf( b, n, "read:    %lu\r\n", tot.rd );
-  xnprintf( b, n, "write:   %lu\r\n", tot.wr );
-  xnprintf( b, n, "spins:   %lu\r\n", tot.spins );
-  xnprintf( b, n, "chains:  %lu\r\n", tot.chains );
-  xnprintf( b, n, "add:     %lu\r\n", tot.add );
-  xnprintf( b, n, "drop:    %lu\r\n", tot.drop );
-  xnprintf( b, n, "expire:  %lu\r\n", tot.expire );
-  xnprintf( b, n, "htevict: %lu\r\n", tot.htevict );
-  xnprintf( b, n, "afail:   %lu\r\n", tot.afail );
-  xnprintf( b, n, "hit:     %lu\r\n", tot.hit );
-  xnprintf( b, n, "miss:    %lu\r\n", tot.miss );
-  xnprintf( b, n, "cuckacq: %lu\r\n", tot.cuckacq );
-  xnprintf( b, n, "cuckfet: %lu\r\n", tot.cuckfet );
-  xnprintf( b, n, "cuckmov: %lu\r\n", tot.cuckmov );
-  xnprintf( b, n, "cuckret: %lu\r\n", tot.cuckret );
-  xnprintf( b, n, "cuckmax: %lu\r\n", tot.cuckmax );
+  xnprintf( b, n, "read:    %" PRIu64 "\r\n", tot.rd );
+  xnprintf( b, n, "write:   %" PRIu64 "\r\n", tot.wr );
+  xnprintf( b, n, "spins:   %" PRIu64 "\r\n", tot.spins );
+  xnprintf( b, n, "chains:  %" PRIu64 "\r\n", tot.chains );
+  xnprintf( b, n, "add:     %" PRIu64 "\r\n", tot.add );
+  xnprintf( b, n, "drop:    %" PRIu64 "\r\n", tot.drop );
+  xnprintf( b, n, "expire:  %" PRIu64 "\r\n", tot.expire );
+  xnprintf( b, n, "htevict: %" PRIu64 "\r\n", tot.htevict );
+  xnprintf( b, n, "afail:   %" PRIu64 "\r\n", tot.afail );
+  xnprintf( b, n, "hit:     %" PRIu64 "\r\n", tot.hit );
+  xnprintf( b, n, "miss:    %" PRIu64 "\r\n", tot.miss );
+  xnprintf( b, n, "cuckacq: %" PRIu64 "\r\n", tot.cuckacq );
+  xnprintf( b, n, "cuckfet: %" PRIu64 "\r\n", tot.cuckfet );
+  xnprintf( b, n, "cuckmov: %" PRIu64 "\r\n", tot.cuckmov );
+  xnprintf( b, n, "cuckret: %" PRIu64 "\r\n", tot.cuckret );
+  xnprintf( b, n, "cuckmax: %" PRIu64 "\r\n", tot.cuckmax );
   xnprintf( b, n, "\r\n-= self =-\r\n" );
-  xnprintf( b, n, "read:    %lu\r\n", sta.rd );
-  xnprintf( b, n, "write:   %lu\r\n", sta.wr );
-  xnprintf( b, n, "spins:   %lu\r\n", sta.spins );
-  xnprintf( b, n, "chains:  %lu\r\n", sta.chains );
-  xnprintf( b, n, "add:     %lu\r\n", sta.add );
-  xnprintf( b, n, "drop:    %lu\r\n", sta.drop );
-  xnprintf( b, n, "expire:  %lu\r\n", sta.expire );
-  xnprintf( b, n, "htevict: %lu\r\n", sta.htevict );
-  xnprintf( b, n, "afail:   %lu\r\n", sta.afail );
-  xnprintf( b, n, "hit:     %lu\r\n", sta.hit );
-  xnprintf( b, n, "miss:    %lu\r\n", sta.miss );
-  xnprintf( b, n, "cuckacq: %lu\r\n", sta.cuckacq );
-  xnprintf( b, n, "cuckfet: %lu\r\n", sta.cuckfet );
-  xnprintf( b, n, "cuckmov: %lu\r\n", sta.cuckmov );
-  xnprintf( b, n, "cuckret: %lu\r\n", sta.cuckret );
-  xnprintf( b, n, "cuckmax: %lu\r\n", sta.cuckmax );
+  xnprintf( b, n, "read:    %" PRIu64 "\r\n", sta.rd );
+  xnprintf( b, n, "write:   %" PRIu64 "\r\n", sta.wr );
+  xnprintf( b, n, "spins:   %" PRIu64 "\r\n", sta.spins );
+  xnprintf( b, n, "chains:  %" PRIu64 "\r\n", sta.chains );
+  xnprintf( b, n, "add:     %" PRIu64 "\r\n", sta.add );
+  xnprintf( b, n, "drop:    %" PRIu64 "\r\n", sta.drop );
+  xnprintf( b, n, "expire:  %" PRIu64 "\r\n", sta.expire );
+  xnprintf( b, n, "htevict: %" PRIu64 "\r\n", sta.htevict );
+  xnprintf( b, n, "afail:   %" PRIu64 "\r\n", sta.afail );
+  xnprintf( b, n, "hit:     %" PRIu64 "\r\n", sta.hit );
+  xnprintf( b, n, "miss:    %" PRIu64 "\r\n", sta.miss );
+  xnprintf( b, n, "cuckacq: %" PRIu64 "\r\n", sta.cuckacq );
+  xnprintf( b, n, "cuckfet: %" PRIu64 "\r\n", sta.cuckfet );
+  xnprintf( b, n, "cuckmov: %" PRIu64 "\r\n", sta.cuckmov );
+  xnprintf( b, n, "cuckret: %" PRIu64 "\r\n", sta.cuckret );
+  xnprintf( b, n, "cuckmax: %" PRIu64 "\r\n", sta.cuckmax );
 
   this->strm.sz += this->send_string( s, len - n );
 
@@ -823,7 +827,7 @@ RedisExec::flushdb( uint8_t db_num ) noexcept
     }
   }
 }
-
+#ifndef _MSC_VER
 static int
 get_proc_status_size( const char *s,  size_t *ival,  ... )
 {
@@ -876,6 +880,7 @@ get_proc_status_size( const char *s,  size_t *ival,  ... )
   va_end( args );
   return cnt;
 }
+#endif
 
 static char *
 mstring( double f,  char *buf,  int64_t k )
@@ -928,15 +933,15 @@ RedisExec::exec_info( void ) noexcept
   }
 
   if ( ( info & INFO_SERVER ) != 0 ) {
-    static utsname name;
-    if ( name.sysname[ 0 ] == '\0' )
-      uname( &name );
-
     xnprintf( b, sz, "raids_version:        %s\r\n", kv_stringify( DS_VER ) );
     xnprintf( b, sz, "raids_git:            %s\r\n", kv_stringify( GIT_HEAD ) );
+#ifndef _MSC_VER
     xnprintf( b, sz, "gcc_version:          %d.%d.%d\r\n",
       __GNUC__, __GNUC_MINOR__, __GNUC_PATCHLEVEL__ );
     xnprintf( b, sz, "process_id:           %d\r\n", ::getpid() );
+    static utsname name;
+    if ( name.sysname[ 0 ] == '\0' )
+      uname( &name );
     xnprintf( b, sz, "os:                   %s %s %s\r\n",
       name.sysname, name.release, name.machine );
 
@@ -944,6 +949,9 @@ RedisExec::exec_info( void ) noexcept
     ssize_t lsz = ::readlink( "/proc/self/exe", path, sizeof( path ) );
     if ( lsz > 0 )
       xnprintf( b, sz, "executable:           %.*s\r\n", (int) lsz, path );
+#else
+    xnprintf( b, sz, "process_id:           %d\r\n", GetCurrentProcessId() );
+#endif
 
     /* the ports open */
     ka.set_type( MARG( "listen" ) );
@@ -955,9 +963,9 @@ RedisExec::exec_info( void ) noexcept
 
   if ( ( info & INFO_CLIENTS ) != 0 ) {
     ka.set_type( MARG( "redis" ) );
-    xnprintf( b, sz, "redis_clients:        %lu\r\n", iter.length() );
+    xnprintf( b, sz, "redis_clients:        %" PRIu64 "\r\n", iter.length() );
     ka.set_type( MARG( "pubsub" ) );
-    xnprintf( b, sz, "pubsub_clients:       %lu\r\n", iter.length() );
+    xnprintf( b, sz, "pubsub_clients:       %" PRIu64 "\r\n", iter.length() );
   }
 
   if ( ( info & INFO_SERVER ) != 0 ) {
@@ -997,7 +1005,7 @@ RedisExec::exec_info( void ) noexcept
       xnprintf( b, sz, "ht_value_load:        %u\r\n",
                 (uint32_t) ( map.hdr.value_load * 100.0 + 0.5 ) );
       xnprintf( b, sz, "ht_entries:           %s\r\n",
-                mstring( tot.add - tot.drop, tmp, 1000 ) );
+                mstring( (double) ( tot.add - tot.drop ), tmp, 1000 ) );
       xnprintf( b, sz, "ht_gc:                %s\r\n",
                 mstring( (double) chg.move_msgs, tmp, 1000 ) );
       xnprintf( b, sz, "ht_drop:              %s\r\n",
@@ -1010,12 +1018,13 @@ RedisExec::exec_info( void ) noexcept
       delete hts;
     }
   }
+#ifndef _MSC_VER
   if ( ( info & INFO_CPU ) != 0 ) {
     struct rusage usage;
     if ( ::getrusage( RUSAGE_SELF, &usage ) == 0 ) {
-      xnprintf( b, sz, "used_cpu_sys:         %lu.%06lu\r\n", 
+      xnprintf( b, sz, "used_cpu_sys:         %" PRIu64 ".%06" PRIu64 "\r\n", 
         usage.ru_stime.tv_sec, usage.ru_stime.tv_usec );
-      xnprintf( b, sz, "used_cpu_user:        %lu.%06lu\r\n", 
+      xnprintf( b, sz, "used_cpu_user:        %" PRIu64 ".%06" PRIu64 "\r\n", 
         usage.ru_utime.tv_sec, usage.ru_utime.tv_usec );
 
       uint64_t sec  = usage.ru_stime.tv_sec + usage.ru_utime.tv_sec,
@@ -1024,11 +1033,11 @@ RedisExec::exec_info( void ) noexcept
         sec++;
         usec -= 1000000;
       }
-      xnprintf( b, sz, "used_cpu_total:       %lu.%06lu\r\n", sec, usec );
-      xnprintf( b, sz, "minor_page_fault:     %lu\r\n", usage.ru_minflt );
-      xnprintf( b, sz, "major_page_fault:     %lu\r\n", usage.ru_majflt );
-      xnprintf( b, sz, "voluntary_cswitch:    %lu\r\n", usage.ru_nvcsw );
-      xnprintf( b, sz, "involuntary_cswitch:  %lu\r\n", usage.ru_nivcsw );
+      xnprintf( b, sz, "used_cpu_total:       %" PRIu64 ".%06" PRIu64 "\r\n", sec, usec );
+      xnprintf( b, sz, "minor_page_fault:     %" PRIu64 "\r\n", usage.ru_minflt );
+      xnprintf( b, sz, "major_page_fault:     %" PRIu64 "\r\n", usage.ru_majflt );
+      xnprintf( b, sz, "voluntary_cswitch:    %" PRIu64 "\r\n", usage.ru_nvcsw );
+      xnprintf( b, sz, "involuntary_cswitch:  %" PRIu64 "\r\n", usage.ru_nivcsw );
     }
   }
   if ( ( info & INFO_MEMORY ) != 0 ) {
@@ -1055,6 +1064,7 @@ RedisExec::exec_info( void ) noexcept
                 mstring( vm_pte, tmp, 1024 ) );
     }
   }
+#endif
   if ( ( info & INFO_STATS ) != 0 ) {
     ka.set_type( NULL, 0 );
     this->peer.retired_stats( stats );
@@ -1062,15 +1072,15 @@ RedisExec::exec_info( void ) noexcept
       p->client_stats( stats );
 
     xnprintf( b, sz, "net_bytes_recv:       %s\r\n",
-              mstring( stats.bytes_recv, tmp, 1024 ) );
+              mstring( (double) stats.bytes_recv, tmp, 1024 ) );
     xnprintf( b, sz, "net_bytes_sent:       %s\r\n",
-              mstring( stats.bytes_sent, tmp, 1024 ) );
+              mstring( (double) stats.bytes_sent, tmp, 1024 ) );
     xnprintf( b, sz, "net_msgs_recv:        %s\r\n",
-              mstring( stats.msgs_recv, tmp, 1024 ) );
+              mstring( (double) stats.msgs_recv, tmp, 1024 ) );
     xnprintf( b, sz, "net_msgs_sent:        %s\r\n",
-              mstring( stats.msgs_sent, tmp, 1024 ) );
+              mstring( (double) stats.msgs_sent, tmp, 1024 ) );
     xnprintf( b, sz, "net_accept_count:     %s\r\n",
-              mstring( stats.accept_cnt, tmp, 1024 ) );
+              mstring( (double) stats.accept_cnt, tmp, 1024 ) );
   }
   size_t n   = len - 32 - sz,
          dig = uint64_digits( n ),

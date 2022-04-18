@@ -209,7 +209,7 @@ RedisExec::exec_exec( void ) noexcept
     this->msg.ref( *mm->msg );
     this->setup_cmd( cmd_db[ mm->cmd ] );
     this->cmd      = mm->cmd;
-    this->key_cnt  = mm->key_count;
+    this->key_cnt  = (uint32_t) mm->key_count;
     this->key_done = 0;
     this->keys     = mm->keys;
     this->key      = NULL;
@@ -289,7 +289,7 @@ RedisExec::multi_queued( EvSocket *svc ) noexcept
       if ( p == NULL )
         return ERR_ALLOC_FAIL;
       EvKeyCtx * ctx = new ( p ) EvKeyCtx( this->kctx.ht, svc, key, keylen, i,
-                                           j, this->hs );
+                                           (uint32_t) j, this->hs );
       ctx->status = EXEC_CONTINUE;
       new ( &karray[ j ] ) KeyCtx( this->kctx );
       mm->keys[ j ] = ctx;

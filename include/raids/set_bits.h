@@ -1,6 +1,8 @@
 #ifndef __rai_raids__set_bits_h__
 #define __rai_raids__set_bits_h__
 
+#include <raikv/util.h>
+
 namespace rai {
 namespace ds {
 
@@ -26,7 +28,7 @@ struct SetBits {
   bool alloc( size_t sz ) {
     void * p;
     if ( ( sz & ( sz - 1 ) ) != 0 ) /* power of 2 alloc */
-      sz = (size_t) 1 << ( 64 - __builtin_clzl( sz ) );
+      sz = (size_t) 1 << ( 64 - kv_clzl( sz ) );
     if ( this->bits == this->work ) { /* copy from work[] */
       if ( (p = ::malloc( sizeof( this->bits[ 0 ] ) * sz )) != NULL )
         ::memcpy( p, this->work, sizeof( this->work ) );
@@ -88,7 +90,7 @@ struct SetBits {
       return false;
     for (;;) {
       uint64_t w = this->bits[ k ] >> ( j & 63 );
-      int x = __builtin_ffsl( w );
+      int x = kv_ffsl( w );
       if ( x == 0 ) {
         j = ++k << 6;
         if ( k > this->last )
@@ -121,7 +123,7 @@ struct SetBits {
         j = k-- << 6;
       }
       else {
-        int x = __builtin_clzl( w );
+        int x = kv_clzl( w );
         j -= x + 1;
         return true;
       }

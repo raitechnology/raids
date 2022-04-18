@@ -2,9 +2,6 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdint.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <errno.h>
 #include <raids/redis_api.h>
 #include <raids/ev_client.h>
 #include <raids/redis_exec.h>
@@ -350,7 +347,7 @@ ds_msg_to_json( ds_t *h,  const ds_msg_t *msg,  ds_msg_t *json )
   m.to_almost_json( b );
   b[ sz ]      = '\0';
   json->type   = DS_SIMPLE_STRING;
-  json->len    = sz;
+  json->len    = (int32_t) sz;
   json->strval = b;
 
   return 0;

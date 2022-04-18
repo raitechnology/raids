@@ -2,9 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
-#include <ctype.h>
-#include <unistd.h>
-#include <fcntl.h>
+#include <raikv/util.h>
 #include <raids/term.h>
 #include <raids/redis_cmd.h>
 #include <linecook/linecook.h>
@@ -14,20 +12,20 @@ using namespace rai;
 using namespace ds;
 
 static int
-do_read( LineCook *state,  void *buf,  size_t buflen )
+do_read( LineCook *,  void *buf,  size_t buflen,  void *me )
 {
-  return ((Term *) state->closure)->tty_read( buf, buflen );
+  return ((Term *) me)->tty_read( buf, buflen );
 }
 
 static int
-do_write( LineCook *state,  const void *buf,  size_t buflen )
+do_write( LineCook *,  const void *buf,  size_t buflen,  void *me )
 {
-  return ((Term *) state->closure)->tty_write( buf, buflen );
+  return ((Term *) me)->tty_write( buf, buflen );
 }
 
 static int
 do_complete( LineCook *state,  const char * /*buf*/,  size_t off,
-             size_t /*len*/ )
+             size_t /*len*/,  void * )
 {
   if ( off == 0 ) {
     for ( size_t i = 1; i < REDIS_CMD_DB_SIZE; i++ )
@@ -72,12 +70,13 @@ Term::tty_init( void ) noexcept
   if ( this->history == NULL )
     this->history = ".console_history";
 
-  this->lc              = lc_create_state( 120, 50 );
-  this->lc->closure     = this;
-  this->lc->read_cb     = do_read;
-  this->lc->write_cb    = do_write;
-  this->lc->complete_cb = do_complete;
-  this->tty             = lc_tty_create( this->lc );
+  this->lc               = lc_create_state( 120, 50 );
+  this->lc->read_cb      = do_read;
+  this->lc->read_arg     = this;
+  this->lc->write_cb     = do_write;
+  this->lc->write_arg    = this;
+  this->lc->complete_cb  = do_complete;
+  this->tty              = lc_tty_create( this->lc );
 
   /*lc_tty_set_locale(); */
   lc_set_completion_break( this->tty->lc, this->brk, strlen( this->brk ) );
@@ -138,7 +137,7 @@ Term::show_help( void ) noexcept
     const char * name     = cmd_db[ i ].name;
     size_t       name_len = cmd_db[ i ].cmdlen;
     if ( (size_t) arg_len[ 0 ] == name_len &&
-         ::strncasecmp( name, &buf[ arg_off[ 0 ] ], name_len ) == 0 ) {
+         kv_strncasecmp( name, &buf[ arg_off[ 0 ] ], name_len ) == 0 ) {
       const RedisCmdExtra * ex = cmd_db[ i ].get_extra( XTRA_USAGE );
       const char   usage[]   = "\033[35m" "Usage:" ANSI_NORMAL,
                    example[] = "\033[35m" "Example:" ANSI_NORMAL,
@@ -242,7 +241,7 @@ Term::tty_read( void *buf,  size_t buflen ) noexcept
       len = buflen;
     ::memcpy( buf, &((const char *) this->in_buf)[ this->in_off ], len );
     this->in_off += len;
-    return len;
+    return (int) len;
   }
   return 0;
 }
@@ -259,5 +258,5 @@ Term::tty_write( const void *buf, size_t buflen ) noexcept
   }
   ::memcpy( &this->out_buf[ this->out_len ], buf, buflen );
   this->out_len += buflen;
-  return buflen;
+  return (int) buflen;
 }

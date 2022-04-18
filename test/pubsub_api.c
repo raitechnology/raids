@@ -1,18 +1,22 @@
+#ifndef _MSC_VER
 #define _GNU_SOURCE /* for sched_setaffinity */
+#endif
 #include <stdio.h>
 #include <string.h>
 #include <stdint.h>
 #include <stdlib.h>
-#include <ctype.h>
-#include <signal.h>
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
+#ifndef _MSC_VER
 #include <sched.h>
+#endif
 #include <raids/redis_api.h>
 #include <raids/int_str.h>
 #include <raikv/shm_ht.h>
 #include <raikv/util.h>
 
-static int was_signaled, err;
-static void sighndlr( int sig ) { was_signaled = sig; }
+static kv_signal_handler_t hndlr;
+static int err;
 
 static void
 print_time( const char *cmd,  double secs,  size_t nrequests,  size_t size )
@@ -62,10 +66,10 @@ do_subscribe( ds_t *h,  const char *subject,  size_t nrequests )
 
   cl.h = h;
   cl.i = 0;
-  mk_str( &subscr, subject, strlen( subject ) );
+  mk_str( &subscr, subject, (int32_t) strlen( subject ) );
   ds_subscribe_with_cb( h, &subscr, subscribe_cb, &cl );
   ds_release_mem( h );
-  while ( ! was_signaled ) {
+  while ( ! hndlr.signaled ) {
     if ( ds_dispatch( h, 1 ) )
       if ( nrequests > 0 && cl.i >= nrequests )
         break;
@@ -80,10 +84,10 @@ do_psubscribe( ds_t *h,  const char *pattern,  size_t nrequests )
 
   cl.h = h;
   cl.i = 0;
-  mk_str( &subscr, pattern, strlen( pattern ) );
+  mk_str( &subscr, pattern, (int32_t) strlen( pattern ) );
   ds_psubscribe_with_cb( h, &subscr, subscribe_cb, &cl );
   ds_release_mem( h );
-  while ( ! was_signaled ) {
+  while ( ! hndlr.signaled ) {
     if ( ds_dispatch( h, 1 ) )
       if ( nrequests > 0 && cl.i >= nrequests )
         break;
@@ -99,10 +103,10 @@ do_publish( ds_t *h,  const char *subject,  const char *data,
   double   t1, t2;
 
   t1 = kv_current_monotonic_time_s();
-  mk_str( &publish, subject, strlen( subject ) );
-  mk_str( &msg, data, strlen( data ) );
+  mk_str( &publish, subject, (int32_t) strlen( subject ) );
+  mk_str( &msg, data, (int32_t) strlen( data ) );
 
-  for ( i = 0; ! was_signaled; ) {
+  for ( i = 0; ! hndlr.signaled ; ) {
     ds_dispatch( h, 1 );
     t2 = kv_current_monotonic_time_s();
     if ( t2 - t1 >= 1.0 ) {
@@ -171,19 +175,19 @@ do_latency( ds_t *h,  const char *ping,  const char *pong,  int reflect,
   cl.reflect  = reflect;
   cl.trigger  = 1;
 
-  mk_str( &subscr, sub, strlen( sub ) );
+  mk_str( &subscr, sub, (int32_t) strlen( sub ) );
   ds_subscribe_with_cb( h, &subscr, latency_cb, &cl ); /* subscribe endpt */
   ds_release_mem( h );
-  mk_str( &publish, pub, strlen( pub ) ); /* "ping" or "pong" */
+  mk_str( &publish, pub, (int32_t) strlen( pub ) ); /* "ping" or "pong" */
   mk_str( &time, &cl.ns, 8 );             /* send ns stamp */
   mk_str( &reply, &cl.reply_ns, 8 );      /* reply with the same ns as sent */
 
   if ( ! reflect ) {
-    while ( ! was_signaled ) {
+    while ( ! hndlr.signaled ) {
       /* once a second, print the msg rate and latency */
       if ( cl.ns - start >= (uint64_t) 1000000000 ) {
         if ( cl.sum != 0 ) {
-          printf( "roundtrip: %lu msgs, avg %lu ns\n",
+          printf( "roundtrip: %" PRIu64 " msgs, avg %" PRIu64 " ns\n",
                   cl.recv - j, cl.sum / ( cl.recv - j ) );
           j = cl.recv;
         }
@@ -194,13 +198,13 @@ do_latency( ds_t *h,  const char *ping,  const char *pong,  int reflect,
         cl.sum = 0;
       }
       /* if reply was recv, trigger will be 1 */
-      if ( ! was_signaled && cl.trigger == 1 ) {
+      if ( ! hndlr.signaled && cl.trigger == 1 ) {
         cl.trigger = 0;
         ds_publish( h, NULL, &publish, &time ); /* send pings, wait for pongs */
         ds_release_mem( h );
         cl.sent++;
       }
-      while ( ! was_signaled && cl.trigger == 0 ) { /* wait for reply */
+      while ( ! hndlr.signaled && cl.trigger == 0 ) { /* wait for reply */
         if ( ! ds_dispatch( h, 1 ) ) /* returns 0 when nothing is happening */
           break;
       }
@@ -210,11 +214,11 @@ do_latency( ds_t *h,  const char *ping,  const char *pong,  int reflect,
     }
   }
   else {
-    while ( ! was_signaled ) {
+    while ( ! hndlr.signaled ) {
       /* once a second, print the msg rate and latency */
       if ( cl.ns - start >= (uint64_t) 1000000000 ) {
         if ( cl.sum != 0 ) {
-          printf( "oneway: %lu msgs, avg %lu ns\n",
+          printf( "oneway: %" PRIu64 " msgs, avg %" PRIu64 " ns\n",
                   cl.recv - j, cl.sum / ( cl.recv - j ) );
           j = cl.recv;
         }
@@ -222,7 +226,7 @@ do_latency( ds_t *h,  const char *ping,  const char *pong,  int reflect,
         cl.sum = 0;
       }
       /* dispatch events until none left */
-      while ( ! was_signaled && ds_dispatch( h, 1 ) )
+      while ( ! hndlr.signaled && ds_dispatch( h, 1 ) )
         ;
       if ( nrequests > 0 && cl.recv >= nrequests )
         break;
@@ -278,7 +282,7 @@ do_throughput( ds_t *h,  const char *subject,  int sub,  size_t nrequests,
 
   t1 = kv_current_monotonic_time_s();
   t2 = t1;
-  mk_str( &pub, subject, strlen( subject ) );
+  mk_str( &pub, subject, (int32_t) strlen( subject ) );
   if ( sub ) {
     struct throughput_closure cl;
     size_t last = 0;
@@ -287,7 +291,7 @@ do_throughput( ds_t *h,  const char *subject,  int sub,  size_t nrequests,
     cl.total = 0;
     ds_subscribe_with_cb( h, &pub, throughput_cb, &cl );
     ds_release_mem( h );
-    while ( ! was_signaled ) {
+    while ( ! hndlr.signaled ) {
       ds_dispatch( h, 1 );
       if ( cl.i >= j + 100000 ) {
         t2 = kv_current_monotonic_time_s();
@@ -305,7 +309,7 @@ do_throughput( ds_t *h,  const char *subject,  int sub,  size_t nrequests,
       t2 = kv_current_monotonic_time_s();
       print_time( "subscribe", t2 - t1, cl.i - j, cl.total - last );
     }
-    printf( "total = %lu, last = %u\n", cl.i, cl.last );
+    printf( "total = %" PRIu64 ", last = %u\n", cl.i, cl.last );
   }
   else if ( randsize == 0 ) {
     ds_msg_t msg;
@@ -313,7 +317,7 @@ do_throughput( ds_t *h,  const char *subject,  int sub,  size_t nrequests,
     uint32_t ctr = 1;
 
     mk_str( &msg, &ctr, 4 );
-    for ( i = 0; ! was_signaled; ) {
+    for ( i = 0; ! hndlr.signaled ; ) {
       /* publish a message */
       ds_publish( h, NULL, &pub, &msg );
       ds_release_mem( h );
@@ -334,13 +338,13 @@ do_throughput( ds_t *h,  const char *subject,  int sub,  size_t nrequests,
       if ( i > 0 && i == nrequests )
         break;
     }
-    while ( ! was_signaled && ds_dispatch( h, 0 ) )
+    while ( ! hndlr.signaled && ds_dispatch( h, 0 ) )
       ;
     if ( i > j ) {
       t2 = kv_current_monotonic_time_s();
       print_time( "publish", t2 - t1, i - j, ( i - j ) * 4 );
     }
-    printf( "total = %lu, ctr = %u\n", i, ctr );
+    printf( "total = %" PRIu64 ", ctr = %u\n", i, ctr );
   }
   else {
     ds_msg_t  msg;
@@ -352,9 +356,9 @@ do_throughput( ds_t *h,  const char *subject,  int sub,  size_t nrequests,
     ctr      = (uint32_t *) randbuf;
     ctr[ 0 ] = 1;
     for ( i = 1; i < randsize / 4 + 1; i++ )
-      ctr[ i ] = i | 0xffdd0000U;
-    mk_str( &msg, randbuf, randsize );
-    for ( i = 0; ! was_signaled; ) {
+      ctr[ i ] = (uint32_t) ( i | 0xffdd0000U );
+    mk_str( &msg, randbuf, (int32_t) randsize );
+    for ( i = 0; ! hndlr.signaled ; ) {
       /* publish a message */
       msg.len = rand() % randsize + 4;
       ctr[ 1 ] = msg.len;
@@ -379,13 +383,13 @@ do_throughput( ds_t *h,  const char *subject,  int sub,  size_t nrequests,
       if ( i > 0 && i == nrequests )
         break;
     }
-    while ( ! was_signaled && ds_dispatch( h, 0 ) )
+    while ( ! hndlr.signaled && ds_dispatch( h, 0 ) )
       ;
     if ( i > j ) {
       t2 = kv_current_monotonic_time_s();
       print_time( "publish", t2 - t1, i - j, total - last );
     }
-    printf( "total = %lu, avg size %lu, ctr = %u\n", i, total / i, ctr[ 0 ] );
+    printf( "total = %" PRIu64 ", avg size %" PRIu64 ", ctr = %u\n", i, total / i, ctr[ 0 ] );
   }
 }
 
@@ -406,6 +410,7 @@ run_ping_busy_loop( ds_t *h,  double total )
   }
 }
 
+#ifndef _MSC_VER
 static int
 set_affinity( int cpu )
 {
@@ -418,10 +423,12 @@ set_affinity( int cpu )
   }
   return -1;
 }
+#endif
 
 static void
 warm_up_cpu( ds_t *h,  const char *affinity )
 {
+#ifndef _MSC_VER
   int cpu = -1;
   /* warm up */
   if ( affinity != NULL ) {
@@ -437,6 +444,9 @@ warm_up_cpu( ds_t *h,  const char *affinity )
   }
   if ( cpu >= 0 )
     printf( "cpu affinity %d\n", cpu );
+#else
+  run_ping_busy_loop( h, 0.1 /* 100ms */ );
+#endif
 }
 
 static const char *
@@ -510,10 +520,7 @@ main( int argc,  char *argv[] )
   printf( "ctx %d (0x%x)\n", status, status );
   warm_up_cpu( h, af );
 
-  signal( SIGHUP, sighndlr );
-  signal( SIGINT, sighndlr );
-  signal( SIGTERM, sighndlr );
-
+  kv_sighndl_install( &hndlr );
   if ( su != NULL || pa != NULL ) {
     if ( pa != NULL )
       do_psubscribe( h, pa, nrequests );
@@ -527,8 +534,8 @@ main( int argc,  char *argv[] )
   else
     do_throughput( h, "ping", re != NULL, nrequests, randsize );
 
-  if ( was_signaled )
-    printf( "Caught signal %d\n", was_signaled );
+  if ( hndlr.signaled )
+    printf( "Caught signal %d\n", hndlr.sig );
   ds_close( h );
   return 0;
 }

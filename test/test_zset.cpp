@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
 #include <raids/redis_cmd.h>
 #include <raids/redis_msg.h>
 #include <raids/redis_exec.h>
@@ -30,7 +32,7 @@ resize_zset( ZSetData *curr,  size_t add_len,  bool is_copy = false )
     count    += count / 2 + 2;
   }
   size_t asize = ZSetData::alloc_size( count, data_len );
-  printf( "asize %ld, count %ld, data_len %ld\n", asize, count, data_len );
+  printf( "asize %" PRId64 ", count %" PRId64 ", data_len %" PRId64 "\n", asize, count, data_len );
   void *m = malloc( sizeof( ZSetData ) + asize );
   void *p = &((char *) m)[ sizeof( ZSetData ) ];
   ZSetData *newbe = new ( m ) ZSetData( p, asize );
@@ -257,13 +259,13 @@ main( int, char ** )
           i += 2;
           goto do_add;
         }
-        printf( "%s %ld\n",
+        printf( "%s %" PRId64 "\n",
                 ( fl & ZADD_RET_CHANGED ) != 0 ? "Updated" : "Added", count );
 
         break;
       case ZCARD_CMD:           /* ZCARD key */
         count = sk->zset->hcount();
-        printf( "%ld\n", count );
+        printf( "%" PRId64 "\n", count );
         break;
       case ZPOPMIN_CMD:
         ival = 0;
@@ -313,7 +315,7 @@ main( int, char ** )
         for (;;) {
           zstat = sk->zset->zindex( i, zv );
           if ( zstat == ZSET_OK ) {
-            printf( "%ld. off(%ld) %sscore(", i, sk->zset->offset( i ),
+            printf( "%" PRId64 ". off(%" PRId64 ") %sscore(", i, sk->zset->offset( i ),
                     withscores ? "*" : "" );
             zv.score.to_string( fpbuf );
             printf( "%s", fpbuf );
@@ -327,8 +329,8 @@ main( int, char ** )
           i += ( isfwd( cmd ) ? 1 : -1 );
         }
         withscores = false;
-        printf( "count %lu of %lu\n", count, sk->zset->max_count() - 1 );
-        printf( "bytes %lu of %lu\n", (size_t) sk->zset->data_len(),
+        printf( "count %" PRIu64 " of %" PRIu64 "\n", count, sk->zset->max_count() - 1 );
+        printf( "bytes %" PRIu64 " of %" PRIu64 "\n", (size_t) sk->zset->data_len(),
                 sk->zset->data_size() );
         printf( "[" ); sk->zset->print_hashes(); printf( "]\n" );
 
@@ -347,14 +349,14 @@ main( int, char ** )
             pos.init( key, keylen );
             zstat = sk->zset->zexists( key, keylen, pos, r );
             if ( zstat == ZSET_OK )
-              printf( "%ld. idx(%ld) h(%u) %.*s\n", i, pos.i, (uint8_t) pos.h,
+              printf( "%" PRId64 ". idx(%" PRId64 ") h(%u) %.*s\n", i, pos.i, (uint8_t) pos.h,
                       (int) keylen, key );
             else
-              printf( "%ld. idx(****) h(%u) %.*s\n", i, (uint8_t) pos.h,
+              printf( "%" PRId64 ". idx(****) h(%u) %.*s\n", i, (uint8_t) pos.h,
                       (int) keylen, key );
           }
           else {
-            printf( "%ld. status=%d\n", i, (int) zstat );
+            printf( "%" PRId64 ". status=%d\n", i, (int) zstat );
           }
           if ( i == j )
             break;
@@ -390,13 +392,13 @@ main( int, char ** )
                ! msg.get_arg( 6, jval ) )
             goto bad_args;
           ::snprintf( thelimit, sizeof( thelimit ),
-                      " limit off=%ld count=%ld", ival, jval );
+                      " limit off=%" PRId64 " count=%" PRId64 "", ival, jval );
         }
         sk->zset->zbsearch_all( lexlo, lexlolen, false, i );
         ival = i - 1;
         sk->zset->zbsearch_all( lexhi, lexhilen, true, i );
         jval = i - 1; /* if inclusive */
-        printf( "posit %ld -> %ld%s\n", ival+1, jval+1, thelimit );
+        printf( "posit %" PRId64 " -> %" PRId64 "%s\n", ival+1, jval+1, thelimit );
         limit = false;
         thelimit[ 0 ] = '\0';
         if ( cmd == ZRANGEBYLEX_CMD || cmd == ZREVRANGEBYLEX_CMD ) {
@@ -421,9 +423,9 @@ main( int, char ** )
         ival = i - 1;
         sk->zset->zbsearch( r2, i, true, r3 );
         jval = i - 1; /* if inclusive */
-        printf( " posit %ld -> %ld\n", ival+1, jval+1 );
+        printf( " posit %" PRId64 " -> %" PRId64 "\n", ival+1, jval+1 );
         if ( cmd == ZCOUNT_CMD ) {
-          printf( "%ld\n", jval - ival );
+          printf( "%" PRId64 "\n", jval - ival );
         }
         else if ( cmd == ZRANGEBYSCORE_CMD || cmd == ZREVRANGEBYSCORE_CMD ) {
           count = sk->zset->count();
@@ -440,7 +442,7 @@ main( int, char ** )
         pos.init( arg, arglen );
         zstat = sk->zset->zexists( arg, arglen, pos, r );
         if ( zstat == ZSET_OK )
-          printf( "%ld\n",
+          printf( "%" PRId64 "\n",
                   ( cmd == ZRANK_CMD ) ? pos.i - 1 : count - ( pos.i + 1 ) );
         else
           printf( "nil\n" );
@@ -469,7 +471,7 @@ main( int, char ** )
           if ( i-- == j )
             break;
         }
-        printf( "rem %ld\n", count );
+        printf( "rem %" PRId64 "\n", count );
         break;
       case ZSCORE_CMD:          /* ZSCORE key mem */
         if ( ! msg.get_arg( 2, arg, arglen ) )
@@ -477,7 +479,7 @@ main( int, char ** )
         pos.init( arg, arglen );
         zstat = sk->zset->zget( arg, arglen, zv, pos );
         if ( zstat == ZSET_OK ) {
-          printf( "%ld. off(%ld) score(", pos.i, sk->zset->offset( pos.i ) );
+          printf( "%" PRId64 ". off(%" PRId64 ") score(", pos.i, sk->zset->offset( pos.i ) );
           zv.score.to_string( fpbuf ); printf( "%s", fpbuf );
           printf( ") %.*s", (int) zv.sz, (const char *) zv.data );
           if ( zv.sz2 > 0 )

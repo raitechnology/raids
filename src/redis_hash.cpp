@@ -528,7 +528,7 @@ RedisExec::do_hwrite( EvKeyCtx &ctx,  int flags ) noexcept
           ibuf[ sz ] = '\0';
           fp += Decimal128::parse( ibuf );
         }
-        fvallen = fp.to_string( ibuf );
+        fvallen = (int) fp.to_string( ibuf );
         sz = 32 + fvallen * 2;
         str = this->strm.alloc( sz );
         str[ 0 ] = '$';

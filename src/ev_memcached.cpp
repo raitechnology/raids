@@ -2,12 +2,13 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdint.h>
+#ifndef _MSC_VER
 #include <unistd.h>
-#include <fcntl.h>
-#include <errno.h>
 #include <sys/socket.h>
-#include <netinet/tcp.h>
-#include <netdb.h>
+#else
+#include <raikv/win.h>
+#endif
+#include <raikv/util.h>
 #include <raids/ev_memcached.h>
 
 using namespace rai;
@@ -148,14 +149,14 @@ EvMemcached::process_loop( MemcachedExec &mex,  EvPrefetchQueue *q,
     mstatus = mex.unpack( &this->recv[ this->off ], buflen );
     if ( mstatus != MEMCACHED_OK ) {
       if ( mstatus != MEMCACHED_MSG_PARTIAL ) {
-        fprintf( stderr, "protocol error(%d/%s), ignoring %lu bytes\n",
-                 mstatus, memcached_status_string( mstatus ), buflen );
+        fprintf( stderr, "protocol error(%d/%s), ignoring %u bytes\n",
+               mstatus, memcached_status_string( mstatus ), (uint32_t) buflen );
         this->off = this->len;
         strm.sz += mex.send_string( error, error_len );
       }
       break;
     }
-    this->off += buflen;
+    this->off += (uint32_t) buflen;
 
     if ( (status = mex.exec( svc, q )) == MEMCACHED_OK )
       if ( strm.alloc_fail )
@@ -223,7 +224,7 @@ EvMemcachedMerge::merge_frames( StreamBuf &strm,  struct mmsghdr *mhdr,
   }
   if ( cnt < total ) {
     for ( j = 0; j < this->sav_len; j++ ) {
-      len = this->sav_mhdr[ j ].iov_len;
+      len = (uint32_t) this->sav_mhdr[ j ].iov_len;
       if ( len > MC_HDR_SIZE ) {
         h = (MemcachedHdr *) (void *) this->sav_mhdr[ j ].iov_base;
         if ( h->req_id == req_id ) {
@@ -250,7 +251,7 @@ EvMemcachedMerge::merge_frames( StreamBuf &strm,  struct mmsghdr *mhdr,
               mhdr[ j ].msg_hdr.msg_iov[ 0 ].iov_base;
           /* if the next seqno */
           if ( h->req_id == req_id ) {
-            uint16_t h_seqno = __builtin_bswap16( h->seqno );
+            uint16_t h_seqno = kv_bswap16( h->seqno );
             if ( h_seqno <= seqno ) {
               mhdr[ j ].msg_len = 0;
               if ( h_seqno == seqno ) /* it's the correct seqno */
@@ -262,11 +263,11 @@ EvMemcachedMerge::merge_frames( StreamBuf &strm,  struct mmsghdr *mhdr,
       }
       /* check if saved */
       if ( h == NULL && seqno < this->sav_len ) {
-        len = this->sav_mhdr[ seqno ].iov_len;
+        len = (uint32_t) this->sav_mhdr[ seqno ].iov_len;
         if ( len > MC_HDR_SIZE ) {
           h = (MemcachedHdr *) (void *) this->sav_mhdr[ seqno ].iov_base;
           if ( h->req_id != req_id || /* probably don't need seqno test */
-               h->seqno  != __builtin_bswap16( seqno ) )
+               h->seqno  != kv_bswap16( seqno ) )
             h = NULL;
         }
       }
@@ -277,7 +278,7 @@ EvMemcachedMerge::merge_frames( StreamBuf &strm,  struct mmsghdr *mhdr,
           ::memcpy( ptr, h, len );
           h = (MemcachedHdr *) (void *) ptr;
           h->seqno = 0;
-          h->total = __builtin_bswap16( 1 );
+          h->total = kv_bswap16( 1 );
           ptr = &ptr[ len ];
         }
         else { /* toss the rest of the headers, only need the first */
@@ -325,7 +326,7 @@ EvMemcachedMerge::merge_frames( StreamBuf &strm,  struct mmsghdr *mhdr,
     if ( len > MC_HDR_SIZE ) {
       h = (MemcachedHdr *) (void *)
           mhdr[ j ].msg_hdr.msg_iov[ 0 ].iov_base;
-      seqno = __builtin_bswap16( h->seqno );
+      seqno = kv_bswap16( h->seqno );
       /* save the frame at seqno index */
       if ( h->req_id == req_id ) {
         mhdr[ j ].msg_len = 0;
@@ -361,12 +362,12 @@ EvMemcachedUdp::process( void ) noexcept
 
     if ( strm.sz > 0 )
       strm.flush();
-    this->out_idx[ i ] = strm.idx;
+    this->out_idx[ i ] = (uint32_t) strm.idx;
     if ( len > MC_HDR_SIZE ) {
       iovec        & iov   = this->in_mhdr[ i ].msg_hdr.msg_iov[ 0 ];
       char         * buf   = (char *) iov.iov_base;
       MemcachedHdr * h     = (MemcachedHdr *) (void *) buf;
-      uint16_t       total = __builtin_bswap16( h->total );
+      uint16_t       total = kv_bswap16( h->total );
 
       if ( total != 1 ) {
         if ( this->sav.merge_frames( strm, this->in_mhdr, this->in_nmsgs,
@@ -380,7 +381,7 @@ EvMemcachedUdp::process( void ) noexcept
         strm.sz += MC_HDR_SIZE;
         ::memcpy( h, buf, MC_HDR_SIZE );
         h->seqno = 0;
-        h->total = __builtin_bswap16( 1 ); /* adjust later if more than 1 */
+        h->total = kv_bswap16( 1 ); /* adjust later if more than 1 */
 
         switch ( evm.process_loop( *this->exec, /*q*/ NULL, strm, this ) ) {
           case EV_PREFETCH:
@@ -426,7 +427,7 @@ MemcachedUdpFraming::construct_frames( void ) noexcept
         /* a smaller iov[] segment packed into a larger udp frame */
         if ( this->strm.iov[ k ].iov_len - off + len < next ) {
           this->iov_cnt++;
-          len += this->strm.iov[ k ].iov_len - off;
+          len += (uint32_t) ( this->strm.iov[ k ].iov_len - off );
           off = 0;
           k++;
         }
@@ -434,7 +435,7 @@ MemcachedUdpFraming::construct_frames( void ) noexcept
         else { /* iov[ k ].iov_len - off + len >= next */
           off += next - len; /* off indexes iov_base */
           this->iov_cnt++;
-          if ( this->strm.iov[ k ].iov_len == off ) {
+          if ( this->strm.iov[ k ].iov_len == (size_t) off ) {
             k++;
             off = 0;
           }
@@ -524,7 +525,7 @@ MemcachedUdpFraming::construct_frames( void ) noexcept
         }
         /* pack a smaller segment */
         if ( this->strm.iov[ k ].iov_len - off + len < next ) {
-          sz = this->strm.iov[ k ].iov_len - off;
+          sz = (uint32_t) ( this->strm.iov[ k ].iov_len - off );
           iov[ cnt ].iov_base = &((char *) this->strm.iov[ k ].iov_base)[ off ];
           iov[ cnt ].iov_len  = sz;
           nh->msg_hdr.msg_iovlen++;
@@ -552,12 +553,12 @@ MemcachedUdpFraming::construct_frames( void ) noexcept
       /* fix up the seqno, total for each message in this request */
       if ( cnt > 1 ) {
         h = (MemcachedHdr *) (void *) iov[ 0 ].iov_base;
-        h->total = __builtin_bswap16( o - n );
+        h->total = kv_bswap16( o - n );
         for ( uint32_t x = 1; n + x < o; x++ ) {
           nh = &this->out_mhdr[ n + x ];
           h2 = (MemcachedHdr *) nh->msg_hdr.msg_iov[ 0 ].iov_base;
           *h2 = *h;
-          h2->seqno = __builtin_bswap16( x );
+          h2->seqno = kv_bswap16( x );
         }
       }
       iov = &iov[ cnt ];
@@ -603,7 +604,7 @@ EvMemcachedUdp::write( void ) noexcept
   MemcachedUdpFraming g( this->out_idx, this->in_mhdr, strm, this->in_nmsgs );
   if ( strm.sz > 0 )
     strm.flush();
-  this->out_idx[ this->in_nmsgs ] = strm.idx; /* extent of iov[] array */
+  this->out_idx[ this->in_nmsgs ] = (uint32_t) strm.idx; /* extent of iov[] */
   g.construct_frames();
   this->out_nmsgs = g.out_nmsgs;
   this->out_mhdr  = g.out_mhdr;

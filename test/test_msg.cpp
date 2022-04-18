@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
 #include <raids/redis_msg.h>
 #include <raikv/util.h>
 #include <raikv/work.h>
@@ -74,7 +76,7 @@ main( int, char ** )
     sz = examples2[ i ].len;
     x = m.unpack( examples2[ i ].ex, sz, wrk );
     if ( x != DS_MSG_STATUS_OK || sz != examples2[ i ].len ) {
-      printf( "unpack sz %lu != len %lu\n", sz, examples2[ i ].len );
+      printf( "unpack sz %" PRIu64 " != len %" PRIu64 "\n", sz, examples2[ i ].len );
       return 1;
     }
     wrk.reset();
@@ -88,13 +90,13 @@ main( int, char ** )
         sz = examples[ i ].len;
         x = m.unpack( examples[ i ].ex, sz, wrk );
         if ( x != DS_MSG_STATUS_OK || sz != examples[ i ].len )
-          printf( "unpack sz %lu != len %lu\n", sz, examples[ i ].len );
+          printf( "unpack sz %" PRIu64 " != len %" PRIu64 "\n", sz, examples[ i ].len );
         /*if ( m.to_json( buf ) )
           printf( "%s\n", buf );*/
         sz = sizeof( buf );
         x = m.pack2( buf, sz );
         if ( x != DS_MSG_STATUS_OK || sz != examples[ i ].len )
-          printf( "pack   sz %lu != len %lu\n", sz, examples[ i ].len );
+          printf( "pack   sz %" PRIu64 " != len %" PRIu64 "\n", sz, examples[ i ].len );
       }
     }
     wrk.reset();
@@ -111,13 +113,13 @@ main( int, char ** )
         sz = examples[ i ].len;
         x = m.unpack( examples[ i ].ex, sz, wrk );
         if ( x != DS_MSG_STATUS_OK || sz != examples[ i ].len )
-          printf( "unpack sz %lu != len %lu\n", sz, examples[ i ].len );
+          printf( "unpack sz %" PRIu64 " != len %" PRIu64 "\n", sz, examples[ i ].len );
         /*if ( m.to_json( buf ) )
           printf( "%s\n", buf );*/
         sz = m.pack_size();
         m.pack( buf );
         if ( x != DS_MSG_STATUS_OK || sz != examples[ i ].len )
-          printf( "pack   sz %lu != len %lu\n", sz, examples[ i ].len );
+          printf( "pack   sz %" PRIu64 " != len %" PRIu64 "\n", sz, examples[ i ].len );
       }
     }
     wrk.reset();
@@ -132,7 +134,7 @@ main( int, char ** )
                                                num_str[ j ].len, ival );
     if ( x == DS_MSG_STATUS_OK ) {
       if ( ival != num_str[ j ].ival )
-        printf( "failed: %s (%ld)\n", num_str[ j ].str, ival );
+        printf( "failed: %s (%" PRId64 ")\n", num_str[ j ].str, ival );
       else {
         printf( "str_to_int(%s) ok\n", num_str[ j ].str );
         sz = int64_to_string( ival, buf );

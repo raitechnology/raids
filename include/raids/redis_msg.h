@@ -102,10 +102,10 @@ struct RedisMsg : public ds_msg_s {
     else
       this->strval = m.strval;
   }
-  RedisMsg *get_arg( int n ) const {
+  RedisMsg *get_arg( size_t n ) const {
     const ds_msg_t *m = this;
     if ( m->type == DS_BULK_ARRAY ) {
-      if ( n >= m->len )
+      if ( m->len < 0 || n >= (size_t) m->len )
         return NULL;
       m = &this->array[ n ];
     }
@@ -124,7 +124,7 @@ struct RedisMsg : public ds_msg_s {
     return this->command( length, tmp );
   }
   /* get a string argument and length */
-  bool get_arg( int n,  const char *&str,  size_t &sz ) const {
+  bool get_arg( size_t n,  const char *&str,  size_t &sz ) const {
     RedisMsg *m = this->get_arg( n );
     if ( m != NULL ) {
       if ( m->type == DS_BULK_STRING || m->type == DS_SIMPLE_STRING ) {
@@ -140,7 +140,7 @@ struct RedisMsg : public ds_msg_s {
     return false;
   }
   /* get an integer argument */
-  bool get_arg( int n,  int64_t &i ) const {
+  bool get_arg( size_t n,  int64_t &i ) const {
     RedisMsg *m = this->get_arg( n );
     if ( m != NULL ) {
       if ( m->type == DS_BULK_STRING || m->type == DS_SIMPLE_STRING ) {
@@ -155,7 +155,7 @@ struct RedisMsg : public ds_msg_s {
     return false;
   }
   /* get an double argument */
-  bool get_arg( int n,  double &f ) const {
+  bool get_arg( size_t n,  double &f ) const {
     RedisMsg *m = this->get_arg( n );
     if ( m != NULL ) {
       if ( m->type == DS_BULK_STRING || m->type == DS_SIMPLE_STRING ) {
@@ -177,8 +177,7 @@ struct RedisMsg : public ds_msg_s {
    *   if ( n == 0 ) matched none */
   #define MARG( str ) str, sizeof( str ) - 1
   /* used as: match_arg( 1, MARG( "hello" ), MARG( "world" ), NULL ) */
-  size_t match_arg( size_t n,  const char *str,  size_t sz,
-                    ... ) const noexcept;
+  int match_arg( size_t n,  const char *str,  size_t sz,  ... ) const noexcept;
   /* str length sz to int */
   static int str_to_int( const char *str,  size_t sz,  int64_t &ival ) {
     return rai::ds::string_to_int( str, sz, ival );
@@ -216,12 +215,12 @@ struct RedisMsg : public ds_msg_s {
   }
   void set_simple_string( char *s,  size_t sz = 0 ) {
     this->type   = DS_SIMPLE_STRING;
-    this->len    = ( sz == 0 ? ::strlen( s ) : sz );
+    this->len    = (int32_t) ( sz == 0 ? ::strlen( s ) : sz );
     this->strval = s;
   }
   void set_bulk_string( char *s,  size_t sz = 0 ) {
     this->type   = DS_BULK_STRING;
-    this->len    = ( sz == 0 ? ::strlen( s ) : sz );
+    this->len    = (int32_t) ( sz == 0 ? ::strlen( s ) : sz );
     this->strval = s;
   }
   void set_int( int64_t i ) {

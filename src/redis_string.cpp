@@ -84,7 +84,7 @@ RedisExec::exec_bitcount( EvKeyCtx &ctx ) noexcept
 
         uint8_t *p = &((uint8_t *) data)[ start_off ];
         for ( i = 0; i + 8 < len; i += 8 )
-          cnt += __builtin_popcountl( *(uint64_t *) (void *) &p[ i ] );
+          cnt += kv_popcountl( *(uint64_t *) (void *) &p[ i ] );
         p = &p[ i ];
         i = len - i;
         if ( ( i & 4 ) != 0 ) {
@@ -97,7 +97,7 @@ RedisExec::exec_bitcount( EvKeyCtx &ctx ) noexcept
         }
         if ( ( i & 1 ) != 0 )
           tail = ( tail << 8 ) | (uint64_t) ( *(uint8_t *) (void *) p );
-        cnt += __builtin_popcountl( tail );
+        cnt += kv_popcountl( tail );
         ctx.ival = cnt;
 
         ctx.kstatus = this->kctx.validate_value();
@@ -323,8 +323,8 @@ RedisExec::exec_bitfield( EvKeyCtx &ctx ) noexcept
             new_val |= ~mask;
         }
         else {
-          const int64_t max_val  = mask / 2,          /* max positive int */
-                        min_val  = -( mask / 2 + 1 ); /* min negative int */
+          const int64_t max_val  = mask / 2,              /* max positive int */
+                        min_val  = -(int64_t) ( mask / 2 + 1 );/* min neg int */
           const uint64_t max_diff = (uint64_t) ( max_val - old_val.ival ),
                          min_diff = (uint64_t) ( old_val.ival - min_val );
           /* check that incr is within range */
@@ -588,7 +588,7 @@ RedisExec::exec_bitpos( EvKeyCtx &ctx ) noexcept
             x = ~x;
           if ( x != 0 ) {
             ctx.ival  = ( p - (const uint8_t *) data ) * 8;
-            ctx.ival += __builtin_ctzl( x ); /* 0 -> 63 */
+            ctx.ival += kv_ctzl( x ); /* 0 -> 63 */
             if ( (uint64_t) ctx.ival >= size * 8 )
               ctx.ival = -1; /* if no bit exists within size bytes */
             break;

@@ -213,14 +213,14 @@ struct RedisWildMatch {
 
   void * operator new( size_t, void *ptr ) { return ptr; }
   void operator delete( void *ptr ) { ::free( ptr ); }
-  RedisWildMatch( uint16_t patlen,  const char *pat,  pcre2_real_code_8 *r,
+  RedisWildMatch( size_t patlen,  const char *pat,  pcre2_real_code_8 *r,
                   pcre2_real_match_data_8 *m )
     : next( 0 ), back( 0 ), callback( 0 ), closure( 0 ), re( r ), md( m ),
-      msg_cnt( 0 ), len( patlen ) {
+      msg_cnt( 0 ), len( (uint16_t) patlen ) {
     ::memcpy( this->value, pat, patlen );
     this->value[ patlen ] = '\0';
   }
-  static RedisWildMatch *create( uint16_t patlen,  const char *pat,
+  static RedisWildMatch *create( size_t patlen,  const char *pat,
                            pcre2_real_code_8 *r, pcre2_real_match_data_8 *m ) {
     size_t sz = sizeof( RedisWildMatch ) + patlen - 2;
     void * p  = ::malloc( sz );

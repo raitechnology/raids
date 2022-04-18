@@ -2,18 +2,18 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
 #include <assert.h>
-#include <sys/mman.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <unistd.h>
 #include <raids/redis_cmd_db.h>
 #include <raikv/key_hash.h>
 #include <raikv/util.h>
+#include <raikv/os_file.h>
 #include <ctype.h>
 
 using namespace rai;
 using namespace ds;
+using namespace kv;
 
 static size_t
 copy_str( const char *s,  const char *e,  char *buf,  size_t buflen )
@@ -106,9 +106,10 @@ struct GenCmdDB {
   /* initialize this with cmd name and category, arity tab, flags */
   void cpy_cmd( const char *cg,  size_t cglen,
                 const char *c,  size_t clen,  int16_t *t,  uint32_t fl ) {
-    this->catglen = copy_str( cg, &cg[ cglen ],
-                              this->catg, sizeof( this->catg ) );
-    this->cmdlen  = copy_str( c, &c[ clen ], this->cmd, sizeof( this->cmd ) );
+    this->catglen = (uint8_t) copy_str( cg, &cg[ cglen ],
+                                        this->catg, sizeof( this->catg ) );
+    this->cmdlen  = (uint8_t) copy_str( c, &c[ clen ], this->cmd,
+                                        sizeof( this->cmd ) );
     ::memcpy( this->tab, t, sizeof( this->tab ) );
     this->flags = fl;
   }
@@ -284,7 +285,7 @@ gen_db_hash( void )
     len = gen_db[ i ].cmdlen;
 
     uint32_t h = command_hash( cmd, len, r );
-    ht[ h % HTSZ ] = i + 1;
+    ht[ h % HTSZ ] = (uint32_t) ( i + 1 );
   }
   printf( "%u", ht[ 0 ] );
   for ( i = 1; i < HTSZ; i++ ) {
@@ -343,10 +344,10 @@ gen_cmd_db( void )
   ::memset( used, 0, sizeof( used ) );
   for ( i = 0; i < gen_db_len; i++ ) {
     GenCmdDB & db = gen_db[ i ];
-    arity = db.tab[ 0 ];
-    first = db.tab[ 1 ];
-    last  = db.tab[ 2 ];
-    step  = db.tab[ 3 ];
+    arity = (int8_t) db.tab[ 0 ];
+    first = (int8_t) db.tab[ 1 ];
+    last  = (int8_t) db.tab[ 2 ];
+    step  = (int8_t) db.tab[ 3 ];
 
     end = ( arity >= 0 ) ? arity : -arity;
     knum = num = poff = 0;
@@ -396,10 +397,10 @@ gen_cmd_db( void )
 "   stay the same after cmds are added, but the enums may be reordered */\n\n");
   for ( i = 0; i < gen_db_len; i++ ) {
     GenCmdDB & db = gen_db[ i ];
-    arity = db.tab[ 0 ];
-    first = db.tab[ 1 ];
-    last  = db.tab[ 2 ];
-    step  = db.tab[ 3 ];
+    arity = (int8_t) db.tab[ 0 ];
+    first = (int8_t) db.tab[ 1 ];
+    last  = (int8_t) db.tab[ 2 ];
+    step  = (int8_t) db.tab[ 3 ];
     GenCmdMan * m = db.mhd;
 
     for ( ; m != NULL; m = m->next ) {
@@ -456,11 +457,11 @@ gen_cmd_db( void )
   cnt = 0;
   for ( i = 0; i < gen_db_len; i++ )
     cnt += gen_db[ i ].mcount;
-  printf( "extern const RedisCmdExtra xtra[ %lu ];\n\n", cnt );
+  printf( "extern const RedisCmdExtra xtra[ %" PRIu64 " ];\n\n", cnt );
 
   /* generate table of commands */
   cnt = 0;
-  printf( "static const size_t REDIS_CMD_DB_SIZE = %lu;\n"
+  printf( "static const size_t REDIS_CMD_DB_SIZE = %" PRIu64 ";\n"
           "static const RedisCmdData\n"
           "cmd_db[ REDIS_CMD_DB_SIZE ] = {\n"
           "{ \"none\",NULL,0,NO_CMD,CMD_NOFLAGS,4,NO_CATG,0,0,0,0 }",
@@ -473,7 +474,7 @@ gen_cmd_db( void )
       return 1;
     }
                /*  name    extra,   hash,cmd,flags,cmdlen, catg, tab[] */
-    printf( ",\n{ \"%s\",&xtra[%lu],0x%x,%s,%s,%u,%s,%d,%d,%d,%d }",
+    printf( ",\n{ \"%s\",&xtra[%" PRIu64 "],0x%x,%s,%s,%u,%s,%d,%d,%d,%d }",
           db.cmd, cnt, h, db.cmd_enum(), db.flags_enum(), db.cmdlen,
           db.catg_enum(), db.tab[ 0 ], db.tab[ 1 ], db.tab[ 2 ], db.tab[ 3 ] );
     cnt += db.mcount;
@@ -483,7 +484,7 @@ gen_cmd_db( void )
           "#ifdef REDIS_XTRA\n" );
 
   /* generate extra list */
-  printf( "const RedisCmdExtra xtra[ %lu ] = {\n", cnt );
+  printf( "const RedisCmdExtra xtra[ %" PRIu64 " ] = {\n", cnt );
 
   cnt = 0;
   for ( i = 0; i < gen_db_len; i++ ) {
@@ -491,7 +492,7 @@ gen_cmd_db( void )
     GenCmdMan * p  = db.mhd;
     for ( j = 0; j < db.mcount; j++ ) {
       if ( j + 1 < db.mcount )
-        printf( "{ &xtra[%lu], ", cnt + 1 );
+        printf( "{ &xtra[%" PRIu64 "], ", cnt + 1 );
       else
         printf( "{ NULL, " );
       printf( "%s,%s", p->xtra_type(), ( p->textlen > 45 ) ? "\n" : " " );
@@ -513,32 +514,18 @@ gen_cmd_db( void )
 static int
 parse_cmd_db( const char *fn )
 {
-  struct stat  sb;
-  const void * addr;
-  int          fd = ::open( fn, O_RDONLY );
-  
-  /* mmap the file */
-  if ( fd < 0 || ::fstat( fd, &sb ) < 0 ) {
-    ::perror( fn );
-    if ( fd >= 0 )
-      ::close( fd );
+  MapFile map( fn );
+
+  if ( ! map.open() )
     return 1;
-  }
-  else {
-    addr = ::mmap( NULL, sb.st_size, PROT_READ, MAP_PRIVATE, fd, 0 );
-    if ( addr == MAP_FAILED ) {
-      ::perror( fn );
-      ::close( fd );
-      return 1;
-    }
-  }
+
   const char d[] = "----------------------------";
   char         catg[ MAX_CATG_LEN ],
                cmd[ MAX_CMD_LEN ];
   const void * p;
-  const char * eol           = (const char *) addr,
+  const char * eol           = (const char *) map.map,
              * bol           = eol,                /* advances by line */
-             * end           = &bol[ sb.st_size ], /* end of file */
+             * end           = &bol[ map.map_size ], /* end of file */
              * eos           = NULL;
   size_t       llen          = 0, /* line len */
                cmdlen        = 0, /* cmd[] size */
@@ -737,8 +724,6 @@ parse_cmd_db( const char *fn )
     if ( matched_cmd > 0 )
       matched_cmd -= 1;
   }
-  ::munmap( (void *) addr, sb.st_size );
-  ::close( fd );
   return 0;
 }
 

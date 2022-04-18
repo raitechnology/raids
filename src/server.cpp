@@ -2,14 +2,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#ifndef _MSC_VER
 #include <unistd.h>
-#include <fcntl.h>
-#include <errno.h>
-#include <sys/socket.h>
-#include <netinet/tcp.h>
-#include <netdb.h>
 #include <pthread.h>
 #include <signal.h>
+#else
+#include <raikv/win.h>
+#endif
 #include <raids/ev_service.h>
 #include <raids/ev_memcached.h>
 #include <raids/ev_http.h>
@@ -55,7 +54,7 @@ struct Args : public MainLoopVars {
 };
 
 struct Loop : public MainLoop<Args> {
-  Loop( EvShm &m,  Args &args,  int num,  bool (*ini)( void * ) ) :
+  Loop( EvShm &m,  Args &args,  size_t num,  bool (*ini)( void * ) ) :
     MainLoop<Args>( m, args, num, ini ) {}
 
 #ifdef USE_REDIS

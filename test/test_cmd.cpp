@@ -44,7 +44,7 @@ main( int, char ** )
   uint32_t readonly = 0, write = 0, arity_cnt[ 8 ];
   int16_t arity, first, last, step;
   double start, end;
-  uint64_t h;
+  uint32_t h;
   RedisCmd cmd;
 
   ::memset( arity_cnt, 0, sizeof( arity_cnt ) );

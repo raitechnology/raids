@@ -2,13 +2,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <sys/mman.h>
-#include <raimd/md_types.h>
 #include <raikv/util.h>
+#include <raikv/os_file.h>
+#include <raimd/md_types.h>
 #include <raids/redis_exec.h>
 #include <raids/redis_rdb.h>
 #include <raids/exec_list_ctx.h>
@@ -47,14 +43,14 @@ RedisExec::exec_dump( EvKeyCtx &ctx ) noexcept
   }
 }
 
-static int
-mk_aux( char *out,  const char *name,  int64_t val )
+static size_t
+mk_aux( char *out,  const char *name,  int64_t val ) noexcept
 {
   RdbLenEncode rdb;   /* if save, this is the encoded key length */
-  out[ 0 ] = RDB_AUX;
-  int i = rdb.str_size( ::strlen( name ) );
+  out[ 0 ] = (char) RDB_AUX;
+  size_t i = rdb.str_size( ::strlen( name ) );
   rdb.str_encode( &out[ 1 ], name );
-  int j = rdb.int_size( val );
+  size_t j = rdb.int_size( val );
   rdb.int_encode( &out[ i + 1 ] );
   return 1 + i + j;
 }
@@ -67,12 +63,12 @@ RedisExec::exec_save( void ) noexcept
                pos;
   size_t       strm_idx = 0,
                nbytes;
-  int          fd = ::open( "dump.rdb", O_CREAT | O_TRUNC | O_WRONLY, 0666 );
+  int          fd = os_open( "dump.rdb", O_CREAT | O_TRUNC | O_WRONLY, 0666 );
   ExecStatus   status;
   char         ctime_aux[ 32 ],
                aof_aux[ 32 ];
   uint64_t     cur_time = this->kctx.ht.hdr.current_stamp;
-  int          ctime_sz = mk_aux( ctime_aux, "ctime", cur_time / 1000000000 ),
+  size_t       ctime_sz = mk_aux( ctime_aux, "ctime", cur_time / 1000000000 ),
                aof_sz   = mk_aux( aof_aux, "aof-preamble", 0 ),
                db_sz;
   uint8_t      db_select[ 8 ];
@@ -81,10 +77,10 @@ RedisExec::exec_save( void ) noexcept
   db_select[ 0 ] = RDB_DBSELECT;
   db_sz = 1 + rdb.len_encode( &db_select[ 1 ], this->kctx.db_num );
   if ( fd < 0 ||
-       ::write( fd, ver, 9 ) != 9 ||
-       ::write( fd, ctime_aux, ctime_sz ) != ctime_sz ||
-       ::write( fd, aof_aux, aof_sz ) != aof_sz ||
-       ::write( fd, db_select, db_sz ) != db_sz ) {
+       os_write( fd, ver, 9 ) != 9 ||
+       os_write( fd, ctime_aux, ctime_sz ) != (ssize_t) ctime_sz ||
+       os_write( fd, aof_aux, aof_sz ) != (ssize_t) aof_sz ||
+       os_write( fd, db_select, db_sz ) != (ssize_t) db_sz ) {
     perror( "dump.rdb" );
     if ( fd >= 0 )
       ::close( fd );
@@ -121,8 +117,8 @@ RedisExec::exec_save( void ) noexcept
     nbytes = this->strm.pending() - this->strm_start;
     if ( nbytes >= 16 * 1024 ) {
       this->strm.flush();
-      if ( ::writev( fd, &this->strm.iov[ strm_idx ],
-                     this->strm.idx - strm_idx ) != (ssize_t) nbytes ) {
+      if ( os_writev( fd, &this->strm.iov[ strm_idx ],
+                      this->strm.idx - strm_idx ) != (ssize_t) nbytes ) {
         status = ERR_SAVE;
         goto break_loop;
       }
@@ -135,10 +131,10 @@ RedisExec::exec_save( void ) noexcept
     static const uint8_t eof = 0xff;
     key.ival = jones_crc64( key.ival, &eof, 1 );
     this->strm.flush();
-    if ( ::writev( fd, &this->strm.iov[ strm_idx ],
-                   this->strm.idx - strm_idx ) != (ssize_t) nbytes ||
-         ::write( fd, &eof, 1 ) != 1 ||     /* terminate dump */
-         ::write( fd, &key.ival, 8 ) != 8 ) /* crc */
+    if ( os_writev( fd, &this->strm.iov[ strm_idx ],
+                    this->strm.idx - strm_idx ) != (ssize_t) nbytes ||
+         os_write( fd, &eof, 1 ) != 1 ||     /* terminate dump */
+         os_write( fd, &key.ival, 8 ) != 8 ) /* crc */
       status = ERR_SAVE;
   }
 break_loop:;
@@ -206,12 +202,12 @@ RdbDumpGeom::frame_dump_result( char *p ) noexcept
   if ( this->key != NULL ) {
     size_t off = 0;
     if ( this->expires != 0 ) {
-      p[ off++ ] = RDB_EXPIRED_MS;
+      p[ off++ ] = (char) RDB_EXPIRED_MS;
       le<uint64_t>( &p[ off ], this->expires );
       off += 8;
     }
     if ( this->idle.lcode != RdbLength::RDB_LEN_ERR ) {
-      p[ off++ ] = RDB_IDLE;
+      p[ off++ ] = (char) RDB_IDLE;
       off += this->idle.len_encode( &p[ off ] );
     }
     p[ off++ ] = this->type;
@@ -290,7 +286,7 @@ RedisExec::dump_list( EvKeyCtx &ctx ) noexcept
     lstatus = list.x->lindex( i, lv );
     if ( lstatus != LIST_OK )
       break;
-    zip.calc_link( lv.sz + lv.sz2 );
+    zip.calc_link( (uint32_t) ( lv.sz + lv.sz2 ) );
   }
   zip.calc_end();
 
@@ -311,9 +307,9 @@ RedisExec::dump_list( EvKeyCtx &ctx ) noexcept
     lstatus = list.x->lindex( i, lv );
     if ( lstatus != LIST_OK )
       break;
-    zip.append_link( lv.data, lv.data2, lv.sz, lv.sz2 );
+    zip.append_link( lv.data, lv.data2, (uint32_t) lv.sz, (uint32_t) lv.sz2 );
   }
-  zip.append_end( count );
+  zip.append_end( (uint32_t) count );
 
   if ( ! list.validate_value() )
     return ERR_KV_STATUS;
@@ -348,8 +344,8 @@ RedisExec::dump_hash( EvKeyCtx &ctx ) noexcept
     hstatus = hash.x->hindex( i, hv );
     if ( hstatus != HASH_OK )
       break;
-    zip.calc_link( hv.keylen );
-    zip.calc_link( hv.sz + hv.sz2 );
+    zip.calc_link( (uint32_t) hv.keylen );
+    zip.calc_link( (uint32_t) ( hv.sz + hv.sz2 ) );
   }
   zip.calc_end();
 
@@ -370,10 +366,10 @@ RedisExec::dump_hash( EvKeyCtx &ctx ) noexcept
     hstatus = hash.x->hindex( i, hv );
     if ( hstatus != HASH_OK )
       break;
-    zip.append_link( hv.key, hv.keylen );
-    zip.append_link( hv.data, hv.data2, hv.sz, hv.sz2 );
+    zip.append_link( hv.key, (uint32_t) hv.keylen );
+    zip.append_link( hv.data, hv.data2, (uint32_t) hv.sz, (uint32_t) hv.sz2 );
   }
-  zip.append_end( ( count - 1 ) * 2 );
+  zip.append_end( (uint32_t) ( ( count - 1 ) * 2 ) );
 
   if ( ! hash.validate_value() )
     return ERR_KV_STATUS;
@@ -472,8 +468,8 @@ RedisExec::dump_zset( EvKeyCtx &ctx ) noexcept
     zstatus = zset.x->zindex( i, zv );
     if ( zstatus != ZSET_OK )
       break;
-    zip.calc_link( zv.sz + zv.sz2 );
-    zip.calc_link( zv.score.to_string( fpdata ) );
+    zip.calc_link( (uint32_t) ( zv.sz + zv.sz2 ) );
+    zip.calc_link( (uint32_t) zv.score.to_string( fpdata ) );
   }
   zip.calc_end();
 
@@ -494,11 +490,11 @@ RedisExec::dump_zset( EvKeyCtx &ctx ) noexcept
     zstatus = zset.x->zindex( i, zv );
     if ( zstatus != ZSET_OK )
       break;
-    zip.append_link( zv.data, zv.data2, zv.sz, zv.sz2 );
+    zip.append_link( zv.data, zv.data2, (uint32_t) zv.sz, (uint32_t) zv.sz2 );
     fplen = zv.score.to_string( fpdata );
-    zip.append_link( fpdata, fplen );
+    zip.append_link( fpdata, (uint32_t) fplen );
   }
-  zip.append_end( ( count - 1 ) * 2 );
+  zip.append_end( (uint32_t) ( ( count - 1 ) * 2 ) );
 
   if ( ! zset.validate_value() )
     return ERR_KV_STATUS;
@@ -535,8 +531,8 @@ RedisExec::dump_geo( EvKeyCtx &ctx ) noexcept
     gstatus = geo.x->geoindex( i, gv );
     if ( gstatus != GEO_OK )
       break;
-    zip.calc_link( gv.sz + gv.sz2 );
-    zip.calc_link( uint64_digits( gv.score ) );
+    zip.calc_link( (uint32_t) ( gv.sz + gv.sz2 ) );
+    zip.calc_link( (uint32_t) uint64_digits( gv.score ) );
   }
   zip.calc_end();
 
@@ -557,12 +553,12 @@ RedisExec::dump_geo( EvKeyCtx &ctx ) noexcept
     gstatus = geo.x->geoindex( i, gv );
     if ( gstatus != GEO_OK )
       break;
-    zip.append_link( gv.data, gv.data2, gv.sz, gv.sz2 );
+    zip.append_link( gv.data, gv.data2, (uint32_t) gv.sz, (uint32_t) gv.sz2 );
     fplen = uint64_digits( gv.score );
     uint64_to_string( gv.score, fpdata, fplen ); /* $ nnn */
-    zip.append_link( fpdata, fplen );
+    zip.append_link( fpdata, (uint32_t) fplen );
   }
-  zip.append_end( ( count - 1 ) * 2 );
+  zip.append_end( (uint32_t) ( ( count - 1 ) * 2 ) );
 
   if ( ! geo.validate_value() )
     return ERR_KV_STATUS;
@@ -658,9 +654,9 @@ RedisExec::dump_stream( EvKeyCtx &ctx ) noexcept
       if ( n-- == 0 )
         break;
       if ( ld.lindex( k++, lv ) == LIST_OK )
-        lst.calc_link( lv.sz + lv.sz2 );
+        lst.calc_link( (uint32_t) ( lv.sz + lv.sz2 ) );
       if ( ld.lindex( k++, lv ) == LIST_OK )
-        lst.calc_link( lv.sz + lv.sz2 );
+        lst.calc_link( (uint32_t) ( lv.sz + lv.sz2 ) );
     }
     lst.calc_immediate_int( 4 + fcnt ); /* back link count */
   }
@@ -810,9 +806,9 @@ RedisExec::dump_stream( EvKeyCtx &ctx ) noexcept
       if ( n-- == 0 )
         break;
       if ( ld.lindex( k++, lv ) == LIST_OK )
-        lst.append_link( lv.data, lv.data2, lv.sz, lv.sz2 );
+        lst.append_link( lv.data, lv.data2, (uint32_t) lv.sz, (uint32_t) lv.sz2 );
       if ( ld.lindex( k++, lv ) == LIST_OK )
-        lst.append_link( lv.data, lv.data2, lv.sz, lv.sz2 );
+        lst.append_link( lv.data, lv.data2, (uint32_t) lv.sz, (uint32_t) lv.sz2 );
     }
     lst.append_immediate_int( 4 + fcnt ); /* back link count */
   }
@@ -1434,7 +1430,7 @@ ExecRestore::d_stream_cons_pend( const RdbConsPendInfo &pend ) noexcept
     if ( pend.id.ms  == this->pend[ i ].id_ms &&
          pend.id.ser == this->pend[ i ].id_ser ) {
       ns  = this->pend[ i ].last_delivery;
-      cnt = this->pend[ i ].delivery_cnt;
+      cnt = (uint32_t) this->pend[ i ].delivery_cnt;
       break;
     }
   }
@@ -1548,31 +1544,17 @@ RedisExec::exec_restore( EvKeyCtx &ctx ) noexcept
 ExecStatus
 RedisExec::exec_load( void ) noexcept
 {
+  MapFile map( "dump.rdb" );
   ExecStatus status = EXEC_SEND_OK;
-  int        fd  = ::open( "dump.rdb", O_RDONLY );
-  void     * map = NULL;
-  struct stat st;
 
-  ::memset( &st, 0, sizeof( st ) );
-  if ( fd < 0 || ::fstat( fd, &st ) != 0 ) {
-    perror( "dump.rdb" );
+  if ( ! map.open() ) {
+    perror( map.path );
     status = ERR_LOAD;
   }
-  if ( status == EXEC_SEND_OK ) {
-    map = ::mmap( 0, st.st_size, PROT_READ, MAP_SHARED, fd, 0 );
-    if ( map == MAP_FAILED ) {
-      perror( "mmap" );
-      status = ERR_LOAD;
-      map = NULL;
-    }
-    else {
-      ::madvise( map, st.st_size, MADV_SEQUENTIAL );
-    }
-  }
-  if ( map != NULL ) {
-    RdbBufptr    bptr( (const uint8_t *) map, st.st_size );
-    RdbDecode    decode;
-    ExecRestore  rest( decode, *this, NULL, 0 );
+  else {
+    RdbBufptr   bptr( (const uint8_t *) map.map, map.map_size );
+    RdbDecode   decode;
+    ExecRestore rest( decode, *this, NULL, 0 );
 
     this->cmd_state |= CMD_STATE_LOAD;
     decode.data_out = &rest;
@@ -1601,11 +1583,8 @@ RedisExec::exec_load( void ) noexcept
         break;
       }
     }
-    ::munmap( map, st.st_size );
     this->cmd_state &= ~CMD_STATE_LOAD;
   }
-  if ( fd >= 0 )
-    ::close( fd );
   return status;
 }
 

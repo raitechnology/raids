@@ -2,11 +2,6 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdint.h>
-#include <stdarg.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <errno.h>
-#include <sys/syscall.h>
 #include <raids/ev_client.h>
 #include <raids/redis_exec.h>
 

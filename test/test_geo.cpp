@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
 #include <math.h>
 #include <raids/redis_cmd.h>
 #include <raids/redis_msg.h>
@@ -32,7 +34,7 @@ resize_geo( GeoData *curr,  size_t add_len,  bool is_copy = false )
     count    += count / 2 + 2;
   }
   size_t asize = GeoData::alloc_size( count, data_len );
-  printf( "asize %ld, count %ld, data_len %ld\n", asize, count, data_len );
+  printf( "asize %" PRId64 ", count %" PRId64 ", data_len %" PRId64 "\n", asize, count, data_len );
   void *m = malloc( sizeof( GeoData ) + asize );
   void *p = &((char *) m)[ sizeof( GeoData ) ];
   GeoData *newbe = new ( m ) GeoData( p, asize );
@@ -326,7 +328,7 @@ main( int, char ** )
                 sk->geo = resize_geo( sk->geo, len );
               }
             }
-            printf( "Loaded %ld\n", count );
+            printf( "Loaded %" PRId64 "\n", count );
             BufList::release( buffers );
           }
           break;
@@ -349,7 +351,7 @@ main( int, char ** )
           if ( gstat == GEO_UPDATED )
             count++;
         }
-        printf( "Updated %ld\n", count );
+        printf( "Updated %" PRId64 "\n", count );
         break;
 
       case GEODIST_CMD: /* GEODIST key from to [units] */
@@ -370,7 +372,7 @@ main( int, char ** )
           printf( "%.*s: %s\n", (int) destlen, dest, geo_status_string[ gstat ] );
           break;
         }
-        printf( "%lx - %lx = %d\n", h3i, h3j, h3Distance( h3i, h3j ) );
+        printf( "%" PRIx64 " - %" PRIx64 " = %d\n", h3i, h3j, h3Distance( h3i, h3j ) );
         h3ToGeo( h3i, &coord );
         coord.lat = radsToDegs( coord.lat );
         coord.lon = radsToDegs( coord.lon );
@@ -428,12 +430,12 @@ main( int, char ** )
           goto bad_args;
         for ( i = 0; i < 15; i++ ) {
           j = 15 - i;
-          if ( edgeLengthM( j ) >= radius ) {
-            printf( "edge %.1f\n", edgeLengthM( j ) );
+          if ( edgeLengthM( (int) j ) >= radius ) {
+            printf( "edge %.1f\n", edgeLengthM( (int) j ) );
             break;
           }
         }
-        h3i = geoToH3( &coordi, j );
+        h3i = geoToH3( &coordi, (int) j );
         ::memset( h3k, 0, sizeof( h3k ) );
         hexRange( h3i, 1, h3k );
         /* order h3 indexes low to high, as that is the search order */
@@ -467,10 +469,10 @@ main( int, char ** )
             }
           }
           if ( n == bound.numVerts ) {
-            printf( "exclude %lx (dist %.6f)\n", h3k[ i ], min_dist );
+            printf( "exclude %" PRIx64 " (dist %.6f)\n", h3k[ i ], min_dist );
           }
           else {
-            printf( "include %lx (dist %.6f)\n", h3k[ i ], min_dist );
+            printf( "include %" PRIx64 " (dist %.6f)\n", h3k[ i ], min_dist );
             if ( cnt < i )
               h3k[ cnt ] = h3k[ i ];
             cnt++;
@@ -482,7 +484,7 @@ main( int, char ** )
         for ( i = 0; i < cnt; i++ ) {
           h3ToGeoBoundary( h3k[ i ], &bound );
           for ( int n = 0; n < bound.numVerts; n++ ) {
-            printf( "%lu. %.6f %.6f (dist %.6f)\n", i,
+            printf( "%" PRIu64 ". %.6f %.6f (dist %.6f)\n", i,
                     radsToDegs( bound.verts[ n ].lon ),
                     radsToDegs( bound.verts[ n ].lat ),
                     h3_distance( coordi, bound.verts[ n ] ) );
@@ -490,7 +492,7 @@ main( int, char ** )
           H3Index next = h3k[ i ] >> shift;
           if ( k > 0 && start[ k-1 ] + (H3Index) length[ k-1 ] == next ) {
             length[ k-1 ]++;
-            printf( " + length[%lu] = %lu\n", k-1, length[ k-1 ]  );
+            printf( " + length[%" PRIu64 "] = %" PRIu64 "\n", k-1, length[ k-1 ]  );
           }
           else {
             start[ k ]  = next;
@@ -508,7 +510,7 @@ main( int, char ** )
           size_t  n, m;
           GeoVal  gv;
           double  dist;
-          printf( "base %lx end %lx\n", base, end );
+          printf( "base %" PRIx64 " end %" PRIx64 "\n", base, end );
           gstat = sk->geo->geobsearch( base, n, false, x );
           if ( gstat == GEO_NOT_FOUND ) {
             printf( "not found\n" );
@@ -519,7 +521,7 @@ main( int, char ** )
             printf( "not found\n" );
             continue;
           }
-          printf( "pos %ld -> %ld\n", n, m );
+          printf( "pos %" PRId64 " -> %" PRId64 "\n", n, m );
           for ( j = n; j < m; j++ ) {
             gstat = sk->geo->geoindex( j, gv );
             if ( gstat == GEO_OK ) {
@@ -528,14 +530,14 @@ main( int, char ** )
               coord.lon = radsToDegs( coordj.lon );
               dist = h3_distance( coordi, coordj );
               if ( dist <= radius ) {
-                printf( "%ld. %.*s%.*s (%.6f %.6f d=%.6fm)\n", cnt++,
+                printf( "%" PRId64 ". %.*s%.*s (%.6f %.6f d=%.6fm)\n", cnt++,
                         (int) gv.sz, (const char *) gv.data,
                         (int) gv.sz2, (const char *) gv.data2,
                         coord.lon, coord.lat, dist );
               }
             }
             else {
-              printf( "%ld. status=%d\n", cnt++, (int) gstat );
+              printf( "%" PRId64 ". status=%d\n", cnt++, (int) gstat );
             }
           }
         }
@@ -561,9 +563,9 @@ main( int, char ** )
         for (;;) {
           gstat = sk->geo->geoindex( i, gv );
           if ( gstat == GEO_OK ) {
-            printf( "%ld. off(%ld) %sscore(", i, sk->geo->offset( i ),
+            printf( "%" PRId64 ". off(%" PRId64 ") %sscore(", i, sk->geo->offset( i ),
                     withscores ? "*" : "" );
-            printf( "%lx", gv.score );
+            printf( "%" PRIx64 "", (uint64_t) gv.score );
             printf( ") %.*s", (int) gv.sz, (const char *) gv.data );
             if ( gv.sz2 > 0 )
               printf( "%.*s", (int) gv.sz2, (const char *) gv.data2 );
@@ -574,8 +576,8 @@ main( int, char ** )
           i++;
         }
         withscores = false;
-        printf( "count %lu of %lu\n", count, sk->geo->max_count() - 1 );
-        printf( "bytes %lu of %lu\n", (size_t) sk->geo->data_len(),
+        printf( "count %" PRIu64 " of %" PRIu64 "\n", count, sk->geo->max_count() - 1 );
+        printf( "bytes %" PRIu64 " of %" PRIu64 "\n", (size_t) sk->geo->data_len(),
                 sk->geo->data_size() );
         if ( sk->geo->hcount() < 256 ) {
           printf( "[" ); sk->geo->print_hashes(); printf( "]\n" );
@@ -593,14 +595,14 @@ main( int, char ** )
             pos.init( key, keylen );
             gstat = sk->geo->geoexists( key, keylen, pos, h3j );
             if ( gstat == GEO_OK )
-              printf( "%ld. idx(%ld) h(%u) %.*s\n", i, pos.i, (uint8_t) pos.h,
+              printf( "%" PRId64 ". idx(%" PRId64 ") h(%u) %.*s\n", i, pos.i, (uint8_t) pos.h,
                       (int) keylen, key );
             else
-              printf( "%ld. idx(****) h(%u) %.*s\n", i, (uint8_t) pos.h,
+              printf( "%" PRId64 ". idx(****) h(%u) %.*s\n", i, (uint8_t) pos.h,
                       (int) keylen, key );
           }
           else {
-            printf( "%ld. status=%d\n", i, (int) gstat );
+            printf( "%" PRId64 ". status=%d\n", i, (int) gstat );
           }
           if ( i == j )
             break;

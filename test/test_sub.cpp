@@ -2,8 +2,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#ifndef _MSC_VER
 #include <unistd.h>
-#include <fcntl.h>
+#else
+#include <raikv/win.h>
+#endif
 #include <raids/ev_client.h>
 #include <raikv/ev_publish.h>
 /*#include <raikv/kv_pubsub.h>*/

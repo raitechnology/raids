@@ -1,6 +1,8 @@
 #ifndef __rai_raids__redis_hyperloglog_h__
 #define __rai_raids__redis_hyperloglog_h__
 
+#include <raikv/util.h>
+
 namespace rai {
 namespace ds {
 
@@ -88,7 +90,7 @@ struct HyperLogLog {
     v  = hv;                      /* the 6 bit reg val plus surrounding bits */
     m  = ~( LZ_MASK << shft ) & v; /* m = surrounding bits, reg masked to 0 */
     v  = ( v >> shft ) & LZ_MASK;  /* extract the value from surrounding */
-    lz = __builtin_clzl( lzwd ) + 1; /* the new value */
+    lz = kv_clzl( lzwd ) + 1; /* the new value */
     lz -= 64 + HT_BITS - HASH_WIDTH; /* minus the hash table bits */
     w  = ( v > lz ? v : lz );      /* maximum of old and new */
     if ( v == w )                  /* no change */
@@ -110,7 +112,7 @@ struct HyperLogLog {
     uint16_t v, lz;
 
     v  = ( hv >> shft ) & LZ_MASK; /* extract the value from surrounding */
-    lz = __builtin_clzl( lzwd ) + 1; /* the new value */
+    lz = kv_clzl( lzwd ) + 1; /* the new value */
     lz -= 64 + HT_BITS - HASH_WIDTH; /* minus the hash table bits */
     return v >= lz;
   }

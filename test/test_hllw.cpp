@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdint.h>
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
 #include <math.h>
 #include <raikv/key_hash.h>
 #define HLL_GLOBAL_VARS
@@ -55,7 +57,7 @@ main( int, char ** )
   double expected_error = 1.04 / sqrt( 1 << 14 ),
          min_error = (double) cnt - (double) cnt * expected_error,
          max_error = (double) cnt + (double) cnt * expected_error;
-  printf( "loglog size %lu\n", he[ 0 ].size() );
+  printf( "loglog size %" PRIu64 "\n", he[ 0 ].size() );
   printf( "%d words, expected_error: +-%.1f, min_error: %.1f, max_error: %.1f\n",
           cnt, (double) cnt * expected_error, min_error, max_error );
   for ( i = 0; i < 6; i++ ) {

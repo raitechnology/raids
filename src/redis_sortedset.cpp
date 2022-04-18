@@ -220,12 +220,15 @@ RedisExec::exec_bzpopmin( EvKeyCtx &ctx ) noexcept
   /* BZPOPMIN key [key...] timeout */
   ExecStatus status = this->do_zremrange( ctx, DO_BZPOPMIN );
   switch ( status ) {
-    case EXEC_SEND_ZEROARR:
-      if ( ! this->msg.get_arg( this->argc - 1, ctx.ival ) )
-        ctx.ival = 0;
+    case EXEC_SEND_ZEROARR: {
+      double timeout;
+      if ( ! this->msg.get_arg( this->argc - 1, timeout ) || timeout <= 0.0 )
+        timeout = 0;
+      ctx.ival = (int64_t) ( timeout * 1000000000.0 );
       return EXEC_BLOCKED;
-    case EXEC_OK:       return EXEC_SEND_DATA;
-    default:            return status;
+    }
+    case EXEC_OK: return EXEC_SEND_DATA;
+    default:      return status;
   }
 }
 
@@ -235,12 +238,15 @@ RedisExec::exec_bzpopmax( EvKeyCtx &ctx ) noexcept
   /* BZPOPMAX key [key...] timeout */
   ExecStatus status = this->do_zremrange( ctx, DO_BZPOPMAX );
   switch ( status ) {
-    case EXEC_SEND_ZEROARR:
-      if ( ! this->msg.get_arg( this->argc - 1, ctx.ival ) )
-        ctx.ival = 0;
+    case EXEC_SEND_ZEROARR: {
+      double timeout;
+      if ( ! this->msg.get_arg( this->argc - 1, timeout ) || timeout <= 0.0 )
+        timeout = 0;
+      ctx.ival = (int64_t) ( timeout * 1000000000.0 );
       return EXEC_BLOCKED;
-    case EXEC_OK:       return EXEC_SEND_DATA;
-    default:            return status;
+    }
+    case EXEC_OK: return EXEC_SEND_DATA;
+    default:      return status;
   }
 }
 

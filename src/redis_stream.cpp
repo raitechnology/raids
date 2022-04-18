@@ -315,7 +315,7 @@ RedisExec::exec_xadd( EvKeyCtx &ctx ) noexcept
   /* id or MAXLEN */
   if ( ! this->msg.get_arg( j++, arg, arglen ) )
     return ERR_BAD_ARGS;
-  if ( arglen == 6 && ::strncasecmp( arg, "MAXLEN", 6 ) == 0 ) {
+  if ( arglen == 6 && kv_strncasecmp( arg, "MAXLEN", 6 ) == 0 ) {
     if ( ! this->msg.get_arg( j++, arg, arglen ) )
       return ERR_BAD_ARGS;
     /* if ~ is approximate */
@@ -630,8 +630,8 @@ RedisExec::exec_xread( EvKeyCtx &ctx ) noexcept
   StreamBuf::BufQueue q( this->strm );
   ExecStreamCtx stream( *this, ctx );
   MDMsgMem      tmp;
-  int64_t       maxcnt,
-                blockms;
+  int64_t       maxcnt;
+  double        blockms;
   const char  * arg;
   size_t        arglen;
   ssize_t       off;
@@ -651,8 +651,10 @@ RedisExec::exec_xread( EvKeyCtx &ctx ) noexcept
       case 2:
         if ( ! this->msg.get_arg( n+1, blockms ) )
           return ERR_BAD_ARGS;
-        if ( (ctx.ival = blockms) < 0 )
+        if ( blockms <= 0 )
           ctx.ival = 0;
+        else
+          ctx.ival = (int64_t) ( blockms * 1000000.0 );
         blocking = true;
         break;
       default:
@@ -740,8 +742,8 @@ RedisExec::exec_xreadgroup( EvKeyCtx &ctx ) noexcept
   MDMsgMem         tmp;
   StreamArgs       sa;
   StreamGroupQuery grp;
-  int64_t          maxcnt,
-                   blockms;
+  int64_t          maxcnt;
+  double           blockms;
   size_t           i, k;
   int              n;
   bool             blocking = false;
@@ -775,8 +777,10 @@ RedisExec::exec_xreadgroup( EvKeyCtx &ctx ) noexcept
         if ( ! this->msg.get_arg( n+1, blockms ) )
           return ERR_BAD_ARGS;
         /* ctx.ival saves the blocking millisecs */
-        if ( (ctx.ival = blockms) < 0 )
+        if ( blockms <= 0 )
           ctx.ival = 0;
+        else
+          ctx.ival = (int64_t) ( blockms * 1000000.0 );
         blocking = true;
         n += 2;
         break;

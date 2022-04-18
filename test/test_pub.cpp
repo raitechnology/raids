@@ -2,8 +2,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
-#include <unistd.h>
-#include <fcntl.h>
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
 #include <raids/ev_client.h>
 #include <raikv/ev_publish.h>
 /*#include <raikv/kv_pubsub.h>*/
@@ -41,7 +41,8 @@ struct PubTest : public EvShmSvc, public RouteNotify {
     : EvShmSvc( poll ), RouteNotify( poll.sub_route ),
       sub_route( poll.sub_route ), sub( s ),
       len( ::strlen( s ) ), h( 0 ), per_sec( ps_rate ),
-      ns_ival( 1e9 / ps_rate ), count( 0 ), last_time( 0 ), dict( 0 ) {}
+      ns_ival( (uint32_t) ( 1e9 / ps_rate ) ), count( 0 ), last_time( 0 ),
+      dict( 0 ) {}
   /* shutdown before close */
   virtual void process_shutdown( void ) noexcept {
     this->sub_route.remove_route_notify( *this );
@@ -73,7 +74,7 @@ struct PubTest : public EvShmSvc, public RouteNotify {
       tibmsg.append_uint( "count", 6, this->count );
       tibmsg.append_uint( "time", 5, this->last_time );
       size_t sz = tibmsg.update_hdr();
-      printf( "publish reply sz %lu\n", sz );
+      printf( "publish reply sz %" PRIu64 "\n", sz );
 
       EvPublish p( sub.reply, sub.reply_len, NULL, 0, buf, sz,
                    this->sub_route, this->fd,
