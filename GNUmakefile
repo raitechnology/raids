@@ -740,6 +740,7 @@ dist_bins: $(all_libs) $(bind)/ds_server $(bind)/shmdp $(bind)/ds_client
 	chrpath -d $(bind)/shmdp
 	chrpath -d $(bind)/ds_server
 	chrpath -d $(bind)/ds_client
+	chrpath -d $(bind)/redis_cmd
 
 .PHONY: dist_rpm
 dist_rpm: srpm
