@@ -18,7 +18,6 @@ BuildRequires:  h3
 BuildRequires:  libdecnumber
 BuildRequires:  linecook
 BuildRequires:  pcre2-devel
-BuildRequires:  openssl-devel
 BuildRequires:  git-core
 BuildRequires:  liblzf-devel
 BuildRequires:  systemd
@@ -29,7 +28,6 @@ Requires:       h3
 Requires:       libdecnumber
 Requires:       linecook
 Requires:       pcre2
-Requires:       openssl
 Requires:       liblzf
 Requires(post): /sbin/ldconfig
 Requires(postun): /sbin/ldconfig

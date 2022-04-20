@@ -160,7 +160,7 @@ endif
 
 ds_lib      := $(libd)/libraids.a
 rpath       := -Wl,-rpath,$(pwd)/$(libd)$(rpath1)$(rpath2)$(rpath3)$(rpath4)$(rpath5)$(rpath6)$(rpath7)
-dlnk_lib    += -lpcre2-8 -lcrypto
+dlnk_lib    += -lpcre2-8
 malloc_lib  :=
 
 .PHONY: everything
@@ -289,7 +289,7 @@ ds_server_cfile := src/server.cpp
 ds_server_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(ds_server_files)))
 ds_server_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(ds_server_files)))
 ds_server_libs  := $(ds_lib)
-ds_server_lnk   := $(ds_lib) $(lnk_lib) -lpcre2-32 -lpcre2-8 -lcrypto -llzf
+ds_server_lnk   := $(ds_lib) $(lnk_lib) -lpcre2-32 -lpcre2-8 -llzf
 #ds_server_static_lnk := $(ds_lib) $(lnk_lib) -lpcre2-32 -lpcre2-8 -lcrypto -llzf
 #ds_server_lnk        := $(raids_dlnk)
 
@@ -488,7 +488,7 @@ ds_test_api_cfile := test/test_api.c
 ds_test_api_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(ds_test_api_files)))
 ds_test_api_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(ds_test_api_files)))
 ds_test_api_libs  := $(ds_lib)
-ds_test_api_lnk   := $(ds_lib) $(lnk_lib) -lpcre2-32 -lpcre2-8 -lcrypto -llzf
+ds_test_api_lnk   := $(ds_lib) $(lnk_lib) -lpcre2-32 -lpcre2-8 -llzf
 
 #$(bind)/test_api: $(test_api_objs) $(test_api_libs)
 $(bind)/ds_test_api: $(ds_test_api_objs) $(ds_lib) $(lnk_dep)
@@ -498,7 +498,7 @@ ds_pubsub_api_cfile := test/pubsub_api.c
 ds_pubsub_api_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(ds_pubsub_api_files)))
 ds_pubsub_api_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(ds_pubsub_api_files)))
 ds_pubsub_api_libs  := $(ds_lib)
-ds_pubsub_api_lnk   := $(ds_lib) $(lnk_lib) -lpcre2-32 -lpcre2-8 -lcrypto -llzf
+ds_pubsub_api_lnk   := $(ds_lib) $(lnk_lib) -lpcre2-32 -lpcre2-8 -llzf
 
 $(bind)/ds_pubsub_api: $(ds_pubsub_api_objs) $(ds_lib) $(lnk_dep)
 
@@ -668,7 +668,7 @@ CMakeLists.txt: .copr/Makefile
 	if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
 	  set (ex_lib ws2_32)
 	else ()
-	  set (ex_lib -lcrypto -lpthread -lrt)
+	  set (ex_lib -lpthread -lrt)
 	endif ()
 	add_library (raids STATIC $(libraids_cfile))
 	link_libraries (raids raikv raimd decnumber rdbparser linecook h3 lzf $${pcre2lib} $${ex_lib})
