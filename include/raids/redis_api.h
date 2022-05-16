@@ -22,6 +22,7 @@ typedef void (*ds_on_msg_t)( const ds_event_t *event,
                              const ds_msg_t *msg,
                              void *cl );
 
+const char *ds_get_version( void );
 /* open ds shared memory: db_num 0 -> 253 (254,255 resvd) */
 int ds_open( ds_t **h, const char *map_name,  uint8_t db_num,
              int use_busy_poll );

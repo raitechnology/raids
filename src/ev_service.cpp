@@ -130,8 +130,7 @@ EvRedisService::on_msg( EvPublish &pub ) noexcept
   int  status    = this->RedisExec::do_pub( pub, cm );
 
   if ( ( status & RPUB_FORWARD_MSG ) != 0 ) {
-    flow_good = ( this->strm.pending() <= this->send_highwater );
-    this->idle_push( flow_good ? EV_WRITE : EV_WRITE_HI );
+    flow_good = this->idle_push_write();
   }
   if ( ( status & RPUB_CONTINUE_MSG ) != 0 ) {
     this->push_continue_list( cm );

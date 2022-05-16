@@ -29,6 +29,12 @@ struct ds_internal : public ds_s, public EvShmApi {
 
 extern "C" {
 
+const char *
+ds_get_version( void )
+{
+  return kv_stringify( DS_VER );
+}
+
 int
 ds_create( ds_t **h,  const char *map_name,  uint8_t db_num,
            int /*use_busy_poll*/,  kv_geom_t *geom,  int map_mode )
@@ -46,7 +52,7 @@ ds_create( ds_t **h,  const char *map_name,  uint8_t db_num,
   status = ds->create( map_name, geom, map_mode, db_num );
   if ( status == 0 ) {
     if ( status == 0 )
-      status = poll->init_shm( *ds );
+      status = poll->sub_route.init_shm( *ds );
     status = ds->init_exec();
     if ( status == 0 ) {
       /*poll->pubsub->flags &= ~KV_DO_NOTIFY;*/
@@ -86,7 +92,7 @@ ds_open( ds_t **h,  const char *map_name,  uint8_t db_num,
     status = ds->open( map_name, db_num );
   if ( status == 0 ) {
     if ( status == 0 )
-      status = poll->init_shm( *ds );
+      status = poll->sub_route.init_shm( *ds );
     status = ds->init_exec();
     if ( status == 0 ) {
       /*poll->pubsub->flags &= ~KV_DO_NOTIFY;*/
@@ -129,7 +135,7 @@ int
 ds_get_ctx_id( ds_t *h )
 {
   ds_internal & ds = *(ds_internal *) h;
-  return (int) ds.poll.ctx_id;
+  return (int) ds.poll.sub_route.ctx_id;
 }
 
 static void

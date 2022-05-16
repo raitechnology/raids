@@ -261,7 +261,7 @@ main( int argc, char *argv[] )
   PingTest shm( poll, su, pu, inbox, active_ping, round_trip, per_sec, pub_cnt);
   if ( shm.open( mn, 0 /* db */ ) != 0 )
     return 1;
-  if ( poll.init_shm( shm ) != 0 || shm.init_poll() != 0 )
+  if ( poll.sub_route.init_shm( shm ) != 0 || shm.init_poll() != 0 )
     return 1;
   shm.subscribe();
   printf( "listening on subject %s %x publish %s %x\n", shm.sub, shm.h,

@@ -115,7 +115,7 @@ rai::ds::shmdp_initialize( const char *mn,  int pt ) noexcept
   if ( ds_port == 0 || pt != 0 )
     init_port( pt );
   if ( qp->shm.open( mn, 0 /* db */ ) == 0 &&
-       qp->poll.init_shm( qp->shm ) == 0 ) {
+       qp->poll.sub_route.init_shm( qp->shm ) == 0 ) {
     if ( qp->shm.init_exec() == 0 ) {
       atexit( shmdp_atexit );
       return;

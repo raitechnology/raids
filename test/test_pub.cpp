@@ -168,7 +168,7 @@ main( int argc, char *argv[] )
   PubTest shm( poll, su, per_sec );
   if ( shm.open( mn, 0 /* db */ ) != 0 )
     return 1;
-  if ( poll.init_shm( shm ) != 0 || shm.init_poll() != 0 )
+  if ( poll.sub_route.init_shm( shm ) != 0 || shm.init_poll() != 0 )
     return 1;
   sighndl.install();
   shm.start_timer();

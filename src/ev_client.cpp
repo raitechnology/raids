@@ -30,7 +30,7 @@ void
 EvNetClient::send_data( char *data,  size_t size ) noexcept
 {
   this->append_iov( data, size );
-  this->idle_push( EV_WRITE );
+  this->idle_push_write();
 }
 
 void

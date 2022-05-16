@@ -9,7 +9,9 @@ namespace rai {
 namespace ds {
 
 struct EvHttpListen : public kv::EvTcpListen {
+  kv::RoutePublish & sub_route;
   void * operator new( size_t, void *ptr ) { return ptr; }
+  EvHttpListen( kv::EvPoll &p, kv::RoutePublish &sr ) noexcept;
   EvHttpListen( kv::EvPoll &p ) noexcept;
   virtual bool accept( void ) noexcept;
   virtual int listen( const char *ip,  int port,  int opts ) noexcept {
@@ -81,8 +83,8 @@ struct EvHttpService : public kv::EvConnection, public RedisExec {
   Term             term;
   void * operator new( size_t, void *ptr ) { return ptr; }
 
-  EvHttpService( kv::EvPoll &p,  const uint8_t t ) : kv::EvConnection( p, t ),
-    RedisExec( *p.map, p.ctx_id, p.dbx_id, *this, p.sub_route, *this, p.timer ),
+  EvHttpService( kv::EvPoll &p,  const uint8_t t,  kv::RoutePublish &sr ) : kv::EvConnection( p, t ),
+    RedisExec( *sr.map, sr.ctx_id, sr.dbx_id, *this, sr, *this, p.timer ),
     wsbuf( 0 ), wsoff( 0 ), wslen( 0 ), websock_off( 0 ),
     term_int( 0 ), is_using_term( false ) {}
   void initialize_state( void ) {

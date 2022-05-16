@@ -18,7 +18,16 @@ using namespace kv;
 static MemcachedStats stat;
 
 EvMemcachedListen::EvMemcachedListen( EvPoll &p ) noexcept
-  : EvTcpListen( p, "memcached_listen", "memcached_sock" )
+  : EvTcpListen( p, "memcached_listen", "memcached_sock" ),
+    sub_route( p.sub_route )
+{
+  if ( stat.boot_time == 0 )
+    stat.boot_time = kv_current_realtime_ns();
+}
+
+EvMemcachedListen::EvMemcachedListen( EvPoll &p,  RoutePublish &sr ) noexcept
+  : EvTcpListen( p, "memcached_listen", "memcached_sock" ),
+    sub_route( sr )
 {
   if ( stat.boot_time == 0 )
     stat.boot_time = kv_current_realtime_ns();
@@ -48,8 +57,9 @@ bool
 EvMemcachedListen::accept( void ) noexcept
 {
   EvMemcachedService * c =
-    this->poll.get_free_list<EvMemcachedService, MemcachedStats &>(
-      this->accept_sock_type, stat );
+    this->poll.get_free_list<EvMemcachedService, RoutePublish &,
+                             MemcachedStats &>(
+      this->accept_sock_type, this->sub_route, stat );
   if ( c == NULL )
     return false;
   if ( ! this->accept2( *c, "memcached" ) )
@@ -68,8 +78,8 @@ EvMemcachedUdp::init( void ) noexcept
   if ( stat.boot_time == 0 )
     stat.boot_time = kv_current_realtime_ns();
   this->exec = new ( this->execbuf )
-    MemcachedExec( *this->poll.map, this->poll.ctx_id, this->poll.dbx_id,
-                   *this, stat );
+    MemcachedExec( *this->sub_route.map, this->sub_route.ctx_id,
+                   this->sub_route.dbx_id, *this, stat );
 }
 
 const char *

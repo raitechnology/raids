@@ -128,7 +128,7 @@ main( int argc, char *argv[] )
   SubTest shm( poll, su, inbox );
   if ( shm.open( mn, 0 /* db */ ) != 0 )
     return 1;
-  if ( poll.init_shm( shm ) != 0 || shm.init_poll() != 0 )
+  if ( poll.sub_route.init_shm( shm ) != 0 || shm.init_poll() != 0 )
     return 1;
   shm.subscribe();
   sighndl.install();

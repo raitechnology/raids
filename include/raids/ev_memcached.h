@@ -46,13 +46,17 @@ struct EvMemcachedMerge {
 
 struct EvMemcachedUdp : public kv::EvUdp {
   uint8_t execbuf[ sizeof( MemcachedExec ) ];
-  MemcachedExec  * exec;     /* execution context */
-  uint32_t       * out_idx;  /* index into strm.iov[] for each result */
+  kv::RoutePublish & sub_route;
+  MemcachedExec    * exec;     /* execution context */
+  uint32_t         * out_idx;  /* index into strm.iov[] for each result */
   EvMemcachedMerge sav;
   void * operator new( size_t, void *ptr ) { return ptr; }
   EvMemcachedUdp( kv::EvPoll &p )
     : kv::EvUdp( p, p.register_type( "memcached_udp" ) ),
-      exec( 0 ), out_idx( 0 ) {}
+      sub_route( p.sub_route ), exec( 0 ), out_idx( 0 ) {}
+  EvMemcachedUdp( kv::EvPoll &p,  kv::RoutePublish &sr )
+    : kv::EvUdp( p, p.register_type( "memcached_udp" ) ),
+      sub_route( sr ), exec( 0 ), out_idx( 0 ) {}
   int listen( const char *ip,  int port,  int opts ) noexcept;
   void init( void ) noexcept;
   bool merge_inmsgs( uint32_t req_id,  uint32_t i,  uint32_t total,
@@ -89,7 +93,9 @@ struct MemcachedUdpFraming {
 
 struct EvMemcachedListen : public kv::EvTcpListen {
   void * operator new( size_t, void *ptr ) { return ptr; }
+  kv::RoutePublish & sub_route;
   EvMemcachedListen( kv::EvPoll &p ) noexcept;
+  EvMemcachedListen( kv::EvPoll &p,  kv::RoutePublish &sr ) noexcept;
   virtual int listen( const char *ip,  int port,  int opts ) noexcept;
   virtual bool accept( void ) noexcept;
 };
@@ -97,9 +103,10 @@ struct EvMemcachedListen : public kv::EvTcpListen {
 struct EvMemcachedService : public kv::EvConnection, public MemcachedExec {
   void * operator new( size_t, void *ptr ) { return ptr; }
 
-  EvMemcachedService( kv::EvPoll &p,  const uint8_t t,  MemcachedStats &st )
+  EvMemcachedService( kv::EvPoll &p,  const uint8_t t,  kv::RoutePublish &sr,
+                      MemcachedStats &st )
     : kv::EvConnection( p, t ),
-      MemcachedExec( *p.map, p.ctx_id, p.dbx_id, *this, st ) {}
+      MemcachedExec( *sr.map, sr.ctx_id, sr.dbx_id, *this, st ) {}
 
   virtual void read( void ) noexcept final;
   virtual void write( void ) noexcept final;

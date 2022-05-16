@@ -21,9 +21,13 @@ dependd   := $(build_dir)/dep
 have_asciidoctor := $(shell if [ -x /usr/bin/asciidoctor ]; then echo true; fi)
 have_pandoc := $(shell if [ -x /usr/bin/pandoc ]; then echo true; fi)
 
+default_cflags := -ggdb -O3
 # use 'make port_extra=-g' for debug build
 ifeq (-g,$(findstring -g,$(port_extra)))
-  DEBUG = true
+  default_cflags := -ggdb
+endif
+ifeq (-a,$(findstring -a,$(port_extra)))
+  default_cflags := -fsanitize=address -ggdb -O3
 endif
 
 CC          ?= gcc
@@ -43,11 +47,6 @@ gcc_wflags  := -Wall -Wextra -Werror
 fpicflags   := -fPIC
 soflag      := -shared
 
-ifdef DEBUG
-default_cflags := -ggdb
-else
-default_cflags := -ggdb -O3 -Ofast
-endif
 # rpmbuild uses RPM_OPT_FLAGS
 CFLAGS := $(default_cflags)
 #RPM_OPT_FLAGS ?= $(default_cflags)
@@ -235,6 +234,7 @@ all_dlls    :=
 all_depends :=
 gen_files   :=
 git_head    := $(shell git rev-parse HEAD | cut -c 1-8)
+redis_api_defines      := -DDS_VER=$(ver_build)
 server_defines         := -DDS_VER=$(ver_build)
 redis_server_defines   := -DDS_VER=$(ver_build) -DGIT_HEAD=$(git_head)
 memcached_exec_defines := -DDS_VER=$(ver_build)

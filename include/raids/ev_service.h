@@ -16,7 +16,7 @@ struct EvRedisService : public kv::EvConnection, public RedisExec {
 
   EvRedisService( kv::EvPoll &p,  const uint8_t t,
                   kv::RoutePublish &sr ) : kv::EvConnection( p, t ),
-      RedisExec( *p.map, p.ctx_id, p.dbx_id, *this, sr, *this, p.timer ) {}
+      RedisExec( *sr.map, sr.ctx_id, sr.dbx_id, *this, sr, *this, p.timer ) {}
   void debug( void ) noexcept;
   /* EvSocket */
   virtual void process( void ) noexcept final;

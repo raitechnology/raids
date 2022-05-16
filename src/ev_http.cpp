@@ -13,16 +13,23 @@ using namespace rai;
 using namespace ds;
 using namespace kv;
 
-static void SHA1( const uint8_t *data, size_t len, uint8_t digest[20] ) noexcept;
+static void SHA1( const uint8_t *data,  size_t len,
+                  uint8_t digest[20] ) noexcept;
 
 EvHttpListen::EvHttpListen( EvPoll &p ) noexcept
-  : EvTcpListen( p, "http_listen", "http_sock" ) {}
+  : EvTcpListen( p, "http_listen", "http_sock" ),
+    sub_route( p.sub_route ) {}
+
+EvHttpListen::EvHttpListen( EvPoll &p,  RoutePublish &sr ) noexcept
+  : EvTcpListen( p, "http_listen", "http_sock" ),
+    sub_route( sr ) {}
 
 bool
 EvHttpListen::accept( void ) noexcept
 {
   EvHttpService *c =
-    this->poll.get_free_list<EvHttpService>( this->accept_sock_type );
+    this->poll.get_free_list<EvHttpService, RoutePublish &>
+      ( this->accept_sock_type, this->sub_route );
   if ( c == NULL )
     return false;
   if ( ! this->accept2( *c, "http" ) )
@@ -556,8 +563,7 @@ EvHttpService::on_msg( EvPublish &pub ) noexcept
   bool flow_good = true;
   int  status    = this->RedisExec::do_pub( pub, cm );
   if ( ( status & RPUB_FORWARD_MSG ) != 0 ) {
-    flow_good = ( this->pending() <= this->send_highwater );
-    this->idle_push( flow_good ? EV_WRITE : EV_WRITE_HI );
+    flow_good = this->idle_push_write();
   }
   if ( ( status & RPUB_CONTINUE_MSG ) != 0 ) {
     this->push_continue_list( cm );
