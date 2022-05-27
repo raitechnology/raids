@@ -500,7 +500,7 @@ RedisExec::release_scan_args( ScanArgs &sa ) noexcept
 ExecStatus
 RedisExec::scan_keys( ScanArgs &sa ) noexcept
 {
-  StreamBuf::BufQueue q( this->strm );
+  RedisBufQueue q( this->strm );
   size_t cnt = 0;
   int    rc  = 1; /* 1=matched when no regex */
 

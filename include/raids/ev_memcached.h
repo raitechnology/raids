@@ -97,7 +97,7 @@ struct EvMemcachedListen : public kv::EvTcpListen {
   EvMemcachedListen( kv::EvPoll &p ) noexcept;
   EvMemcachedListen( kv::EvPoll &p,  kv::RoutePublish &sr ) noexcept;
   virtual int listen( const char *ip,  int port,  int opts ) noexcept;
-  virtual bool accept( void ) noexcept;
+  virtual EvSocket *accept( void ) noexcept;
 };
 
 struct EvMemcachedService : public kv::EvConnection, public MemcachedExec {

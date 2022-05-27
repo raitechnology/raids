@@ -230,7 +230,7 @@ ExecStatus
 RedisExec::do_hmultiscan( EvKeyCtx &ctx,  int flags,  ScanArgs *sa ) noexcept
 {
   ExecListCtx<HashData, MD_HASH> hash( *this, ctx );
-  StreamBuf::BufQueue q( this->strm );
+  RedisBufQueue q( this->strm );
   const char * key     = NULL;
   size_t       keylen  = 0;
   HashPos      pos;

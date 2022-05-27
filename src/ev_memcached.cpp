@@ -53,7 +53,7 @@ EvMemcachedUdp::listen( const char *ip,  int port,  int opts ) noexcept
   return this->EvUdp::listen2( ip, port, opts, "memcached_udp" );
 }
 
-bool
+EvSocket *
 EvMemcachedListen::accept( void ) noexcept
 {
   EvMemcachedService * c =
@@ -61,15 +61,15 @@ EvMemcachedListen::accept( void ) noexcept
                              MemcachedStats &>(
       this->accept_sock_type, this->sub_route, stat );
   if ( c == NULL )
-    return false;
+    return NULL;
   if ( ! this->accept2( *c, "memcached" ) )
-    return false;
+    return NULL;
   stat.conn_structs += sizeof( *c );
   stat.curr_connections++;
   stat.total_connections++;
   if ( stat.curr_connections > stat.max_connections )
     stat.max_connections = stat.curr_connections;
-  return true;
+  return c;
 }
 
 void

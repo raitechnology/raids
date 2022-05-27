@@ -13,7 +13,7 @@ struct EvHttpListen : public kv::EvTcpListen {
   void * operator new( size_t, void *ptr ) { return ptr; }
   EvHttpListen( kv::EvPoll &p, kv::RoutePublish &sr ) noexcept;
   EvHttpListen( kv::EvPoll &p ) noexcept;
-  virtual bool accept( void ) noexcept;
+  virtual EvSocket *accept( void ) noexcept;
   virtual int listen( const char *ip,  int port,  int opts ) noexcept {
     return this->kv::EvTcpListen::listen2( ip, port, opts, "http_listen" );
   }
@@ -71,22 +71,28 @@ struct HttpOut {
   }
 };
 
-struct EvHttpService : public kv::EvConnection, public RedisExec {
-  char           * wsbuf;   /* decoded websocket frames */
-  size_t           wsoff,   /* start offset of wsbuf */
-                   wslen,   /* length of wsbuf used */
-                   wsalloc, /* sizeof wsbuf alloc */
-                   wsmsgcnt;
-  uint64_t         websock_off; /* on output pointer that frames msgs with ws */
-  int              term_int;
-  bool             is_using_term;
-  Term             term;
-  void * operator new( size_t, void *ptr ) { return ptr; }
+struct WSMsg {
+  char * inptr;
+  size_t inoff,
+         inlen,
+         msgcnt,
+         nlcnt;
+};
 
-  EvHttpService( kv::EvPoll &p,  const uint8_t t,  kv::RoutePublish &sr ) : kv::EvConnection( p, t ),
-    RedisExec( *sr.map, sr.ctx_id, sr.dbx_id, *this, sr, *this, p.timer ),
-    wsbuf( 0 ), wsoff( 0 ), wslen( 0 ), websock_off( 0 ),
-    term_int( 0 ), is_using_term( false ) {}
+struct EvHttpConnection : public kv::EvConnection {
+  char   * wsbuf;   /* decoded websocket frames */
+  size_t   wsoff,   /* start offset of wsbuf */
+           wslen,   /* length of wsbuf used */
+           wsalloc, /* sizeof wsbuf alloc */
+           wsmsgcnt;
+  uint64_t websock_off; /* on output pointer that frames msgs with ws */
+  int      term_int;
+  bool     is_using_term;
+  Term     term;
+
+  EvHttpConnection( kv::EvPoll &p,  const uint8_t t )
+    : kv::EvConnection( p, t ), wsbuf( 0 ), wsoff( 0 ), wslen( 0 ),
+      websock_off( 0 ), term_int( 0 ), is_using_term( false ) {}
   void initialize_state( void ) {
     this->wsbuf         = NULL;
     this->wsoff         = 0;
@@ -108,27 +114,43 @@ struct EvHttpService : public kv::EvConnection, public RedisExec {
   bool flush_term( void ) noexcept;
   bool frame_websock( void ) noexcept;
   bool frame_websock2( void ) noexcept;
-  bool process_get( const HttpReq &hreq ) noexcept;
-  bool process_post( const HttpReq &hreq ) noexcept;
-  bool send_file( const char *path,  size_t len ) noexcept;
   bool send_ws_upgrade( const HttpReq &wshdr ) noexcept;
-  bool send_ws_pong( const char *payload,  size_t len ) noexcept;
+  bool send_ws_pong( const char *payload,  size_t pay_len ) noexcept;
   size_t recv_wsframe( char *start,  char *end ) noexcept;
-
+  static const char *get_mime_type( const char *path, size_t len,
+                                    size_t &mlen,  bool &is_gzip ) noexcept;
+  virtual bool process_get( const HttpReq &hreq ) noexcept;
+  virtual bool process_get_file( const char *path,  size_t path_len ) noexcept;
+  virtual void process_wsmsg( WSMsg &wmsg ) noexcept = 0;
+  virtual bool process_post( const HttpReq &hreq ) noexcept;
   /* EvSocket */
-  virtual void write( void ) noexcept final;
-  virtual void process( void ) noexcept final;
-  virtual void release( void ) noexcept final;
-  virtual bool timer_expire( uint64_t tid, uint64_t eid ) noexcept final;
-  virtual bool hash_to_sub( uint32_t h, char *k, size_t &klen ) noexcept final;
-  virtual bool on_msg( kv::EvPublish &pub ) noexcept final;
-  virtual uint8_t is_subscribed( const kv::NotifySub &sub ) noexcept final;
-  virtual uint8_t is_psubscribed( const kv::NotifyPattern &pat ) noexcept final;
-  virtual void key_prefetch( kv::EvKeyCtx &ctx ) noexcept final;
-  virtual int  key_continue( kv::EvKeyCtx &ctx ) noexcept final;
+  virtual void write( void ) noexcept;
+  virtual void process( void ) noexcept;
+  virtual void release( void ) noexcept;
+};
+
+struct EvHttpService : public EvHttpConnection, public RedisExec {
+  void * operator new( size_t, void *ptr ) { return ptr; }
+
+  EvHttpService( kv::EvPoll &p,  const uint8_t t,  kv::RoutePublish &sr )
+    : EvHttpConnection( p, t ),
+      RedisExec( *sr.map, sr.ctx_id, sr.dbx_id, *this, sr, *this, p.timer ) {}
+
+  virtual bool process_get( const HttpReq &hreq ) noexcept;
+  virtual void process_wsmsg( WSMsg &wmsg ) noexcept;
+  virtual bool process_post( const HttpReq &hreq ) noexcept;
+  /* EvSocket */
+  virtual void release( void ) noexcept;
+  virtual bool timer_expire( uint64_t tid, uint64_t eid ) noexcept;
+  virtual bool hash_to_sub( uint32_t h, char *k, size_t &klen ) noexcept;
+  virtual bool on_msg( kv::EvPublish &pub ) noexcept;
+  virtual uint8_t is_subscribed( const kv::NotifySub &sub ) noexcept;
+  virtual uint8_t is_psubscribed( const kv::NotifyPattern &pat ) noexcept;
+  virtual void key_prefetch( kv::EvKeyCtx &ctx ) noexcept;
+  virtual int  key_continue( kv::EvKeyCtx &ctx ) noexcept;
   /* PeerData */
-  virtual int client_list( char *buf,  size_t buflen ) noexcept final;
-  virtual bool match( kv::PeerMatchArgs &ka ) noexcept final;
+  virtual int client_list( char *buf,  size_t buflen ) noexcept;
+  virtual bool match( kv::PeerMatchArgs &ka ) noexcept;
 };
 
 /*    0                   1                   2                   3

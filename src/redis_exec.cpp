@@ -1216,3 +1216,106 @@ EvKeyCtx::get_type_str( void ) const noexcept
 {
   return md_type_str( (MDType) this->type, 0 );
 }
+
+size_t
+RedisBufQueue::append_string( const void *str,  size_t len,
+                              const void *str2,  size_t len2 ) noexcept
+{
+  size_t itemlen = len + len2,
+         d       = uint64_digits( itemlen );
+  StreamBuf::BufList * p = this->get_buf( itemlen + d + 5 );
+
+  if ( p == NULL )
+    return 0;
+  char * bufp = p->buf( 0 );
+  bufp[ p->used++ ] = '$';
+  p->used += uint64_to_string( itemlen, &bufp[ p->used ], d );
+  p->used = crlf( bufp, p->used );
+  ::memcpy( &bufp[ p->used ], str, len );
+  if ( len2 > 0 )
+    ::memcpy( &bufp[ p->used + len ], str2, len2 );
+  p->used = crlf( bufp, p->used + len + len2 );
+
+  return p->used;
+}
+
+size_t
+RedisBufQueue::append_nil( bool is_null ) noexcept
+{
+  StreamBuf::BufList * p = this->get_buf( 5 );
+  if ( p == NULL )
+    return 0;
+  char * bufp = p->buf( 0 );
+  bufp[ p->used ]   = ( is_null ? '*' : '$' );
+  bufp[ p->used+1 ] = '-';
+  bufp[ p->used+2 ] = '1';
+  p->used = crlf( bufp, p->used + 3 );
+
+  return p->used;
+}
+
+size_t
+RedisBufQueue::append_zero_array( void ) noexcept
+{
+  StreamBuf::BufList * p = this->get_buf( 5 );
+  if ( p == NULL )
+    return 0;
+  char * bufp = p->buf( 0 );
+  bufp[ p->used ]   = '*';
+  bufp[ p->used+1 ] = '0';
+  p->used = crlf( bufp, p->used + 2 );
+
+  return p->used;
+}
+
+size_t
+RedisBufQueue::append_uint( uint64_t val ) noexcept
+{
+  size_t d = uint64_digits( val );
+  StreamBuf::BufList * p = this->get_buf( d + 3 );
+  if ( p == NULL )
+    return 0;
+  char * bufp = p->buf( 0 );
+  bufp[ p->used++ ] = ':';
+  p->used += uint64_to_string( val, &bufp[ p->used ], d );
+  p->used = crlf( bufp, p->used );
+  return p->used;
+}
+
+void
+RedisBufQueue::prepend_array( size_t nitems ) noexcept
+{
+  size_t    itemlen = uint64_digits( nitems ),
+                 /*  '*'   4      '\r\n' (nitems = 1234) */
+            len     = 1 + itemlen + 2;
+  char * bufp = this->prepend_buf( len );
+  bufp[ 0 ] = '*';
+  uint64_to_string( nitems, &bufp[ 1 ], itemlen );
+  crlf( bufp, len - 2 );
+}
+
+void
+RedisBufQueue::prepend_cursor_array( size_t curs,  size_t nitems ) noexcept
+{
+  size_t    curslen = uint64_digits( curs ),
+            clenlen = uint64_digits( curslen ),
+            itemlen = uint64_digits( nitems ),
+            len     = /* '*2\r\n$'    1    '\r\n'  0     '\r\n' (curs=0) */
+                           5      + clenlen + 2 + curslen + 2 +
+                      /* '*'    4     '\r\n'  (nitems = 1234) */
+                          1 + itemlen + 2,
+            i;
+  char * bufp = this->prepend_buf( len );
+
+  bufp[ 0 ] = '*';
+  bufp[ 1 ] = '2';
+  crlf( bufp, 2 );
+  bufp[ 4 ] = '$';
+  i  = 5 + uint64_to_string( curslen, &bufp[ 5 ], clenlen );
+  i  = crlf( bufp, i );
+  i += uint64_to_string( curs, &bufp[ i ], curslen );
+  i  = crlf( bufp, i );
+  bufp[ i ] = '*';
+  i += 1 + uint64_to_string( nitems, &bufp[ 1 + i ], itemlen );
+  crlf( bufp, i );
+}

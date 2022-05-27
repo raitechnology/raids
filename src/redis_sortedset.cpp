@@ -666,7 +666,7 @@ RedisExec::do_zmultiscan( EvKeyCtx &ctx,  int flags,  ScanArgs *sa ) noexcept
   else if ( ( flags & DO_ZSCAN ) != 0 ) {
     withscores = true; /* always with scores */
   }
-  StreamBuf::BufQueue q( this->strm );
+  RedisBufQueue q( this->strm );
   size_t count   = 0,
          itemcnt = 0,
          i       = ( sa != NULL && sa->pos > 0 ? sa->pos : 0 ),
@@ -1048,7 +1048,7 @@ RedisExec::do_zremrange( EvKeyCtx &ctx,  int flags ) noexcept
     }
 
     if ( ( flags & ZSET_POP_CMDS ) != 0 ) {
-      StreamBuf::BufQueue q( this->strm );
+      RedisBufQueue q( this->strm );
       ZSetVal    zv;
       ZSetStatus zstatus;
       char       fpdata[ 64 ];
@@ -1149,7 +1149,7 @@ RedisExec::do_zremrange( EvKeyCtx &ctx,  int flags ) noexcept
     }
 
     if ( ( flags & ZSET_POP_CMDS ) != 0 ) {
-      StreamBuf::BufQueue q( this->strm );
+      RedisBufQueue q( this->strm );
       GeoVal     gv;
       GeoStatus  gstatus;
       char       fpdata[ 64 ];

@@ -110,6 +110,23 @@ enum ExecCmdState { /* cmd_state flags */
   CMD_STATE_LOAD              = 64 /* LOAD is running */
 };
 
+struct RedisBufQueue : public kv::StreamBuf::BufQueue {
+  RedisBufQueue( kv::StreamBuf &s ) : kv::StreamBuf::BufQueue( s, 48, 928 ) {}
+  /* a nil string: $-1\r\n or *-1\r\n if is_null true */
+  size_t append_nil( bool is_null = false ) noexcept;
+  /* a zero length array: *0\r\n */
+  size_t append_zero_array( void ) noexcept;
+  /* one string item, appended with decorations: $<strlen>\r\n<string>\r\n */
+  size_t append_string( const void *str,  size_t len,  const void *str2=0,
+                        size_t len2=0 ) noexcept;
+  /* an int, appended with decorations: :<val>\r\n */
+  size_t append_uint( uint64_t val ) noexcept;
+  /* make array: [item1, item2, ...], prepends decorations *<arraylen>\r\n */
+  void prepend_array( size_t nitems ) noexcept;
+  /* cursor is two arrays: [cursor,[items]] */
+  void prepend_cursor_array( size_t curs,  size_t nitems ) noexcept;
+};
+
 struct RedisExec {
   void * operator new( size_t, void *ptr ) { return ptr; }
   void operator delete( void *ptr ) { ::free( ptr ); }
@@ -507,12 +524,12 @@ struct RedisExec {
   ExecStatus exec_xtrim( kv::EvKeyCtx &ctx ) noexcept;
   ExecStatus exec_xdel( kv::EvKeyCtx &ctx ) noexcept;
   bool construct_xfield_output( ExecStreamCtx &stream,  size_t idx,
-                                kv::StreamBuf::BufQueue &q ) noexcept;
+                                RedisBufQueue &q ) noexcept;
   ExecStatus exec_xrange( kv::EvKeyCtx &ctx ) noexcept;
   ExecStatus exec_xrevrange( kv::EvKeyCtx &ctx ) noexcept;
   ExecStatus exec_xlen( kv::EvKeyCtx &ctx ) noexcept;
   ExecStatus exec_xread( kv::EvKeyCtx &ctx ) noexcept;
-  ExecStatus finish_xread( kv::EvKeyCtx &ctx,  kv::StreamBuf::BufQueue &q ) noexcept;
+  ExecStatus finish_xread( kv::EvKeyCtx &ctx,  RedisBufQueue &q ) noexcept;
   ExecStatus exec_xreadgroup( kv::EvKeyCtx &ctx ) noexcept;
   ExecStatus exec_xgroup( kv::EvKeyCtx &ctx ) noexcept;
   ExecStatus exec_xack( kv::EvKeyCtx &ctx ) noexcept;

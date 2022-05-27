@@ -446,7 +446,7 @@ RedisExec::do_hash_to_sub( uint32_t h,  char *key,  size_t &keylen ) noexcept
 ExecStatus
 RedisExec::exec_pubsub( void ) noexcept
 {
-  StreamBuf::BufQueue q( this->strm );
+  RedisBufQueue q( this->strm );
   size_t cnt = 0;
 
   /* PUBSUB [channels [pattern] | numsub channel-1 [, ...] | numpat] */

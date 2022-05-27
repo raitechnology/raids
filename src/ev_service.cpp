@@ -24,32 +24,32 @@ EvRedisUnixListen::EvRedisUnixListen( EvPoll &p,  RoutePublish &sr ) noexcept
   : EvUnixListen( p, "redis_unix_listen", "redis_sock" ),
     sub_route( sr ) {}
 
-bool
+EvSocket *
 EvRedisListen::accept( void ) noexcept
 {
   EvRedisService *c =
     this->poll.get_free_list<EvRedisService, RoutePublish &>(
       this->accept_sock_type, this->sub_route );
   if ( c == NULL )
-    return false;
+    return NULL;
   if ( ! this->accept2( *c, "redis" ) )
-    return false;
+    return NULL;
   c->setup_ids( c->fd, ++this->timer_id );
-  return true;
+  return c;
 }
 
-bool
+EvSocket *
 EvRedisUnixListen::accept( void ) noexcept
 {
   EvRedisService *c =
     this->poll.get_free_list<EvRedisService, RoutePublish &>(
       this->accept_sock_type, this->sub_route );
   if ( c == NULL )
-    return false;
+    return NULL;
   if ( ! this->accept2( *c, "redis" ) )
-    return false;
+    return NULL;
   c->setup_ids( c->fd, ++this->timer_id );
-  return true;
+  return c;
 }
 
 void

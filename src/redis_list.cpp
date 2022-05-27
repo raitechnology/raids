@@ -181,7 +181,7 @@ ExecStatus
 RedisExec::exec_lrange( EvKeyCtx &ctx ) noexcept
 {
   ExecListCtx<ListData, MD_LIST> list( *this, ctx );
-  StreamBuf::BufQueue q( this->strm );
+  RedisBufQueue q( this->strm );
   ListVal    lv;
   int64_t    from, to;
   size_t     count,

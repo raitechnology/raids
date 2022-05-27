@@ -39,7 +39,7 @@ struct EvRedisListen : public kv::EvTcpListen {
   kv::RoutePublish & sub_route;
   EvRedisListen( kv::EvPoll &p, kv::RoutePublish &sr ) noexcept;
   EvRedisListen( kv::EvPoll &p ) noexcept;
-  virtual bool accept( void ) noexcept;
+  virtual EvSocket *accept( void ) noexcept;
   virtual int listen( const char *ip,  int port,  int opts ) noexcept {
     return this->kv::EvTcpListen::listen2( ip, port, opts, "redis_listen" );
   }
@@ -50,7 +50,7 @@ struct EvRedisUnixListen : public kv::EvUnixListen {
   kv::RoutePublish & sub_route;
   EvRedisUnixListen( kv::EvPoll &p, kv::RoutePublish &sr ) noexcept;
   EvRedisUnixListen( kv::EvPoll &p ) noexcept;
-  virtual bool accept( void ) noexcept;
+  virtual EvSocket *accept( void ) noexcept;
   int listen( const char *sock,  int opts ) noexcept {
     return this->kv::EvUnixListen::listen2( sock, opts, "unix_listen" );
   }

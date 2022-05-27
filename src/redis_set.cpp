@@ -309,7 +309,7 @@ ExecStatus
 RedisExec::do_smultiscan( EvKeyCtx &ctx,  int flags,  ScanArgs *sa ) noexcept
 {
   ExecListCtx<SetData, MD_SET> set( *this, ctx );
-  StreamBuf::BufQueue q( this->strm );
+  RedisBufQueue q( this->strm );
   size_t    count   = 0,
             itemcnt = 0,
             i       = ( sa != NULL && sa->pos > 0 ? sa->pos : 0 ),
@@ -576,7 +576,7 @@ RedisExec::do_ssetop( EvKeyCtx &ctx,  int flags ) noexcept
   }
   /* if no dest key, return the result */
   if ( src == 0 ) {
-    StreamBuf::BufQueue q( this->strm );
+    RedisBufQueue q( this->strm );
     ListVal lv;
     size_t  itemcnt = 0;
     count = set->count();

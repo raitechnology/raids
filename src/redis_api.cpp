@@ -390,7 +390,8 @@ ds_psubscribe_with_cb( ds_t *h,  const ds_msg_t *subject,
 } /* extern "C" */
 
 EvShmApi::EvShmApi( EvPoll &p ) noexcept
-  : EvSocket( p, p.register_type( "shm_api" ) ), exec( 0 ), timer_id( 0 )
+  : EvShm( "shm_api" ), EvSocket( p, p.register_type( "shm_api" ) ),
+    exec( 0 ), timer_id( 0 )
 {
   this->sock_opts = kv::OPT_NO_POLL;
 }

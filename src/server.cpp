@@ -158,7 +158,7 @@ Loop::init( void ) noexcept
 int
 main( int argc,  const char *argv[] )
 {
-  EvShm shm;
+  EvShm shm( "ds_server" );
   Args  r;
 #ifdef USE_REDIS
   r.add_desc( "  -p redis = listen redis port     (6379)" );

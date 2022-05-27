@@ -224,7 +224,7 @@ ExecStatus
 RedisExec::do_gread( EvKeyCtx &ctx,  int flags ) noexcept
 {
   ExecListCtx<GeoData, MD_GEO> geo( *this, ctx );
-  StreamBuf::BufQueue q( this->strm );
+  RedisBufQueue q( this->strm );
   const char * arg     = NULL;
   size_t       arglen  = 0;
   const char * dest    = NULL;
@@ -412,7 +412,7 @@ enum {
 };
 /* place appended to return value */
 static void
-append_place( StreamBuf::BufQueue &q,  GeoVal &gv,  int withflags,
+append_place( RedisBufQueue &q,  GeoVal &gv,  int withflags,
               char withbuf[ 4 ],  GeoCoord &coordj,  double dist,
               double units )
 {
@@ -451,7 +451,7 @@ RedisExec::do_gradius( EvKeyCtx &ctx,  int flags ) noexcept
   }
 
   ExecListCtx<GeoData, MD_GEO> geo( *this, ctx );
-  StreamBuf::BufQueue q( this->strm );
+  RedisBufQueue q( this->strm );
   const char * arg     = NULL;
   size_t       arglen  = 0;
   HashPos      pos,

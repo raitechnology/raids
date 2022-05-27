@@ -24,23 +24,23 @@ EvHttpListen::EvHttpListen( EvPoll &p,  RoutePublish &sr ) noexcept
   : EvTcpListen( p, "http_listen", "http_sock" ),
     sub_route( sr ) {}
 
-bool
+EvSocket *
 EvHttpListen::accept( void ) noexcept
 {
   EvHttpService *c =
     this->poll.get_free_list<EvHttpService, RoutePublish &>
       ( this->accept_sock_type, this->sub_route );
   if ( c == NULL )
-    return false;
+    return NULL;
   if ( ! this->accept2( *c, "http" ) )
-    return false;
+    return NULL;
   c->setup_ids( c->fd, ++this->timer_id );
   c->initialize_state();
-  return true;
+  return c;
 }
 
 void
-EvHttpService::process( void ) noexcept
+EvHttpConnection::process( void ) noexcept
 {
   if ( this->websock_off > 0 ) {
     if ( this->process_websock() )
@@ -62,7 +62,7 @@ is_closed:;
 }
 
 bool
-EvHttpService::process_http( void ) noexcept
+EvHttpConnection::process_http( void ) noexcept
 {
   static const size_t MAX_HTTP_REQUEST_LEN = 65 * 1024;
   for (;;) {
@@ -164,6 +164,7 @@ static const char http_hdr11[] = "HTTP/1.1 ",
                   ctype_json[] = "Content-Type: application/json\r\n",
                   ctype_html[] = "Content-Type: text/html\r\n",
                   ctype[]      = "Content-Type: ",
+                  gzenc[]      = "Content-Encoding: gzip\r\n",
                   clength[]    = "Content-Length: ",
                   clength_40[] = "Content-Length: 40\r\n",
                   /*clength_0[]  = "Content-Length: 0\r\n",*/
@@ -171,7 +172,7 @@ static const char http_hdr11[] = "HTTP/1.1 ",
 
 /* initialize http response */
 void
-EvHttpService::init_http_response( const HttpReq &hreq,  HttpOut &hout,
+EvHttpConnection::init_http_response( const HttpReq &hreq,  HttpOut &hout,
                                    int opts,  int code ) noexcept
 {
   hout.off = hout.size = 0;
@@ -201,7 +202,7 @@ EvHttpService::init_http_response( const HttpReq &hreq,  HttpOut &hout,
 }
 
 void
-EvHttpService::send_404_not_found( const HttpReq &hreq,  int opts ) noexcept
+EvHttpConnection::send_404_not_found( const HttpReq &hreq,  int opts ) noexcept
 {
   static const char not_found_html[] =
   "\r\n" /* text must be 40 chars */
@@ -217,7 +218,7 @@ EvHttpService::send_404_not_found( const HttpReq &hreq,  int opts ) noexcept
 }
 
 void
-EvHttpService::send_404_bad_type( const HttpReq &hreq ) noexcept
+EvHttpConnection::send_404_bad_type( const HttpReq &hreq ) noexcept
 {
   static const char bad_type_html[] =
   "\r\n" /* text must be 40 chars */
@@ -233,7 +234,7 @@ EvHttpService::send_404_bad_type( const HttpReq &hreq ) noexcept
 }
 
 void
-EvHttpService::send_201_created( const HttpReq &hreq ) noexcept
+EvHttpConnection::send_201_created( const HttpReq &hreq ) noexcept
 {
   static const char created_html[] =
   "\r\n" /* text must be 40 chars */
@@ -405,7 +406,7 @@ HttpReq::parse_header( const char *line,  size_t len ) noexcept
 }
 
 bool
-EvHttpService::process_websock( void ) noexcept
+EvHttpConnection::process_websock( void ) noexcept
 {
   for (;;) {
     char * start, * end;
@@ -417,20 +418,16 @@ EvHttpService::process_websock( void ) noexcept
     end   = &start[ buflen ];
 
     /* decode websock frame */
-    char * inptr;
-    size_t inoff,
-           inlen,
-           msgcnt,
-           nlcnt,
-           used = this->recv_wsframe( start, end );
+    size_t used = this->recv_wsframe( start, end );
     if ( used <= 1 ) { /* 0 == not enough data for hdr, 1 == closed */
       if ( used == 0 )
         return false;
       return true;
     }
     this->off += (uint32_t) used;
-    msgcnt = 0;
-    nlcnt  = 0;
+    WSMsg wmsg;
+    wmsg.msgcnt = 0;
+    wmsg.nlcnt  = 0;
 
     if ( this->is_using_term ) {
       this->term_int = this->term.interrupt + this->term.suspend;
@@ -438,107 +435,113 @@ EvHttpService::process_websock( void ) noexcept
                             this->wslen - this->wsoff );
       this->wsoff = this->wslen;
       this->flush_term();
-      inptr = this->term.line_buf;
-      inoff = this->term.line_off;
-      inlen = this->term.line_len;
+      wmsg.inptr = this->term.line_buf;
+      wmsg.inoff = this->term.line_off;
+      wmsg.inlen = this->term.line_len;
     }
     else {
-      inptr = this->wsbuf;
-      inoff = this->wsoff;
-      inlen = this->wslen;
+      wmsg.inptr = this->wsbuf;
+      wmsg.inoff = this->wsoff;
+      wmsg.inlen = this->wslen;
     }
-    while ( inoff < inlen ) {
-      char * p = &inptr[ inoff ];
-      size_t size = inlen - inoff;
-      int    status;
-      switch ( p[ 0 ] ) {
-        default:
-        case DS_SIMPLE_STRING: /* + */
-        case DS_ERROR_STRING:  /* - */
-        case DS_INTEGER_VALUE: /* : */
-        case DS_BULK_STRING:   /* $ */
-        case DS_BULK_ARRAY:    /* * */
-          status = this->msg.unpack( p, size, this->tmp );
-          break;
-        case '\n':
-          nlcnt++;
-          /* FALLTHRU */
-        case ' ':
-        case '\t':
-        case '\r':
-          size = 1; /* eat the whitespace */
-          status = -1;
-          break;
-        case '"': /* possible json */
-        case '\'':
-        case '[':
-        case '0': case '1': case '2': case '3': case '4':
-        case '5': case '6': case '7': case '8': case '9':
-          status = this->msg.unpack_json( p, size, this->tmp );
-          break;
-      }
-      if ( status != DS_MSG_STATUS_OK ) {
-        if ( status < 0 ) {
-          inoff += size;
-          continue;
-        }
-        if ( status == DS_MSG_STATUS_PARTIAL ) {
-          /*printf( "partial [%.*s]\n", (int)size, p );*/
-          break;
-        }
-        this->mstatus = (RedisMsgStatus) status;
-        this->send_err_string( ERR_MSG_STATUS, KEY_OK );
-/*        fprintf( stderr, "protocol error(%d/%s), ignoring %lu bytes\n",
-                 status, ds_msg_status_string( (RedisMsgStatus) status ),
-                 inlen - inoff );*/
-        inoff = inlen;
-        break;
-      }
-      this->msgs_recv++;
-      msgcnt++;
-      inoff += size;
-      if ( (status = this->exec( this, NULL )) == EXEC_OK )
-        if ( this->alloc_fail )
-          status = ERR_ALLOC_FAIL;
-      switch ( status ) {
-        case EXEC_SETUP_OK:
-          /*if ( q != NULL )
-            return;*/
-          this->exec_run_to_completion();
-          if ( ! this->alloc_fail ) {
-            this->msgs_sent++;
-            break;
-          }
-          status = ERR_ALLOC_FAIL;
-          /* FALLTHRU */
-        case EXEC_QUIT:
-          if ( status == EXEC_QUIT ) {
-            this->push( EV_SHUTDOWN );
-            this->poll.quit++;
-          }
-          /* FALLTHRU */
-        default:
-          this->msgs_sent++;
-          this->send_status( (ExecStatus) status, KEY_OK );
-          break;
-        case EXEC_DEBUG:
-          break;
-      }
-    }
+    this->process_wsmsg( wmsg );
     if ( this->is_using_term ) {
-      if ( msgcnt == 0 && nlcnt != 0 ) {
+      if ( wmsg.msgcnt == 0 && wmsg.nlcnt != 0 ) {
         if ( this->term.tty_prompt() )
           this->flush_term();
       }
-      this->term.line_off = inoff;
+      this->term.line_off = wmsg.inoff;
     }
     else
-      this->wsoff = inoff;
+      this->wsoff = wmsg.inoff;
+  }
+}
+
+void
+EvHttpService::process_wsmsg( WSMsg &wmsg ) noexcept
+{
+  while ( wmsg.inoff < wmsg.inlen ) {
+    char * p = &wmsg.inptr[ wmsg.inoff ];
+    size_t size = wmsg.inlen - wmsg.inoff;
+    int    status;
+    switch ( p[ 0 ] ) {
+      default:
+      case DS_SIMPLE_STRING: /* + */
+      case DS_ERROR_STRING:  /* - */
+      case DS_INTEGER_VALUE: /* : */
+      case DS_BULK_STRING:   /* $ */
+      case DS_BULK_ARRAY:    /* * */
+        status = this->msg.unpack( p, size, this->tmp );
+        break;
+      case '\n':
+        wmsg.nlcnt++;
+        /* FALLTHRU */
+      case ' ':
+      case '\t':
+      case '\r':
+        size = 1; /* eat the whitespace */
+        status = -1;
+        break;
+      case '"': /* possible json */
+      case '\'':
+      case '[':
+      case '0': case '1': case '2': case '3': case '4':
+      case '5': case '6': case '7': case '8': case '9':
+        status = this->msg.unpack_json( p, size, this->tmp );
+        break;
+    }
+    if ( status != DS_MSG_STATUS_OK ) {
+      if ( status < 0 ) {
+        wmsg.inoff += size;
+        continue;
+      }
+      if ( status == DS_MSG_STATUS_PARTIAL ) {
+        /*printf( "partial [%.*s]\n", (int)size, p );*/
+        break;
+      }
+      this->mstatus = (RedisMsgStatus) status;
+      this->send_err_string( ERR_MSG_STATUS, KEY_OK );
+/*        fprintf( stderr, "protocol error(%d/%s), ignoring %lu bytes\n",
+               status, ds_msg_status_string( (RedisMsgStatus) status ),
+               inlen - inoff );*/
+      wmsg.inoff = wmsg.inlen;
+      break;
+    }
+    this->msgs_recv++;
+    wmsg.msgcnt++;
+    wmsg.inoff += size;
+    if ( (status = this->exec( this, NULL )) == EXEC_OK )
+      if ( this->alloc_fail )
+        status = ERR_ALLOC_FAIL;
+    switch ( status ) {
+      case EXEC_SETUP_OK:
+        /*if ( q != NULL )
+          return;*/
+        this->exec_run_to_completion();
+        if ( ! this->alloc_fail ) {
+          this->msgs_sent++;
+          break;
+        }
+        status = ERR_ALLOC_FAIL;
+        /* FALLTHRU */
+      case EXEC_QUIT:
+        if ( status == EXEC_QUIT ) {
+          this->push( EV_SHUTDOWN );
+          this->poll.quit++;
+        }
+        /* FALLTHRU */
+      default:
+        this->msgs_sent++;
+        this->send_status( (ExecStatus) status, KEY_OK );
+        break;
+      case EXEC_DEBUG:
+        break;
+    }
   }
 }
 
 bool
-EvHttpService::flush_term( void ) noexcept
+EvHttpConnection::flush_term( void ) noexcept
 {
   const char * buf    = this->term.out_buf;
   size_t       buflen = this->term.out_len;
@@ -616,7 +619,7 @@ EvHttpService::hash_to_sub( uint32_t h,  char *key,  size_t &keylen ) noexcept
 }
 
 void
-EvHttpService::write( void ) noexcept
+EvHttpConnection::write( void ) noexcept
 {
   if ( this->websock_off != 0 &&
        this->websock_off < this->bytes_sent + this->pending() )
@@ -626,7 +629,7 @@ EvHttpService::write( void ) noexcept
 }
 
 bool
-EvHttpService::frame_websock( void ) noexcept
+EvHttpConnection::frame_websock( void ) noexcept
 {
   size_t msgcnt = this->wsmsgcnt;
   bool b = this->frame_websock2();
@@ -645,7 +648,7 @@ EvHttpService::frame_websock( void ) noexcept
 }
 
 bool
-EvHttpService::frame_websock2( void ) noexcept
+EvHttpConnection::frame_websock2( void ) noexcept
 {
   static const char eol[]    = "\r\n";
   static size_t     eol_size = sizeof( eol ) - 1;
@@ -675,9 +678,9 @@ EvHttpService::frame_websock2( void ) noexcept
     nbytes = this->iov[ off ].iov_len;
     ::memcpy( newbuf, this->iov[ off ].iov_base, nbytes );
     for ( i = off + 1; i < this->idx; i++ ) {
-      size_t len = this->iov[ i ].iov_len;
-      ::memcpy( &newbuf[ nbytes ], this->iov[ i ].iov_base, len );
-      nbytes += len;
+      size_t iov_len = this->iov[ i ].iov_len;
+      ::memcpy( &newbuf[ nbytes ], this->iov[ i ].iov_base, iov_len );
+      nbytes += iov_len;
     }
     this->iov[ off ].iov_base = newbuf;
     this->iov[ off ].iov_len  = nbytes;
@@ -776,12 +779,20 @@ EvHttpService::frame_websock2( void ) noexcept
   return true;
 }
 
-static const char *
-get_mime_type( const char *path,  size_t len,  size_t &mlen )
+const char *
+EvHttpConnection::get_mime_type( const char *path,  size_t len,
+                                 size_t &mlen,  bool &is_gzip ) noexcept
 {
 #define RET( s ) { mlen = sizeof( s ) - 1; return s; }
   if ( len >= 3 ) {
     const char *p = &path[ len-3 ];
+    is_gzip = ( ::memcmp( p, ".gz", 3 ) == 0 );
+    if ( is_gzip ) {
+      if ( len < 6 )
+        goto octet_stream;
+      p   -= 3;
+      len -= 3;
+    }
     /* the third char from the end */
     switch ( p[ 0 ] ) {
       case '.':
@@ -804,6 +815,10 @@ get_mime_type( const char *path,  size_t len,  size_t &mlen )
       case 'h':
         if ( len >= 4 && ::memcmp( &p[ -1 ], ".htm", 4 ) == 0 )    /* .[h]tm */
           RET( "text/html" );
+        break;
+      case 'i':
+        if ( len >= 4 && ::memcmp( &p[ -1 ], ".ico", 4 ) == 0 )    /* .[h]tm */
+          RET( "image/png" );
         break;
       case 'j':
         if ( len >= 4 && ::memcmp( &p[ -1 ], ".jpg", 4 ) == 0 )    /* .[j]pg */
@@ -833,6 +848,7 @@ get_mime_type( const char *path,  size_t len,  size_t &mlen )
         break;
     }
   }
+octet_stream:;
   RET( "application/octet-stream" );
 #undef RET
 }
@@ -889,14 +905,34 @@ decode_uri( const char *s,  const char *e,  char *q )
 }
 
 bool
+EvHttpConnection::process_get( const HttpReq &hreq ) noexcept
+{
+  char         buf[ 1024 ];
+  const char * obj = hreq.path,
+             * end = &hreq.path[ hreq.path_len ];
+
+  if ( obj == NULL )
+    return false;
+  size_t path_len = (size_t) ( end - &obj[ 1 ] );
+  if ( path_len > sizeof( buf ) - 11 ) /* space for index.html */
+    return false;
+  path_len = decode_uri( &obj[ 1 ], end, buf );
+  if ( path_len == 0 ) {
+    ::strcpy( buf, "index.html" );
+    path_len = 10;
+  }
+  return this->process_get_file( buf, path_len );
+}
+
+bool
 EvHttpService::process_get( const HttpReq &hreq ) noexcept
 {
   /* GET /somefile HTTP/1.1 */
+  ds_msg_t     ar[ 2 ];
+  char         buf[ 1024 ];
   const char * obj = hreq.path,
              * end = &hreq.path[ hreq.path_len ];
   HttpOut      hout;
-  ds_msg_t     ar[ 2 ];
-  char         buf[ 1024 ];
   size_t       off, i, j, d, n,
                len, mlen, qoff;
   char       * s;
@@ -1027,8 +1063,11 @@ EvHttpService::process_get( const HttpReq &hreq ) noexcept
   if ( m.unpack( s, n, this->tmp ) != DS_MSG_STATUS_OK )
     return false;
   if ( m.type == DS_BULK_STRING && m.len >= 0 ) {
-    mtype = get_mime_type( buf, mlen, mlen );
+    bool is_gzip;
+    mtype = get_mime_type( buf, mlen, mlen, is_gzip );
     hout.push( ctype, sizeof( ctype ) - 1 );
+    if ( is_gzip )
+      hout.push( gzenc, sizeof( gzenc ) - 1 );
     hout.push( mtype, mlen );
     hout.push( "\r\n", 2 );
     hout.push( clength, sizeof( clength ) - 1 );
@@ -1045,6 +1084,12 @@ EvHttpService::process_get( const HttpReq &hreq ) noexcept
   }
   return false;
   /*return this->send_file( path );*/
+}
+
+bool
+EvHttpConnection::process_post( const HttpReq & ) noexcept
+{
+  return false;
 }
 
 bool
@@ -1102,9 +1147,11 @@ EvHttpService::process_post( const HttpReq &hreq ) noexcept
 
 
 bool
-EvHttpService::send_file( const char *path,  size_t len ) noexcept
+EvHttpConnection::process_get_file( const char *,  size_t ) noexcept
 {
-  StreamBuf::BufQueue q( this->strm );
+  return false;
+#if 0
+  RedisBufQueue q( *this );
   int  fd;
   bool res = false,
        toolarge = false;
@@ -1128,26 +1175,27 @@ EvHttpService::send_file( const char *path,  size_t len ) noexcept
                         "Content-Type: %s\r\n"
                         "Content-Length: %u\r\n"
                         "\r\n",
-        get_mime_type( path, len, mlen ), (int) statbuf.st_size );
+        get_mime_type( path, path_len, mlen, is_gzip ), (int) statbuf.st_size );
     if ( n > 0 && n < 256 ) {
       p->used += n;
       p = q.get_buf( statbuf.st_size );
-      ssize_t len = os_read( fd, p->buf( 0 ), statbuf.st_size );
-      if ( (size_t) len == (size_t) statbuf.st_size ) {
+      ssize_t rd_len = os_read( fd, p->buf( 0 ), statbuf.st_size );
+      if ( (size_t) rd_len == (size_t) statbuf.st_size ) {
         p->used += statbuf.st_size;
         this->append_iov( q );
         res = true;
       }
     }
   }
-  if ( ! toolarge )
+  if ( toolarge )
     perror( path );
   os_close( fd );
   return res;
+#endif
 }
 
 bool
-EvHttpService::send_ws_upgrade( const HttpReq &hreq ) noexcept
+EvHttpConnection::send_ws_upgrade( const HttpReq &hreq ) noexcept
 {
   static const char b64[] =
   "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -1199,23 +1247,23 @@ EvHttpService::send_ws_upgrade( const HttpReq &hreq ) noexcept
 }
 
 bool
-EvHttpService::send_ws_pong( const char *payload,  size_t len ) noexcept
+EvHttpConnection::send_ws_pong( const char *payload,  size_t pay_len ) noexcept
 {
   WebSocketFrame ws;
 
-  ws.set( len, 0, WebSocketFrame::WS_PONG, true );
-  char * p = this->alloc( WebSocketFrame::MAX_HEADER_SIZE + len );
+  ws.set( pay_len, 0, WebSocketFrame::WS_PONG, true );
+  char * p = this->alloc( WebSocketFrame::MAX_HEADER_SIZE + pay_len );
   if ( p != NULL ) {
     size_t off = ws.encode( p );
-    ::memcpy( &p[ off ], payload, len );
-    this->sz += off + len;
+    ::memcpy( &p[ off ], payload, pay_len );
+    this->sz += off + pay_len;
     return true;
   }
   return false;
 }
 
 size_t
-EvHttpService::recv_wsframe( char *start,  char *end ) noexcept
+EvHttpConnection::recv_wsframe( char *start,  char *end ) noexcept
 {
   WebSocketFrame ws;
   size_t hdrsize = ws.decode( start, end - start );
@@ -1282,13 +1330,19 @@ EvHttpService::recv_wsframe( char *start,  char *end ) noexcept
 }
 
 void
-EvHttpService::release( void ) noexcept
+EvHttpConnection::release( void ) noexcept
 {
   this->term.tty_release();
   if ( this->wsbuf != NULL )
     ::free( this->wsbuf );
-  this->RedisExec::release();
   this->EvConnection::release_buffers();
+}
+
+void
+EvHttpService::release( void ) noexcept
+{
+  this->RedisExec::release();
+  this->EvHttpConnection::release();
 }
 
 bool

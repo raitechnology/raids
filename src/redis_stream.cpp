@@ -43,7 +43,7 @@ RedisExec::exec_xinfo( EvKeyCtx &ctx ) noexcept
 ExecStatus
 RedisExec::xinfo_consumers( ExecStreamCtx &stream ) noexcept
 {
-  StreamBuf::BufQueue q( this->strm );
+  RedisBufQueue q( this->strm );
   MDMsgMem     tmp;
   const char * gname;
   size_t       glen,
@@ -109,7 +109,7 @@ RedisExec::xinfo_consumers( ExecStreamCtx &stream ) noexcept
       pend_ns[ k ] = ( ns - pend_ns[ k ] ) / 1000000;
     else
       pend_ns[ k ] = 0;
-    StreamBuf::BufQueue ar( this->strm );
+    RedisBufQueue ar( this->strm );
     ar.append_string( "name", 4 );
     ar.append_string( con_lv[ k ].data, con_lv[ k ].sz,
                       con_lv[ k ].data2, con_lv[ k ].sz2 );
@@ -131,7 +131,7 @@ RedisExec::xinfo_consumers( ExecStreamCtx &stream ) noexcept
 ExecStatus
 RedisExec::xinfo_groups( ExecStreamCtx &stream ) noexcept
 {
-  StreamBuf::BufQueue q( this->strm );
+  RedisBufQueue q( this->strm );
   MDMsgMem     tmp;
   ListVal    * con_lv = NULL;
   size_t       i, j, k,
@@ -185,7 +185,7 @@ RedisExec::xinfo_groups( ExecStreamCtx &stream ) noexcept
     }
     /* construct [ "name", group-name, "consumers", num_consumers, "pending",
      *             pending_count, "last-delivered-id", id ] */
-    StreamBuf::BufQueue ar( this->strm );
+    RedisBufQueue ar( this->strm );
     ar.append_string( "name", 4 );
     ar.append_string( glv.data, glv.sz, glv.data2, glv.sz2 );
     ar.append_string( "consumers", 9 );
@@ -211,7 +211,7 @@ RedisExec::xinfo_groups( ExecStreamCtx &stream ) noexcept
 ExecStatus
 RedisExec::xinfo_streams( ExecStreamCtx &stream ) noexcept
 {
-  StreamBuf::BufQueue q( this->strm );
+  RedisBufQueue q( this->strm );
   MDMsgMem     tmp;
   size_t       xcnt,
                gcnt;
@@ -498,7 +498,7 @@ RedisExec::exec_xdel( EvKeyCtx &ctx ) noexcept
 
 bool
 RedisExec::construct_xfield_output( ExecStreamCtx &stream,  size_t idx,
-                                    StreamBuf::BufQueue &q ) noexcept
+                                    RedisBufQueue &q ) noexcept
 {
   MDMsgMem tmp;
   ListData ld;
@@ -506,8 +506,8 @@ RedisExec::construct_xfield_output( ExecStreamCtx &stream,  size_t idx,
   size_t   k;
 
   if ( stream.x->sindex( stream.x->stream, idx, ld, tmp ) == STRM_OK ) {
-    StreamBuf::BufQueue item( this->strm );
-    StreamBuf::BufQueue flds( this->strm );
+    RedisBufQueue item( this->strm );
+    RedisBufQueue flds( this->strm );
     for ( k = 1; ld.lindex( k, lv ) == LIST_OK; k++ ) {
       flds.append_string( lv.data, lv.sz, lv.data2, lv.sz2 );
     }
@@ -526,7 +526,7 @@ RedisExec::construct_xfield_output( ExecStreamCtx &stream,  size_t idx,
 ExecStatus
 RedisExec::exec_xrange( EvKeyCtx &ctx ) noexcept
 {
-  StreamBuf::BufQueue q( this->strm );
+  RedisBufQueue q( this->strm );
   ExecStreamCtx stream( *this, ctx );
   MDMsgMem      tmp;
   int64_t       maxcnt;
@@ -627,7 +627,7 @@ RedisExec::exec_xlen( EvKeyCtx &ctx ) noexcept
 ExecStatus
 RedisExec::exec_xread( EvKeyCtx &ctx ) noexcept
 {
-  StreamBuf::BufQueue q( this->strm );
+  RedisBufQueue q( this->strm );
   ExecStreamCtx stream( *this, ctx );
   MDMsgMem      tmp;
   int64_t       maxcnt;
@@ -737,7 +737,7 @@ RedisExec::exec_xread( EvKeyCtx &ctx ) noexcept
 ExecStatus
 RedisExec::exec_xreadgroup( EvKeyCtx &ctx ) noexcept
 {
-  StreamBuf::BufQueue q( this->strm );
+  RedisBufQueue q( this->strm );
   ExecStreamCtx    stream( *this, ctx );
   MDMsgMem         tmp;
   StreamArgs       sa;
@@ -823,8 +823,8 @@ RedisExec::exec_xreadgroup( EvKeyCtx &ctx ) noexcept
       if ( xstat != STRM_OK )
         break;
 
-      StreamBuf::BufQueue item( this->strm ); /* item[ identifier, [ flds ] ] */
-      StreamBuf::BufQueue flds( this->strm );
+      RedisBufQueue item( this->strm ); /* item[ identifier, [ flds ] ] */
+      RedisBufQueue flds( this->strm );
       /* all of the fields for this id */
       for ( k = 1; ld.lindex( k, lv ) == LIST_OK; k++ ) {
         flds.append_string( lv.data, lv.sz, lv.data2, lv.sz2 );
@@ -884,17 +884,17 @@ RedisExec::exec_xreadgroup( EvKeyCtx &ctx ) noexcept
 }
 
 ExecStatus
-RedisExec::finish_xread( EvKeyCtx &ctx,  StreamBuf::BufQueue &q ) noexcept
+RedisExec::finish_xread( EvKeyCtx &ctx,  RedisBufQueue &q ) noexcept
 {
   /* the xread and xreadgroup format is ar[ key[ field data(q) ], ... ] */
   if ( ctx.kstatus != KEY_NOT_FOUND && q.hd != NULL ) {
-    StreamBuf::BufQueue key( this->strm );
+    RedisBufQueue key( this->strm );
     key.append_string( ctx.kbuf.u.buf, ctx.kbuf.keylen - 1 );
     key.append_list( q );
     key.prepend_array( 2 );
     /* if only one key, construct return value without saving */
     if ( this->key_cnt == 1 ) {
-      StreamBuf::BufQueue ar( this->strm );
+      RedisBufQueue ar( this->strm );
       ar.append_list( key );
       ar.prepend_array( 1 );
       this->strm.append_iov( ar );
@@ -909,14 +909,14 @@ RedisExec::finish_xread( EvKeyCtx &ctx,  StreamBuf::BufQueue &q ) noexcept
   }
   /* if no more keys left to read, make a result if there was some field data */
   if ( this->key_done + 1 == this->key_cnt ) {
-    StreamBuf::BufQueue ar( this->strm );
+    RedisBufQueue ar( this->strm );
     size_t cnt = 0;
     for ( size_t i = 0; i < this->key_cnt; i++ ) {
       /* either key not found or ident not found */
       if ( this->keys[ i ]->kstatus != KEY_NOT_FOUND ) {
         EvKeyTempResult * part = this->keys[ i ]->part;
         if ( part != NULL ) {
-          ar.append_list( *(StreamBuf::BufQueue *) part->data( 0 ) );
+          ar.append_list( *(RedisBufQueue *) part->data( 0 ) );
           cnt++;
         }
       }
@@ -1100,7 +1100,7 @@ RedisExec::exec_xack( EvKeyCtx &ctx ) noexcept
 ExecStatus
 RedisExec::exec_xclaim( EvKeyCtx &ctx ) noexcept
 {
-  StreamBuf::BufQueue q( this->strm );
+  RedisBufQueue q( this->strm );
   ExecStreamCtx stream( *this, ctx );
   MDMsgMem      tmp;
   StreamArgs    sa;
@@ -1221,7 +1221,7 @@ RedisExec::exec_xclaim( EvKeyCtx &ctx ) noexcept
 ExecStatus
 RedisExec::exec_xpending( EvKeyCtx &ctx ) noexcept
 {
-  StreamBuf::BufQueue q( this->strm );
+  RedisBufQueue q( this->strm );
   ExecStreamCtx stream( *this, ctx );
   MDMsgMem      tmp;
   StreamArgs    sa;
@@ -1320,7 +1320,7 @@ RedisExec::exec_xpending( EvKeyCtx &ctx ) noexcept
           continue;
       }
       /* id string */
-      StreamBuf::BufQueue ar( this->strm );
+      RedisBufQueue ar( this->strm );
       ar.append_string( lv.data, lv.sz, lv.data2, lv.sz2 );
       if ( ld.lindex( P_CON, lv ) != LIST_OK )
         break;
@@ -1407,9 +1407,9 @@ RedisExec::exec_xpending( EvKeyCtx &ctx ) noexcept
                        first_id.sz2 );
       q.append_string( last_id.data, last_id.sz, last_id.data2, last_id.sz2 );
 
-      StreamBuf::BufQueue ar( this->strm );
+      RedisBufQueue ar( this->strm );
       for ( i = 0; i < num_consumers; i++ ) {
-        StreamBuf::BufQueue ids( this->strm );
+        RedisBufQueue ids( this->strm );
         char s[ 16 ];
         size_t d = uint64_to_string( pend_cnt[ i ], s );
         ids.append_string( con_lv[ i ].data, con_lv[ i ].sz,
