@@ -64,12 +64,12 @@ struct MyClient {
   }
   int udp_connect( const char *h,  int p,  int o ) {
     int status;
-    if ( (status = this->uclient.connect( h, p, o, "udp" )) == 0 )
+    if ( (status = this->uclient.connect( h, p, o, "udp", -1 )) == 0 )
       this->client = &this->uclient;
     return status;
   }
   int unix_connect( const char *path,  int o ) {
-    int status = EvUnixConnection::connect( this->tclient, path, o, "unix" );
+    int status = EvUnixConnection::connect( this->tclient, path, o, "unix", -1 );
     if ( status == 0 )
       this->client = &this->tclient;
     return status;

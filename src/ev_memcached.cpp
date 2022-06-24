@@ -40,7 +40,8 @@ EvMemcachedListen::listen( const char *ip,  int port,  int opts ) noexcept
     ::strncpy( stat.interface, ip, sizeof( stat.interface ) - 1 );
   stat.tcpport = port;
   stat.max_connections = this->poll.nfds;
-  return this->EvTcpListen::listen2( ip, port, opts, "memcached_listen" );
+  return this->EvTcpListen::listen2( ip, port, opts, "memcached_listen",
+                                     this->sub_route.route_id );
 }
 
 int
@@ -50,7 +51,8 @@ EvMemcachedUdp::listen( const char *ip,  int port,  int opts ) noexcept
     ::strncpy( stat.interface, ip, sizeof( stat.interface ) - 1 );
   stat.udpport = port;
   stat.max_connections = this->poll.nfds;
-  return this->EvUdp::listen2( ip, port, opts, "memcached_udp" );
+  return this->EvUdp::listen2( ip, port, opts, "memcached_udp",
+                               this->sub_route.route_id );
 }
 
 EvSocket *

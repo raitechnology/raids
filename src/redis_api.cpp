@@ -403,7 +403,7 @@ EvShmApi::init_exec( void ) noexcept
   if ( e == NULL )
     return -1;
   int status, pfd = this->poll.get_null_fd();
-  this->PeerData::init_ctx( pfd, this->ctx_id, "shm_api" );
+  this->PeerData::init_ctx( pfd, -1, this->ctx_id, "shm_api" );
   this->exec = new ( e ) RedisExec( *this->map, this->ctx_id, this->dbx_id,
                                     *this, this->poll.sub_route, *this,
                                     this->poll.timer );

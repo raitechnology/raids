@@ -57,7 +57,7 @@ break_loop:;
   return;
 
 is_closed:;
-  this->pushpop( EV_CLOSE, EV_PROCESS );
+  this->pushpop( EV_SHUTDOWN, EV_PROCESS );
   return;
 }
 
@@ -107,6 +107,7 @@ EvHttpConnection::process_http( void ) noexcept
     if ( &start[ used + hreq.content_length ] > end )
       return false;
     this->off += (uint32_t) ( used + hreq.content_length );
+    this->msgs_recv++;
 
     /* GET path HTTP/1.1 */
     switch ( http_request[ 0 ] ) {
@@ -317,15 +318,41 @@ HttpReq::parse_header( const char *line,  size_t len ) noexcept
 
       /* Connection: Close */
       if ( kv_strncasecmp( line, conn, conn_len ) == 0 ) {
-        /* upgrade */
-        if ( line[ conn_len ] == 'U' || line[ conn_len ] == 'u' )
-          this->opts |= UPGRADE;
-        /* keep-alive */
-        else if ( line[ conn_len ] == 'K' || line[ conn_len ] == 'k' )
-          this->opts |= KEEP_ALIVE;
-        /* close */
-        else if ( line[ conn_len ] == 'C' || line[ conn_len ] == 'c' )
-          this->opts |= CLOSE;
+        size_t k = conn_len;
+        for (;;) {
+          while ( k < len && line[ k ] == ' ' )
+            k++;
+          if ( k >= len )
+            break;
+          /* upgrade */
+          if ( line[ k ] == 'U' || line[ k ] == 'u' ) {
+            static const char upgrade[]   = "upgrade";
+            static size_t     upgrade_len = sizeof( upgrade ) - 1;
+            if ( len - k >= upgrade_len &&
+                 ::kv_strncasecmp( &line[ k ], upgrade, upgrade_len ) == 0 )
+              this->opts |= UPGRADE;
+          }
+          /* keep-alive */
+          else if ( line[ k ] == 'K' || line[ k ] == 'k' ) {
+            static const char keep[]   = "keep-alive";
+            static size_t     keep_len = sizeof( keep ) - 1;
+            if ( len - k >= keep_len &&
+                 ::kv_strncasecmp( &line[ k ], keep, keep_len ) == 0 )
+              this->opts |= KEEP_ALIVE;
+          }
+          /* close */
+          else if ( line[ k ] == 'C' || line[ k ] == 'c' ) {
+            static const char close[]   = "close";
+            static size_t     close_len = sizeof( close ) - 1;
+            if ( len - k >= close_len &&
+                 ::kv_strncasecmp( &line[ k ], close, close_len ) == 0 )
+              this->opts |= CLOSE;
+          }
+          const void * p;
+          if ( (p = ::memchr( &line[ k ], ',', len - k )) == NULL )
+            break;
+          k = &((const char *) p)[ 1 ] - line;
+        }
       }
       /* Content-Lenth: 1234 */
       else if ( kv_strncasecmp( line, clen, clen_len ) == 0 ) {
@@ -649,6 +676,39 @@ EvHttpConnection::frame_websock( void ) noexcept
 
 bool
 EvHttpConnection::frame_websock2( void ) noexcept
+{
+  size_t         nbytes = this->bytes_sent,
+                 off    = this->woff,
+                 i, fbytes;
+  char         * frame;
+  WebSocketFrame ws;
+
+  if ( this->sz > 0 )
+    this->flush();
+  /* find websock stream offset */
+  for ( ; off < this->idx; off++ ) {
+    nbytes += this->iov[ off ].iov_len;
+    if ( this->websock_off < nbytes )
+      break;
+  }
+  if ( off == this->idx )
+    return true;
+
+  nbytes = this->iov[ off ].iov_len;
+  for ( i = off + 1; i < this->idx; i++ )
+    nbytes += this->iov[ i ].iov_len;
+
+  ws.set( nbytes, 0, WebSocketFrame::WS_TEXT, true );
+  fbytes = ws.hdr_size();
+  frame = this->alloc_temp( fbytes );
+  ws.encode( frame );
+  this->insert_iov( off, frame, fbytes );
+  this->websock_off += nbytes + fbytes;
+  return true;
+}
+
+bool
+EvHttpService::frame_websock2( void ) noexcept
 {
   static const char eol[]    = "\r\n";
   static size_t     eol_size = sizeof( eol ) - 1;
