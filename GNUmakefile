@@ -670,6 +670,7 @@ CMakeLists.txt: .copr/Makefile
 	else ()
 	  set (ex_lib -lpthread -lrt)
 	endif ()
+	add_definitions (-DDS_VER=$(ver_build) -DGIT_HEAD=$(git_head))
 	add_library (raids STATIC $(libraids_cfile))
 	link_libraries (raids raikv raimd decnumber rdbparser linecook h3 lzf $${pcre2lib} $${ex_lib})
 	if (NOT CMAKE_SYSTEM_NAME STREQUAL "Windows")

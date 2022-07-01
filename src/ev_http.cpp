@@ -1399,6 +1399,13 @@ EvHttpConnection::release( void ) noexcept
 }
 
 void
+EvHttpService::process_close( void ) noexcept
+{
+  this->client_stats( this->sub_route.peer_stats );
+  this->EvSocket::process_close();
+}
+
+void
 EvHttpService::release( void ) noexcept
 {
   this->RedisExec::release();

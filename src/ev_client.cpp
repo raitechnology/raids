@@ -54,6 +54,7 @@ void
 EvNetClient::process_close( void ) noexcept
 {
   this->cb.on_close();
+  this->EvSocket::process_close();
 }
 
 void
@@ -140,6 +141,7 @@ void
 EvMemcachedUdpClient::process_close( void ) noexcept
 {
   this->cb.on_close();
+  this->EvSocket::process_close();
 }
 
 void
@@ -177,6 +179,7 @@ void
 EvTerminal::process_close( void ) noexcept
 {
   this->cb.on_close();
+  this->EvSocket::process_close();
 }
 
 void

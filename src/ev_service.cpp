@@ -180,6 +180,8 @@ EvRedisService::release( void ) noexcept
 void
 EvRedisService::process_close( void ) noexcept
 {
+  this->client_stats( this->sub_route.peer_stats );
+  this->EvSocket::process_close();
 }
 
 bool

@@ -636,8 +636,10 @@ EvMemcachedService::release( void ) noexcept
 void
 EvMemcachedService::process_close( void ) noexcept
 {
+  this->client_stats( this->sub_route.peer_stats );
   stat.curr_connections--;
   stat.conn_structs -= sizeof( *this );
+  this->EvSocket::process_close();
 }
 
 void
@@ -652,6 +654,13 @@ EvMemcachedMerge::release( void ) noexcept
     this->sav_mhdr = NULL;
     this->sav_len  = 0;
   }
+}
+
+void
+EvMemcachedUdp::process_close( void ) noexcept
+{
+  this->client_stats( this->sub_route.peer_stats );
+  this->EvSocket::process_close();
 }
 
 void

@@ -142,6 +142,7 @@ struct EvHttpService : public EvHttpConnection, public RedisExec {
   virtual bool process_post( const HttpReq &hreq ) noexcept;
   virtual bool frame_websock2( void ) noexcept;
   /* EvSocket */
+  virtual void process_close( void ) noexcept;
   virtual void release( void ) noexcept;
   virtual bool timer_expire( uint64_t tid, uint64_t eid ) noexcept;
   virtual bool hash_to_sub( uint32_t h, char *k, size_t &klen ) noexcept;

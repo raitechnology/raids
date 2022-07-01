@@ -137,4 +137,4 @@ bool EvShmSvc::on_msg( EvPublish & ) noexcept { return false; }
 void EvShmSvc::key_prefetch( EvKeyCtx & ) noexcept {}
 int  EvShmSvc::key_continue( EvKeyCtx & ) noexcept { return 0; }
 void EvShmSvc::process_shutdown( void ) noexcept {}
-void EvShmSvc::process_close( void ) noexcept {}
+void EvShmSvc::process_close( void ) noexcept { this->EvSocket::process_close(); }

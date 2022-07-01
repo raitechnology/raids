@@ -62,15 +62,16 @@ struct EvMemcachedUdp : public kv::EvUdp {
   bool merge_inmsgs( uint32_t req_id,  uint32_t i,  uint32_t total,
                      uint32_t size ) noexcept;
 
-  virtual void read( void ) noexcept final;
-  virtual void write( void ) noexcept final;
-  virtual void process( void ) noexcept final;
-  virtual void release( void ) noexcept final;
-  virtual bool timer_expire( uint64_t tid, uint64_t eid ) noexcept final;
-  virtual bool hash_to_sub( uint32_t h, char *k, size_t &klen ) noexcept final;
-  virtual bool on_msg( kv::EvPublish &pub ) noexcept final;
-  virtual void key_prefetch( kv::EvKeyCtx &ctx ) noexcept final;
-  virtual int  key_continue( kv::EvKeyCtx &ctx ) noexcept final;
+  virtual void read( void ) noexcept;
+  virtual void write( void ) noexcept;
+  virtual void process( void ) noexcept;
+  virtual void release( void ) noexcept;
+  virtual void process_close( void ) noexcept;
+  virtual bool timer_expire( uint64_t tid, uint64_t eid ) noexcept;
+  virtual bool hash_to_sub( uint32_t h, char *k, size_t &klen ) noexcept;
+  virtual bool on_msg( kv::EvPublish &pub ) noexcept;
+  virtual void key_prefetch( kv::EvKeyCtx &ctx ) noexcept;
+  virtual int  key_continue( kv::EvKeyCtx &ctx ) noexcept;
 };
 
 struct MemcachedUdpFraming {
@@ -102,22 +103,24 @@ struct EvMemcachedListen : public kv::EvTcpListen {
 
 struct EvMemcachedService : public kv::EvConnection, public MemcachedExec {
   void * operator new( size_t, void *ptr ) { return ptr; }
+  kv::RoutePublish & sub_route;
 
   EvMemcachedService( kv::EvPoll &p,  const uint8_t t,  kv::RoutePublish &sr,
                       MemcachedStats &st )
     : kv::EvConnection( p, t ),
-      MemcachedExec( *sr.map, sr.ctx_id, sr.dbx_id, *this, st ) {}
+      MemcachedExec( *sr.map, sr.ctx_id, sr.dbx_id, *this, st ),
+      sub_route( sr ) {}
 
-  virtual void read( void ) noexcept final;
-  virtual void write( void ) noexcept final;
-  virtual void process( void ) noexcept final;
-  virtual void release( void ) noexcept final;
-  virtual void process_close( void ) noexcept final;
-  virtual bool timer_expire( uint64_t tid, uint64_t eid ) noexcept final;
-  virtual bool hash_to_sub( uint32_t h, char *k, size_t &klen ) noexcept final;
-  virtual bool on_msg( kv::EvPublish &pub ) noexcept final;
-  virtual void key_prefetch( kv::EvKeyCtx &ctx ) noexcept final;
-  virtual int  key_continue( kv::EvKeyCtx &ctx ) noexcept final;
+  virtual void read( void ) noexcept;
+  virtual void write( void ) noexcept;
+  virtual void process( void ) noexcept;
+  virtual void release( void ) noexcept;
+  virtual void process_close( void ) noexcept;
+  virtual bool timer_expire( uint64_t tid, uint64_t eid ) noexcept;
+  virtual bool hash_to_sub( uint32_t h, char *k, size_t &klen ) noexcept;
+  virtual bool on_msg( kv::EvPublish &pub ) noexcept;
+  virtual void key_prefetch( kv::EvKeyCtx &ctx ) noexcept;
+  virtual int  key_continue( kv::EvKeyCtx &ctx ) noexcept;
 };
 
 }
