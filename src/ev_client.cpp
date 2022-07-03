@@ -191,6 +191,9 @@ EvTerminal::release( void ) noexcept
 void
 EvTerminal::process( void ) noexcept
 {
+  if ( this->term.out_len > 0 )
+    if ( ! this->flush_out() )
+      return;
   size_t buflen = this->len - this->off;
   size_t msgcnt = 0;
   int cnt = this->term.interrupt + this->term.suspend;
@@ -235,13 +238,13 @@ EvTerminal::process_line( const char *s ) noexcept
   this->idle_push( EV_PROCESS );
 }
 
-void
+bool
 EvTerminal::flush_out( void ) noexcept
 {
-  for ( size_t i = 0;;) {
+  for ( size_t i = this->term.out_off; ; ) {
     if ( i >= this->term.out_len ) {
       this->term.tty_out_reset();
-      return;
+      return true;
     }
     size_t  left = this->term.out_len - i;
     char  * ptr  = &this->term.out_buf[ i ];
@@ -263,10 +266,11 @@ EvTerminal::flush_out( void ) noexcept
     if ( left > 0 ) {
       n = os_write( this->stdout_fd, ptr, left );
       if ( n < 0 ) {
-        if ( ! ev_would_block( errno ) ) {
+        if ( ! ev_would_block( errno ) )
           this->cb.on_close();
-          return;
-        }
+        this->term.out_off = i;
+        this->idle_push( EV_PROCESS );
+        return false;
       }
       else {
         i += (size_t) n;

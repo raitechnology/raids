@@ -125,7 +125,7 @@ struct EvTerminal : public EvClient, public kv::EvConnection {
 
   EvTerminal( kv::EvPoll &p,  EvCallback &callback );
   int start( void ) noexcept;
-  void flush_out( void ) noexcept;
+  bool flush_out( void ) noexcept;
   void finish( void ) noexcept;
   void output( const char *buf,  size_t buflen ) noexcept;
   int printf( const char *fmt,  ... ) noexcept

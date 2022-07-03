@@ -15,7 +15,8 @@ struct Term : public Term_s {
   LineCook   * lc;
   TTYCook    * tty;
   char       * out_buf;    /* terminal control output */
-  size_t       out_len,
+  size_t       out_off,
+               out_len,
                out_buflen;
   char       * line_buf;   /* line ready output */
   size_t       line_off,
@@ -49,7 +50,7 @@ struct Term : public Term_s {
     ::memset( this, 0, sizeof( *this ) );
   }
   void tty_init( void ) noexcept;
-  void tty_out_reset( void ) { this->out_len = 0; }
+  void tty_out_reset( void ) { this->out_off = this->out_len = 0; }
   void tty_release( void ) noexcept;
   void show_help( void ) noexcept;
   void tty_input( const void *data,  size_t data_len ) noexcept;
