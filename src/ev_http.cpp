@@ -90,6 +90,8 @@ EvHttpConnection::process_http( void ) noexcept
       }
       size_t size = &eol[ 1 ] - p;
       if ( size <= 2 ) { /* found the empty line following hdr (\r\n) */
+        if ( http_request == NULL ) /* no request */
+          return true;
         used = &eol[ 1 ] - start;
         break;
       }
