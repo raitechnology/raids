@@ -916,22 +916,23 @@ octet_stream:;
 }
 
 static uint8_t
-hexval( char c )
+hexval( char c ) noexcept
 {
   if ( isdigit( c ) ) return (uint8_t) c - '0';
   if ( c >= 'A' ) return (uint8_t) c - 'A' + 10;
   return (uint8_t) c - 'a' + 10;
 }
 
-static size_t
-decode_uri( const char *s,  const char *e,  char *q )
+size_t
+HttpReq::decode_uri( const char *s,  const char *e,  char *q,
+                     size_t qlen ) noexcept
 {
   static const char * amp_str[ 5 ] = {"apos;", "quot;", "amp;", "lt;", "gt;" };
   static const size_t amp_len[ 5 ] = { 5, 5, 4, 3, 3 };
   static const char   amp_chr[ 5 ] = { '&', '"', '&', '<', '>' };
-  char * start = q;
+  char * start = q, * qe = &q[ qlen - 1 ];
   size_t i;
-  while ( s < e ) {
+  while ( s < e && q < qe ) {
     switch ( s[ 0 ] ) {
       case '%':
         /* check if the two chars following % are hex chars */
@@ -978,7 +979,7 @@ EvHttpConnection::process_get( const HttpReq &hreq ) noexcept
   size_t path_len = (size_t) ( end - &obj[ 1 ] );
   if ( path_len > sizeof( buf ) - 11 ) /* space for index.html */
     return false;
-  path_len = decode_uri( &obj[ 1 ], end, buf );
+  path_len = HttpReq::decode_uri( &obj[ 1 ], end, buf, sizeof( buf ) );
   if ( path_len == 0 ) {
     ::strcpy( buf, "index.html" );
     path_len = 10;
@@ -1025,7 +1026,7 @@ EvHttpService::process_get( const HttpReq &hreq ) noexcept
 /*  if ( ::strncmp( path, "console/", 8 ) == 0 )
     return this->send_file( path, len );*/
 
-  len = decode_uri( &obj[ qoff ], end, buf );
+  len = HttpReq::decode_uri( &obj[ qoff ], end, buf, sizeof( buf ) );
   if ( len == 0 ) {
     ::strcpy( buf, "index.html" );
     len = 10;
@@ -1166,7 +1167,7 @@ EvHttpService::process_post( const HttpReq &hreq ) noexcept
   bool         ret = true;
 
   /* skip the leading '/' */
-  len = decode_uri( &obj[ 1 ], end, buf );
+  len = HttpReq::decode_uri( &obj[ 1 ], end, buf, sizeof( buf ) );
   if ( len == 0 ) {
     ::strcpy( buf, "index.html" );
     len = 10;

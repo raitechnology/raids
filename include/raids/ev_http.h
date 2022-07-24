@@ -48,6 +48,8 @@ struct HttpReq {
   }
   void parse_version( const char *line,  size_t len ) noexcept;
   void parse_header( const char *line,  size_t len ) noexcept;
+  static size_t decode_uri( const char *s,  const char *e,  char *q,
+                            size_t qlen ) noexcept;
 };
 
 struct HttpOut {
