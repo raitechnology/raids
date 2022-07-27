@@ -214,7 +214,8 @@ EvTerminal::process( void ) noexcept
   }
   if ( msgcnt > 0 || cnt != this->term.interrupt + this->term.suspend )
     this->term.tty_prompt();
-  this->flush_out();
+  if ( ! this->flush_out() )
+    return;
 
   if ( this->line_len > 0 ) { /* this is to inject a line not from tty */
     if ( this->cb.on_data( this->line, this->line_len ) ) {
@@ -241,7 +242,8 @@ EvTerminal::process_line( const char *s ) noexcept
 bool
 EvTerminal::flush_out( void ) noexcept
 {
-  for ( size_t i = this->term.out_off; ; ) {
+  size_t i = this->term.out_off;
+  for (;;) {
     if ( i >= this->term.out_len ) {
       this->term.tty_out_reset();
       return true;
@@ -249,38 +251,38 @@ EvTerminal::flush_out( void ) noexcept
     size_t  left = this->term.out_len - i;
     char  * ptr  = &this->term.out_buf[ i ];
     char  * eol;
-    bool    need_cr = true;
-    ssize_t n;
-    if ( (eol = (char *) ::memchr( ptr, '\n', left )) != NULL ) {
-      if ( eol > ptr ) {
-        if ( *( eol - 1 ) == '\r' ) {
-          eol++;
-          need_cr = false;
-        }
-      }
-      left = eol - ptr;
-    }
-    else {
-      need_cr = false;
+    size_t  nl = 0;
+    if ( ptr[ 0 ] == '\n' )
+      nl = 1;
+    else if ( left > 1 && ptr[ 0 ] == '\r' && ptr[ 1 ] == '\n' )
+      nl = 2;
+    if ( nl > 0 ) {
+      static const char crlf[ 2 ] = { '\r', '\n' };
+      if ( os_write( this->stdout_fd, crlf, 2 ) < 0 )
+        break;
+      i    += nl;
+      left -= nl;
+      ptr  += nl;
     }
     if ( left > 0 ) {
-      n = os_write( this->stdout_fd, ptr, left );
-      if ( n < 0 ) {
-        if ( ! ev_would_block( errno ) )
-          this->cb.on_close();
-        this->term.out_off = i;
-        this->idle_push( EV_PROCESS );
-        return false;
+      if ( (eol = (char *) ::memchr( ptr, '\n', left )) != NULL ) {
+        left = eol - ptr;
+        if ( left > 0 && *(eol - 1) == '\r' )
+          left--;
       }
-      else {
+      if ( left > 0 ) {
+        ssize_t n = os_write( this->stdout_fd, ptr, left );
+        if ( n < 0 )
+          break;
         i += (size_t) n;
       }
     }
-    if ( need_cr ) {
-      n = os_write( this->stdout_fd, "\r\n", 2 );
-      i++;
-    }
   }
+  if ( ! ev_would_block( errno ) )
+    this->cb.on_close();
+  this->term.out_off = i;
+  this->idle_push( EV_PROCESS );
+  return false;
 }
 
 int
