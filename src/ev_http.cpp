@@ -866,6 +866,8 @@ EvHttpConnection::get_mime_type( const char *path,  size_t len,
       case 'c':
         if ( len >= 4 && ::memcmp( &p[ -1 ], ".css", 4 ) == 0 )    /* .[c]ss */
           RET( "text/css" );
+        if ( len >= 5 && ::memcmp( &p[ -2 ], ".scss", 5 ) == 0 )    /* .s[c]ss */
+          RET( "text/x-scss" );
         break;
       case 'd':
         if ( ( len >= 5 &&
