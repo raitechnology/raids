@@ -52,6 +52,21 @@ void RedisExec::send_zero_string( void ) noexcept
 void RedisExec::send_queued( void ) noexcept
 { this->strm.append( queued, queued_sz ); }
 
+RedisExec::RedisExec( HashTab &map,  uint32_t ,  uint32_t dbx_id,
+                      StreamBuf &s,  RoutePublish &rdb,  PeerData &pd,
+                      TimerQueue &tq ) noexcept :
+    kctx( map, dbx_id, NULL ), strm( s ), strm_start( s.pending() ),
+    key( 0 ), keys( 0 ), key_cnt( 0 ), key_done( 0 ), multi( 0 ),
+    cmd( NO_CMD ), catg( NO_CATG ), blk_state( 0 ), cmd_state( 0 ),
+    key_flags( 0 ), prefix_len( 0 ), sub_route( rdb ), timer( tq ),
+    peer( pd ), timer_id( 0 ), save_key( 0 ), msg_route_cnt( 0 ),
+    sub_id( ~0U ), next_event_id( 0 ) {
+  /*::memcpy( this->prefix, "_REDIS.", 8 );*/
+  RedisKeyspace::init_keyspace_events( *this );
+  this->kctx.ht.hdr.get_hash_seed( this->kctx.db_num, this->hs );
+  this->kctx.set( kv::KEYCTX_NO_COPY_ON_READ );
+}
+
 void
 RedisExec::release( void ) noexcept
 {

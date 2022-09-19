@@ -176,11 +176,21 @@ RedisExec::pub_message( EvPublish &pub,  RedisWildMatch *m ) noexcept
                       sdigits,
                       pdigits;
   size_t              msg_len_digits,
-                      msg_len_frame;
+                      msg_len_frame,
+                      preflen = this->prefix_len,
+                      sublen  = pub.subject_len;
+  const char        * sub     = pub.subject;
   char              * msg;
 
+  if ( sublen < preflen ) {
+    fprintf( stderr, "sub %.*s is less than prefix (%u)\n",
+             (int) sublen, sub, (int) preflen );
+    return true;
+  }
+  sublen -= preflen;
+  sub     = &sub[ preflen ];
   off     = 0;
-  sdigits = uint64_digits( pub.subject_len );
+  sdigits = uint64_digits( sublen );
   pdigits = 0;
 
   if ( pub.msg_enc == MD_MESSAGE &&
@@ -195,7 +205,7 @@ RedisExec::pub_message( EvPublish &pub,  RedisWildMatch *m ) noexcept
   }
   if ( m == NULL ) {
         /* *3 .. $subject_len       subject ..        */
-    sz = hdr_sz + 1 + sdigits + 2 + pub.subject_len + 2 +
+    sz = hdr_sz + 1 + sdigits + 2 + sublen + 2 +
       /* $msg_len ..     msg */
          msg_len_frame + pub.msg_len;
 
@@ -206,13 +216,20 @@ RedisExec::pub_message( EvPublish &pub,  RedisWildMatch *m ) noexcept
     off += hdr_sz;
   }
   else {
-    pdigits = uint64_digits( m->len );
+    size_t       patlen = m->len - preflen;
+    const char * pat    = m->value + preflen;
+    if ( m->len < preflen ) {
+      fprintf( stderr, "psub %.*s is less than prefix (%u)\n",
+               (int) m->len, m->value, (int) preflen );
+      return true;
+    }
+    pdigits = uint64_digits( patlen );
         /* *4 .. */
     sz = phdr_sz +
       /* $pattern_len       pattern ..        */
-         1 + pdigits + 2 + m->len + 2 +
+         1 + pdigits + 2 + patlen + 2 +
       /* $subject_len       subject ..        */
-         1 + sdigits + 2 + pub.subject_len + 2 +
+         1 + sdigits + 2 + sublen + 2 +
       /* $msg_len ..     msg */
          msg_len_frame + pub.msg_len;
 
@@ -222,16 +239,16 @@ RedisExec::pub_message( EvPublish &pub,  RedisWildMatch *m ) noexcept
     ::memcpy( &msg[ off ], phdr, phdr_sz );
     off += phdr_sz;
     msg[ off++ ] = '$';
-    off += uint64_to_string( m->len, &msg[ off ], pdigits );
+    off += uint64_to_string( patlen, &msg[ off ], pdigits );
     off  = crlf( msg, off );
-    ::memcpy( &msg[ off ], m->value, m->len );
-    off  = crlf( msg, off + m->len );
+    ::memcpy( &msg[ off ], pat, patlen );
+    off  = crlf( msg, off + patlen );
   }
   msg[ off++ ] = '$';
-  off += uint64_to_string( pub.subject_len, &msg[ off ], sdigits );
+  off += uint64_to_string( sublen, &msg[ off ], sdigits );
   off  = crlf( msg, off );
-  ::memcpy( &msg[ off ], pub.subject, pub.subject_len );
-  off  = crlf( msg, off + pub.subject_len );
+  ::memcpy( &msg[ off ], sub, sublen );
+  off  = crlf( msg, off + sublen );
 
   if ( msg_len_frame != 0 ) {
     msg[ off++ ] = '$';
@@ -447,7 +464,10 @@ ExecStatus
 RedisExec::exec_pubsub( void ) noexcept
 {
   RedisBufQueue q( this->strm );
-  size_t cnt = 0;
+  size_t cnt     = 0,
+         preflen = this->prefix_len,
+         tmplen  = 0;
+  char * tmp     = NULL;
 
   /* PUBSUB [channels [pattern] | numsub channel-1 [, ...] | numpat] */
   switch ( this->msg.match_arg( 1, MARG( "channels" ),
@@ -464,6 +484,19 @@ RedisExec::exec_pubsub( void ) noexcept
 
       if ( this->msg.get_arg( 2, pattern, patlen ) &&
            ( patlen > 1 || pattern[ 0 ] != '*' ) ) {
+        if ( preflen > 0 ) {
+          tmp = this->strm.alloc_temp( patlen + preflen );
+          ::memcpy( tmp, this->prefix, preflen );
+          ::memcpy( &tmp[ preflen ], pattern, patlen );
+          pattern = tmp;
+          patlen += preflen;
+        }
+      }
+      else {
+        patlen = 0;
+      }
+
+      if ( patlen > 0 ) {
         size_t     erroff;
         int        error;
         PatternCvt cvt;
@@ -494,7 +527,7 @@ RedisExec::exec_pubsub( void ) noexcept
             if ( re != NULL )
               rc = pcre2_match( re, (PCRE2_SPTR8) key, keylen, 0, 0, md, 0 );
             if ( rc > 0 ) {
-              q.append_string( key, keylen );
+              q.append_string( &key[ preflen ], keylen - preflen );
               cnt++;
             }
           }
@@ -510,9 +543,20 @@ RedisExec::exec_pubsub( void ) noexcept
       for ( size_t i = 2; i < this->argc; i++ ) {
         const char *val;
         size_t vallen;
+        uint32_t h, rcnt;
         if ( this->msg.get_arg( i, val, vallen ) ) {
-          uint32_t h = kv_crc_c( val, vallen, 0 );
-          uint32_t rcnt = this->sub_route.get_sub_route_count( h );
+          if ( preflen > 0 ) {
+            if ( tmplen < vallen + preflen ) {
+              tmp = this->strm.alloc_temp( vallen + preflen );
+              ::memcpy( tmp, this->prefix, preflen );
+            }
+            ::memcpy( &tmp[ preflen ], val, vallen );
+            h = kv_crc_c( tmp, vallen + preflen, 0 );
+          }
+          else {
+            h = kv_crc_c( val, vallen, 0 );
+          }
+          rcnt = this->sub_route.get_sub_route_count( h );
           q.append_string( val, vallen );
           q.append_uint( rcnt );
         }
@@ -538,21 +582,32 @@ RedisExec::exec_pubsub( void ) noexcept
 ExecStatus
 RedisExec::exec_publish( void ) noexcept
 {
-  const char * subj;
-  size_t       subj_len;
+  const char * subject;
+  size_t       subject_len;
   const char * msg;
-  size_t       msg_len;
-  char       * buf;
+  size_t       msg_len,
+               preflen = this->prefix_len;
+  char       * buf,
+             * sub;
   uint32_t     rte_digits,
                rcount;
 
   /* PUBLISH subj msg */
-  if ( ! this->msg.get_arg( 1, subj, subj_len ) ||
+  if ( ! this->msg.get_arg( 1, subject, subject_len ) ||
        ! this->msg.get_arg( 2, msg, msg_len ) )
     return ERR_BAD_ARGS;
 
-  uint32_t h = kv_crc_c( subj, subj_len, 0 );
-  EvPublish pub( subj, subj_len, NULL, 0, msg, msg_len,
+  if ( preflen > 0 ) {
+    sub = this->strm.alloc_temp( subject_len + preflen );
+    ::memcpy( sub, this->prefix, preflen );
+    ::memcpy( &sub[ preflen ], subject, subject_len );
+    subject_len += preflen;
+  }
+  else {
+    sub = (char *) subject;
+  }
+  uint32_t h = kv_crc_c( sub, subject_len, 0 );
+  EvPublish pub( sub, subject_len, NULL, 0, msg, msg_len,
                  this->sub_route, this->sub_id, h, MD_STRING, 'p' );
   this->sub_route.forward_with_cnt( pub, rcount );
   this->msg_route_cnt += rcount;
@@ -597,9 +652,17 @@ RedisExec::exec_unsubscribe( void ) noexcept
 ExecStatus
 RedisExec::do_unsubscribe( const char *sub,  size_t len ) noexcept
 {
+  size_t   preflen = this->prefix_len;
   uint32_t h;
   bool     coll = false;
 
+  if ( preflen > 0 ) {
+    char * tmp = this->strm.alloc_temp( len + preflen );
+    ::memcpy( tmp, this->prefix, preflen );
+    ::memcpy( &tmp[ preflen ], sub, len );
+    sub  = tmp;
+    len += preflen;
+  }
   h = kv_crc_c( sub, len, 0 );
   if ( this->sub_tab.rem( h, sub, len, SUB_STATE_ROUTE_DATA,
                           coll ) == REDIS_SUB_OK ) {
@@ -617,9 +680,17 @@ RedisExec::do_subscribe_cb( const char *sub,  size_t len,
                             ds_on_msg_t cb,  void *cl ) noexcept
 {
   RedisSubRoute * rt;
+  size_t   preflen = this->prefix_len;
   uint32_t h;
   bool     coll = false;
 
+  if ( preflen > 0 ) {
+    char * tmp = this->strm.alloc_temp( len + preflen );
+    ::memcpy( tmp, this->prefix, preflen );
+    ::memcpy( &tmp[ preflen ], sub, len );
+    sub  = tmp;
+    len += preflen;
+  }
   h = kv_crc_c( sub, len, 0 );
   if ( this->sub_tab.put( h, sub, len, rt, coll ) == REDIS_SUB_OK ) {
     this->sub_tab.sub_count++;
@@ -641,9 +712,17 @@ RedisExec::do_psubscribe_cb( const char *sub,  size_t len,
 {
   RedisPatternRoute * rt;
   PatternCvt cvt;
+  size_t     preflen = this->prefix_len;
   uint32_t   h;
   bool       coll = false;
 
+  if ( preflen > 0 ) {
+    char * tmp = this->strm.alloc_temp( len + preflen );
+    ::memcpy( tmp, this->prefix, preflen );
+    ::memcpy( &tmp[ preflen ], sub, len );
+    sub  = tmp;
+    len += preflen;
+  }
   if ( cvt.convert_glob( sub, len ) == 0 ) {
     h = kv_crc_c( sub, cvt.prefixlen,
                   this->sub_route.prefix_seed( cvt.prefixlen ) );
@@ -707,12 +786,20 @@ RedisExec::do_psubscribe_cb( const char *sub,  size_t len,
 ExecStatus
 RedisExec::do_punsubscribe( const char *sub,  size_t len ) noexcept
 {
-  PatternCvt          cvt;
-  RouteLoc            loc;
+  PatternCvt cvt;
+  RouteLoc   loc;
   RedisPatternRoute * rt;
-  uint32_t            h;
-  bool                coll = false;
+  size_t     preflen = this->prefix_len;
+  uint32_t   h;
+  bool       coll = false;
 
+  if ( preflen > 0 ) {
+    char * tmp = this->strm.alloc_temp( len + preflen );
+    ::memcpy( tmp, this->prefix, preflen );
+    ::memcpy( &tmp[ preflen ], sub, len );
+    sub  = tmp;
+    len += preflen;
+  }
   if ( cvt.convert_glob( sub, len ) == 0 ) {
     h = kv_crc_c( sub, cvt.prefixlen,
                   this->sub_route.prefix_seed( cvt.prefixlen ) );

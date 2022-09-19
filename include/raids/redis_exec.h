@@ -154,7 +154,8 @@ struct RedisExec {
   int16_t           arity,     /* number of command args */
                     first,     /* first key in args */
                     last,      /* last key in args */
-                    step;      /* incr between keys */
+                    step,      /* incr between keys */
+                    prefix_len;/* pubsub prefix */
   uint64_t          step_mask; /* step key mask */
   size_t            argc;      /* count of args in cmd msg */
   kv::RoutePublish& sub_route; /* map subject to sub_id */
@@ -167,18 +168,22 @@ struct RedisExec {
                     next_event_id; /* next event id for timers */
   RedisSubMap       sub_tab;   /* pub/sub subscription table */
   RedisPatternMap   pat_tab;   /* pub/sub pattern sub table */
+  char              prefix[ 16 ];
 
   RedisExec( kv::HashTab &map,  uint32_t ,  uint32_t dbx_id,
              kv::StreamBuf &s,  kv::RoutePublish &rdb,  kv::PeerData &pd,
-             kv::TimerQueue &tq ) :
+             kv::TimerQueue &tq ) noexcept;
+#if 0
       kctx( map, dbx_id, NULL ), strm( s ), strm_start( s.pending() ),
       key( 0 ), keys( 0 ), key_cnt( 0 ), key_done( 0 ), multi( 0 ),
       cmd( NO_CMD ), catg( NO_CATG ), blk_state( 0 ), cmd_state( 0 ),
-      key_flags( 0 ), sub_route( rdb ), timer( tq ), peer( pd ), timer_id( 0 ),
-      save_key( 0 ), msg_route_cnt( 0 ), sub_id( ~0U ), next_event_id( 0 ) {
+      key_flags( 0 ), prefix_len( 0 ), sub_route( rdb ), timer( tq ),
+      peer( pd ), timer_id( 0 ), save_key( 0 ), msg_route_cnt( 0 ),
+      sub_id( ~0U ), next_event_id( 0 ) {
     this->kctx.ht.hdr.get_hash_seed( this->kctx.db_num, this->hs );
     this->kctx.set( kv::KEYCTX_NO_COPY_ON_READ );
   }
+#endif
   /* different for each endpoint */
   void setup_ids( uint32_t sid,  uint64_t tid ) {
     this->sub_id        = sid;

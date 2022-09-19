@@ -18,11 +18,14 @@ inline bool
 RedisKeyspace::alloc_subj( size_t subj_len ) noexcept
 {
   if ( this->alloc_len < subj_len ) {
-    size_t len = 20 + this->keylen + this->evtlen;
+    size_t len = 20 + this->exec.prefix_len + this->keylen + this->evtlen;
     char * tmp = this->exec.strm.alloc_temp( len + 1 );
     if ( tmp == NULL )
       return false;
     this->subj = tmp;
+    if ( this->exec.prefix_len > 0 )
+      ::memcpy( tmp, this->exec.prefix, this->exec.prefix_len );
+    this->ptr = &tmp[ this->exec.prefix_len ];
     this->alloc_len = len;
   }
   return true;
@@ -35,22 +38,22 @@ RedisKeyspace::db_str( size_t off ) noexcept
   if ( this->db[ 0 ] == 0 ) {
     uint8_t x = this->exec.kctx.db_num;
     if ( x < 10 ) {
-      this->subj[ off++ ] = this->db[ i++ ] = '0' + x;
+      this->ptr[ off++ ] = this->db[ i++ ] = '0' + x;
     }
     else if ( x < 100 ) {
-      this->subj[ off++ ] = this->db[ i++ ] = '0' + ( x / 10 );
-      this->subj[ off++ ] = this->db[ i++ ] = '0' + ( x % 10 );
+      this->ptr[ off++ ] = this->db[ i++ ] = '0' + ( x / 10 );
+      this->ptr[ off++ ] = this->db[ i++ ] = '0' + ( x % 10 );
     }
     else {
-      this->subj[ off++ ] = this->db[ i++ ] = '0' + ( x / 100 );
-      this->subj[ off++ ] = this->db[ i++ ] = '0' + ( ( x / 10 ) % 10 );
-      this->subj[ off++ ] = this->db[ i++ ] = '0' + ( x % 10 );
+      this->ptr[ off++ ] = this->db[ i++ ] = '0' + ( x / 100 );
+      this->ptr[ off++ ] = this->db[ i++ ] = '0' + ( ( x / 10 ) % 10 );
+      this->ptr[ off++ ] = this->db[ i++ ] = '0' + ( x % 10 );
     }
     this->db[ i ] = 0;
   }
   else {
     for ( ; this->db[ i ] != 0; i++ )
-      this->subj[ off++ ] = this->db[ i ];
+      this->ptr[ off++ ] = this->db[ i ];
   }
   return off;
 }
@@ -58,11 +61,11 @@ RedisKeyspace::db_str( size_t off ) noexcept
 inline size_t
 RedisKeyspace::db_to_subj( size_t off ) noexcept
 {
-  this->subj[ off++ ] = '@';
+  this->ptr[ off++ ] = '@';
   off = this->db_str( off );
-  this->subj[ off ] = '_';
-  this->subj[ off + 1 ] = '_';
-  this->subj[ off + 2 ] = ':';
+  this->ptr[ off ] = '_';
+  this->ptr[ off + 1 ] = '_';
+  this->ptr[ off + 2 ] = ':';
   return off + 3;
 }
 
@@ -72,13 +75,13 @@ RedisKeyspace::make_bsubj( const char *blk ) noexcept
   size_t subj_len = 20 + this->keylen;
   if ( ! this->alloc_subj( subj_len ) )
     return 0;
-  ::memcpy( this->subj, blk, 10 );
+  ::memcpy( this->ptr, blk, 10 );
   subj_len = this->db_to_subj( 10 );
 
-  ::memcpy( &this->subj[ subj_len ], this->key, this->keylen );
+  ::memcpy( &this->ptr[ subj_len ], this->key, this->keylen );
   subj_len += this->keylen;
-  this->subj[ subj_len ] = '\0';
-  return subj_len;
+  this->ptr[ subj_len ] = '\0';
+  return this->exec.prefix_len + subj_len;
 }
 /* blk = blocking subject (listblkd, zsetblkd, strmblkd), or keyspace */
 bool
@@ -107,12 +110,13 @@ RedisKeyspace::fwd_keyevent( void ) noexcept
   bool b;
   if ( ! this->alloc_subj( subj_len ) )
     return false;
-  ::memcpy( this->subj, "__keyevent", 10 );
+  ::memcpy( this->ptr, "__keyevent", 10 );
   subj_len = this->db_to_subj( 10 );
 
-  ::memcpy( &this->subj[ subj_len ], this->evt, this->evtlen );
+  ::memcpy( &this->ptr[ subj_len ], this->evt, this->evtlen );
   subj_len += this->evtlen;
-  this->subj[ subj_len ] = '\0';
+  this->ptr[ subj_len ] = '\0';
+  subj_len += this->exec.prefix_len;
 
   EvPublish pub( this->subj, subj_len, NULL, 0, this->key, this->keylen,
                  this->exec.sub_route, this->exec.sub_id,
@@ -129,7 +133,7 @@ RedisKeyspace::fwd_monitor( void ) noexcept
   size_t addr_len = this->exec.peer.get_peer_address_strlen();
   if ( ! this->alloc_subj( 20 + addr_len ) )
     return false;
-  ::memcpy( this->subj, "__monitor_", 10 );
+  ::memcpy( this->ptr, "__monitor_", 10 );
 
   char  * timestamp,
         * result;
@@ -153,10 +157,10 @@ RedisKeyspace::fwd_monitor( void ) noexcept
   if ( msg == NULL )
     return false;
   if ( addr_len > 0 ) {
-    ::memcpy( &this->subj[ subj_len ], this->exec.peer.peer_address.buf,
+    ::memcpy( &this->ptr[ subj_len ], this->exec.peer.peer_address.buf,
               addr_len );
     subj_len += addr_len;
-    this->subj[ subj_len ] = '\0';
+    this->ptr[ subj_len ] = '\0';
   }
   ::memcpy( msg, "*3\r\n", 4 );
   this->exec.msg.pack( &msg[ 4 ] );
@@ -191,6 +195,7 @@ RedisKeyspace::fwd_monitor( void ) noexcept
   uint64_to_string( us, &timestamp[ 15 ], 7 );
   timestamp[ 15 ] = '.';
   crlf( timestamp, 17 + 5 );
+  subj_len += this->exec.prefix_len;
 
   EvPublish pub( this->subj, subj_len, NULL, 0, msg, msg_sz,
                  this->exec.sub_route, this->exec.sub_id,
@@ -427,4 +432,126 @@ RedisKeyspace::pub_keyspace_events( RedisExec &exec ) noexcept
   if ( ( exec.sub_route.key_flags & EKF_MONITOR ) != 0 )
     b &= ev.fwd_monitor();
   return b;
+}
+
+void
+RedisKeyspace::init_keyspace_events( RedisExec &e ) noexcept
+{
+  if ( e.sub_route.keyspace == NULL ) {
+    void * p = ::malloc( sizeof( RedisKeyspaceNotify ) );
+    if ( p == NULL ) {
+      perror( "malloc" );
+      return;
+    }
+    RedisKeyspaceNotify * notify = new ( p ) RedisKeyspaceNotify( e.sub_route );
+    e.sub_route.keyspace = notify;
+    e.sub_route.add_route_notify( *notify );
+  }
+}
+/* modify keyspace route */
+void
+RedisKeyspaceNotify::update_keyspace_route( uint32_t &val,  uint16_t bit,
+                                            int add,  uint32_t fd ) noexcept
+{
+  RouteRef rte( this->sub_route, this->sub_route.zip.route_spc[ 0 ] );
+  uint32_t rcnt = 0, xcnt;
+  uint16_t & key_flags = this->sub_route.key_flags;
+
+  /* if bit is set, then val has routes */
+  if ( ( key_flags & bit ) != 0 )
+    rcnt = rte.decompress( val, add > 0 );
+  /* if unsub or sub */
+  if ( add < 0 )
+    xcnt = rte.remove( fd );
+  else
+    xcnt = rte.insert( fd );
+  /* if route changed */
+  if ( xcnt != rcnt ) {
+    /* if route deleted */
+    if ( xcnt == 0 ) {
+      val = 0;
+      key_flags &= ~bit;
+    }
+    /* otherwise added */
+    else {
+      key_flags |= bit;
+      val = rte.compress();
+    }
+    rte.deref();
+  }
+}
+/* track number of subscribes to keyspace subjects to enable them */
+void
+RedisKeyspaceNotify::update_keyspace_count( const char *sub,  size_t len,
+                                            int add,  uint32_t fd ) noexcept
+{
+  /* keyspace subjects are special, since subscribing to them can create
+   * some overhead */
+  static const char kspc[] = "__keyspace@",
+                    kevt[] = "__keyevent@",
+                    lblk[] = "__listblkd@",
+                    zblk[] = "__zsetblkd@",
+                    sblk[] = "__strmblkd@",
+                    moni[] = "__monitor_@";
+  if ( len > 3 ) {
+    if ( sub[ 0 ] != '_' )
+      return;
+    if ( sub[ 1 ] != '_' ) {
+      const char *p = (const char *) ::memchr( sub, '.', len );
+      if ( p == NULL )
+        return;
+      len -= ( &p[ 1 ] - sub );
+      sub  = &p[ 1 ];
+      if ( len > 0 && sub[ 0 ] != '_' )
+        return;
+    }
+  }
+  if ( ::memcmp( kspc, sub, len ) == 0 ) /* len <= 11, could match multiple */
+    this->update_keyspace_route( this->keyspace, EKF_KEYSPACE_FWD, add, fd );
+  if ( ::memcmp( kevt, sub, len ) == 0 )
+    this->update_keyspace_route( this->keyevent, EKF_KEYEVENT_FWD, add, fd );
+  if ( ::memcmp( lblk, sub, len ) == 0 )
+    this->update_keyspace_route( this->listblkd, EKF_LISTBLKD_NOT, add, fd );
+  if ( ::memcmp( zblk, sub, len ) == 0 )
+    this->update_keyspace_route( this->zsetblkd, EKF_ZSETBLKD_NOT, add, fd );
+  if ( ::memcmp( sblk, sub, len ) == 0 )
+    this->update_keyspace_route( this->strmblkd, EKF_STRMBLKD_NOT, add, fd );
+  if ( ::memcmp( moni, sub, len ) == 0 )
+    this->update_keyspace_route( this->monitor , EKF_MONITOR     , add, fd );
+
+  /*printf( "%.*s %d key_flags %x\n", (int) len, sub, add, this->key_flags );*/
+}
+/* client subscribe, notify to kv pubsub */
+void
+RedisKeyspaceNotify::on_sub( NotifySub &sub ) noexcept
+{
+  if ( sub.subject_len > 11 )
+    this->update_keyspace_count( sub.subject, 11, 1, sub.src_fd );
+}
+
+void
+RedisKeyspaceNotify::on_unsub( NotifySub &sub ) noexcept
+{
+  if ( sub.subject_len > 11 )
+    this->update_keyspace_count( sub.subject, 11, -1, sub.src_fd );
+}
+/* client pattern subscribe, notify to kv pubsub */
+void
+RedisKeyspaceNotify::on_psub( NotifyPattern &pat ) noexcept
+{
+  size_t pre_len = ( pat.cvt.prefixlen < 11 ? pat.cvt.prefixlen : 11 );
+  this->update_keyspace_count( pat.pattern, pre_len, 1, pat.src_fd );
+}
+
+void
+RedisKeyspaceNotify::on_punsub( NotifyPattern &pat ) noexcept
+{
+  size_t pre_len = ( pat.cvt.prefixlen < 11 ? pat.cvt.prefixlen : 11 );
+  this->update_keyspace_count( pat.pattern, pre_len, -1, pat.src_fd );
+}
+
+void
+RedisKeyspaceNotify::on_reassert( uint32_t ,  RouteVec<RouteSub> &,
+                                  RouteVec<RouteSub> & ) noexcept
+{
 }
