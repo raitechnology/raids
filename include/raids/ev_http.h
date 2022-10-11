@@ -25,12 +25,16 @@ struct EvPrefetchQueue;
 struct HttpReq {
   static const size_t STR_SZ = 128;
   char         wsver[ STR_SZ ], wskey[ STR_SZ ], wspro[ STR_SZ ],
-               content_type[ STR_SZ ], authorize[ STR_SZ ];
+               content_type[ STR_SZ ];
   size_t       wskeylen,
                content_length,
-               path_len;
-  const char * path,
-             * data;
+               method_len,
+               path_len,
+               authorize_len;
+  const char * method,
+             * path,
+             * data,
+             * authorize;
   int          opts; /* parse the hdrs that are useful */
 
   enum Opts {
@@ -41,12 +45,13 @@ struct HttpReq {
     WEBSOCKET  = 16 /* Upgrade: websocket */
   };
 
-  HttpReq() : wskeylen( 0 ), content_length( 0 ), path_len( 0 ), path( 0 ),
-              data( 0 ), opts( 0 ) {
+  HttpReq() : wskeylen( 0 ), content_length( 0 ), method_len( 0 ), path_len( 0 ),
+              authorize_len( 0 ), method( 0 ), path( 0 ), data( 0 ),
+              authorize( 0 ), opts( 0 ) {
     this->wsver[ 0 ] = this->wskey[ 0 ] = this->wspro[ 0 ] =
-    this->content_type[ 0 ] = this->authorize[ 0 ] = '\0';
+    this->content_type[ 0 ] = '\0';
   }
-  void parse_version( const char *line,  size_t len ) noexcept;
+  bool parse_version( const char *line,  size_t len ) noexcept;
   void parse_header( const char *line,  size_t len ) noexcept;
   static size_t decode_uri( const char *s,  const char *e,  char *q,
                             size_t qlen ) noexcept;
@@ -82,21 +87,28 @@ struct WSMsg {
          nlcnt;
 };
 
+struct HttpServerNonce;
+struct HtDigestDB;
+struct HttpDigestAuth;
+
 struct EvHttpConnection : public kv::EvConnection {
-  char   * wsbuf;   /* decoded websocket frames */
-  size_t   wsoff,   /* start offset of wsbuf */
-           wslen,   /* length of wsbuf used */
-           wsalloc, /* sizeof wsbuf alloc */
-           wsmsgcnt;
-  uint64_t websock_off; /* on output pointer that frames msgs with ws */
-  int      term_int;
-  bool     is_using_term;
-  Term     term;
+  char            * wsbuf;   /* decoded websocket frames */
+  size_t            wsoff,   /* start offset of wsbuf */
+                    wslen,   /* length of wsbuf used */
+                    wsalloc, /* sizeof wsbuf alloc */
+                    wsmsgcnt;
+  uint64_t          websock_off;/* on output pointer that frames msgs with ws */
+  HttpServerNonce * svr_nonce;
+  HtDigestDB      * digest_db;
+  int               term_int;
+  bool              is_using_term;
+  Term              term;
 
   EvHttpConnection( kv::EvPoll &p,  const uint8_t t )
     : kv::EvConnection( p, t ), wsbuf( 0 ), wsoff( 0 ), wslen( 0 ),
-      websock_off( 0 ), term_int( 0 ), is_using_term( false ) {}
-  void initialize_state( void ) {
+      websock_off( 0 ), svr_nonce( 0 ), digest_db( 0 ), term_int( 0 ),
+      is_using_term( false ) {}
+  void initialize_state( HttpServerNonce *svr = NULL,  HtDigestDB *db = NULL ) {
     this->wsbuf         = NULL;
     this->wsoff         = 0;
     this->wslen         = 0;
@@ -105,6 +117,8 @@ struct EvHttpConnection : public kv::EvConnection {
     this->websock_off   = 0;
     this->term_int      = 0;
     this->is_using_term = false;
+    this->svr_nonce     = svr;
+    this->digest_db     = db;
     this->term.zero();
   }
   void init_http_response( const HttpReq &hreq,  HttpOut &hout,
@@ -112,6 +126,8 @@ struct EvHttpConnection : public kv::EvConnection {
   void send_404_not_found( const HttpReq &hreq,  int opts ) noexcept;
   void send_404_bad_type( const HttpReq &hreq ) noexcept;
   void send_201_created( const HttpReq &hreq ) noexcept;
+  void send_401_unauthorized( const HttpReq &hreq,
+                              HttpDigestAuth &auth ) noexcept;
   bool process_websock( void ) noexcept;
   bool process_http( void ) noexcept;
   bool flush_term( void ) noexcept;

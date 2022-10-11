@@ -8,12 +8,13 @@
 #include <raikv/util.h>
 #include <raikv/os_file.h>
 #include <raids/ev_http.h>
+#include <raids/http_auth.h>
 
 using namespace rai;
 using namespace ds;
 using namespace kv;
 
-static void SHA1( const uint8_t *data,  size_t len,
+static void SHA1( const void *data,  size_t len,
                   uint8_t digest[20] ) noexcept;
 
 EvHttpListen::EvHttpListen( EvPoll &p ) noexcept
@@ -27,6 +28,20 @@ EvHttpListen::EvHttpListen( EvPoll &p,  RoutePublish &sr ) noexcept
 EvSocket *
 EvHttpListen::accept( void ) noexcept
 {
+#if 0
+  static HtDigestDB * db;
+  static HttpServerNonce * svr;
+
+  if ( svr == NULL ) {
+    char hostname[ 256 ];
+    ::gethostname( hostname, sizeof( hostname ) );
+    db = new ( ::malloc( sizeof( HtDigestDB ) ) ) HtDigestDB();
+    db->set_realm( "raids", hostname );
+    db->add_user_pass( "danger", "high", NULL );
+    svr = new ( ::malloc( sizeof( HttpServerNonce ) ) ) HttpServerNonce();
+    svr->regenerate();
+  }
+#endif
   EvHttpService *c =
     this->poll.get_free_list<EvHttpService, RoutePublish &>
       ( this->accept_sock_type, this->sub_route );
@@ -35,7 +50,7 @@ EvHttpListen::accept( void ) noexcept
   if ( ! this->accept2( *c, "http" ) )
     return NULL;
   c->setup_ids( c->fd, ++this->timer_id );
-  c->initialize_state();
+  c->initialize_state( /*svr, db*/ );
   return c;
 }
 
@@ -98,7 +113,8 @@ EvHttpConnection::process_http( void ) noexcept
       if ( p == start ) {
         http_request = p;
         request_len  = size;
-        hreq.parse_version( http_request, request_len );
+        if ( ! hreq.parse_version( http_request, request_len ) )
+          return true;
       }
       else {
         hreq.parse_header( p, size );
@@ -111,6 +127,25 @@ EvHttpConnection::process_http( void ) noexcept
     this->off += (uint32_t) ( used + hreq.content_length );
     this->msgs_recv++;
 
+    if ( this->digest_db != NULL ) {
+      HttpDigestAuth auth( this->svr_nonce->nonce, this->digest_db );
+      if ( hreq.authorize_len == 0 ) {
+        this->send_401_unauthorized( hreq, auth );
+        return false;
+      }
+      else {
+        if ( ! auth.parse_auth( hreq.authorize, hreq.authorize_len, true ) ) {
+          /*printf( "parse auth failed %s\n", auth.error() );*/
+          this->send_401_unauthorized( hreq, auth );
+          return false;
+        }
+        if ( ! auth.check_auth( hreq.method, hreq.method_len ) ) {
+          /*printf( "check auth failed %s\n", auth.error() );*/
+          this->send_401_unauthorized( hreq, auth );
+          return false;
+        }
+      }
+    }
     /* GET path HTTP/1.1 */
     switch ( http_request[ 0 ] ) {
       case 'g': /* GET */
@@ -159,6 +194,7 @@ static const char http_hdr11[] = "HTTP/1.1 ",
                   http_hdr10[] = "HTTP/1.0 ",
                   code_200[]   = "200 OK\r\n",
                   code_201[]   = "201 Created\r\n",
+                  code_401[]   = "401 Unauthorized\r\n",
                   code_404[]   = "404 Not Found\r\n",
                   no_cache[]   = "Cache-Control: no-cache\r\n",
                   conn_close[] = "Connection: close\r\n",
@@ -187,6 +223,8 @@ EvHttpConnection::init_http_response( const HttpReq &hreq,  HttpOut &hout,
     hout.push( code_200, sizeof( code_200 ) - 1 );
   else if ( code == 201 )
     hout.push( code_201, sizeof( code_201 ) - 1 );
+  else if ( code == 401 )
+    hout.push( code_401, sizeof( code_401 ) - 1 );
   else
     hout.push( code_404, sizeof( code_404 ) - 1 );
 
@@ -216,6 +254,26 @@ EvHttpConnection::send_404_not_found( const HttpReq &hreq,  int opts ) noexcept
   hout.push( ctype_html, sizeof( ctype_html ) - 1 );
   hout.push( clength_40, sizeof( clength_40 ) - 1 );
   hout.push( not_found_html, sizeof( not_found_html ) - 1 );
+  if ( (s = this->alloc( hout.size )) != NULL )
+    this->sz = hout.cat( s );
+}
+
+void
+EvHttpConnection::send_401_unauthorized( const HttpReq &hreq,
+                                         HttpDigestAuth &auth ) noexcept
+{
+  static const char unauthorized_html[] =
+  "\r\n" /* text must be 40 chars */
+  "<html><body>Unauthorized</body></html>\r\n";
+  HttpOut hout;
+  char  * s;
+  this->init_http_response( hreq, hout, 0, 401 );
+  bool   stale = ( auth.errcode == HT_AUTH_STALE );
+  size_t len   = auth.gen_server( *this->svr_nonce, stale );
+  hout.push( auth.out_buf, len );
+  hout.push( ctype_html, sizeof( ctype_html ) - 1 );
+  hout.push( clength_40, sizeof( clength_40 ) - 1 );
+  hout.push( unauthorized_html, sizeof( unauthorized_html ) - 1 );
   if ( (s = this->alloc( hout.size )) != NULL )
     this->sz = hout.cat( s );
 }
@@ -257,28 +315,50 @@ EvHttpConnection::send_201_created( const HttpReq &hreq ) noexcept
     this->sz = hout.cat( s );
 }
 
-void
+bool
 HttpReq::parse_version( const char *line,  size_t len ) noexcept
 {
+  size_t i, j;
   if ( len > 0 && line[ len - 1 ] == '\n' ) {
     len -= 1;
     if ( len > 0 && line[ len - 1 ] == '\r' )
       len -= 1;
   }
-  if ( len > 9 ) {
-    if ( kv_strncasecmp( &line[ len - 8 ], "HTTP/1.1", 8 ) == 0 )
-      this->opts |= HTTP_1_1;
-    if ( line[ len - 9 ] == ' ' ) {
-      len -= 9;
-      for ( size_t i = 0; i < len; i++ ) {
-        if ( line[ i ] == '/' ) {
-          this->path = &line[ i ];
-          this->path_len = len - i;
-          break;
-        }
-      }
+  if ( len <= 9 )
+    return false;
+  for ( i = len; i > 0 && line[ i - 1 ] != ' '; i-- )
+    ;
+  if ( kv_strncasecmp( &line[ i ], "HTTP/1.1", 8 ) == 0 ||
+       kv_strncasecmp( &line[ i ], "HTTP/2", 6 ) == 0 )
+    this->opts |= HTTP_1_1;
+
+  if ( i > 0 && line[ i - 1 ] == ' ' )
+    len = i - 1;
+  /* parse GET /path */
+  for ( i = 0; i < len; i++ ) {
+    if ( line[ i ] != ' ' ) {
+      this->method = &line[ i ];
+      break;
     }
   }
+  if ( this->method == NULL )
+    return false;
+  for ( j = i; j < len; j++ ) {
+    if ( line[ j ] == ' ' ) {
+      this->method_len = j - i;
+      break;
+    }
+  }
+  if ( this->method_len == 0 )
+    return false;
+  for ( i = j; i < len; i++ ) {
+    if ( line[ i ] == '/' ) {
+      this->path = &line[ i ];
+      this->path_len = len - i;
+      return true;
+    }
+  }
+  return false;
 }
 
 void
@@ -298,15 +378,8 @@ HttpReq::parse_header( const char *line,  size_t len ) noexcept
       /*HttpDigestAuth auth( this->svc.nonce.nonce, &this->svc.htDigestDb );*/
 
       if ( kv_strncasecmp( line, auth, auth_len ) == 0 ) {
-        len -= auth_len;
-        for ( i = 0; i < len; i++ ) {
-          if ( i == STR_SZ - 1 )
-            break;
-          if ( line[ i + auth_len ] <= ' ' )
-            break;
-          this->authorize[ i ] = line[ i + auth_len ];
-        }
-        this->authorize[ i ] = '\0';
+        this->authorize     = line;
+        this->authorize_len = len;
       }
       break;
     }
@@ -1269,7 +1342,7 @@ EvHttpConnection::send_ws_upgrade( const HttpReq &hreq ) noexcept
   char wsacc[ 32 ];
   bool res = false;
   /* websock switch hashes wskey with SHA1 and base64 encodes the result */
-  SHA1( (const uint8_t *) hreq.wskey, hreq.wskeylen, digest );
+  SHA1( hreq.wskey, hreq.wskeylen, digest );
   /* base64 encode it */
   for ( i = 0; i < 18; i += 3 ) {
     val = ( (uint32_t) digest[ i ] << 16 ) | ( (uint32_t) digest[ i+1 ] << 8 ) |
@@ -1598,17 +1671,18 @@ SHA1Final(uint8_t digest[20], SHA1_CTX* context) noexcept
 /* ================ end of sha1.c ================ */
 
 static void
-SHA1( const uint8_t *data, size_t len, uint8_t digest[20] ) noexcept
+SHA1( const void *data, size_t len, uint8_t digest[20] ) noexcept
 {
+  const uint8_t *ptr = (const uint8_t *) data;
   SHA1_CTX ctx;
   SHA1Init( &ctx );
   for (;;) {
     uint32_t sz = len & (size_t) 0xffffffffU;
-    SHA1Update( &ctx, data, sz );
+    SHA1Update( &ctx, ptr, sz );
     if ( len == (size_t) sz )
       break;
     len -= (size_t) sz;
-    data = &data[ sz ];
+    ptr = &ptr[ sz ];
   }
   SHA1Final( digest, &ctx );
 }

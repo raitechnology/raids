@@ -247,7 +247,7 @@ test_stream_includes     := -Ilinecook/include
 term_includes            := -Ilinecook/include
 redis_rdb_includes       := -Irdbparser/include $(redis_geo_includes)
 
-libraids_files := ev_service ev_http ev_client shm_client redis_msg \
+libraids_files := ev_service ev_http http_auth ev_client shm_client redis_msg \
   redis_cmd_db redis_exec redis_keyspace redis_geo redis_hash \
   redis_hyperloglog redis_key redis_list redis_pubsub redis_script redis_set \
   redis_sortedset redis_stream redis_string redis_transaction redis_rdb \
@@ -483,6 +483,15 @@ test_rstream_lnk   := $(raids_dlnk)
 
 $(bind)/test_rstream: $(test_rstream_objs) $(test_rstream_libs)
 
+test_auth_files := auth_test
+test_auth_cfile := test/auth_test.cpp
+test_auth_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(test_auth_files)))
+test_auth_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(test_auth_files)))
+test_auth_libs  := $(raids_dlib)
+test_auth_lnk   := $(raids_dlnk)
+
+$(bind)/test_auth: $(test_auth_objs) $(test_auth_libs)
+
 ds_test_api_files := test_api
 ds_test_api_cfile := test/test_api.c
 ds_test_api_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(ds_test_api_files)))
@@ -508,7 +517,7 @@ all_exes    += $(bind)/ds_client $(bind)/test_rmsg $(bind)/test_mcmsg \
 	       $(bind)/test_hllnum $(bind)/test_hllw $(bind)/test_hllsub \
 	       $(bind)/test_rgeo $(bind)/test_rdecimal \
 	       $(bind)/test_rping $(bind)/test_rsub $(bind)/test_rpub \
-	       $(bind)/test_rstream $(bind)/ds_test_api \
+	       $(bind)/test_rstream $(bind)/test_auth $(bind)/ds_test_api \
                $(bind)/ds_pubsub_api
 all_depends += $(ds_client_deps) $(test_rmsg_deps) $(test_mcmsg_deps) \
                $(redis_cmd_deps) $(test_rcmd_deps) $(test_rlist_deps) \
@@ -516,7 +525,8 @@ all_depends += $(ds_client_deps) $(test_rmsg_deps) $(test_mcmsg_deps) \
 	       $(test_hllnum_deps) $(test_hllw_deps) $(test_hllsub_deps) \
 	       $(test_rgeo_deps) $(test_rdecimal_deps) \
 	       $(test_rping_deps) $(test_rsub_deps) $(test_rpub_deps) \
-	       $(test_rstream_deps) $(ds_test_api_deps) $(ds_pubsub_api_deps)
+	       $(test_rstream_deps) $(test_auth_deps) $(ds_test_api_deps) \
+	       $(ds_pubsub_api_deps)
 
 all_dirs := $(bind) $(libd) $(objd) $(dependd)
 
