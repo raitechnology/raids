@@ -753,7 +753,7 @@ bool
 EvHttpConnection::frame_websock2( void ) noexcept
 {
   size_t         nbytes = this->bytes_sent,
-                 off    = this->woff,
+                 off    = 0,
                  i, fbytes;
   char         * frame;
   WebSocketFrame ws;
@@ -788,7 +788,7 @@ EvHttpService::frame_websock2( void ) noexcept
   static const char eol[]    = "\r\n";
   static size_t     eol_size = sizeof( eol ) - 1;
   size_t      nbytes = this->bytes_sent,
-              off    = this->woff,
+              off    = 0,
               i;
   char      * newbuf;
 
