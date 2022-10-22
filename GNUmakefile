@@ -159,7 +159,7 @@ endif
 
 ds_lib      := $(libd)/libraids.a
 rpath       := -Wl,-rpath,$(pwd)/$(libd)$(rpath1)$(rpath2)$(rpath3)$(rpath4)$(rpath5)$(rpath6)$(rpath7)
-dlnk_lib    += -lpcre2-8
+dlnk_lib    += -lpcre2-8 -lssl -lcrypto
 malloc_lib  :=
 
 .PHONY: everything
@@ -251,7 +251,7 @@ libraids_files := ev_service ev_http http_auth ev_client shm_client redis_msg \
   redis_cmd_db redis_exec redis_keyspace redis_geo redis_hash \
   redis_hyperloglog redis_key redis_list redis_pubsub redis_script redis_set \
   redis_sortedset redis_stream redis_string redis_transaction redis_rdb \
-  redis_server redis_api ev_memcached memcached_exec term
+  redis_server redis_api ev_memcached memcached_exec term ev_tcp_ssl
 libraids_cfile := $(addprefix src/, $(addsuffix .cpp, $(libraids_files)))
 libraids_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(libraids_files)))
 libraids_dbjs  := $(addprefix $(objd)/, $(addsuffix .fpic.o, $(libraids_files)))
@@ -320,6 +320,9 @@ ds_client_lnk   := $(raids_dlnk)
 
 $(bind)/ds_client: $(ds_client_objs) $(ds_client_libs)
 
+all_exes    += $(bind)/ds_client
+all_depends += $(ds_client_deps)
+
 test_rmsg_files := test_msg
 test_rmsg_cfile := test/test_msg.cpp
 test_rmsg_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(test_rmsg_files)))
@@ -328,6 +331,9 @@ test_rmsg_libs  := $(raids_dlib)
 test_rmsg_lnk   := $(raids_dlnk)
 
 $(bind)/test_rmsg: $(test_rmsg_objs) $(test_rmsg_libs)
+
+all_exes    += $(bind)/test_rmsg
+all_depends += $(test_rmsg_deps)
 
 test_mcmsg_files := test_mcmsg
 test_mcmsg_cfile := test/test_mcmsg.cpp
@@ -338,6 +344,9 @@ test_mcmsg_lnk   := $(raids_dlnk)
 
 $(bind)/test_mcmsg: $(test_mcmsg_objs) $(test_mcmsg_libs)
 
+all_exes    += $(bind)/test_mcmsg
+all_depends += $(test_mcmsg_deps)
+
 test_rcmd_files := test_cmd
 test_rcmd_cfile := test/test_cmd.cpp
 test_rcmd_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(test_rcmd_files)))
@@ -346,6 +355,9 @@ test_rcmd_libs  := $(raids_dlib)
 test_rcmd_lnk   := $(raids_dlnk)
 
 $(bind)/test_rcmd: $(test_rcmd_objs) $(test_rcmd_libs)
+
+all_exes    += $(bind)/test_rcmd
+all_depends += $(test_rcmd_deps)
 
 redis_cmd_files := redis_cmd
 redis_cmd_cfile := src/redis_cmd.cpp
@@ -356,6 +368,9 @@ redis_cmd_lnk   := $(kv_lnk)
 
 $(bind)/redis_cmd: $(redis_cmd_objs) $(redis_cmd_libs)
 
+all_exes    += $(bind)/redis_cmd
+all_depends += $(redis_cmd_deps)
+
 test_rlist_files := test_list
 test_rlist_cfile := test/test_list.cpp
 test_rlist_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(test_rlist_files)))
@@ -364,6 +379,9 @@ test_rlist_libs  := $(raids_dlib)
 test_rlist_lnk   := $(raids_dlnk)
 
 $(bind)/test_rlist: $(test_rlist_objs) $(test_rlist_libs)
+
+all_exes    += $(bind)/test_rlist
+all_depends += $(test_rlist_deps)
 
 test_rhash_files := test_hash
 test_rhash_cfile := test/test_hash.cpp
@@ -374,6 +392,9 @@ test_rhash_lnk   := $(raids_dlnk)
 
 $(bind)/test_rhash: $(test_rhash_objs) $(test_rhash_libs)
 
+all_exes    += $(bind)/test_rhash
+all_depends += $(test_rhash_deps)
+
 test_rset_files := test_set
 test_rset_cfile := test/test_set.cpp
 test_rset_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(test_rset_files)))
@@ -382,6 +403,9 @@ test_rset_libs  := $(raids_dlib)
 test_rset_lnk   := $(raids_dlnk)
 
 $(bind)/test_rset: $(test_rset_objs) $(test_rset_libs)
+
+all_exes    += $(bind)/test_rset
+all_depends += $(test_rset_deps)
 
 test_rzset_files := test_zset
 test_rzset_cfile := test/test_zset.cpp
@@ -392,6 +416,9 @@ test_rzset_lnk   := $(raids_dlnk)
 
 $(bind)/test_rzset: $(test_rzset_objs) $(test_rzset_libs)
 
+all_exes    += $(bind)/test_rzset
+all_depends += $(test_rzset_deps)
+
 test_hllnum_files := test_hllnum
 test_hllnum_cfile := test/test_hllnum.cpp
 test_hllnum_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(test_hllnum_files)))
@@ -400,6 +427,9 @@ test_hllnum_libs  := $(raids_dlib)
 test_hllnum_lnk   := $(raids_dlnk)
 
 $(bind)/test_hllnum: $(test_hllnum_objs) $(test_hllnum_libs)
+
+all_exes    += $(bind)/test_hllnum
+all_depends += $(test_hllnum_deps)
 
 test_hllw_files := test_hllw
 test_hllw_cfile := test/test_hllw.cpp
@@ -410,6 +440,9 @@ test_hllw_lnk   := $(raids_dlnk)
 
 $(bind)/test_hllw: $(test_hllw_objs) $(test_hllw_libs)
 
+all_exes    += $(bind)/test_hllw
+all_depends += $(test_hllw_deps)
+
 test_hllsub_files := test_hllsub
 test_hllsub_cfile := test/test_hllsub.cpp
 test_hllsub_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(test_hllsub_files)))
@@ -418,6 +451,9 @@ test_hllsub_libs  := $(raids_dlib)
 test_hllsub_lnk   := $(raids_dlnk)
 
 $(bind)/test_hllsub: $(test_hllsub_objs) $(test_hllsub_libs)
+
+all_exes    += $(bind)/test_hllsub
+all_depends += $(test_hllsub_deps)
 
 test_geo_includes = -Ih3/src/h3lib/include -I/usr/include/h3lib
 test_rgeo_files := test_geo
@@ -429,6 +465,9 @@ test_rgeo_lnk   := $(raids_dlnk)
 
 $(bind)/test_rgeo: $(test_rgeo_objs) $(test_rgeo_libs)
 
+all_exes    += $(bind)/test_rgeo
+all_depends += $(test_rgeo_deps)
+
 test_rdecimal_files := test_decimal
 test_rdecimal_cfile := test/test_decimal.cpp
 test_rdecimal_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(test_rdecimal_files)))
@@ -437,6 +476,9 @@ test_rdecimal_libs  := $(raids_dlib)
 test_rdecimal_lnk   := $(raids_dlnk)
 
 $(bind)/test_rdecimal: $(test_rdecimal_objs) $(test_rdecimal_libs)
+
+all_exes    += $(bind)/test_rdecimal
+all_depends += $(test_rdecimal_deps)
 
 test_rtimer_files := test_timer
 test_rtimer_cfile := test/test_timer.cpp
@@ -447,6 +489,9 @@ test_rtimer_lnk   := $(raids_dlnk)
 
 $(bind)/test_rtimer: $(test_rtimer_objs) $(test_rtimer_libs)
 
+all_exes    += $(bind)/test_rtimer
+all_depends += $(test_rtimer_deps)
+
 test_rping_files := test_ping
 test_rping_cfile := test/test_ping.cpp
 test_rping_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(test_rping_files)))
@@ -455,6 +500,9 @@ test_rping_libs  := $(raids_dlib)
 test_rping_lnk   := $(raids_dlnk)
 
 $(bind)/test_rping: $(test_rping_objs) $(test_rping_libs)
+
+all_exes    += $(bind)/test_rping
+all_depends += $(test_rping_deps)
 
 test_rsub_files := test_sub
 test_rsub_cfile := test/test_sub.cpp
@@ -465,6 +513,9 @@ test_rsub_lnk   := $(raids_dlnk)
 
 $(bind)/test_rsub: $(test_rsub_objs) $(test_rsub_libs)
 
+all_exes    += $(bind)/test_rsub
+all_depends += $(test_rsub_deps)
+
 test_rpub_files := test_pub
 test_rpub_cfile := test/test_pub.cpp
 test_rpub_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(test_rpub_files)))
@@ -473,6 +524,9 @@ test_rpub_libs  := $(raids_dlib)
 test_rpub_lnk   := $(raids_dlnk)
 
 $(bind)/test_rpub: $(test_rpub_objs) $(test_rpub_libs)
+
+all_exes    += $(bind)/test_rpub
+all_depends += $(test_rpub_deps)
 
 test_rstream_files := test_stream
 test_rstream_cfile := test/test_stream.cpp
@@ -483,6 +537,9 @@ test_rstream_lnk   := $(raids_dlnk)
 
 $(bind)/test_rstream: $(test_rstream_objs) $(test_rstream_libs)
 
+all_exes    += $(bind)/test_rstream
+all_depends += $(test_rstream_deps)
+
 test_auth_files := auth_test
 test_auth_cfile := test/auth_test.cpp
 test_auth_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(test_auth_files)))
@@ -491,6 +548,9 @@ test_auth_libs  := $(raids_dlib)
 test_auth_lnk   := $(raids_dlnk)
 
 $(bind)/test_auth: $(test_auth_objs) $(test_auth_libs)
+
+all_exes    += $(bind)/test_auth
+all_depends += $(test_auth_deps)
 
 ds_test_api_files := test_api
 ds_test_api_cfile := test/test_api.c
@@ -502,6 +562,21 @@ ds_test_api_lnk   := $(ds_lib) $(lnk_lib) -lpcre2-32 -lpcre2-8 -llzf
 #$(bind)/test_api: $(test_api_objs) $(test_api_libs)
 $(bind)/ds_test_api: $(ds_test_api_objs) $(ds_lib) $(lnk_dep)
 
+all_exes    += $(bind)/ds_test_api
+all_depends += $(ds_test_api_deps)
+
+test_tcp_ssl_files := test_tcp_ssl
+test_tcp_ssl_cfile := test/test_tcp_ssl.cpp
+test_tcp_ssl_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(test_tcp_ssl_files)))
+test_tcp_ssl_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(test_tcp_ssl_files)))
+test_tcp_ssl_libs  :=
+test_tcp_ssl_lnk   := $(ds_lib) $(lnk_lib) -lssl -lcrypto
+
+$(bind)/test_tcp_ssl: $(test_tcp_ssl_objs) $(test_tcp_ssl_libs) $(lnk_dep)
+
+all_exes    += $(bind)/test_tcp_ssl
+all_depends += $(test_tcp_ssl_deps)
+
 ds_pubsub_api_files := pubsub_api
 ds_pubsub_api_cfile := test/pubsub_api.c
 ds_pubsub_api_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(ds_pubsub_api_files)))
@@ -511,22 +586,8 @@ ds_pubsub_api_lnk   := $(ds_lib) $(lnk_lib) -lpcre2-32 -lpcre2-8 -llzf
 
 $(bind)/ds_pubsub_api: $(ds_pubsub_api_objs) $(ds_lib) $(lnk_dep)
 
-all_exes    += $(bind)/ds_client $(bind)/test_rmsg $(bind)/test_mcmsg \
-               $(bind)/redis_cmd $(bind)/test_rcmd $(bind)/test_rlist \
-	       $(bind)/test_rhash $(bind)/test_rset $(bind)/test_rzset \
-	       $(bind)/test_hllnum $(bind)/test_hllw $(bind)/test_hllsub \
-	       $(bind)/test_rgeo $(bind)/test_rdecimal \
-	       $(bind)/test_rping $(bind)/test_rsub $(bind)/test_rpub \
-	       $(bind)/test_rstream $(bind)/test_auth $(bind)/ds_test_api \
-               $(bind)/ds_pubsub_api
-all_depends += $(ds_client_deps) $(test_rmsg_deps) $(test_mcmsg_deps) \
-               $(redis_cmd_deps) $(test_rcmd_deps) $(test_rlist_deps) \
-	       $(test_rhash_deps) $(test_rset_deps) $(test_rzset_deps) \
-	       $(test_hllnum_deps) $(test_hllw_deps) $(test_hllsub_deps) \
-	       $(test_rgeo_deps) $(test_rdecimal_deps) \
-	       $(test_rping_deps) $(test_rsub_deps) $(test_rpub_deps) \
-	       $(test_rstream_deps) $(test_auth_deps) $(ds_test_api_deps) \
-	       $(ds_pubsub_api_deps)
+all_exes    += $(bind)/ds_pubsub_api
+all_depends += $(ds_pubsub_api_deps)
 
 all_dirs := $(bind) $(libd) $(objd) $(dependd)
 
@@ -703,6 +764,8 @@ CMakeLists.txt: .copr/Makefile
 	add_executable (test_rsub $(test_rsub_cfile))
 	add_executable (test_rpub $(test_rpub_cfile))
 	add_executable (test_rstream $(test_rstream_cfile))
+	add_executable (test_auth_objs) $(test_auth_cfile))
+	add_executable (test_tcp_ssl: $(test_tcp_ssl_cfile))
 	add_executable (ds_test_api $(ds_test_api_cfile))
 	add_executable (ds_pubsub_api $(ds_pubsub_api_cfile))
 	EOF
