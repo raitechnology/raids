@@ -1,5 +1,5 @@
-#ifndef __rai_raids__ev_tcp_aes_h__
-#define __rai_raids__ev_tcp_aes_h__
+#ifndef __rai_raids__ev_tcp_ssl_h__
+#define __rai_raids__ev_tcp_ssl_h__
 
 #include <raikv/ev_net.h>
 #include <openssl/ssl.h>
@@ -16,8 +16,9 @@ struct SSL_Config {
              * ca_cert_dir;
   bool         is_client,
                verify_peer;
-  SSL_Config( const char *c,  const char *k,  const char *cf,  const char *cd,
-              bool is_cl,  bool vpeer )
+  SSL_Config( const char *c = NULL,  const char *k = NULL,
+              const char *cf = NULL,  const char *cd = NULL,
+              bool is_cl = false,  bool vpeer = false )
     : cert_file( c ), key_file( k ), ca_cert_file( cf ), ca_cert_dir( cd ),
       is_client( is_cl ), verify_peer( vpeer ) {}
 };
@@ -56,26 +57,26 @@ struct SSL_Connection : public kv::EvConnection {
 
   Status get_ssl_status( int n ) noexcept;
 
-  bool init_ssl_accept( SSL_Context *ctx ) noexcept {
+  bool init_ssl_accept( SSL_Context &ctx ) noexcept {
     this->init_finished = false;
     this->is_connect    = false;
     this->recv_ssl_off  = 0;
     this->send_ssl_off  = 0;
 
-    if ( ctx != NULL ) {
-      ctx->init_accept( *this );
+    if ( ctx.ctx != NULL ) {
+      ctx.init_accept( *this );
       return this->ssl_init_io();
     }
     return true;
   }
-  bool init_ssl_connect( SSL_Context *ctx ) noexcept {
+  bool init_ssl_connect( SSL_Context &ctx ) noexcept {
     this->init_finished = false;
     this->is_connect    = true;
     this->recv_ssl_off  = 0;
     this->send_ssl_off  = 0;
 
-    if ( ctx != NULL ) {
-      ctx->init_connect( *this );
+    if ( ctx.ctx != NULL ) {
+      ctx.init_connect( *this );
       return this->ssl_init_io();
     }
     return true;

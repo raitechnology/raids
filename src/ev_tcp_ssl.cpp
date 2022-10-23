@@ -128,22 +128,26 @@ SSL_Context::init_client( const SSL_Config &cfg ) noexcept
 void
 SSL_Context::init_accept( SSL_Connection &conn ) noexcept
 {
-  conn.rbio = BIO_new( BIO_s_mem() );
-  conn.wbio = BIO_new( BIO_s_mem() );
-  conn.ssl = SSL_new( this->ctx );
-  SSL_set_accept_state( conn.ssl );
-  SSL_set_bio( conn.ssl, conn.rbio, conn.wbio );
+  if ( this->ctx != NULL ) {
+    conn.rbio = BIO_new( BIO_s_mem() );
+    conn.wbio = BIO_new( BIO_s_mem() );
+    conn.ssl = SSL_new( this->ctx );
+    SSL_set_accept_state( conn.ssl );
+    SSL_set_bio( conn.ssl, conn.rbio, conn.wbio );
+  }
   conn.is_connect = false;
 }
 
 void
 SSL_Context::init_connect( SSL_Connection &conn ) noexcept
 {
-  conn.rbio = BIO_new( BIO_s_mem() );
-  conn.wbio = BIO_new( BIO_s_mem() );
-  conn.ssl = SSL_new( this->ctx );
-  SSL_set_connect_state( conn.ssl );
-  SSL_set_bio( conn.ssl, conn.rbio, conn.wbio );
+  if ( this->ctx != NULL ) {
+    conn.rbio = BIO_new( BIO_s_mem() );
+    conn.wbio = BIO_new( BIO_s_mem() );
+    conn.ssl = SSL_new( this->ctx );
+    SSL_set_connect_state( conn.ssl );
+    SSL_set_bio( conn.ssl, conn.rbio, conn.wbio );
+  }
   conn.is_connect = true;
 }
 

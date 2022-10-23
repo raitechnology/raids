@@ -50,6 +50,7 @@ EvHttpListen::accept( void ) noexcept
   if ( ! this->accept2( *c, "http" ) )
     return NULL;
   c->setup_ids( c->fd, ++this->timer_id );
+  c->init_ssl_accept( this->ssl_ctx );
   c->initialize_state( /*svr, db*/ );
   return c;
 }
@@ -727,7 +728,7 @@ EvHttpConnection::write( void ) noexcept
        this->websock_off < this->bytes_sent + this->pending() )
     if ( ! this->frame_websock() )
       return;
-  return this->EvConnection::write();
+  return this->SSL_Connection::write();
 }
 
 bool
@@ -1473,6 +1474,7 @@ EvHttpConnection::release( void ) noexcept
   this->term.tty_release();
   if ( this->wsbuf != NULL )
     ::free( this->wsbuf );
+  this->SSL_Connection::release_ssl();
   this->EvConnection::release_buffers();
 }
 

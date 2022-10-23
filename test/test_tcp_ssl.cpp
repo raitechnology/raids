@@ -49,7 +49,7 @@ TcpListen::accept( void ) noexcept
   if ( this->accept2( *c, "ssl_accept" ) ) {
     printf( "accept %.*s\n", (int) c->get_peer_address_strlen(),
             c->peer_address.buf );
-    c->init_ssl_accept( this->ctx );
+    c->init_ssl_accept( *this->ctx );
     return c;
   }
   return NULL;
@@ -175,7 +175,7 @@ main( int argc, char *argv[] )
 { 
   SignalHandler sighndl;
   EvPoll        poll;
-  SSL_Context * ctx = NULL;
+  SSL_Context   ctx;
   TcpListen     test( poll );
   TcpPing ping( poll );
   int idle_count = 0; 
@@ -197,9 +197,8 @@ main( int argc, char *argv[] )
                * key_file = get_arg( argc, argv, 1, "-k", NULL ),
                * ca_file  = get_arg( argc, argv, 1, "-a", NULL ),
                * ca_dir   = get_arg( argc, argv, 1, "-d", NULL );
-    ctx = new ( ::malloc( sizeof( SSL_Context ) ) ) SSL_Context();
     SSL_Config cfg( crt_file, key_file, ca_file, ca_dir, is_client, false );
-    if ( ! ctx->init_config( cfg ) )
+    if ( ! ctx.init_config( cfg ) )
       return 1;
   }
   poll.init( 5, false );
@@ -213,7 +212,7 @@ main( int argc, char *argv[] )
     poll.timer.add_timer_seconds( ping.fd, 1, 1, 1 );
   }
   else {
-    test.ctx = ctx;
+    test.ctx = &ctx;
     if ( test.listen( NULL, 9000, DEFAULT_TCP_LISTEN_OPTS ) != 0 )
       return 1;
   }

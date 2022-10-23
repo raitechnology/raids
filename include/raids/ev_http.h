@@ -2,6 +2,7 @@
 #define __rai_raids__ev_http_h__
 
 #include <raikv/ev_tcp.h>
+#include <raids/ev_tcp_ssl.h>
 #include <raids/redis_exec.h>
 #include <raids/term.h>
 
@@ -10,6 +11,7 @@ namespace ds {
 
 struct EvHttpListen : public kv::EvTcpListen {
   kv::RoutePublish & sub_route;
+  SSL_Context        ssl_ctx;
   void * operator new( size_t, void *ptr ) { return ptr; }
   EvHttpListen( kv::EvPoll &p, kv::RoutePublish &sr ) noexcept;
   EvHttpListen( kv::EvPoll &p ) noexcept;
@@ -91,7 +93,7 @@ struct HttpServerNonce;
 struct HtDigestDB;
 struct HttpDigestAuth;
 
-struct EvHttpConnection : public kv::EvConnection {
+struct EvHttpConnection : public SSL_Connection {
   char            * wsbuf;   /* decoded websocket frames */
   size_t            wsoff,   /* start offset of wsbuf */
                     wslen,   /* length of wsbuf used */
@@ -105,7 +107,7 @@ struct EvHttpConnection : public kv::EvConnection {
   Term              term;
 
   EvHttpConnection( kv::EvPoll &p,  const uint8_t t )
-    : kv::EvConnection( p, t ), wsbuf( 0 ), wsoff( 0 ), wslen( 0 ),
+    : SSL_Connection( p, t ), wsbuf( 0 ), wsoff( 0 ), wslen( 0 ),
       websock_off( 0 ), svr_nonce( 0 ), digest_db( 0 ), term_int( 0 ),
       is_using_term( false ) {}
   void initialize_state( HttpServerNonce *svr = NULL,  HtDigestDB *db = NULL ) {

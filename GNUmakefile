@@ -289,7 +289,7 @@ ds_server_cfile := src/server.cpp
 ds_server_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(ds_server_files)))
 ds_server_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(ds_server_files)))
 ds_server_libs  := $(ds_lib)
-ds_server_lnk   := $(ds_lib) $(lnk_lib) -lpcre2-32 -lpcre2-8 -llzf
+ds_server_lnk   := $(ds_lib) $(lnk_lib) -lpcre2-32 -lpcre2-8 -llzf -lssl -lcrypto
 #ds_server_static_lnk := $(ds_lib) $(lnk_lib) -lpcre2-32 -lpcre2-8 -lcrypto -llzf
 #ds_server_lnk        := $(raids_dlnk)
 
@@ -557,7 +557,7 @@ ds_test_api_cfile := test/test_api.c
 ds_test_api_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(ds_test_api_files)))
 ds_test_api_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(ds_test_api_files)))
 ds_test_api_libs  := $(ds_lib)
-ds_test_api_lnk   := $(ds_lib) $(lnk_lib) -lpcre2-32 -lpcre2-8 -llzf
+ds_test_api_lnk   := $(ds_lib) $(lnk_lib) -lpcre2-32 -lpcre2-8 -llzf -lssl -lcrypto
 
 #$(bind)/test_api: $(test_api_objs) $(test_api_libs)
 $(bind)/ds_test_api: $(ds_test_api_objs) $(ds_lib) $(lnk_dep)
@@ -582,7 +582,7 @@ ds_pubsub_api_cfile := test/pubsub_api.c
 ds_pubsub_api_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(ds_pubsub_api_files)))
 ds_pubsub_api_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(ds_pubsub_api_files)))
 ds_pubsub_api_libs  := $(ds_lib)
-ds_pubsub_api_lnk   := $(ds_lib) $(lnk_lib) -lpcre2-32 -lpcre2-8 -llzf
+ds_pubsub_api_lnk   := $(ds_lib) $(lnk_lib) -lpcre2-32 -lpcre2-8 -llzf -lssl -lcrypto
 
 $(bind)/ds_pubsub_api: $(ds_pubsub_api_objs) $(ds_lib) $(lnk_dep)
 
