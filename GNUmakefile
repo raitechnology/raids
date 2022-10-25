@@ -739,7 +739,7 @@ CMakeLists.txt: .copr/Makefile
 	if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
 	  set (ex_lib ws2_32)
 	else ()
-	  set (ex_lib -lpthread -lrt)
+	  set (ex_lib -lssl -lcrypto -lpthread -lrt)
 	endif ()
 	add_definitions (-DDS_VER=$(ver_build) -DGIT_HEAD=$(git_head))
 	add_library (raids STATIC $(libraids_cfile))
