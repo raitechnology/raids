@@ -159,7 +159,7 @@ endif
 
 ds_lib      := $(libd)/libraids.a
 rpath       := -Wl,-rpath,$(pwd)/$(libd)$(rpath1)$(rpath2)$(rpath3)$(rpath4)$(rpath5)$(rpath6)$(rpath7)
-dlnk_lib    += -lpcre2-8 -lssl -lcrypto
+dlnk_lib    += -lpcre2-8 -lssl -lcrypto -lcares
 malloc_lib  :=
 
 .PHONY: everything
@@ -289,7 +289,7 @@ ds_server_cfile := src/server.cpp
 ds_server_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(ds_server_files)))
 ds_server_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(ds_server_files)))
 ds_server_libs  := $(ds_lib)
-ds_server_lnk   := $(ds_lib) $(lnk_lib) -lpcre2-32 -lpcre2-8 -llzf -lssl -lcrypto
+ds_server_lnk   := $(ds_lib) $(lnk_lib) -lpcre2-32 -lpcre2-8 -llzf -lssl -lcrypto -lcares
 #ds_server_static_lnk := $(ds_lib) $(lnk_lib) -lpcre2-32 -lpcre2-8 -lcrypto -llzf
 #ds_server_lnk        := $(raids_dlnk)
 
@@ -557,7 +557,7 @@ ds_test_api_cfile := test/test_api.c
 ds_test_api_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(ds_test_api_files)))
 ds_test_api_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(ds_test_api_files)))
 ds_test_api_libs  := $(ds_lib)
-ds_test_api_lnk   := $(ds_lib) $(lnk_lib) -lpcre2-32 -lpcre2-8 -llzf -lssl -lcrypto
+ds_test_api_lnk   := $(ds_lib) $(lnk_lib) -lpcre2-32 -lpcre2-8 -llzf -lssl -lcrypto -lcares
 
 #$(bind)/test_api: $(test_api_objs) $(test_api_libs)
 $(bind)/ds_test_api: $(ds_test_api_objs) $(ds_lib) $(lnk_dep)
@@ -570,7 +570,7 @@ test_tcp_ssl_cfile := test/test_tcp_ssl.cpp
 test_tcp_ssl_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(test_tcp_ssl_files)))
 test_tcp_ssl_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(test_tcp_ssl_files)))
 test_tcp_ssl_libs  :=
-test_tcp_ssl_lnk   := $(ds_lib) $(lnk_lib) -lssl -lcrypto
+test_tcp_ssl_lnk   := $(ds_lib) $(lnk_lib) -lssl -lcrypto -lcares
 
 $(bind)/test_tcp_ssl: $(test_tcp_ssl_objs) $(test_tcp_ssl_libs) $(lnk_dep)
 
@@ -582,7 +582,7 @@ ds_pubsub_api_cfile := test/pubsub_api.c
 ds_pubsub_api_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(ds_pubsub_api_files)))
 ds_pubsub_api_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(ds_pubsub_api_files)))
 ds_pubsub_api_libs  := $(ds_lib)
-ds_pubsub_api_lnk   := $(ds_lib) $(lnk_lib) -lpcre2-32 -lpcre2-8 -llzf -lssl -lcrypto
+ds_pubsub_api_lnk   := $(ds_lib) $(lnk_lib) -lpcre2-32 -lpcre2-8 -llzf -lssl -lcrypto -lcares
 
 $(bind)/ds_pubsub_api: $(ds_pubsub_api_objs) $(ds_lib) $(lnk_dep)
 
@@ -739,7 +739,7 @@ CMakeLists.txt: .copr/Makefile
 	if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
 	  set (ex_lib ws2_32)
 	else ()
-	  set (ex_lib -lssl -lcrypto -lpthread -lrt)
+	  set (ex_lib -lssl -lcrypto -lcares -lpthread -lrt)
 	endif ()
 	add_definitions (-DDS_VER=$(ver_build) -DGIT_HEAD=$(git_head))
 	add_library (raids STATIC $(libraids_cfile))
@@ -772,15 +772,15 @@ CMakeLists.txt: .copr/Makefile
 
 .PHONY: dnf_depend
 dnf_depend:
-	sudo dnf -y install make gcc-c++ git redhat-lsb openssl-devel pcre2-devel chrpath liblzf-devel zlib-devel libbsd-devel
+	sudo dnf -y install make gcc-c++ git redhat-lsb openssl-devel pcre2-devel chrpath liblzf-devel zlib-devel libbsd-devel c-ares-devel
 
 .PHONY: yum_depend
 yum_depend:
-	sudo yum -y install make gcc-c++ git redhat-lsb openssl-devel pcre2-devel chrpath liblzf-devel zlib-devel libbsd-devel
+	sudo yum -y install make gcc-c++ git redhat-lsb openssl-devel pcre2-devel chrpath liblzf-devel zlib-devel libbsd-devel c-ares-devel
 
 .PHONY: deb_depend
 deb_depend:
-	sudo apt-get install -y install make g++ gcc devscripts libpcre2-dev chrpath git lsb-release libssl-dev lzf zlib1g-dev uuid-dev libbsd-dev
+	sudo apt-get install -y install make g++ gcc devscripts libpcre2-dev chrpath git lsb-release libssl-dev lzf zlib1g-dev uuid-dev libbsd-dev c-ares-dev
 
 # create directories
 $(dependd):
