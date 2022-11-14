@@ -364,7 +364,7 @@ redis_cmd_cfile := src/redis_cmd.cpp
 redis_cmd_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(redis_cmd_files)))
 redis_cmd_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(redis_cmd_files)))
 redis_cmd_libs  := $(kv_lib)
-redis_cmd_lnk   := $(kv_lnk)
+redis_cmd_lnk   := $(kv_lnk) -lcares
 
 $(bind)/redis_cmd: $(redis_cmd_objs) $(redis_cmd_libs)
 
