@@ -21,6 +21,7 @@ BuildRequires:  pcre2-devel
 BuildRequires:  git-core
 BuildRequires:  liblzf-devel
 BuildRequires:  systemd
+BuildRequires:  c-ares-devel
 Requires:       raikv
 Requires:       raimd
 Requires:       rdbparser
@@ -29,6 +30,7 @@ Requires:       libdecnumber
 Requires:       linecook
 Requires:       pcre2
 Requires:       liblzf
+Requires:       c-ares
 Requires(post): /sbin/ldconfig
 Requires(postun): /sbin/ldconfig
 

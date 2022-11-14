@@ -225,16 +225,18 @@ The dependencies for CentOS/Fedora are a make dependency called `dnf_depend` or
 
 ```console
 $ make dnf_depend
-sudo dnf -y install make gcc-c++ git redhat-lsb openssl-devel pcre2-devel liblzf-devel zlib-devel libbsd-devel
-Package make-1:4.2.1-16.fc32.x86_64 is already installed.
-Package gcc-c++-10.1.1-1.fc32.x86_64 is already installed.
-Package git-2.26.2-1.fc32.x86_64 is already installed.
-Package redhat-lsb-4.1-49.fc32.x86_64 is already installed.
-Package openssl-devel-1:1.1.1g-1.fc32.x86_64 is already installed.
-Package pcre2-devel-10.35-1.fc32.x86_64 is already installed.
-Package liblzf-devel-3.6-19.fc32.x86_64 is already installed.
-Package zlib-devel-1.2.11-21.fc32.x86_64 is already installed.
-Package libbsd-devel-0.10.0-2.fc32.x86_64 is already installed.
+sudo dnf -y install make gcc-c++ git redhat-lsb openssl-devel pcre2-devel chrpath liblzf-devel zlib-devel libbsd-devel c-ares-devel
+Package make-1:4.3-11.fc37.x86_64 is already installed.
+Package gcc-c++-12.2.1-2.fc37.x86_64 is already installed.
+Package git-2.38.1-1.fc37.x86_64 is already installed.
+Package redhat-lsb-4.1-59.fc37.x86_64 is already installed.
+Package openssl-devel-1:3.0.5-2.fc37.x86_64 is already installed.
+Package pcre2-devel-10.40-1.fc37.1.x86_64 is already installed.
+Package chrpath-0.16-18.fc37.x86_64 is already installed.
+Package liblzf-devel-3.6-24.fc37.x86_64 is already installed.
+Package zlib-devel-1.2.12-5.fc37.x86_64 is already installed.
+Package libbsd-devel-0.10.0-10.fc37.x86_64 is already installed.
+Package c-ares-devel-1.17.2-3.fc37.x86_64 is already installed.
 Dependencies resolved.
 Nothing to do.
 Complete!
