@@ -1109,7 +1109,7 @@ MemcachedExec::send_err_kv( KeyStatus kstatus ) noexcept
     bsz = ::snprintf( buf, bsz, "SERVER_ERROR KeyCtx %d/%s %s\r\n",
                      kstatus, kv_key_status_string( (KeyStatus) kstatus ),
                      kv_key_status_description( (KeyStatus) kstatus ) );
-    return bsz;
+    return min_int( bsz, (size_t) 255 );
   }
   return 0;
 }
@@ -2176,7 +2176,8 @@ struct StatFmt {
     if ( this->sz > 20 ) {
       va_list args;
       va_start( args, fmt );
-      size_t n = vsnprintf( &b[ off ], sz, fmt, args );
+      size_t n = vsnprintf( &b[ off ], this->sz, fmt, args );
+      n = min_int( n, this->sz - 1 );
       this->off += n; this->sz -= n;
       va_end( args );
     }

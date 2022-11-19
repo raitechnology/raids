@@ -42,7 +42,7 @@ xnprintf( char *&b,  size_t &sz,  const char *format, ... )
     x   = (size_t) vsnprintf( b, sz, format, args );
     va_end( args );
     b   = &b[ x ];
-    sz -= x;
+    sz -= min_int( x, sz - 1 );
   }
 }
 
@@ -294,6 +294,8 @@ RedisExec::exec_client( void ) noexcept
 int
 RedisExec::exec_client_list( char *buf,  size_t buflen ) noexcept
 {
+  if ( buflen == 0 )
+    return 0;
   /* id=unique id, addr=peer addr, fd=sock, age=time connected
    * idle=time idle, flags=what, db=cur db, sub=channel subs,
    * psub=pattern subs, multi=cmds qbuf=query buf size, qbuf-free=free
@@ -326,7 +328,7 @@ RedisExec::exec_client_list( char *buf,  size_t buflen ) noexcept
   if ( i == 0 )
     flags[ i++ ] = 'N'; /* no specific flags */
   flags[ i ] = '\0';
-  return ::snprintf( buf, buflen,
+  int n = ::snprintf( buf, buflen,
     "flags=%s db=%u sub=%" PRIu64 " psub=%" PRIu64 " multi=%d cmd=%s ",
     flags,
     this->kctx.db_num,
@@ -334,6 +336,7 @@ RedisExec::exec_client_list( char *buf,  size_t buflen ) noexcept
     this->pat_tab.sub_count(),
     ( this->multi == NULL ? -1 : (int) this->multi->msg_count ),
     cmd_db[ this->cmd ].name );
+  return min_int( n, (int) buflen - 1 );
 }
 
 static void

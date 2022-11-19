@@ -272,10 +272,10 @@ RedisExec::do_gread( EvKeyCtx &ctx,  int flags ) noexcept
             q.append_bytes( "*2\r\n", 4 ); /* array of [lon,lat] */
             sz = ::snprintf( buf, sizeof( buf ), "%.6f",
                              radsToDegs( coordi.lon ) );
-            q.append_string( buf, sz );
+            q.append_string( buf, min_int( sz, sizeof( buf ) - 1 ) );
             sz = ::snprintf( buf, sizeof( buf ), "%.6f",
                              radsToDegs( coordi.lat ) );
-            q.append_string( buf, sz );
+            q.append_string( buf, min_int( sz, sizeof( buf ) - 1 ) );
           }
           nitems++;
           break;
@@ -290,7 +290,7 @@ RedisExec::do_gread( EvKeyCtx &ctx,  int flags ) noexcept
                 return ERR_BAD_ARGS;
             }
             sz = ::snprintf( buf, sizeof( buf ), "%.6f", val );
-            sz = this->send_string( buf, sz );
+            sz = this->send_string( buf, min_int( sz, sizeof( buf ) - 1 ) );
           }
           else {
             status = EXEC_SEND_NIL;
@@ -425,7 +425,7 @@ append_place( RedisBufQueue &q,  GeoVal &gv,  int withflags,
   /* extra with parms */
   if ( ( withflags & WITHDIST_F ) != 0 ) {
     sz = ::snprintf( buf, sizeof( buf ), "%.4f", dist / units );
-    q.append_string( buf, sz );
+    q.append_string( buf, min_int( sz, sizeof( buf ) - 1 ) );
   }
   if ( ( withflags & WITHHASH_F ) != 0 ) {
     /*q.append_uint( georedishash( coordj.lat, coordj.lon ) );*/
@@ -434,9 +434,9 @@ append_place( RedisBufQueue &q,  GeoVal &gv,  int withflags,
   if ( ( withflags & WITHCOORD_F ) != 0 ) {
     q.append_bytes( "*2\r\n", 4 );
     sz = ::snprintf( buf, sizeof( buf ), "%.6f", radsToDegs( coordj.lon ) );
-    q.append_string( buf, sz );
+    q.append_string( buf, min_int( sz, sizeof( buf ) - 1 ) );
     sz = ::snprintf( buf, sizeof( buf ), "%.6f", radsToDegs( coordj.lat ) );
-    q.append_string( buf, sz );
+    q.append_string( buf, min_int( sz, sizeof( buf ) - 1 ) );
   }
 }
 

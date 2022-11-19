@@ -1180,6 +1180,7 @@ RedisExec::send_err_string( ExecStatus stat,  KeyStatus kstat ) noexcept
   char       * buf  = this->strm.alloc( bsz );
 
   if ( buf != NULL ) {
+    size_t x;
     if ( arg0len > MAX_CMD_LEN ) {
       arg0len = MAX_CMD_LEN;
     }
@@ -1194,16 +1195,18 @@ RedisExec::send_err_string( ExecStatus stat,  KeyStatus kstat ) noexcept
         break;
       /* problem in the key store */
       case ERR_KV_STATUS:
-        bsz = ::snprintf( buf, bsz, "-ERR kv %d/%s %s",
-                         kstat, kv_key_status_string( (KeyStatus) kstat ),
-                         kv_key_status_description( (KeyStatus) kstat ) );
+        x = ::snprintf( buf, bsz, "-ERR kv %d/%s %s",
+                        kstat, kv_key_status_string( (KeyStatus) kstat ),
+                        kv_key_status_description( (KeyStatus) kstat ) );
+        bsz = min_int( x, bsz - 1 );
         break;
       /* problem parsing the message */
       case ERR_MSG_STATUS: {
         RedisMsgStatus mstat = this->mstatus;
-        bsz  = ::snprintf( buf, bsz, "-ERR message %d/%s %s",
-                           mstat, ds_msg_status_string( mstat ),
-                           ds_msg_status_description( mstat ) );
+        x = ::snprintf( buf, bsz, "-ERR message %d/%s %s",
+                        mstat, ds_msg_status_string( mstat ),
+                        ds_msg_status_description( mstat ) );
+        bsz = min_int( x, bsz - 1 );
         break;
       }
     }
