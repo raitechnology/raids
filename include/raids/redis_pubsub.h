@@ -13,6 +13,8 @@ struct pcre2_real_match_data_8;
 
 #include <raids/redis_api.h>
 #include <raikv/route_ht.h>
+#include <raikv/ev_publish.h>
+#include <raimd/md_msg.h>
 
 namespace rai {
 namespace ds {
@@ -81,8 +83,9 @@ enum RedisSubState {
 
 struct RedisSubRoute {
   RedisSubData data;
-  uint64_t     msg_cnt;
-  uint32_t     hash;
+  uint32_t     msg_cnt,
+               ibx_id,
+               hash;
   uint16_t     state,
                len;
   char         value[ 2 ];
@@ -98,6 +101,7 @@ struct RedisSubRoute {
   void zero( void ) {
     ::memset( &this->data, 0, sizeof( this->data ) );
     this->msg_cnt = 0;
+    this->ibx_id  = 0;
     this->state   = 0;
   }
 };
@@ -110,9 +114,11 @@ struct RedisSubRoutePos {
 
 struct RedisSubMap {
   kv::RouteVec<RedisSubRoute> tab;
-  size_t sub_count, cont_count;
+  uint32_t sub_count,
+           cont_count,
+           next_inbox_id;
 
-  RedisSubMap() : sub_count( 0 ), cont_count( 0 ) {}
+  RedisSubMap() : sub_count( 0 ), cont_count( 0 ), next_inbox_id( 0 ) {}
 
   bool is_null( void ) const {
     return this->tab.vec_size == 0;
@@ -326,6 +332,37 @@ struct RedisPatternMap {
     return false;
   }
 };
+
+struct RedisMsgTransform {
+  md::MDMsgMem spc;
+  const void * msg;
+  uint32_t     msg_len,
+               msg_enc;
+  bool         is_ready,
+               is_redis;
+  RedisMsgTransform( kv::EvPublish &pub )
+    : msg( pub.msg ), msg_len( pub.msg_len ), msg_enc( pub.msg_enc ),
+      is_ready( false ), is_redis( false ) {}
+  void check_transform( void ) {
+    if ( ! this->is_ready ) {
+      if ( this->msg_len == 0 || this->msg_enc == md::MD_STRING ) {
+        this->is_ready = true;
+        return;
+      }
+      if ( this->msg_enc == md::MD_MESSAGE ) {
+        if ( RedisMsg::valid_type_char( ((const char *) this->msg)[ 0 ] ) ) {
+          this->is_ready = true;
+          this->is_redis = true;
+          return;
+        }
+      }
+      this->transform();
+      this->is_ready = true;
+    }
+  }
+  void transform( void ) noexcept;
+};
+
 #if 0
 typedef RedisDataRoutePos< RedisContinue > RedisContinuePos;
 

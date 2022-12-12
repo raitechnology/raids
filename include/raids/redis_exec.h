@@ -17,7 +17,7 @@ namespace rai {
 namespace kv {
   struct RoutePublish;
   struct TimerQueue;
-  struct PeerData;
+  struct EvSocket;
   struct PeerMatchArgs;
   struct EvSocket;
   struct EvPublish;
@@ -90,6 +90,7 @@ static const uint64_t TEN_YEARS_NS = (uint64_t) ( 10 * 12 ) *
 struct RedisExec;
 struct ExecStreamCtx;
 struct RedisMultiExec;
+struct RedisMsgTransform;
 
 struct ScanArgs {
   int64_t pos,    /* position argument, the position where scan starts */
@@ -154,13 +155,12 @@ struct RedisExec {
   int16_t           arity,     /* number of command args */
                     first,     /* first key in args */
                     last,      /* last key in args */
-                    step,      /* incr between keys */
-                    prefix_len;/* pubsub prefix */
+                    step;      /* incr between keys */
   uint64_t          step_mask; /* step key mask */
   size_t            argc;      /* count of args in cmd msg */
   kv::RoutePublish& sub_route; /* map subject to sub_id */
   kv::TimerQueue  & timer;
-  kv::PeerData    & peer;      /* name and address of this peer */
+  kv::EvSocket    & peer;      /* name and address of this peer */
   uint64_t          timer_id;  /* timer id of this service */
   kv::KeyFragment * save_key;  /* if key is being saved */
   uint64_t          msg_route_cnt; /* count of msgs forwarded */
@@ -168,10 +168,14 @@ struct RedisExec {
                     next_event_id; /* next event id for timers */
   RedisSubMap       sub_tab;   /* pub/sub subscription table */
   RedisPatternMap   pat_tab;   /* pub/sub pattern sub table */
-  char              prefix[ 16 ];
+  uint64_t          stamp;
+  uint16_t          prefix_len,/* pubsub prefix */
+                    session_len;
+  char              prefix[ 16 ],
+                    session[ 64 /*MAX_SESSION_LEN*/ ];
 
   RedisExec( kv::HashTab &map,  uint32_t ,  uint32_t dbx_id,
-             kv::StreamBuf &s,  kv::RoutePublish &rdb,  kv::PeerData &pd,
+             kv::StreamBuf &s,  kv::RoutePublish &rdb,  kv::EvSocket &pd,
              kv::TimerQueue &tq ) noexcept;
 #if 0
       kctx( map, dbx_id, NULL ), strm( s ), strm_start( s.pending() ),
@@ -189,6 +193,7 @@ struct RedisExec {
     this->sub_id        = sid;
     this->timer_id      = tid;
     this->msg_route_cnt = 0;
+    this->stamp         = 0;
   }
   void setup_cmd( const RedisCmdData &c ) {
     this->catg      = (RedisCatg) c.catg;
@@ -389,11 +394,16 @@ struct RedisExec {
                              ds_on_msg_t cb = NULL,  void *cl = NULL ) noexcept;
   ExecStatus do_punsubscribe( const char *sub,  size_t len ) noexcept;
   ExecStatus do_sub( int flags ) noexcept;
-  bool pub_message( kv::EvPublish &pub,  RedisWildMatch *m ) noexcept;
+  bool pub_message( kv::EvPublish &pub,  RedisMsgTransform &xf,
+                    RedisWildMatch *m ) noexcept;
   int do_pub( kv::EvPublish &pub,  RedisContinueMsg *&cm ) noexcept;
+  int on_inbox_reply( kv::EvPublish &pub,  RedisContinueMsg *&cm ) noexcept;
   uint8_t test_subscribed( const kv::NotifySub &sub ) noexcept;
   uint8_t test_psubscribed( const kv::NotifyPattern &pat ) noexcept;
+  size_t do_get_subscriptions( kv::SubRouteDB &subs, kv::SubRouteDB &pats,
+                               int &pattern_fmt ) noexcept;
   bool do_hash_to_sub( uint32_t h,  char *key,  size_t &keylen ) noexcept;
+  void set_session( const char *sess,  size_t sess_len ) noexcept;
   /* SCRIPT */
   ExecStatus exec_eval( kv::EvKeyCtx &ctx ) noexcept;
   ExecStatus exec_evalsha( kv::EvKeyCtx &ctx ) noexcept;

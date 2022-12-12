@@ -20,7 +20,7 @@
 #include <raikv/util.h>
 #include <raids/redis_exec.h>
 #include <raids/redis_cmd_db.h>
-#include <raikv/route_db.h>
+#include <raikv/ev_net.h>
 #include <raids/redis_transaction.h>
 #include <raimd/md_types.h>
 
@@ -329,7 +329,7 @@ RedisExec::exec_client_list( char *buf,  size_t buflen ) noexcept
     flags[ i++ ] = 'N'; /* no specific flags */
   flags[ i ] = '\0';
   int n = ::snprintf( buf, buflen,
-    "flags=%s db=%u sub=%" PRIu64 " psub=%" PRIu64 " multi=%d cmd=%s ",
+    "flags=%s db=%u sub=%u psub=%lu multi=%d cmd=%s ",
     flags,
     this->kctx.db_num,
     this->sub_tab.sub_count,

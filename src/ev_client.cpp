@@ -339,13 +339,16 @@ EvTerminal::vprintf( const char *fmt, va_list args ) noexcept
       this->term.out_buf     = (char *) p;
       this->term.out_buflen += amt;
       avail += amt;
-      amt += 256;
     }
+    amt += 1024;
+    va_list cpy;
+    va_copy( cpy, args );
     if ( (n = ::vsnprintf( &this->term.out_buf[ this->term.out_len ], avail,
-                          fmt, args )) < (int) avail ) {
+                          fmt, cpy )) < (int) avail ) {
       this->term.out_len += n;
       break;
     }
+    va_end( cpy );
     if ( n < 0 )
       return -1;
   }

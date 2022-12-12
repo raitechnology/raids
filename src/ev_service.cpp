@@ -28,8 +28,8 @@ EvSocket *
 EvRedisListen::accept( void ) noexcept
 {
   EvRedisService *c =
-    this->poll.get_free_list<EvRedisService, RoutePublish &>(
-      this->accept_sock_type, this->sub_route );
+    this->poll.get_free_list<EvRedisService, RoutePublish &, EvListen &>(
+      this->accept_sock_type, this->sub_route, *this );
   if ( c == NULL )
     return NULL;
   if ( ! this->accept2( *c, "redis" ) )
@@ -42,8 +42,8 @@ EvSocket *
 EvRedisUnixListen::accept( void ) noexcept
 {
   EvRedisService *c =
-    this->poll.get_free_list<EvRedisService, RoutePublish &>(
-      this->accept_sock_type, this->sub_route );
+    this->poll.get_free_list<EvRedisService, RoutePublish &, EvListen &>(
+      this->accept_sock_type, this->sub_route, *this );
   if ( c == NULL )
     return NULL;
   if ( ! this->accept2( *c, "redis" ) )
@@ -55,6 +55,11 @@ EvRedisUnixListen::accept( void ) noexcept
 void
 EvRedisService::process( void ) noexcept
 {
+  if ( this->stamp == 0 ) {
+    this->stamp = this->active_ns;
+    if ( this->notify != NULL )
+      this->notify->on_connect( *this );
+  }
   if ( ! this->cont_list.is_empty() )
     this->drain_continuations( this );
 
@@ -151,6 +156,38 @@ EvRedisService::is_psubscribed( const NotifyPattern &pat ) noexcept
   return this->RedisExec::test_psubscribed( pat );
 }
 
+size_t
+EvRedisService::get_userid( char userid[ MAX_USERID_LEN ] ) noexcept
+{
+  ::memcpy( userid, "nobody", 7 );
+  return 7;
+}
+
+size_t
+EvRedisService::get_session( const char *svc,  size_t svc_len,
+                             char session[ MAX_SESSION_LEN ] ) noexcept
+{
+  if ( this->session_len > 0 ) {
+    bool match = ( svc_len == 0 ||
+                   ( svc_len == this->prefix_len && 
+                     ::memcmp( svc, this->prefix, svc_len ) == 0 ) );
+    if ( match ) {
+      ::memcpy( session, this->session, this->session_len );
+      session[ this->session_len ] = '\0';
+      return this->session_len;
+    }
+  }
+  session[ 0 ] = '\0';
+  return 0;
+}
+
+size_t
+EvRedisService::get_subscriptions( SubRouteDB &subs,  SubRouteDB &pats,
+                                   int &pattern_fmt ) noexcept
+{
+  return this->RedisExec::do_get_subscriptions( subs, pats, pattern_fmt );
+}
+
 bool
 EvRedisService::timer_expire( uint64_t tid,  uint64_t event_id ) noexcept
 {
@@ -175,6 +212,8 @@ EvRedisService::release( void ) noexcept
 {
   this->RedisExec::release();
   this->EvConnection::release_buffers();
+  if ( this->notify != NULL )
+    this->notify->on_shutdown( *this, NULL, 0 );
 }
 
 void
