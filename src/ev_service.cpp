@@ -127,12 +127,19 @@ EvRedisService::process( void ) noexcept
     strm.reset();
 }
 
+void
+EvRedisService::pub_data_loss( EvPublish &pub ) noexcept
+{
+  if ( this->notify != NULL )
+    this->notify->on_data_loss( *this, pub );
+}
+
 bool
 EvRedisService::on_msg( EvPublish &pub ) noexcept
 {
   RedisContinueMsg * cm = NULL;
   bool flow_good = true;
-  int  status    = this->RedisExec::do_pub( pub, cm );
+  int  status    = this->RedisExec::do_pub( pub, cm, this );
 
   if ( ( status & RPUB_FORWARD_MSG ) != 0 ) {
     flow_good = this->idle_push_write();

@@ -91,6 +91,9 @@ struct RedisExec;
 struct ExecStreamCtx;
 struct RedisMultiExec;
 struct RedisMsgTransform;
+struct PubDataLoss {
+  virtual void pub_data_loss( kv::EvPublish &pub ) noexcept = 0;
+};
 
 struct ScanArgs {
   int64_t pos,    /* position argument, the position where scan starts */
@@ -396,8 +399,10 @@ struct RedisExec {
   ExecStatus do_sub( int flags ) noexcept;
   bool pub_message( kv::EvPublish &pub,  RedisMsgTransform &xf,
                     RedisWildMatch *m ) noexcept;
-  int do_pub( kv::EvPublish &pub,  RedisContinueMsg *&cm ) noexcept;
-  int on_inbox_reply( kv::EvPublish &pub,  RedisContinueMsg *&cm ) noexcept;
+  int do_pub( kv::EvPublish &pub,  RedisContinueMsg *&cm,
+              PubDataLoss *notify = NULL ) noexcept;
+  int on_inbox_reply( kv::EvPublish &pub,  RedisContinueMsg *&cm,
+                      PubDataLoss *notify ) noexcept;
   uint8_t test_subscribed( const kv::NotifySub &sub ) noexcept;
   uint8_t test_psubscribed( const kv::NotifyPattern &pat ) noexcept;
   size_t do_get_subscriptions( kv::SubRouteDB &subs, kv::SubRouteDB &pats,

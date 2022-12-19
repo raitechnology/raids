@@ -33,7 +33,7 @@ RedisExec::rem_all_sub( void ) noexcept
     do {
       bool coll = this->sub_tab.rem_collision( pos.rt );
       NotifySub nsub( pos.rt->value, pos.rt->len, pos.rt->hash,
-                      this->sub_id, coll, 'R', this );
+                      this->sub_id, coll, 'R', &this->peer );
       this->sub_route.del_sub( nsub );
       if ( pos.rt->is_continue() ) {
         RedisContinueMsg *cm = pos.rt->cont().continue_msg;
@@ -52,7 +52,7 @@ RedisExec::rem_all_sub( void ) noexcept
         if ( cvt.convert_glob( m->value, m->len ) == 0 ) {
           bool coll = this->pat_tab.rem_collision( ppos.rt, m );
           NotifyPattern npat( cvt, m->value, m->len, ppos.rt->hash,
-                              this->sub_id, coll, 'R', this );
+                              this->sub_id, coll, 'R', &this->peer );
           this->sub_route.del_pat( npat );
         }
       }
@@ -211,7 +211,17 @@ RedisExec::pub_message( EvPublish &pub,  RedisMsgTransform &xf,
   sdigits = uint64_digits( sublen );
   pdigits = 0;
 
-  xf.check_transform();
+  if ( ! xf.is_ready ) {
+    xf.is_ready = true;
+    if ( pub.pub_status != EV_PUB_NORMAL ) {
+      /* start and cycle are normal events */
+      if ( pub.pub_status <= EV_MAX_LOSS || pub.pub_status == EV_PUB_RESTART ) {
+        if ( xf.notify != NULL )
+          xf.notify->pub_data_loss( pub );
+      }
+    }
+    xf.check_transform();
+  }
   if ( xf.is_redis ) {
     msg_len_digits = 0;
     msg_len_frame  = 0;
@@ -289,7 +299,8 @@ on_redis_inbox_msg( const ds_event_t *, const ds_msg_t *, void * ) noexcept
 }
 
 int
-RedisExec::on_inbox_reply( EvPublish &pub,  RedisContinueMsg *&cm ) noexcept
+RedisExec::on_inbox_reply( EvPublish &pub,  RedisContinueMsg *&cm,
+                           PubDataLoss *notify ) noexcept
 {
   const char * sub    = pub.subject;
   size_t       sublen = pub.subject_len, i;
@@ -326,7 +337,7 @@ RedisExec::on_inbox_reply( EvPublish &pub,  RedisContinueMsg *&cm ) noexcept
             pub2.hash        = tmp_hash;
             pub2.prefix_cnt  = 1;
             tmp_hash[ 0 ]    = h;
-            return this->do_pub( pub2, cm );
+            return this->do_pub( pub2, cm, notify );
           }
         } while ( (rt = this->sub_tab.tab.find_next_by_hash( h, loc )) != NULL);
       }
@@ -336,14 +347,15 @@ RedisExec::on_inbox_reply( EvPublish &pub,  RedisContinueMsg *&cm ) noexcept
 }
 
 int
-RedisExec::do_pub( EvPublish &pub,  RedisContinueMsg *&cm ) noexcept
+RedisExec::do_pub( EvPublish &pub,  RedisContinueMsg *&cm,
+                   PubDataLoss *notify ) noexcept
 {
   int status = 0;
   RedisSubStatus ret;
   /* don't publish to self ?? (redis does not allow pub w/sub on same conn) */
   if ( (uint32_t) this->sub_id == pub.src_route )
     return 0;
-  RedisMsgTransform xf( pub );
+  RedisMsgTransform xf( pub, notify );
   uint32_t pub_cnt = 0;
   size_t   preflen = this->prefix_len;
   for ( uint8_t cnt = 0; cnt < pub.prefix_cnt; cnt++ ) {
@@ -406,7 +418,7 @@ RedisExec::do_pub( EvPublish &pub,  RedisContinueMsg *&cm ) noexcept
               this->pub_message( pub, xf, m );
             }
             else if ( m->callback == on_redis_inbox_msg ) {
-              status |= this->on_inbox_reply( pub, cm );
+              status |= this->on_inbox_reply( pub, cm, notify );
             }
             else {
               ds_event_t event;
@@ -508,7 +520,7 @@ RedisExec::pop_continue_tab( RedisContinueMsg *cm ) noexcept
     if ( cm->ptr[ i ].save_len < 2 ) {
       NotifySub nsub( cm->ptr[ i ].value, cm->ptr[ i ].len,
                       cm->ptr[ i ].hash, this->sub_id,
-                      cm->ptr[ i ].save_len, 'R', this );
+                      cm->ptr[ i ].save_len, 'R', &this->peer );
       this->sub_route.del_sub( nsub );
     }
   }
@@ -754,7 +766,7 @@ RedisExec::do_unsubscribe( const char *sub,  size_t len ) noexcept
   if ( this->sub_tab.rem( h, sub, len, SUB_STATE_ROUTE_DATA,
                           coll ) == REDIS_SUB_OK ) {
     this->sub_tab.sub_count--;
-    NotifySub nsub( sub, len, h, this->sub_id, coll, 'R', this );
+    NotifySub nsub( sub, len, h, this->sub_id, coll, 'R', &this->peer );
     this->sub_route.del_sub( nsub );
     this->msg_route_cnt++;
     return EXEC_OK;
@@ -818,7 +830,7 @@ RedisExec::do_subscribe_cb( const char *sub,  size_t len,
       inbox_len = ibx.len();
     }
     NotifySub nsub( sub, len, inbox, inbox_len, h, this->sub_id,
-                    coll, 'R', this );
+                    coll, 'R', &this->peer );
 
     if ( status == REDIS_SUB_OK ) {
       this->sub_route.add_sub( nsub );
@@ -901,7 +913,8 @@ RedisExec::do_psubscribe_cb( const char *sub,  size_t len,
       }
     }
     if ( m != NULL ) {
-      NotifyPattern npat( cvt, sub, len, h, this->sub_id, coll, 'R', this );
+      NotifyPattern npat( cvt, sub, len, h, this->sub_id, coll, 'R',
+                          &this->peer );
       if ( status == REDIS_SUB_OK ) {
         this->sub_route.add_pat( npat );
         this->msg_route_cnt++;
@@ -953,7 +966,8 @@ RedisExec::do_punsubscribe( const char *sub,  size_t len ) noexcept
           if ( rt->count == 0 )
             this->pat_tab.tab.remove( loc );
 
-          NotifyPattern npat( cvt, sub, len, h, this->sub_id, coll, 'R', this );
+          NotifyPattern npat( cvt, sub, len, h, this->sub_id, coll, 'R',
+                              &this->peer );
           this->sub_route.del_pat( npat );
           this->msg_route_cnt++;
           return EXEC_OK;
@@ -1213,7 +1227,7 @@ RedisExec::save_blocked_cmd( int64_t timeout_val ) noexcept
       cont.keycnt = this->key_cnt;
       cm->state |= CM_CONT_TAB;
 
-      NotifySub nsub( sub, len, h, this->sub_id, coll, 'R', this );
+      NotifySub nsub( sub, len, h, this->sub_id, coll, 'R', &this->peer );
       this->sub_route.add_sub( nsub );
     }
     this->msg_route_cnt++;

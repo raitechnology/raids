@@ -333,32 +333,28 @@ struct RedisPatternMap {
   }
 };
 
+struct PubDataLoss;
 struct RedisMsgTransform {
-  md::MDMsgMem spc;
-  const void * msg;
-  uint32_t     msg_len,
-               msg_enc;
-  bool         is_ready,
-               is_redis;
-  RedisMsgTransform( kv::EvPublish &pub )
-    : msg( pub.msg ), msg_len( pub.msg_len ), msg_enc( pub.msg_enc ),
-      is_ready( false ), is_redis( false ) {}
+  md::MDMsgMem  spc;
+  const void  * msg;
+  PubDataLoss * notify;
+  uint32_t      msg_len,
+                msg_enc;
+  bool          is_ready,
+                is_redis;
+  RedisMsgTransform( kv::EvPublish &pub,  PubDataLoss *n )
+    : msg( pub.msg ), notify( n ), msg_len( pub.msg_len ),
+      msg_enc( pub.msg_enc ), is_ready( false ), is_redis( false ) {}
   void check_transform( void ) {
-    if ( ! this->is_ready ) {
-      if ( this->msg_len == 0 || this->msg_enc == md::MD_STRING ) {
-        this->is_ready = true;
+    if ( this->msg_len == 0 || this->msg_enc == md::MD_STRING )
+      return;
+    if ( this->msg_enc == md::MD_MESSAGE ) {
+      if ( RedisMsg::valid_type_char( ((const char *) this->msg)[ 0 ] ) ) {
+        this->is_redis = true;
         return;
       }
-      if ( this->msg_enc == md::MD_MESSAGE ) {
-        if ( RedisMsg::valid_type_char( ((const char *) this->msg)[ 0 ] ) ) {
-          this->is_ready = true;
-          this->is_redis = true;
-          return;
-        }
-      }
-      this->transform();
-      this->is_ready = true;
     }
+    this->transform();
   }
   void transform( void ) noexcept;
 };

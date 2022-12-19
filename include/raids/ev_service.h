@@ -11,7 +11,8 @@ namespace kv {
 }
 namespace ds {
 
-struct EvRedisService : public kv::EvConnection, public RedisExec {
+struct EvRedisService : public kv::EvConnection, public RedisExec,
+                        public PubDataLoss {
   void * operator new( size_t, void *ptr ) { return ptr; }
   kv::EvListen & listen;
 
@@ -41,6 +42,7 @@ struct EvRedisService : public kv::EvConnection, public RedisExec {
   /* PeerData */
   virtual int client_list( char *buf,  size_t buflen ) noexcept;
   virtual bool match( kv::PeerMatchArgs &ka ) noexcept;
+  virtual void pub_data_loss( kv::EvPublish &pub ) noexcept;
 };
 
 struct EvRedisListen : public kv::EvTcpListen {
