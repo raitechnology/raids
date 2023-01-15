@@ -31,7 +31,7 @@ struct EvShmClient : public kv::EvShm, public kv::StreamBuf,
   RedisExec * exec;
 
   EvShmClient( kv::EvPoll &p,  EvCallback &callback )
-    : kv::EvShm( "ev_shm_client" ),
+    : kv::EvShm( "ev_shm_client" ), kv::StreamBuf( NULL, NULL, NULL ),
       kv::EvSocket( p, p.register_type( "shm_sock" ) ),
       EvClient( callback ), exec( 0 ) {
     this->sock_opts = kv::OPT_NO_POLL;
