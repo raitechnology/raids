@@ -163,6 +163,19 @@ EvRedisService::is_psubscribed( const NotifyPattern &pat ) noexcept
   return this->RedisExec::test_psubscribed( pat );
 }
 
+bool
+EvRedisService::get_service( void *host,  uint16_t &svc ) noexcept
+{
+  return this->listen.get_service( host, svc );
+}
+
+bool
+EvRedisService::set_session( const char session[ MAX_SESSION_LEN ] ) noexcept
+{
+  size_t len = ::strlen( session );
+  return this->RedisExec::set_session( session, len );
+}
+
 size_t
 EvRedisService::get_userid( char userid[ MAX_USERID_LEN ] ) noexcept
 {
@@ -171,14 +184,12 @@ EvRedisService::get_userid( char userid[ MAX_USERID_LEN ] ) noexcept
 }
 
 size_t
-EvRedisService::get_session( const char *svc,  size_t svc_len,
+EvRedisService::get_session( uint16_t svc,
                              char session[ MAX_SESSION_LEN ] ) noexcept
 {
   if ( this->session_len > 0 ) {
-    bool match = ( svc_len == 0 ||
-                   ( svc_len == this->prefix_len && 
-                     ::memcmp( svc, this->prefix, svc_len ) == 0 ) );
-    if ( match ) {
+    uint16_t tmp = 0;
+    if ( this->listen.get_service( NULL, tmp ) && svc == tmp ) {
       ::memcpy( session, this->session, this->session_len );
       session[ this->session_len ] = '\0';
       return this->session_len;
@@ -189,10 +200,24 @@ EvRedisService::get_session( const char *svc,  size_t svc_len,
 }
 
 size_t
-EvRedisService::get_subscriptions( SubRouteDB &subs,  SubRouteDB &pats,
-                                   int &pattern_fmt ) noexcept
+EvRedisService::get_subscriptions( uint16_t svc,  SubRouteDB &subs ) noexcept
 {
-  return this->RedisExec::do_get_subscriptions( subs, pats, pattern_fmt );
+  uint16_t tmp = 0;
+  if ( ! this->listen.get_service( NULL, tmp ) || svc != tmp )
+    return 0;
+  return this->RedisExec::do_get_subscriptions( subs );
+}
+
+size_t
+EvRedisService::get_patterns( uint16_t svc,  int pat_fmt,
+                              SubRouteDB &pats ) noexcept
+{
+  uint16_t tmp = 0;
+  if ( ! this->listen.get_service( NULL, tmp ) || svc != tmp )
+    return 0;
+  if ( pat_fmt != GLOB_PATTERN_FMT )
+    return 0;
+  return this->RedisExec::do_get_patterns( pats );
 }
 
 bool

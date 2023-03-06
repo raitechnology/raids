@@ -405,10 +405,10 @@ struct RedisExec {
                       PubDataLoss *notify ) noexcept;
   uint8_t test_subscribed( const kv::NotifySub &sub ) noexcept;
   uint8_t test_psubscribed( const kv::NotifyPattern &pat ) noexcept;
-  size_t do_get_subscriptions( kv::SubRouteDB &subs, kv::SubRouteDB &pats,
-                               int &pattern_fmt ) noexcept;
+  size_t do_get_subscriptions( kv::SubRouteDB &subs ) noexcept;
+  size_t do_get_patterns( kv::SubRouteDB &pats ) noexcept;
   bool do_hash_to_sub( uint32_t h,  char *key,  size_t &keylen ) noexcept;
-  void set_session( const char *sess,  size_t sess_len ) noexcept;
+  bool set_session( const char *sess,  size_t sess_len ) noexcept;
   /* SCRIPT */
   ExecStatus exec_eval( kv::EvKeyCtx &ctx ) noexcept;
   ExecStatus exec_evalsha( kv::EvKeyCtx &ctx ) noexcept;

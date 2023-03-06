@@ -1318,13 +1318,13 @@ RedisExec::drain_continuations( EvSocket *svc ) noexcept
   }
 }
 
-void
+bool
 RedisExec::set_session( const char *sess,  size_t sess_len ) noexcept
 {
   if ( sess_len == 0 || sess_len >= sizeof( this->session ) ) {
     fprintf( stderr, "bad session_len %lu\n", sess_len );
     this->session_len = 0;
-    return;
+    return false;
   }
   ::memcpy( this->session, sess, sess_len );
   this->session[ sess_len ] = '\0';
@@ -1335,43 +1335,53 @@ RedisExec::set_session( const char *sess,  size_t sess_len ) noexcept
   inbox.s( "_INBOX." ).x( sess, sess_len ).s( ".*" ).end();
 
   this->do_psubscribe_cb( inbox.buf, inbox.len(), on_redis_inbox_msg, this );
+  return true;
 }
 
 size_t
-RedisExec::do_get_subscriptions( SubRouteDB &subs, SubRouteDB &pats,
-                                 int &pattern_fmt ) noexcept
+RedisExec::do_get_subscriptions( SubRouteDB &subs ) noexcept
 {
-  RouteLoc             loc;
-  RedisSubRoutePos     pos;
-  RedisPatternRoutePos ppos;
-  size_t               prelen = this->prefix_len,
-                       cnt    = 0,
-                       len;
-  const char         * val;
-  uint32_t             h;
+  RouteLoc         loc;
+  RedisSubRoutePos pos;
+  size_t           prelen = this->prefix_len,
+                   cnt    = 0;
 
-  pattern_fmt = GLOB_PATTERN_FMT;
   if ( this->sub_tab.first( pos ) ) {
     do {
       if ( ! pos.rt->is_continue() ) {
-        val = &pos.rt->value[ prelen ];
-        len = pos.rt->len - prelen;
-        h   = kv_crc_c( val, len, 0 );
-        subs.upsert( h, val, len, loc );
-        if ( loc.is_new )
-          cnt++;
+        if ( pos.rt->len > prelen ) {
+          const char * val = &pos.rt->value[ prelen ];
+          size_t       len = pos.rt->len - prelen;
+          uint32_t     h   = kv_crc_c( val, len, 0 );
+          subs.upsert( h, val, len, loc );
+          if ( loc.is_new )
+            cnt++;
+        }
       }
     } while ( this->sub_tab.next( pos ) );
   }
+  return cnt;
+}
+
+size_t
+RedisExec::do_get_patterns( SubRouteDB &pats ) noexcept
+{
+  RouteLoc             loc;
+  RedisPatternRoutePos ppos;
+  size_t               prelen = this->prefix_len,
+                       cnt    = 0;
+
   if ( this->pat_tab.first( ppos ) ) {
     do {
       for ( RedisWildMatch *m = ppos.rt->list.hd; m != NULL; m = m->next ) {
-        val = &m->value[ prelen ];
-        len = m->len - prelen;
-        h   = kv_crc_c( val, len, 0 );
-        pats.upsert( h, val, len, loc );
-        if ( loc.is_new )
-          cnt++;
+        if ( m->len > prelen ) {
+          const char * val = &m->value[ prelen ];
+          size_t       len = m->len - prelen;
+          uint32_t     h   = kv_crc_c( val, len, 0 );
+          pats.upsert( h, val, len, loc );
+          if ( loc.is_new )
+            cnt++;
+        }
       }
     } while ( this->pat_tab.next( ppos ) );
   }
