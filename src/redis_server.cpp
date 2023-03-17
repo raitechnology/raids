@@ -216,7 +216,7 @@ RedisExec::exec_client( void ) noexcept
         this->strm.sz += this->send_string( this->peer.name, i );
       return EXEC_OK;
     case 2: /* id - get the id associated with this connection */
-      this->send_int( this->peer.id );
+      this->send_int( this->peer.start_ns );
       return EXEC_OK;
     case 3: { /* kill (ip) (ID id) (TYPE norm|mast|slav|pubsub)
                       (ADDR ip) (SKIPME y/n) */
