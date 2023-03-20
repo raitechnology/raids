@@ -132,8 +132,16 @@ struct RedisBufQueue : public kv::StreamBuf::BufQueue {
 };
 
 struct RedisExec {
+  static RedisExec *make( kv::HashTab &map,  uint32_t ctx_id,  uint32_t dbx_id,
+                   kv::StreamBuf &s,  kv::RoutePublish &rdb,  kv::EvSocket &pd,
+                   kv::TimerQueue &tq ) {
+    void * p = kv::aligned_malloc( sizeof( RedisExec ) );
+    if ( p == NULL )
+      return NULL;
+    return new ( p ) RedisExec( map, ctx_id, dbx_id, s, rdb, pd, tq );
+  }
   void * operator new( size_t, void *ptr ) { return ptr; }
-  void operator delete( void *ptr ) { ::free( ptr ); }
+  void operator delete( void *ptr ) { kv::aligned_free( ptr ); }
 
   kv::HashSeed     hs;        /* kv map hash seeds, different for each db */
   kv::KeyCtx       kctx;      /* key context used for every key in command */

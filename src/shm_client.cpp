@@ -23,14 +23,12 @@ EvShmClient::process_shutdown( void ) noexcept
 int
 EvShmClient::init_exec( void ) noexcept
 {
-  void * e = aligned_malloc( sizeof( RedisExec ) );
-  if ( e == NULL )
-    return -1;
   int status, pfd = this->poll.get_null_fd();
   this->PeerData::init_ctx( pfd, -1, this->ctx_id, "shm_client" );
-  this->exec = new ( e ) RedisExec( *this->map, this->ctx_id, this->dbx_id,
-                                    *this, this->poll.sub_route, *this,
-                                    this->poll.timer );
+  this->exec = RedisExec::make( *this->map, this->ctx_id, this->dbx_id, *this,
+                                this->poll.sub_route, *this, this->poll.timer );
+  if ( this->exec == NULL )
+    return -1;
   this->exec->setup_ids( pfd, (uint64_t) this->sock_type << 56 );
   if ( (status = this->poll.add_sock( this )) == 0 )
     return 0;

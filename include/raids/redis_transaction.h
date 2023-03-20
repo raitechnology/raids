@@ -42,8 +42,14 @@ struct RedisWatchList {
 };
 
 struct RedisMultiExec {
+  static RedisMultiExec *make( void ) {
+     void * p = kv::aligned_malloc( sizeof( RedisMultiExec ) );
+    if ( p == NULL )
+      return NULL;
+    return new ( p ) RedisMultiExec();
+  }
   void * operator new( size_t, void *ptr ) { return ptr; }
-  void operator delete( void *ptr ) { ::free( ptr ); }
+  void operator delete( void *ptr ) { kv::aligned_free( ptr ); }
   kv::WorkAllocT< 8192 >        wrk;          /* space to use for msgs below */
   RedisMultiMsg                 watch_msg;
   kv::DLinkList<RedisMultiMsg>  msg_list;     /* msgs in the multi section */

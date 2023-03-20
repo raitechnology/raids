@@ -99,12 +99,11 @@ rai::ds::shmdp_atexit( void ) noexcept
 void
 rai::ds::shmdp_initialize( const char *mn,  int pt ) noexcept
 {
-  void * m = aligned_malloc( sizeof( QueuePoll ) );
-  if ( m == NULL ) {
+  qp = QueuePoll::make();
+  if ( qp == NULL ) {
     perror( "malloc" );
     exit( 9 );
   }
-  qp = new ( m ) QueuePoll();
   qp->poll.init( 16, false/*, false*/ );
   if ( mn == NULL ) {
     if ( (mn = ::getenv( "RAIDS_SHM" )) == NULL ) {
@@ -782,10 +781,9 @@ QueuePoll::find( int fd,  bool is_write ) noexcept
   QueueFd *p = NULL;
   if ( fd >= this->fds_size || this->fds[ fd ] == NULL ) {
     if ( is_write ) {
-      void *m = aligned_malloc( sizeof( QueueFd ) );
-      if ( m == NULL )
+      p = QueueFd::make( fd, *this );
+      if ( p == NULL )
         return NULL;
-      p = new ( m ) QueueFd( fd, *this );
       if ( ! this->push( p ) ) {
         delete p;
         return NULL;

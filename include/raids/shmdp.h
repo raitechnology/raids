@@ -80,8 +80,14 @@ struct FdMap {
 
 struct QueueFd;
 struct QueuePoll : public EvCallback {
+  static QueuePoll *make( void ) {
+    void * p = kv::aligned_malloc( sizeof( QueuePoll ) );
+    if ( p == NULL )
+      return NULL;
+    return new ( p ) QueuePoll();
+  }
   void * operator new( size_t, void *ptr ) { return ptr; }
-  void operator delete( void *ptr ) { ::free( ptr ); }
+  void operator delete( void *ptr ) { kv::aligned_free( ptr ); }
 
   kv::EvPoll  poll;
   EvShmClient shm;
@@ -103,8 +109,14 @@ struct QueuePoll : public EvCallback {
 };
 
 struct QueueFd {
+  static QueueFd *make( int fd,  QueuePoll &q ) {
+    void * p = kv::aligned_malloc( sizeof( QueueFd ) );
+    if ( p == NULL )
+      return NULL;
+    return new ( p ) QueueFd( fd, q );
+  }
   void * operator new( size_t, void *ptr ) { return ptr; }
-  void operator delete( void *ptr ) { ::free( ptr ); }
+  void operator delete( void *ptr ) { kv::aligned_free( ptr ); }
 
   QueuePoll & queue;
   int         fd;

@@ -127,7 +127,7 @@ ds_close( ds_t *h )
     ds.poll.wait( idle == EvPoll::DISPATCH_IDLE ? 10 : 0 );
   }
   ds.close();
-  ::free( &ds );
+  aligned_free( &ds );
   return 0;
 }
 
@@ -400,14 +400,12 @@ EvShmApi::EvShmApi( EvPoll &p ) noexcept
 int
 EvShmApi::init_exec( void ) noexcept
 {
-  void * e = aligned_malloc( sizeof( RedisExec ) );
-  if ( e == NULL )
-    return -1;
   int status, pfd = this->poll.get_null_fd();
   this->PeerData::init_ctx( pfd, -1, this->ctx_id, "shm_api" );
-  this->exec = new ( e ) RedisExec( *this->map, this->ctx_id, this->dbx_id,
-                                    *this, this->poll.sub_route, *this,
-                                    this->poll.timer );
+  this->exec = RedisExec::make( *this->map, this->ctx_id, this->dbx_id, *this,
+                                this->poll.sub_route, *this, this->poll.timer );
+  if ( this->exec == NULL )
+    return -1;
   this->timer_id = ( (uint64_t) this->sock_type << 56 ) |
                    ( (uint64_t) this->ctx_id << 40 );
   this->exec->setup_ids( pfd, this->timer_id );

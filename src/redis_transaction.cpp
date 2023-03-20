@@ -308,15 +308,7 @@ RedisExec::multi_queued( EvSocket *svc ) noexcept
   }
   return EXEC_OK;
 }
-#if 0
-static inline void *aligned_malloc( size_t sz ) {
-#ifdef _ISOC11_SOURCE
-  return ::aligned_alloc( sizeof( BufAlign64 ), sz ); /* >= RH7 */
-#else
-  return ::memalign( sizeof( BufAlign64 ), sz ); /* RH5, RH6.. */
-#endif
-}
-#endif
+
 KeyCtx *
 RedisMultiExec::get_dup_kctx( EvKeyCtx &ctx ) const noexcept
 {
@@ -359,11 +351,8 @@ RedisMultiExec::get_dup_key( EvKeyCtx &ctx,  bool post_exec ) const noexcept
 bool
 RedisExec::make_multi( void ) noexcept
 {
-  void * p = aligned_malloc( sizeof( RedisMultiExec ) );
-  if ( p == NULL )
-    return false;
-  this->multi = new ( p ) RedisMultiExec();
-  return true;
+  this->multi = RedisMultiExec::make();
+  return this->multi != NULL;
 }
 
 ExecStatus
