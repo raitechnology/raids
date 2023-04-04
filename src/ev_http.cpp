@@ -49,7 +49,7 @@ EvHttpListen::accept( void ) noexcept
     return NULL;
   if ( ! this->accept2( *c, "http" ) )
     return NULL;
-  c->setup_ids( c->fd, ++this->timer_id );
+  c->setup_ids( ++this->timer_id );
   c->init_ssl_accept( this->ssl_ctx );
   c->initialize_state( /*svr, db*/ );
   return c;

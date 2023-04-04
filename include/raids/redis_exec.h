@@ -170,16 +170,16 @@ struct RedisExec {
   uint64_t          step_mask; /* step key mask */
   size_t            argc;      /* count of args in cmd msg */
   kv::RoutePublish& sub_route; /* map subject to sub_id */
+  kv::PeerId      & sub_id;
   kv::TimerQueue  & timer;
   kv::EvSocket    & peer;      /* name and address of this peer */
   uint64_t          timer_id;  /* timer id of this service */
   kv::KeyFragment * save_key;  /* if key is being saved */
   uint64_t          msg_route_cnt; /* count of msgs forwarded */
-  uint32_t          sub_id,    /* fd, set this after accept() */
-                    next_event_id; /* next event id for timers */
   RedisSubMap       sub_tab;   /* pub/sub subscription table */
   RedisPatternMap   pat_tab;   /* pub/sub pattern sub table */
   uint64_t          stamp;
+  uint32_t          next_event_id; /* next event id for timers */
   uint16_t          prefix_len,/* pubsub prefix */
                     session_len;
   char              prefix[ 16 ],
@@ -188,20 +188,8 @@ struct RedisExec {
   RedisExec( kv::HashTab &map,  uint32_t ,  uint32_t dbx_id,
              kv::StreamBuf &s,  kv::RoutePublish &rdb,  kv::EvSocket &pd,
              kv::TimerQueue &tq ) noexcept;
-#if 0
-      kctx( map, dbx_id, NULL ), strm( s ), strm_start( s.pending() ),
-      key( 0 ), keys( 0 ), key_cnt( 0 ), key_done( 0 ), multi( 0 ),
-      cmd( NO_CMD ), catg( NO_CATG ), blk_state( 0 ), cmd_state( 0 ),
-      key_flags( 0 ), prefix_len( 0 ), sub_route( rdb ), timer( tq ),
-      peer( pd ), timer_id( 0 ), save_key( 0 ), msg_route_cnt( 0 ),
-      sub_id( ~0U ), next_event_id( 0 ) {
-    this->kctx.ht.hdr.get_hash_seed( this->kctx.db_num, this->hs );
-    this->kctx.set( kv::KEYCTX_NO_COPY_ON_READ );
-  }
-#endif
   /* different for each endpoint */
-  void setup_ids( uint32_t sid,  uint64_t tid ) {
-    this->sub_id        = sid;
+  void setup_ids( uint64_t tid ) {
     this->timer_id      = tid;
     this->msg_route_cnt = 0;
     this->stamp         = 0;

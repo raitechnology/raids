@@ -34,7 +34,7 @@ EvRedisListen::accept( void ) noexcept
     return NULL;
   if ( ! this->accept2( *c, "redis" ) )
     return NULL;
-  c->setup_ids( c->fd, ++this->timer_id );
+  c->setup_ids( ++this->timer_id );
   return c;
 }
 
@@ -48,7 +48,7 @@ EvRedisUnixListen::accept( void ) noexcept
     return NULL;
   if ( ! this->accept2( *c, "redis" ) )
     return NULL;
-  c->setup_ids( c->fd, ++this->timer_id );
+  c->setup_ids( ++this->timer_id );
   return c;
 }
 
@@ -164,7 +164,7 @@ EvRedisService::is_psubscribed( const NotifyPattern &pat ) noexcept
 }
 
 bool
-EvRedisService::get_service( void *host,  uint16_t &svc ) noexcept
+EvRedisService::get_service( void *host,  uint16_t &svc ) const noexcept
 {
   return this->listen.get_service( host, svc );
 }
@@ -177,7 +177,7 @@ EvRedisService::set_session( const char session[ MAX_SESSION_LEN ] ) noexcept
 }
 
 size_t
-EvRedisService::get_userid( char userid[ MAX_USERID_LEN ] ) noexcept
+EvRedisService::get_userid( char userid[ MAX_USERID_LEN ] ) const noexcept
 {
   ::memcpy( userid, "nobody", 7 );
   return 7;
@@ -185,7 +185,7 @@ EvRedisService::get_userid( char userid[ MAX_USERID_LEN ] ) noexcept
 
 size_t
 EvRedisService::get_session( uint16_t svc,
-                             char session[ MAX_SESSION_LEN ] ) noexcept
+                             char session[ MAX_SESSION_LEN ] ) const noexcept
 {
   if ( this->session_len > 0 ) {
     uint16_t tmp = 0;

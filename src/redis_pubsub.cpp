@@ -33,7 +33,7 @@ RedisExec::rem_all_sub( void ) noexcept
     do {
       bool coll = this->sub_tab.rem_collision( pos.rt );
       NotifySub nsub( pos.rt->value, pos.rt->len, pos.rt->hash,
-                      this->sub_id, coll, 'R', &this->peer );
+                      coll, 'R', this->peer );
       this->sub_route.del_sub( nsub );
       if ( pos.rt->is_continue() ) {
         RedisContinueMsg *cm = pos.rt->cont().continue_msg;
@@ -52,7 +52,7 @@ RedisExec::rem_all_sub( void ) noexcept
         if ( cvt.convert_glob( m->value, m->len ) == 0 ) {
           bool coll = this->pat_tab.rem_collision( ppos.rt, m );
           NotifyPattern npat( cvt, m->value, m->len, ppos.rt->hash,
-                              this->sub_id, coll, 'R', &this->peer );
+                              coll, 'R', this->peer );
           this->sub_route.del_pat( npat );
         }
       }
@@ -353,7 +353,7 @@ RedisExec::do_pub( EvPublish &pub,  RedisContinueMsg *&cm,
   int status = 0;
   RedisSubStatus ret;
   /* don't publish to self ?? (redis does not allow pub w/sub on same conn) */
-  if ( (uint32_t) this->sub_id == pub.src_route )
+  if ( this->sub_id.equals( pub.src_route ) )
     return 0;
   RedisMsgTransform xf( pub, notify );
   uint32_t pub_cnt = 0;
@@ -519,8 +519,8 @@ RedisExec::pop_continue_tab( RedisContinueMsg *cm ) noexcept
   for ( i = 0; i < keycnt; i++ ) {
     if ( cm->ptr[ i ].save_len < 2 ) {
       NotifySub nsub( cm->ptr[ i ].value, cm->ptr[ i ].len,
-                      cm->ptr[ i ].hash, this->sub_id,
-                      cm->ptr[ i ].save_len, 'R', &this->peer );
+                      cm->ptr[ i ].hash,
+                      cm->ptr[ i ].save_len, 'R', this->peer );
       this->sub_route.del_sub( nsub );
     }
   }
@@ -766,7 +766,7 @@ RedisExec::do_unsubscribe( const char *sub,  size_t len ) noexcept
   if ( this->sub_tab.rem( h, sub, len, SUB_STATE_ROUTE_DATA,
                           coll ) == REDIS_SUB_OK ) {
     this->sub_tab.sub_count--;
-    NotifySub nsub( sub, len, h, this->sub_id, coll, 'R', &this->peer );
+    NotifySub nsub( sub, len, h, coll, 'R', this->peer );
     this->sub_route.del_sub( nsub );
     this->msg_route_cnt++;
     return EXEC_OK;
@@ -829,8 +829,7 @@ RedisExec::do_subscribe_cb( const char *sub,  size_t len,
       inbox     = ibx.start;
       inbox_len = ibx.len();
     }
-    NotifySub nsub( sub, len, inbox, inbox_len, h, this->sub_id,
-                    coll, 'R', &this->peer );
+    NotifySub nsub( sub, len, inbox, inbox_len, h, coll, 'R', this->peer );
 
     if ( status == REDIS_SUB_OK ) {
       this->sub_route.add_sub( nsub );
@@ -913,8 +912,7 @@ RedisExec::do_psubscribe_cb( const char *sub,  size_t len,
       }
     }
     if ( m != NULL ) {
-      NotifyPattern npat( cvt, sub, len, h, this->sub_id, coll, 'R',
-                          &this->peer );
+      NotifyPattern npat( cvt, sub, len, h, coll, 'R', this->peer );
       if ( status == REDIS_SUB_OK ) {
         this->sub_route.add_pat( npat );
         this->msg_route_cnt++;
@@ -966,8 +964,7 @@ RedisExec::do_punsubscribe( const char *sub,  size_t len ) noexcept
           if ( rt->count == 0 )
             this->pat_tab.tab.remove( loc );
 
-          NotifyPattern npat( cvt, sub, len, h, this->sub_id, coll, 'R',
-                              &this->peer );
+          NotifyPattern npat( cvt, sub, len, h, coll, 'R', this->peer );
           this->sub_route.del_pat( npat );
           this->msg_route_cnt++;
           return EXEC_OK;
@@ -1227,7 +1224,7 @@ RedisExec::save_blocked_cmd( int64_t timeout_val ) noexcept
       cont.keycnt = this->key_cnt;
       cm->state |= CM_CONT_TAB;
 
-      NotifySub nsub( sub, len, h, this->sub_id, coll, 'R', &this->peer );
+      NotifySub nsub( sub, len, h, coll, 'R', this->peer );
       this->sub_route.add_sub( nsub );
     }
     this->msg_route_cnt++;
@@ -1252,7 +1249,7 @@ RedisExec::save_blocked_cmd( int64_t timeout_val ) noexcept
     }
     b = ( units >= 0 );
     if ( b )
-      b = this->timer.add_timer_units( this->sub_id, (uint32_t) timeout_val,
+      b = this->timer.add_timer_units( this->sub_id.fd, (uint32_t) timeout_val,
                                        (TimerUnits) units,
                                        this->timer_id, cm->msgid );
     if ( b ) {

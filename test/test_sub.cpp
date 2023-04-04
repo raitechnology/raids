@@ -50,20 +50,20 @@ struct SubTest : public EvShmSvc {
     this->ih = kv_crc_c( this->ibx, this->ilen, 0 );
     /* if using inbox for reply */
     if ( this->ilen > 0 ) {
-      NotifySub nibx( this->ibx, this->ilen, this->ih, this->fd, false, 'K' );
+      NotifySub nibx( this->ibx, this->ilen, this->ih, false, 'K', *this );
       this->sub_route.add_sub( nibx );
     }
     NotifySub nsub( this->sub, this->len, this->ibx, this->ilen, this->h,
-                    this->fd, false, 'K' );
+                    false, 'K', *this );
     this->sub_route.add_sub( nsub );
   }
   /* remove subcriptions for sub or inbox */
   void unsubscribe( void ) {
     if ( this->ilen > 0 ) {
-      NotifySub nibx( this->ibx, this->ilen, this->ih, this->fd, false, 'K' );
+      NotifySub nibx( this->ibx, this->ilen, this->ih, false, 'K', *this );
       this->sub_route.del_sub( nibx );
     }
-    NotifySub nsub( this->sub, this->len, this->h, this->fd, false, 'K' );
+    NotifySub nsub( this->sub, this->len, this->h, false, 'K', *this );
     this->sub_route.del_sub( nsub );
   }
   /* recv an incoming message from a subscription above, sent from a peer or

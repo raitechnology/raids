@@ -526,28 +526,28 @@ void
 RedisKeyspaceNotify::on_sub( NotifySub &sub ) noexcept
 {
   if ( sub.subject_len > 11 )
-    this->update_keyspace_count( sub.subject, 11, 1, sub.src_fd );
+    this->update_keyspace_count( sub.subject, 11, 1, sub.src.fd );
 }
 
 void
 RedisKeyspaceNotify::on_unsub( NotifySub &sub ) noexcept
 {
   if ( sub.subject_len > 11 )
-    this->update_keyspace_count( sub.subject, 11, -1, sub.src_fd );
+    this->update_keyspace_count( sub.subject, 11, -1, sub.src.fd );
 }
 /* client pattern subscribe, notify to kv pubsub */
 void
 RedisKeyspaceNotify::on_psub( NotifyPattern &pat ) noexcept
 {
   size_t pre_len = ( pat.cvt.prefixlen < 11 ? pat.cvt.prefixlen : 11 );
-  this->update_keyspace_count( pat.pattern, pre_len, 1, pat.src_fd );
+  this->update_keyspace_count( pat.pattern, pre_len, 1, pat.src.fd );
 }
 
 void
 RedisKeyspaceNotify::on_punsub( NotifyPattern &pat ) noexcept
 {
   size_t pre_len = ( pat.cvt.prefixlen < 11 ? pat.cvt.prefixlen : 11 );
-  this->update_keyspace_count( pat.pattern, pre_len, -1, pat.src_fd );
+  this->update_keyspace_count( pat.pattern, pre_len, -1, pat.src.fd );
 }
 
 void

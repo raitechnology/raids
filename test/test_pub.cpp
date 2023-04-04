@@ -60,7 +60,7 @@ struct PubTest : public EvShmSvc, public RouteNotify {
     }
   }
   virtual void on_sub( const NotifySub &sub ) noexcept {
-    printf( "on_sub src_fd=%u %.*s", sub.src_fd, (int) sub.subject_len,
+    printf( "on_sub src_fd=%u %.*s", sub.src.fd, (int) sub.subject_len,
             sub.subject );
     if ( sub.reply_len != 0 )
       printf( " reply %.*s", (int) sub.reply_len, sub.reply );
@@ -77,14 +77,14 @@ struct PubTest : public EvShmSvc, public RouteNotify {
       printf( "publish reply sz %" PRIu64 "\n", sz );
 
       EvPublish p( sub.reply, sub.reply_len, NULL, 0, buf, sz,
-                   this->sub_route, this->fd,
+                   this->sub_route, *this,
                    kv_crc_c( sub.reply, sub.reply_len, 0 ),
                    (uint8_t) RAIMSG_TYPE_ID, 'i' );
       this->sub_route.forward_msg( p );
     }
   }
   virtual void on_unsub( const NotifySub &sub ) noexcept {
-    printf( "on_unsub src_fd=%u %.*s\n", sub.src_fd, (int) sub.subject_len,
+    printf( "on_unsub src_fd=%u %.*s\n", sub.src.fd, (int) sub.subject_len,
             sub.subject );
   }
 #if 0
@@ -127,7 +127,7 @@ struct PubTest : public EvShmSvc, public RouteNotify {
       size_t sz = tibmsg.update_hdr();
 
       EvPublish p( this->sub, this->len, NULL, 0, buf,
-                   sz, this->sub_route, this->fd, this->h,
+                   sz, this->sub_route, *this, this->h,
                    (uint8_t) RAIMSG_TYPE_ID, 'u' );
       this->sub_route.forward_msg( p );
       if ( this->per_sec < 100 )

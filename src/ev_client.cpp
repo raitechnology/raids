@@ -288,7 +288,8 @@ EvTerminal::flush_out( void ) noexcept
 int
 EvTerminal::start( void ) noexcept
 {
-  this->PeerData::init_peer( this->stdin_fd, -1, NULL, "term" );
+  this->PeerData::init_peer( this->poll.get_next_id(), this->stdin_fd,
+                             -1, NULL, "term" );
   lc_tty_set_locale();
   this->term.tty_init();
   lc_tty_init_fd( this->term.tty, this->stdin_fd, this->stdout_fd );

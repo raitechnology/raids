@@ -3,7 +3,7 @@
 #include <string.h>
 #include <stdint.h>
 #include <raikv/util.h>
-#include <raikv/route_db.h>
+#include <raikv/ev_net.h>
 #include <raids/redis_exec.h>
 #include <raids/redis_cmd_db.h>
 #include <raids/redis_keyspace.h>
@@ -58,9 +58,9 @@ RedisExec::RedisExec( HashTab &map,  uint32_t ,  uint32_t dbx_id,
     kctx( map, dbx_id, NULL ), strm( s ), strm_start( s.pending() ),
     key( 0 ), keys( 0 ), key_cnt( 0 ), key_done( 0 ), multi( 0 ),
     cmd( NO_CMD ), catg( NO_CATG ), blk_state( 0 ), cmd_state( 0 ),
-    key_flags( 0 ), sub_route( rdb ), timer( tq ),
+    key_flags( 0 ), sub_route( rdb ), sub_id( pd ), timer( tq ),
     peer( pd ), timer_id( 0 ), save_key( 0 ), msg_route_cnt( 0 ),
-    sub_id( ~0U ), next_event_id( 0 ), prefix_len( 0 ), session_len( 0 ) {
+    next_event_id( 0 ), prefix_len( 0 ), session_len( 0 ) {
   /*::memcpy( this->prefix, "_REDIS.", 8 );*/
   RedisKeyspace::init_keyspace_events( *this );
   this->kctx.ht.hdr.get_hash_seed( this->kctx.db_num, this->hs );

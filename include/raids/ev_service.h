@@ -32,11 +32,11 @@ struct EvRedisService : public kv::EvConnection, public RedisExec,
   virtual uint8_t is_subscribed( const kv::NotifySub &sub ) noexcept;
   virtual uint8_t is_psubscribed( const kv::NotifyPattern &pat ) noexcept;
 
-  virtual bool get_service( void *host,  uint16_t &svc ) noexcept;
+  virtual bool get_service( void *host,  uint16_t &svc ) const noexcept;
   virtual bool set_session( const char session[ MAX_SESSION_LEN ] ) noexcept;
-  virtual size_t get_userid( char userid[ MAX_USERID_LEN ] ) noexcept;
+  virtual size_t get_userid( char userid[ MAX_USERID_LEN ] ) const noexcept;
   virtual size_t get_session( uint16_t svc,
-                              char session[ MAX_SESSION_LEN ] ) noexcept;
+                              char session[ MAX_SESSION_LEN ] ) const noexcept;
   virtual size_t get_subscriptions( uint16_t svc,
                                     kv::SubRouteDB &subs ) noexcept;
   virtual size_t get_patterns( uint16_t svc,  int pat_fmt,

@@ -69,11 +69,11 @@ struct PingTest : public EvShmSvc, public RouteNotify {
     if ( this->round_trip || ! this->active_ping ) {
       /* if using inbox for reply */
       if ( this->active_ping && this->ilen > 0 ) {
-        NotifySub nsub( this->ibx, this->ilen, this->ih, this->fd, false, 'K' );
+        NotifySub nsub( this->ibx, this->ilen, this->ih, false, 'K', *this );
         this->sub_route.add_sub( nsub );
       }
       else {
-        NotifySub nsub( this->sub, this->len, this->h, this->fd, false, 'K' );
+        NotifySub nsub( this->sub, this->len, this->h, false, 'K', *this );
         this->sub_route.add_sub( nsub );
       }
     }
@@ -82,11 +82,11 @@ struct PingTest : public EvShmSvc, public RouteNotify {
   void unsubscribe( void ) {
     if ( this->round_trip || ! this->active_ping ) {
       if ( this->active_ping && this->ilen > 0 ) {
-        NotifySub nsub( this->ibx, this->ilen, this->ih, this->fd, false, 'K' );
+        NotifySub nsub( this->ibx, this->ilen, this->ih, false, 'K', *this );
         this->sub_route.del_sub( nsub );
       }
       else {
-        NotifySub nsub( this->sub, this->len, this->h, this->fd, false, 'K' );
+        NotifySub nsub( this->sub, this->len, this->h, false, 'K', *this );
         this->sub_route.del_sub( nsub );
       }
     }
@@ -109,9 +109,8 @@ struct PingTest : public EvShmSvc, public RouteNotify {
         out_len  = this->plen;
         out_hash = this->ph;
       }
-      EvPublish rp( out, out_len, NULL, 0, p.msg,
-                    p.msg_len, this->sub_route, this->fd,
-                    out_hash, p.msg_enc, p.pub_type );
+      EvPublish rp( out, out_len, NULL, 0, p.msg, p.msg_len, this->sub_route,
+                    *this, out_hash, p.msg_enc, p.pub_type );
       this->sub_route.forward_msg( rp );
     }
     /* the active pinger or one way prints */
@@ -131,14 +130,14 @@ struct PingTest : public EvShmSvc, public RouteNotify {
     return true;
   }
   virtual void on_sub( const NotifySub &sub ) noexcept {
-    printf( "on_sub src_fd=%u %.*s", sub.src_fd, (int) sub.subject_len,
+    printf( "on_sub src_fd=%u %.*s", sub.src.fd, (int) sub.subject_len,
             sub.subject );
     if ( sub.reply_len != 0 )
       printf( " reply %.*s", (int) sub.reply_len, sub.reply );
     printf( "\n" );
   }
   virtual void on_unsub( const NotifySub &sub ) noexcept {
-    printf( "on_unsub src_fd=%u %.*s\n", sub.src_fd, (int) sub.subject_len,
+    printf( "on_unsub src_fd=%u %.*s\n", sub.src.fd, (int) sub.subject_len,
             sub.subject );
   }
   /* shutdown before close */
@@ -190,7 +189,7 @@ struct PingTest : public EvShmSvc, public RouteNotify {
       uint64_t t = kv_current_monotonic_time_ns();
       /*uint64_t t = kv_get_rdtsc();*/
       EvPublish p( this->pub, this->plen, this->ibx, this->ilen, &t,
-                   sizeof( t ), this->sub_route, this->fd, this->ph,
+                   sizeof( t ), this->sub_route, *this, this->ph,
                    MD_UINT, 'u' );
       if ( ! this->sub_route.forward_msg( p ) ) {
         /* back pressure */

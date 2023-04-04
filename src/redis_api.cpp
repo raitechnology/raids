@@ -400,18 +400,16 @@ EvShmApi::EvShmApi( EvPoll &p ) noexcept
 int
 EvShmApi::init_exec( void ) noexcept
 {
-  int status, pfd = this->poll.get_null_fd();
-  this->PeerData::init_ctx( pfd, -1, this->ctx_id, "shm_api" );
+  this->PeerData::init_ctx( this->poll.get_next_id(), this->poll.get_null_fd(),
+                            -1, this->ctx_id, "shm_api" );
   this->exec = RedisExec::make( *this->map, this->ctx_id, this->dbx_id, *this,
                                 this->poll.sub_route, *this, this->poll.timer );
   if ( this->exec == NULL )
     return -1;
   this->timer_id = ( (uint64_t) this->sock_type << 56 ) |
                    ( (uint64_t) this->ctx_id << 40 );
-  this->exec->setup_ids( pfd, this->timer_id );
-  if ( (status = this->poll.add_sock( this )) == 0 )
-    return 0;
-  return status;
+  this->exec->setup_ids( this->timer_id );
+  return this->poll.add_sock( this );
 }
 
 bool
