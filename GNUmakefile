@@ -178,7 +178,7 @@ h3_includes  = -I$(h3_home)/src/h3lib/include
 else
 lnk_lib     += -lh3
 dlnk_lib    += -lh3
-h3_includes  = -Ih3lib
+h3_includes  = -I/usr/include/h3lib
 endif
 
 ifneq (,$(rdb_home))
