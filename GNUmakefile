@@ -203,9 +203,13 @@ dlnk_lib    += -L$(kv_home)/$(libd) -lraikv
 dlnk_dep    += $(kv_dll)
 rpath6       = ,-rpath,$(pwd)/$(kv_home)/$(libd)
 includes    += -I$(kv_home)/include
+kv_dep       = $(kv_lib)
+kv_lnk       = $(kv_lib)
 else
 lnk_lib     += -lraikv
 dlnk_lib    += -lraikv
+kv_dep       =
+kv_lnk       = -lraikv
 endif
 
 ifneq (,$(lzf_home))
@@ -442,8 +446,8 @@ redis_cmd_files := redis_cmd
 redis_cmd_cfile := src/redis_cmd.cpp
 redis_cmd_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(redis_cmd_files)))
 redis_cmd_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(redis_cmd_files)))
-redis_cmd_libs  := $(kv_lib)
-redis_cmd_lnk   := $(kv_lib)
+redis_cmd_libs  := $(kv_dep)
+redis_cmd_lnk   := $(kv_lnk)
 
 $(bind)/redis_cmd$(exe): $(redis_cmd_objs) $(redis_cmd_libs)
 
