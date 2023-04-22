@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
-#ifndef _MSC_VER
+#if ! defined( _MSC_VER ) && ! defined( __MINGW32__ )
 #include <unistd.h>
 #include <pthread.h>
 #include <signal.h>

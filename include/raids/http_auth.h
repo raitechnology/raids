@@ -112,9 +112,16 @@ struct HttpDigestAuth {
   }
   void clear( void ) {
     this->release();
-    ::memset( &this->client_incr, 0,
+#if __GNUC__ >= 9
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Warray-bounds"
+#endif
+    ::memset( (void *) &this->client_incr, 0,
               (char *) (void *) &this->mynonce -
               (char *) (void *) &this->client_incr );
+#if __GNUC__ >= 9
+#pragma GCC diagnostic pop
+#endif
     this->buf_len      = 0;
     this->max_out      = sizeof( this->tmp_buf );
     this->buf          = NULL;

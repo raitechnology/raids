@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <stdarg.h>
 #include <errno.h>
-#ifndef _MSC_VER
+#if ! defined( _MSC_VER ) && ! defined( __MINGW32__ )
 #include <unistd.h>
 #include <sys/socket.h>
 #else
@@ -285,6 +285,15 @@ EvTerminal::flush_out( void ) noexcept
   return false;
 }
 
+#if defined( _MSC_VER ) || defined( __MINGW32__ )
+ssize_t
+wp_terminal_reader( void *cl, void *buf, size_t buflen ) noexcept
+{
+  EvTerminal * me = (EvTerminal *) cl;
+  return ((linecook::TTY *) me->term.tty)->win_vt_read( buf, buflen );
+}
+#endif
+
 int
 EvTerminal::start( void ) noexcept
 {
@@ -297,6 +306,11 @@ EvTerminal::start( void ) noexcept
   lc_tty_init_sigwinch( this->term.tty ); /* install sigwinch handler */
   this->term.tty_prompt();
   this->flush_out();
+#if defined( _MSC_VER ) || defined( __MINGW32__ )
+  this->fd = wp_register_tty_fd(
+    reinterpret_cast<HANDLE>( _get_osfhandle( this->stdin_fd ) ), this,
+                              wp_terminal_reader );
+#endif
   return this->poll.add_sock( this );
 }
 

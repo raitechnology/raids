@@ -5,7 +5,7 @@
 #include <stdarg.h>
 #define __STDC_FORMAT_MACROS
 #include <inttypes.h>
-#ifndef _MSC_VER
+#if ! defined( _MSC_VER ) && ! defined( __MINGW32__ )
 #include <unistd.h>
 #include <fcntl.h>
 #include <math.h>
@@ -329,11 +329,11 @@ RedisExec::exec_client_list( char *buf,  size_t buflen ) noexcept
     flags[ i++ ] = 'N'; /* no specific flags */
   flags[ i ] = '\0';
   int n = ::snprintf( buf, buflen,
-    "flags=%s db=%u sub=%u psub=%lu multi=%d cmd=%s ",
+    "flags=%s db=%u sub=%u psub=%u multi=%d cmd=%s ",
     flags,
     this->kctx.db_num,
     this->sub_tab.sub_count,
-    this->pat_tab.sub_count(),
+    (uint32_t) this->pat_tab.sub_count(),
     ( this->multi == NULL ? -1 : (int) this->multi->msg_count ),
     cmd_db[ this->cmd ].name );
   return min_int( n, (int) buflen - 1 );
@@ -597,7 +597,7 @@ RedisExec::debug_object( void ) noexcept
   len = n;
 
   xnprintf( b, n, "key:         \"%.*s\"\r\n", (int) keylen, key );
-  xnprintf( b, n, "hash:        %08lx:%08lx\r\n",
+  xnprintf( b, n, "hash:        %08" PRIx64 ":%08" PRIx64 "\r\n",
                   ctx->hash1, ctx->hash2 );
   this->kctx.get_pos_info( natural_pos, pos_off );
   xnprintf( b, n, "pos:         [%" PRIu64 "]+%u.%" PRIu64 "\r\n",
@@ -830,7 +830,7 @@ RedisExec::flushdb( uint8_t db_num ) noexcept
     }
   }
 }
-#ifndef _MSC_VER
+#if ! defined( _MSC_VER ) && ! defined( __MINGW32__ )
 static int
 get_proc_status_size( const char *s,  size_t *ival,  ... )
 {
@@ -938,7 +938,7 @@ RedisExec::exec_info( void ) noexcept
   if ( ( info & INFO_SERVER ) != 0 ) {
     xnprintf( b, sz, "raids_version:        %s\r\n", kv_stringify( DS_VER ) );
     xnprintf( b, sz, "raids_git:            %s\r\n", kv_stringify( GIT_HEAD ) );
-#ifndef _MSC_VER
+#if ! defined( _MSC_VER ) && ! defined( __MINGW32__ )
     xnprintf( b, sz, "gcc_version:          %d.%d.%d\r\n",
       __GNUC__, __GNUC_MINOR__, __GNUC_PATCHLEVEL__ );
     xnprintf( b, sz, "process_id:           %d\r\n", ::getpid() );
@@ -953,7 +953,7 @@ RedisExec::exec_info( void ) noexcept
     if ( lsz > 0 )
       xnprintf( b, sz, "executable:           %.*s\r\n", (int) lsz, path );
 #else
-    xnprintf( b, sz, "process_id:           %d\r\n", GetCurrentProcessId() );
+    xnprintf( b, sz, "process_id:           %ld\r\n", GetCurrentProcessId() );
 #endif
 
     /* the ports open */
@@ -1021,7 +1021,7 @@ RedisExec::exec_info( void ) noexcept
       delete hts;
     }
   }
-#ifndef _MSC_VER
+#if ! defined( _MSC_VER ) && ! defined( __MINGW32__ )
   if ( ( info & INFO_CPU ) != 0 ) {
     struct rusage usage;
     if ( ::getrusage( RUSAGE_SELF, &usage ) == 0 ) {

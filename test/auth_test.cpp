@@ -2,7 +2,11 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdint.h>
+#if ! defined( _MSC_VER ) && ! defined( __MINGW32__ )
 #include <unistd.h>
+#else
+#include <raikv/win.h>
+#endif
 #include <raids/http_auth.h>
 #include <raikv/util.h>
 

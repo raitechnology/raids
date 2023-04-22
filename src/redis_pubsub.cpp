@@ -1319,7 +1319,7 @@ bool
 RedisExec::set_session( const char *sess,  size_t sess_len ) noexcept
 {
   if ( sess_len == 0 || sess_len >= sizeof( this->session ) ) {
-    fprintf( stderr, "bad session_len %lu\n", sess_len );
+    fprintf( stderr, "bad session_len %u\n", (uint32_t) sess_len );
     this->session_len = 0;
     return false;
   }

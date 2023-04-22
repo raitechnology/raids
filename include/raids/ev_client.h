@@ -77,6 +77,7 @@ struct EvShmApi : public kv::EvShm, public kv::StreamBuf, public kv::EvSocket {
 
 struct EvShmSvc : public kv::EvShm, public kv::EvSocket {
   void * operator new( size_t, void *ptr ) { return ptr; }
+  void operator delete( void *ptr ) { ::free( ptr ); }
   EvShmSvc( kv::EvPoll &p )
     : kv::EvShm( "ev_shm_svc" ), kv::EvSocket( p, p.register_type( "shm_svc" ) ) {
     this->sock_opts = kv::OPT_NO_POLL;

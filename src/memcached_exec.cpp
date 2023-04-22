@@ -5,7 +5,7 @@
 #include <stdint.h>
 #define __STDC_FORMAT_MACROS
 #include <inttypes.h>
-#ifndef _MSC_VER
+#if ! defined( _MSC_VER ) && ! defined( __MINGW32__ )
 #include <unistd.h>
 #include <sys/time.h>
 #include <sys/resource.h>
@@ -2194,7 +2194,7 @@ MemcachedExec::put_stats( void ) noexcept
               ( now - this->stat.boot_time ) / 1000000000 );
   fmt.printf( "STAT time %" PRIu64 "\r\n", now / 1000000000 );
   fmt.printf( "STAT version %s\r\n", kv_stringify( DS_VER ) );
-#ifndef _MSC_VER
+#if ! defined( _MSC_VER ) && ! defined( __MINGW32__ )
   struct rusage usage;
   ::getrusage( RUSAGE_SELF, &usage );
   fmt.printf( "STAT rusage_user %.6f\r\n",

@@ -7,7 +7,7 @@
 #include <stdlib.h>
 #define __STDC_FORMAT_MACROS
 #include <inttypes.h>
-#ifndef _MSC_VER
+#if ! defined( _MSC_VER ) && ! defined( __MINGW32__ )
 #include <sched.h>
 #endif
 #include <raids/redis_api.h>
@@ -410,7 +410,7 @@ run_ping_busy_loop( ds_t *h,  double total )
   }
 }
 
-#ifndef _MSC_VER
+#if ! defined( _MSC_VER ) && ! defined( __MINGW32__ )
 static int
 set_affinity( int cpu )
 {
@@ -428,7 +428,7 @@ set_affinity( int cpu )
 static void
 warm_up_cpu( ds_t *h,  const char *affinity )
 {
-#ifndef _MSC_VER
+#if ! defined( _MSC_VER ) && ! defined( __MINGW32__ )
   int cpu = -1;
   /* warm up */
   if ( affinity != NULL ) {
@@ -445,6 +445,7 @@ warm_up_cpu( ds_t *h,  const char *affinity )
   if ( cpu >= 0 )
     printf( "cpu affinity %d\n", cpu );
 #else
+  (void) affinity;
   run_ping_busy_loop( h, 0.1 /* 100ms */ );
 #endif
 }

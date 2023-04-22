@@ -61,7 +61,7 @@ TcpConn::process( void ) noexcept
   if ( this->off < this->len ) {
     size_t buflen = this->len - this->off;
     printf( "%.*s", (int) buflen, &this->recv[ this->off ] );
-    if ( ::memmem( &this->recv[ this->off ], buflen, "\r\n\r\n", 4 ) ) {
+    if ( kv_memmem( &this->recv[ this->off ], buflen, "\r\n\r\n", 4 ) ) {
       static const char hello[] =
         "HTTP/1.1 200 OK\r\n"
         "Content-Length: 40\r\n"
