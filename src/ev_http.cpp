@@ -1202,7 +1202,7 @@ EvHttpService::process_get( const HttpReq &hreq ) noexcept
   if ( m.unpack( s, n, this->tmp ) != DS_MSG_STATUS_OK )
     return false;
   if ( m.type == DS_BULK_STRING && m.len >= 0 ) {
-    bool is_gzip;
+    bool is_gzip = false;
     mtype = get_mime_type( buf, mlen, mlen, is_gzip );
     hout.push( ctype, sizeof( ctype ) - 1 );
     if ( is_gzip )
