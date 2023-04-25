@@ -920,6 +920,7 @@ EvHttpConnection::get_mime_type( const char *path,  size_t len,
                                  size_t &mlen,  bool &is_gzip ) noexcept
 {
 #define RET( s ) { mlen = sizeof( s ) - 1; return s; }
+  is_gzip = false;
   if ( len >= 3 ) {
     const char *p = &path[ len-3 ];
     is_gzip = ( ::memcmp( p, ".gz", 3 ) == 0 );
