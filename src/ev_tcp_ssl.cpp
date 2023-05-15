@@ -276,7 +276,7 @@ SSL_Connection::ssl_read( void ) noexcept
   /* read decrypted data */
   for (;;) {
     if ( this->len == this->recv_size ) {
-      if ( ! this->resize_recv_buf() )
+      if ( ! this->resize_recv_buf( sizeof( this->recv_buf ) ) )
         return false;
     }
     n = SSL_read( this->ssl, &this->recv[ this->len ],

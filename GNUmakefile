@@ -28,7 +28,8 @@ dependd   := $(build_dir)/dep
 
 have_asciidoctor := $(shell if [ -x /usr/bin/asciidoctor ]; then echo true; fi)
 have_pandoc := $(shell if [ -x /usr/bin/pandoc ]; then echo true; fi)
-
+have_rpm  := $(shell if [ -x /bin/rpmquery ] ; then echo true; fi)
+have_dpkg := $(shell if [ -x /bin/dpkg-buildflags ] ; then echo true; fi)
 default_cflags := -ggdb -O3
 # use 'make port_extra=-g' for debug build
 ifeq (-g,$(findstring -g,$(port_extra)))
@@ -43,8 +44,12 @@ ifeq (-mingw,$(findstring -mingw,$(port_extra)))
   mingw := true
 endif
 ifeq (,$(port_extra))
-  build_cflags := $(shell if [ -x /bin/rpm ]; then /bin/rpm --eval '%{optflags}' ; \
-                          elif [ -x /bin/dpkg-buildflags ] ; then /bin/dpkg-buildflags --get CFLAGS ; fi)
+  ifeq (true,$(have_rpm))
+    build_cflags = $(shell /bin/rpm --eval '%{optflags}')
+  endif
+  ifeq (true,$(have_dpkg))
+    build_cflags = $(shell /bin/dpkg-buildflags --get CFLAGS)
+  endif
 endif
 # msys2 using ucrt64
 ifeq (MSYS2,$(lsb_dist))
@@ -101,7 +106,6 @@ cppflags  := -std=c++11
 cpplink   := $(CXX)
 endif
 
-rpath     := -Wl,-rpath,$(pwd)/$(libd)
 math_lib  := -lm
 
 # test submodules exist (they don't exist for dist_rpm, dist_dpkg targets)
@@ -123,7 +127,7 @@ ifeq (,$(lzf_home))
 lzf_home    := $(call test_makefile,$(rdb_home)/lzf)
 endif
 
-lnk_lib     :=
+lnk_lib     := -Wl,--push-state -Wl,-Bstatic
 dlnk_lib    :=
 lnk_dep     :=
 dlnk_dep    :=
@@ -216,6 +220,8 @@ dlnk_lib    += -lraikv
 kv_dep       =
 kv_lnk       = -lraikv
 endif
+
+lnk_lib += -Wl,--pop-state
 
 ifneq (,$(lzf_home))
 lzf_lib     := $(lzf_home)/$(libd)/liblzf.a

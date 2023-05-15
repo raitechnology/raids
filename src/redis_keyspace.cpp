@@ -453,7 +453,7 @@ void
 RedisKeyspaceNotify::update_keyspace_route( uint32_t &val,  uint16_t bit,
                                             int add,  uint32_t fd ) noexcept
 {
-  RouteRef rte( this->sub_route, this->sub_route.zip.route_spc[ 0 ] );
+  RouteRef rte( this->sub_route.zip, 0 );
   uint32_t rcnt = 0, xcnt;
   uint16_t & key_flags = this->sub_route.key_flags;
 
@@ -477,7 +477,7 @@ RedisKeyspaceNotify::update_keyspace_route( uint32_t &val,  uint16_t bit,
       key_flags |= bit;
       val = rte.compress();
     }
-    rte.deref();
+    rte.deref_coderef();
   }
 }
 /* track number of subscribes to keyspace subjects to enable them */
