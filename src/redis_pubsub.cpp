@@ -707,7 +707,7 @@ RedisExec::exec_publish( void ) noexcept
   }
   uint32_t h = kv_crc_c( sub, subject_len, 0 );
   EvPublish pub( sub, subject_len, NULL, 0, msg, msg_len,
-                 this->sub_route, this->sub_id, h, MD_STRING, 'p' );
+                 this->sub_route, this->sub_id, h, MD_STRING );
   this->sub_route.forward_with_cnt( pub, rcount );
   this->msg_route_cnt += rcount;
   if ( rcount <= 1 ) {

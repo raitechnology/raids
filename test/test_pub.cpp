@@ -79,7 +79,7 @@ struct PubTest : public EvShmSvc, public RouteNotify {
       EvPublish p( sub.reply, sub.reply_len, NULL, 0, buf, sz,
                    this->sub_route, *this,
                    kv_crc_c( sub.reply, sub.reply_len, 0 ),
-                   (uint8_t) RAIMSG_TYPE_ID, 'i' );
+                   RAIMSG_TYPE_ID );
       this->sub_route.forward_msg( p );
     }
   }
@@ -106,7 +106,7 @@ struct PubTest : public EvShmSvc, public RouteNotify {
 
       EvPublish p( submsg.reply(), submsg.replylen, NULL, 0, buf,
                    sz, this->fd, this->h,
-                   NULL, 0, (uint8_t) RAIMSG_TYPE_ID, 'i' );
+                   NULL, 0,  RAIMSG_TYPE_ID );
       this->sub_route.forward_msg( p );
     }
   }
@@ -127,8 +127,7 @@ struct PubTest : public EvShmSvc, public RouteNotify {
       size_t sz = tibmsg.update_hdr();
 
       EvPublish p( this->sub, this->len, NULL, 0, buf,
-                   sz, this->sub_route, *this, this->h,
-                   (uint8_t) RAIMSG_TYPE_ID, 'u' );
+                   sz, this->sub_route, *this, this->h, RAIMSG_TYPE_ID );
       this->sub_route.forward_msg( p );
       if ( this->per_sec < 100 )
         break;

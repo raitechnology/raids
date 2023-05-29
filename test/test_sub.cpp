@@ -73,8 +73,8 @@ struct SubTest : public EvShmSvc {
                                this->dict, &this->mem );
     if ( m != NULL ) {
       MDOutput mout;
-      printf( "### %.*s (pub_type=%c)", (int) p.subject_len, p.subject,
-              p.pub_type > ' ' && p.pub_type < 127 ? p.pub_type : '_' );
+      printf( "### %.*s (pub_type=%x)", (int) p.subject_len, p.subject,
+              p.publish_type );
       if ( p.reply_len != 0 )
         printf( " reply %.*s", (int) p.reply_len, (char *) p.reply );
       printf( "\n" );

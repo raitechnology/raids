@@ -110,7 +110,7 @@ struct PingTest : public EvShmSvc, public RouteNotify {
         out_hash = this->ph;
       }
       EvPublish rp( out, out_len, NULL, 0, p.msg, p.msg_len, this->sub_route,
-                    *this, out_hash, p.msg_enc, p.pub_type );
+                    *this, out_hash, p.msg_enc );
       this->sub_route.forward_msg( rp );
     }
     /* the active pinger or one way prints */
@@ -190,7 +190,7 @@ struct PingTest : public EvShmSvc, public RouteNotify {
       /*uint64_t t = kv_get_rdtsc();*/
       EvPublish p( this->pub, this->plen, this->ibx, this->ilen, &t,
                    sizeof( t ), this->sub_route, *this, this->ph,
-                   MD_UINT, 'u' );
+                   MD_UINT );
       if ( ! this->sub_route.forward_msg( p ) ) {
         /* back pressure */
         break;
