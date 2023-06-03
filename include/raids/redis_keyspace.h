@@ -71,7 +71,7 @@ struct RedisKeyspaceNotify : public kv::RouteNotify {
   RedisKeyspaceNotify( kv::RoutePublish &p ) : kv::RouteNotify( p ),
     keyspace( 0 ), keyevent( 0 ), listblkd( 0 ), zsetblkd( 0 ), strmblkd( 0 ),
     monitor( 0 ) {
-    this->notify_type = 'R';
+    /*this->notify_type = 'R';*/
   }
   void update_keyspace_route( uint32_t &val,  uint16_t bit,
                               int add,  uint32_t fd ) noexcept;

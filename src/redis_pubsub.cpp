@@ -65,9 +65,9 @@ RedisExec::test_subscribed( const NotifySub &sub ) noexcept
 {
   uint8_t v     = 0;
   bool    coll  = false;
-  RedisSubStatus r1;
-  r1 = this->sub_tab.find( sub.subj_hash, sub.subject, sub.subject_len, coll );
-  if ( r1 == REDIS_SUB_OK )
+  if ( ! sub.is_notify_queue() &&
+       this->sub_tab.find( sub.subj_hash, sub.subject, sub.subject_len,
+                           coll ) == REDIS_SUB_OK )
     v |= EV_SUBSCRIBED;
   else
     v |= EV_NOT_SUBSCRIBED;
@@ -83,7 +83,8 @@ RedisExec::test_psubscribed( const NotifyPattern &pat ) noexcept
   bool    coll = false;
   const PatternCvt & cvt = pat.cvt;
   RedisPatternRoute * rt;
-  if ( this->pat_tab.find( pat.prefix_hash, pat.pattern, cvt.prefixlen,
+  if ( ! pat.is_notify_queue() &&
+       this->pat_tab.find( pat.prefix_hash, pat.pattern, cvt.prefixlen,
                            rt, coll ) == REDIS_SUB_OK ) {
     RedisWildMatch *m;
     for ( m = rt->list.hd; m != NULL; m = m->next ) {
