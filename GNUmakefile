@@ -660,7 +660,7 @@ test_tcp_ssl_files := test_tcp_ssl
 test_tcp_ssl_cfile := test/test_tcp_ssl.cpp
 test_tcp_ssl_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(test_tcp_ssl_files)))
 test_tcp_ssl_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(test_tcp_ssl_files)))
-test_tcp_ssl_libs  :=
+test_tcp_ssl_libs  := $(ds_lib)
 test_tcp_ssl_lnk   := $(ds_lib) $(lnk_lib)
 
 $(bind)/test_tcp_ssl$(exe): $(test_tcp_ssl_objs) $(test_tcp_ssl_libs) $(lnk_dep)
