@@ -170,7 +170,7 @@ void
 RedisMsgTransform::transform( void ) noexcept
 {
   MDMsg * m = MDMsg::unpack( (void *) this->msg, 0, this->msg_len, 0,
-                             NULL, &this->spc );
+                             NULL, this->spc );
   if ( m == NULL )
     return;
 

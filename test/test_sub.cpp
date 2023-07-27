@@ -70,7 +70,7 @@ struct SubTest : public EvShmSvc {
    * myself if subscribing to the same subject as publishing */
   virtual bool on_msg( EvPublish &p ) noexcept {
     MDMsg * m = MDMsg::unpack( (void *) p.msg, 0, p.msg_len, p.msg_enc,
-                               this->dict, &this->mem );
+                               this->dict, this->mem );
     if ( m != NULL ) {
       MDOutput mout;
       printf( "### %.*s (pub_type=%x)", (int) p.subject_len, p.subject,
