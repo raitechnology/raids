@@ -68,15 +68,15 @@ struct PubTest : public EvShmSvc, public RouteNotify {
 
     if ( sub.reply_len > 0 && sub.subject_len == this->len &&
          ::memcmp( sub.subject, this->sub, this->len ) == 0 ) {
-      char buf[ 1600 ];
-      TibMsgWriter tibmsg( buf, sizeof( buf ) );
+      MDMsgMem mem;
+      TibMsgWriter tibmsg( mem, mem.make( 1024 ), 1024 );
       tibmsg.append_string( "hello", 6, "world", 6 );
       tibmsg.append_uint( "count", 6, this->count );
       tibmsg.append_uint( "time", 5, this->last_time );
       size_t sz = tibmsg.update_hdr();
       printf( "publish reply sz %" PRIu64 "\n", sz );
 
-      EvPublish p( sub.reply, sub.reply_len, NULL, 0, buf, sz,
+      EvPublish p( sub.reply, sub.reply_len, NULL, 0, tibmsg.buf, sz,
                    this->sub_route, *this,
                    kv_crc_c( sub.reply, sub.reply_len, 0 ),
                    RAIMSG_TYPE_ID );
@@ -120,13 +120,13 @@ struct PubTest : public EvShmSvc, public RouteNotify {
     }
     for ( ; this->last_time < now;
           this->last_time += (uint64_t) this->ns_ival ) {
-      char buf[ 1600 ];
-      TibMsgWriter tibmsg( buf, sizeof( buf ) );
+      MDMsgMem mem;
+      TibMsgWriter tibmsg( mem, mem.make( 1024 ), 1024 );
       tibmsg.append_uint( "count", 6, this->count++ );
       tibmsg.append_uint( "time", 5, this->last_time + this->ns_ival );
       size_t sz = tibmsg.update_hdr();
 
-      EvPublish p( this->sub, this->len, NULL, 0, buf,
+      EvPublish p( this->sub, this->len, NULL, 0, tibmsg.buf,
                    sz, this->sub_route, *this, this->h, RAIMSG_TYPE_ID );
       this->sub_route.forward_msg( p );
       if ( this->per_sec < 100 )

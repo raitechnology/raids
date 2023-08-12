@@ -176,9 +176,9 @@ RedisMsgTransform::transform( void ) noexcept
 
   size_t max_len = ( ( this->msg_len | 15 ) + 1 ) * 16;
   char * start = this->spc.str_make( max_len );
-  JsonMsgWriter jmsg( start, max_len );
+  JsonMsgWriter jmsg( this->spc, start, max_len );
   if ( jmsg.convert_msg( *m ) == 0 && jmsg.finish() ) {
-    this->msg     = start;
+    this->msg     = jmsg.buf;
     this->msg_len = jmsg.off;
   }
 }
