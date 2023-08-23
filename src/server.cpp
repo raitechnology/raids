@@ -43,8 +43,8 @@ struct Args : public MainLoopVars {
 };
 
 struct Loop : public MainLoop<Args> {
-  Loop( EvShm &m,  Args &args,  size_t num,  bool (*ini)( void * ) ) :
-    MainLoop<Args>( m, args, num, ini ) {}
+  Loop( EvShm &m,  Args &args,  size_t num ) :
+    MainLoop<Args>( m, args, num ) {}
 
 #ifdef USE_REDIS
   EvRedisListen   * redis_sv;
@@ -80,15 +80,14 @@ struct Loop : public MainLoop<Args> {
    return true;
  }
 #endif
-  bool init( void ) noexcept;
-
-  static bool initialize( void *me ) noexcept {
-    return ((Loop *) me)->init();
+  virtual bool initialize( void ) noexcept;
+  virtual bool finish( void ) noexcept {
+    return true;
   }
 };
 
 bool
-Loop::init( void ) noexcept
+Loop::initialize( void ) noexcept
 {
   int cnt = 0;
 #ifdef USE_REDIS
@@ -160,7 +159,7 @@ main( int argc,  const char *argv[] )
   r.ssl_cfg.ca_cert_file = r.get_arg( argc, argv, 1, "-A", NULL );
   r.ssl_cfg.ca_cert_dir  = r.get_arg( argc, argv, 1, "-L", NULL );
 #endif
-  Runner<Args, Loop> runner( r, shm, Loop::initialize );
+  Runner<Args, Loop> runner( r, shm );
   if ( r.thr_error == 0 )
     return 0;
   return 1;
