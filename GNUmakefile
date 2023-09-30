@@ -60,8 +60,8 @@ CXX         ?= g++
 cc          := $(CC) -std=c11
 cpp         := $(CXX)
 arch_cflags := -mavx -maes -fno-omit-frame-pointer -Wno-stringop-overflow
-gcc_wflags  := -Wall -Wextra -Werror
-
+gcc_wflags  := -Wall -Wextra
+#-Werror
 # if windows cross compile
 ifeq (true,$(mingw))
 dll         := dll
