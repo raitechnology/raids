@@ -14,7 +14,7 @@ BuildRequires:  chrpath
 BuildRequires:  raikv
 BuildRequires:  raimd
 BuildRequires:  rdbparser
-BuildRequires:  h3
+BuildRequires:  h3lib
 BuildRequires:  libdecnumber
 BuildRequires:  linecook
 BuildRequires:  pcre2-devel
@@ -26,7 +26,7 @@ BuildRequires:  openssl-devel
 Requires:       raikv
 Requires:       raimd
 Requires:       rdbparser
-Requires:       h3
+Requires:       h3lib
 Requires:       libdecnumber
 Requires:       linecook
 Requires:       pcre2

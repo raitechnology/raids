@@ -1230,7 +1230,7 @@ ExecRestore::d_zset( const RdbZSetMember &z ) noexcept
     if ( score.len >= 18 ) {
       GeoIndx test_h3;
       if ( string_to_uint( score.s, score.len, test_h3 ) == 0 &&
-           h3IsValid( test_h3 ) )
+           isValidCell( test_h3 ) )
         this->is_geo = true;
     }
   }

@@ -13,6 +13,54 @@
 #include <raimd/md_geo.h>
 #include <h3api.h>
 
+namespace {
+/* h3 library 3.6 -> 4.1 */
+struct GeoCoord {
+  double lon, lat;
+};
+H3Index geoToH3( GeoCoord *geo, int res ) noexcept {
+  H3Index out;
+  LatLng g;
+  g.lat = geo->lat;
+  g.lng = geo->lon;
+  latLngToCell( &g, res, &out );
+  return out;
+}
+void h3ToGeo( H3Index h3,  GeoCoord *geo ) noexcept {
+  LatLng g;
+  cellToLatLng( h3, &g );
+  geo->lat = g.lat;
+  geo->lon = g.lng;
+}
+double edgeLenM( H3Index h3 ) noexcept {
+  double len = 0;
+  edgeLengthM( h3, &len );
+  return len;
+}
+struct GeoBoundary {
+  int numVerts;
+  GeoCoord verts[MAX_CELL_BNDRY_VERTS];
+};
+void h3ToGeoBoundary( H3Index h3, GeoBoundary *gp ) noexcept {
+  CellBoundary gp2;
+  cellToBoundary( h3, &gp2 );
+  gp->numVerts = gp2.numVerts;
+  for ( int i = 0; i < gp2.numVerts; i++ ) {
+    gp->verts[ i ].lat = gp2.verts[ i ].lat;
+    gp->verts[ i ].lon = gp2.verts[ i ].lng;
+  }
+}
+int hexRange( H3Index origin, int k, H3Index *out ) noexcept {
+  gridDiskUnsafe( origin, k, out );
+  return 0;
+}
+int64_t h3Distance( H3Index origin, H3Index h3 ) noexcept {
+  int64_t dist;
+  gridDistance( origin, h3, &dist );
+  return dist;
+}
+}
+
 static const char *
 geo_status_string[] = { "ok", "not found", "full", "updated", "exists" };
 
@@ -372,7 +420,7 @@ main( int, char ** )
           printf( "%.*s: %s\n", (int) destlen, dest, geo_status_string[ gstat ] );
           break;
         }
-        printf( "%" PRIx64 " - %" PRIx64 " = %d\n", h3i, h3j, h3Distance( h3i, h3j ) );
+        printf( "%" PRIx64 " - %" PRIx64 " = %" PRIx64 "\n", h3i, h3j, h3Distance( h3i, h3j ) );
         h3ToGeo( h3i, &coord );
         coord.lat = radsToDegs( coord.lat );
         coord.lon = radsToDegs( coord.lon );
@@ -430,8 +478,8 @@ main( int, char ** )
           goto bad_args;
         for ( i = 0; i < 15; i++ ) {
           j = 15 - i;
-          if ( edgeLengthM( (int) j ) >= radius ) {
-            printf( "edge %.1f\n", edgeLengthM( (int) j ) );
+          if ( edgeLenM( (int) j ) >= radius ) {
+            printf( "edge %.1f\n", edgeLenM( (int) j ) );
             break;
           }
         }

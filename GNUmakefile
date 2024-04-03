@@ -175,17 +175,17 @@ dlnk_lib    += -llinecook
 endif
 
 ifneq (,$(h3_home))
-h3_lib      := $(h3_home)/$(libd)/libh3.a
-h3_dll      := $(h3_home)/$(libd)/libh3.$(dll)
+h3_lib      := $(h3_home)/$(libd)/libh3lib.a
+h3_dll      := $(h3_home)/$(libd)/libh3lib.$(dll)
 lnk_lib     += $(h3_lib)
 lnk_dep     += $(h3_lib)
-dlnk_lib    += -L$(h3_home)/$(libd) -lh3
+dlnk_lib    += -L$(h3_home)/$(libd) -lh3lib
 dlnk_dep    += $(h3_dll)
 rpath4       = ,-rpath,$(pwd)/$(h3_home)/$(libd)
 h3_includes  = -I$(h3_home)/src/h3lib/include
 else
-lnk_lib     += -lh3
-dlnk_lib    += -lh3
+lnk_lib     += -lh3lib
+dlnk_lib    += -lh3lib
 h3_includes  = -I/usr/include/h3lib
 endif
 
@@ -818,7 +818,7 @@ CMakeLists.txt: .copr/Makefile
 	  endif ()
 	  if (NOT TARGET h3)
 	    add_library (h3 STATIC IMPORTED)
-	    set_property (TARGET h3 PROPERTY IMPORTED_LOCATION ../h3/build/lib/libh3.a)
+	    set_property (TARGET h3 PROPERTY IMPORTED_LOCATION ../h3/build/lib/libh3lib.a)
 	  else ()
 	    include_directories ($${CMAKE_BINARY_DIR}/src/h3lib/include)
 	  endif ()

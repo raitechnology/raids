@@ -22,6 +22,49 @@ enum {
   DO_GEORADIUSBYMEMBER = 1<<4
 };
 
+namespace {
+/* h3 library 3.6 -> 4.1 */
+struct GeoCoord {
+  double lon, lat;
+};
+H3Index geoToH3( GeoCoord *geo, int res ) noexcept {
+  H3Index out;
+  LatLng g;
+  g.lat = geo->lat;
+  g.lng = geo->lon;
+  latLngToCell( &g, res, &out );
+  return out;
+}
+void h3ToGeo( H3Index h3,  GeoCoord *geo ) noexcept {
+  LatLng g;
+  cellToLatLng( h3, &g );
+  geo->lat = g.lat;
+  geo->lon = g.lng;
+}
+double edgeLenM( H3Index h3 ) noexcept {
+  double len = 0;
+  edgeLengthM( h3, &len );
+  return len;
+}
+struct GeoBoundary {
+  int numVerts;
+  GeoCoord verts[MAX_CELL_BNDRY_VERTS];
+};
+void h3ToGeoBoundary( H3Index h3, GeoBoundary *gp ) noexcept {
+  CellBoundary gp2;
+  cellToBoundary( h3, &gp2 );
+  gp->numVerts = gp2.numVerts;
+  for ( int i = 0; i < gp2.numVerts; i++ ) {
+    gp->verts[ i ].lat = gp2.verts[ i ].lat;
+    gp->verts[ i ].lon = gp2.verts[ i ].lng;
+  }
+}
+int hexRange( H3Index origin, int k, H3Index *out ) noexcept {
+  gridDiskUnsafe( origin, k, out );
+  return 0;
+}
+}
+
 ExecStatus
 RedisExec::exec_geoadd( EvKeyCtx &ctx ) noexcept
 {
@@ -560,7 +603,7 @@ RedisExec::do_gradius( EvKeyCtx &ctx,  int flags ) noexcept
   }
   for ( i = 0; i < 15; i++ ) { /* find hexagon where radius fits inside */
     cell = 15 - i;
-    if ( edgeLengthM( (int) cell ) >= radius )
+    if ( edgeLenM( (int) cell ) >= radius )
       break;
   }
   h3i = geoToH3( &coordi, (int) cell ); /* get parent cell */
