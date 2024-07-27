@@ -23,6 +23,7 @@ BuildRequires:  liblzf-devel
 BuildRequires:  systemd
 BuildRequires:  c-ares-devel
 BuildRequires:  openssl-devel
+BuildRequires:  zlib-devel
 Requires:       raikv
 Requires:       raimd
 Requires:       rdbparser
@@ -33,6 +34,7 @@ Requires:       pcre2
 Requires:       liblzf
 Requires:       c-ares
 Requires:       openssl
+Requires:       zlib
 Requires(post): /sbin/ldconfig
 Requires(postun): /sbin/ldconfig
 
