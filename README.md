@@ -1,6 +1,6 @@
 # Rai Distribution Services
 
-[![Copr build status](https://copr.fedorainfracloud.org/coprs/injinj/gold/package/raids/status_image/last_build.png)](https://copr.fedorainfracloud.org/coprs/injinj/gold/package/raids/)
+[![Copr build status](https://copr.fedorainfracloud.org/coprs/injinj/rel/package/raids/status_image/last_build.png)](https://copr.fedorainfracloud.org/coprs/injinj/rel/package/raids/)
 
 1. [Description of Rai DS](#description-of-rai-ds)
 2. [Current status of Rai DS](#current-status-of-rai-ds)
@@ -273,7 +273,7 @@ installing via rpm or dpkg.
 ## Installing Rai DS from COPR
 
 Current development RPM builds are installable from
-[copr](https://copr.fedorainfracloud.org/coprs/injinj/gold).  These builds are
+[copr](https://copr.fedorainfracloud.org/coprs/injinj/rel).  These builds are
 clonable, so it is easy to get a recent build by cloning the packages and
 rebuilding.
 
@@ -282,7 +282,7 @@ system package manager `dnf` or `yum`, simplifying installing to a single
 install command.
 
 ```console
-$ sudo dnf copr enable injinj/gold
+$ sudo dnf copr enable injinj/rel
 $ sudo dnf install raids
 ```
 
