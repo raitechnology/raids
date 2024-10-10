@@ -1316,6 +1316,15 @@ RedisExec::drain_continuations( EvSocket *svc ) noexcept
   }
 }
 
+void
+RedisExec::set_prefix( const char *pref,  size_t preflen ) noexcept
+{
+  static const size_t LEN = sizeof( this->prefix );
+  if ( preflen > LEN - 1 ) preflen = LEN - 1;
+  ::memcpy( this->prefix, pref, preflen ); this->prefix[ preflen ] = '\0';
+  this->prefix_len = preflen;
+}
+
 bool
 RedisExec::set_session( const char *sess,  size_t sess_len ) noexcept
 {

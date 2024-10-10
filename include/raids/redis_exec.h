@@ -404,6 +404,7 @@ struct RedisExec {
   size_t do_get_subscriptions( kv::SubRouteDB &subs ) noexcept;
   size_t do_get_patterns( kv::SubRouteDB &pats ) noexcept;
   bool do_hash_to_sub( uint32_t h,  char *key,  size_t &keylen ) noexcept;
+  void set_prefix( const char *pref,  size_t preflen ) noexcept;
   bool set_session( const char *sess,  size_t sess_len ) noexcept;
   /* SCRIPT */
   ExecStatus exec_eval( kv::EvKeyCtx &ctx ) noexcept;

@@ -8,48 +8,110 @@ using namespace rai;
 using namespace ds;
 using namespace kv;
 
+extern "C" {
+
+EvTcpListen *
+redis_create_listener( rai::kv::EvPoll *p,  rai::kv::RoutePublish *sr,
+                      rai::kv::EvConnectionNotify *n ) noexcept
+{
+  EvRedisListen *l = new ( aligned_malloc( sizeof( EvRedisListen ) ) )
+    EvRedisListen( *p, *sr );
+  l->notify = n;
+  return l;
+}
+
+}
+
 EvRedisListen::EvRedisListen( EvPoll &p ) noexcept
   : EvTcpListen( p, "redis_tcp_listen", "redis_sock" ),
-    sub_route( p.sub_route ) {}
+    sub_route( p.sub_route ), host( 0 ), prefix_len( 0 ), svc( 0 ) {}
 
 EvRedisUnixListen::EvRedisUnixListen( EvPoll &p ) noexcept
   : EvUnixListen( p, "redis_unix_listen", "redis_sock" ),
-    sub_route( p.sub_route ) {}
+    sub_route( p.sub_route ), host( 0 ), prefix_len( 0 ), svc( 0 ) {}
 
 EvRedisListen::EvRedisListen( EvPoll &p,  RoutePublish &sr ) noexcept
   : EvTcpListen( p, "redis_tcp_listen", "redis_sock" ),
-    sub_route( sr ) {}
+    sub_route( sr ), host( 0 ), prefix_len( 0 ), svc( 0 ) {}
 
 EvRedisUnixListen::EvRedisUnixListen( EvPoll &p,  RoutePublish &sr ) noexcept
   : EvUnixListen( p, "redis_unix_listen", "redis_sock" ),
-    sub_route( sr ) {}
+    sub_route( sr ), host( 0 ), prefix_len( 0 ), svc( 0 ) {}
 
 EvSocket *
 EvRedisListen::accept( void ) noexcept
 {
   EvRedisService *c =
-    this->poll.get_free_list<EvRedisService, RoutePublish &, EvListen &>(
-      this->accept_sock_type, this->sub_route, *this );
+    this->poll.get_free_list<EvRedisService, RoutePublish &, EvListen &,
+                             EvConnectionNotify *>(
+      this->accept_sock_type, this->sub_route, *this, this->notify );
   if ( c == NULL )
     return NULL;
   if ( ! this->accept2( *c, "redis" ) )
     return NULL;
   c->setup_ids( ++this->timer_id );
+  c->set_prefix( this->prefix, this->prefix_len );
   return c;
+}
+
+void
+EvRedisListen::set_service( void *host,  uint16_t svc ) noexcept
+{
+  this->host = host;
+  this->svc  = svc;
+}
+
+bool
+EvRedisListen::get_service( void *host,  uint16_t &svc ) const noexcept
+{
+  svc = this->svc;
+  if ( host != NULL )
+    *(void **) host = (void *) &this->host;
+  return this->svc != 0;
+}
+
+void
+EvRedisListen::set_prefix( const char *pref,  size_t preflen ) noexcept
+{
+  this->prefix_len = cpyb<MAX_PREFIX_LEN>( this->prefix, pref, preflen );
 }
 
 EvSocket *
 EvRedisUnixListen::accept( void ) noexcept
 {
   EvRedisService *c =
-    this->poll.get_free_list<EvRedisService, RoutePublish &, EvListen &>(
-      this->accept_sock_type, this->sub_route, *this );
+    this->poll.get_free_list<EvRedisService, RoutePublish &, EvListen &,
+                             EvConnectionNotify *>(
+      this->accept_sock_type, this->sub_route, *this, this->notify );
   if ( c == NULL )
     return NULL;
   if ( ! this->accept2( *c, "redis" ) )
     return NULL;
   c->setup_ids( ++this->timer_id );
+  c->set_prefix( this->prefix, this->prefix_len );
   return c;
+}
+
+void
+EvRedisUnixListen::set_service( void *host,  uint16_t svc ) noexcept
+{
+  this->host = host;
+  this->svc  = svc;
+}
+
+bool
+EvRedisUnixListen::get_service( void *host,  uint16_t &svc ) const noexcept
+{
+  svc = this->svc;
+  if ( host != NULL )
+    *(void **) host = (void *) &this->host;
+  return this->svc != 0;
+}
+
+void
+EvRedisUnixListen::set_prefix( const char *pref,  size_t preflen ) noexcept
+{
+  this->prefix_len = cpyb<MAX_PREFIX_LEN>( this->prefix, pref, preflen );
 }
 
 void
@@ -163,6 +225,18 @@ EvRedisService::is_psubscribed( const NotifyPattern &pat ) noexcept
   return this->RedisExec::test_psubscribed( pat );
 }
 
+void
+EvRedisService::set_prefix( const char *pref,  size_t preflen ) noexcept
+{
+  return this->RedisExec::set_prefix( pref, preflen );
+}
+
+void
+EvRedisService::set_service( void *host,  uint16_t svc ) noexcept
+{
+  this->listen.set_service( host, svc );
+}
+
 bool
 EvRedisService::get_service( void *host,  uint16_t &svc ) const noexcept
 {
@@ -180,7 +254,7 @@ size_t
 EvRedisService::get_userid( char userid[ MAX_USERID_LEN ] ) const noexcept
 {
   ::memcpy( userid, "nobody", 7 );
-  return 7;
+  return 6;
 }
 
 size_t

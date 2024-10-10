@@ -15,12 +15,13 @@ struct SSL_Config {
              * ca_cert_file,
              * ca_cert_dir;
   bool         is_client,
-               verify_peer;
+               verify_peer,
+               no_verify;
   SSL_Config( const char *c = NULL,  const char *k = NULL,
               const char *cf = NULL,  const char *cd = NULL,
               bool is_cl = false,  bool vpeer = false )
     : cert_file( c ), key_file( k ), ca_cert_file( cf ), ca_cert_dir( cd ),
-      is_client( is_cl ), verify_peer( vpeer ) {}
+      is_client( is_cl ), verify_peer( vpeer ), no_verify( false ) {}
 };
 
 struct SSL_Context {

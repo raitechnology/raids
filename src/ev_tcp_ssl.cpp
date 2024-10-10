@@ -66,17 +66,20 @@ SSL_Context::init_config( const SSL_Config &cfg ) noexcept
              errbuf );
     return false;
   }
-  int opts = SSL_VERIFY_PEER;
-  if ( cfg.verify_peer || cfg.is_client )
-    opts |= SSL_VERIFY_FAIL_IF_NO_PEER_CERT;
-  SSL_CTX_set_verify( this->ctx, opts, NULL );
-  if ( ( cfg.ca_cert_file != NULL || cfg.ca_cert_dir != NULL ) &&
-       SSL_CTX_load_verify_locations( this->ctx, cfg.ca_cert_file,
-                                      cfg.ca_cert_dir ) <= 0 ) {
-    ERR_error_string_n( ERR_get_error(), errbuf, sizeof( errbuf ) );
-    fprintf( stderr, "Failed to configure CA certificate(s) file/directory: %s",
-             errbuf );
-    return false;
+  if ( ! cfg.no_verify ) {
+    int opts = SSL_VERIFY_PEER;
+    if ( cfg.verify_peer || cfg.is_client )
+      opts |= SSL_VERIFY_FAIL_IF_NO_PEER_CERT;
+    SSL_CTX_set_verify( this->ctx, opts, NULL );
+
+    if ( ( cfg.ca_cert_file != NULL || cfg.ca_cert_dir != NULL ) &&
+         SSL_CTX_load_verify_locations( this->ctx, cfg.ca_cert_file,
+                                        cfg.ca_cert_dir ) <= 0 ) {
+      ERR_error_string_n( ERR_get_error(), errbuf, sizeof( errbuf ) );
+      fprintf( stderr, "Failed to configure CA certificate(s) file/directory: %s",
+               errbuf );
+      return false;
+    }
   }
   SSL_CTX_set_options( this->ctx, SSL_OP_ALL|SSL_OP_NO_SSLv2|SSL_OP_NO_SSLv3 );
   return true;

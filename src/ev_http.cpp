@@ -125,6 +125,7 @@ EvHttpConnection::process_http( void ) noexcept
     hreq.data = &start[ used ];
     if ( &start[ used + hreq.content_length ] > end )
       return false;
+    /*printf( "%.*s\n", (int) used, start );*/
     this->off += (uint32_t) ( used + hreq.content_length );
     this->msgs_recv++;
 
