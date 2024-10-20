@@ -51,8 +51,8 @@ struct SSL_Connection : public kv::EvConnection {
   bool     init_finished,
            is_connect;
 
-  SSL_Connection( kv::EvPoll &p,  uint8_t st )
-    : kv::EvConnection( p, st ), ssl( 0 ), rbio( 0 ), wbio( 0 ),
+  SSL_Connection( kv::EvPoll &p,  uint8_t st,  kv::EvConnectionNotify *n = NULL )
+    : kv::EvConnection( p, st, n ), ssl( 0 ), rbio( 0 ), wbio( 0 ),
       recv_ssl_off( 0 ), send_ssl_off( 0 ), save( 0 ), save_len( 0 ),
       init_finished( false ), is_connect( false ) {}
 

@@ -334,11 +334,11 @@ test_stream_includes     := $(lc_includes)
 term_includes            := $(lc_includes)
 redis_rdb_includes       := $(rdb_includes) $(h3_includes)
 
-libraids_files := ev_service ev_http http_auth ev_client shm_client redis_msg \
-  redis_cmd_db redis_exec redis_keyspace redis_geo redis_hash \
-  redis_hyperloglog redis_key redis_list redis_pubsub redis_script redis_set \
-  redis_sortedset redis_stream redis_string redis_transaction redis_rdb \
-  redis_server redis_api ev_memcached memcached_exec term ev_tcp_ssl
+libraids_files := ev_service ev_http http_auth ev_http_client ev_client \
+  shm_client redis_msg redis_cmd_db redis_exec redis_keyspace redis_geo \
+  redis_hash redis_hyperloglog redis_key redis_list redis_pubsub redis_script \
+  redis_set redis_sortedset redis_stream redis_string redis_transaction \
+  redis_rdb redis_server redis_api ev_memcached memcached_exec term ev_tcp_ssl
 libraids_cfile := $(addprefix src/, $(addsuffix .cpp, $(libraids_files)))
 libraids_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(libraids_files)))
 libraids_dbjs  := $(addprefix $(objd)/, $(addsuffix .fpic.o, $(libraids_files)))
