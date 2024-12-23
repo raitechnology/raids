@@ -38,6 +38,15 @@ init_ssl_library( void ) noexcept
   }
 }
 
+void
+SSL_Context::release_ctx( void ) noexcept
+{
+  if ( this->ctx != NULL ) {
+    SSL_CTX_free( this->ctx );
+    this->ctx = NULL;
+  }
+}
+
 bool
 SSL_Context::init_config( const SSL_Config &cfg ) noexcept
 {
@@ -173,17 +182,18 @@ SSL_Connection::Status
 SSL_Connection::get_ssl_status( int n ) noexcept
 {
   int e = SSL_get_error( this->ssl, n );
+  const char * s = "Other";
   switch ( e ) {
-    case SSL_ERROR_NONE:       return CONN_OK;
-    case SSL_ERROR_WANT_WRITE: return CONN_WRITE;
-    case SSL_ERROR_WANT_READ:  return CONN_READ;
-    case SSL_ERROR_ZERO_RETURN:
-    case SSL_ERROR_SYSCALL:
-    default:
-      fprintf( stderr, "SSL error num: %d\n", e );
-      ERR_print_errors_fp( stderr );
-      return CONN_ERROR;
+    case SSL_ERROR_NONE:        return CONN_OK;
+    case SSL_ERROR_WANT_WRITE:  return CONN_WRITE;
+    case SSL_ERROR_WANT_READ:   return CONN_READ;
+    case SSL_ERROR_ZERO_RETURN: return CONN_CLOSED;
+    case SSL_ERROR_SYSCALL:     s = "Syscall error"; break;
+    default: break;
   }
+  fprintf( stderr, "SSL error: %s/%d\n", s, e );
+  ERR_print_errors_fp( stderr );
+  return CONN_ERROR;
 }
 
 bool
@@ -205,7 +215,8 @@ SSL_Connection::drain_wbio( void ) noexcept
 bool
 SSL_Connection::ssl_init_io( void ) noexcept
 {
-  this->init_finished = ( SSL_is_init_finished( this->ssl ) != 0 );
+  if ( ! this->init_finished )
+    this->init_finished = ( SSL_is_init_finished( this->ssl ) != 0 );
   if ( ! this->init_finished ) {
     int n;
     if ( ! this->is_connect )
@@ -214,6 +225,7 @@ SSL_Connection::ssl_init_io( void ) noexcept
       n = SSL_connect( this->ssl );
     switch ( this->get_ssl_status( n ) ) {
       case CONN_OK:    break;
+      case CONN_CLOSED:
       case CONN_ERROR: return false;
       default:
         if ( ! this->drain_wbio() )
@@ -223,17 +235,27 @@ SSL_Connection::ssl_init_io( void ) noexcept
     this->init_finished = ( SSL_is_init_finished( this->ssl ) != 0 );
   }
   if ( this->init_finished ) {
-    char * buf = this->save;
-    size_t len = this->save_len;
-    this->save     = NULL;
-    this->save_len = 0;
-    if ( ! this->write_buf( buf, len ) )
+    if ( this->save_len > 0 ) {
+      char * buf = this->save;
+      size_t len = this->save_len;
+      this->save     = NULL;
+      this->save_len = 0;
+      if ( ! this->write_buf( buf, len ) )
+        return false;
+      ::free( buf );
+    }
+    this->ssl_init_finished();
+    if ( ! this->write_buffers() )
       return false;
-    ::free( buf );
   }
   if ( this->pending() != 0 )
     this->idle_push_write();
   return true;
+}
+
+void
+SSL_Connection::ssl_init_finished( void ) noexcept
+{
 }
 
 bool
@@ -293,6 +315,7 @@ SSL_Connection::ssl_read( void ) noexcept
 
   switch ( this->get_ssl_status( n ) ) {
     case CONN_OK:    break;
+    case CONN_CLOSED:
     case CONN_ERROR: return false;
     default:
       if ( ! this->drain_wbio() )
@@ -362,6 +385,59 @@ SSL_Connection::write_buf( const void *buf,  size_t len ) noexcept
   }
 }
 
+bool
+SSL_Connection::write_buffers( void ) noexcept
+{
+  if ( this->sz > 0 )
+    this->flush();
+
+  size_t enc_off = this->send_ssl_off - this->bytes_sent,
+         i, j, k = this->idx, z;
+
+  for ( i = 0; i < k; i++ ) {
+    iovec & io = this->iov[ i ];
+    if ( io.iov_len > enc_off )
+      break;
+    enc_off -= io.iov_len;
+  }
+  if ( i < k ) {
+    this->idx = i;
+    iovec * tmp = (struct iovec *)
+                  this->alloc_temp( sizeof( iovec ) * ( k - i ) );
+    if ( enc_off > 0 ) {
+      iovec & io = this->iov[ i ];
+      char  * base = (char *) io.iov_base;
+      size_t  enc_len = io.iov_len - enc_off;
+
+      this->idx = ++i;
+      this->wr_pending -= enc_len;
+      io.iov_len = enc_off;
+
+      tmp[ 0 ].iov_base = &base[ enc_off ];
+      tmp[ 0 ].iov_len  = enc_len;
+      z = 1;
+    }
+    else {
+      tmp = (struct iovec *)
+            this->alloc_temp( sizeof( struct iovec ) * ( k - i ) );
+      z = 0;
+    }
+
+    for ( j = i; j < k; j++ ) {
+      iovec & io = this->iov[ j ];
+      tmp[ z++ ] = io;
+      this->wr_pending -= io.iov_len;
+    }
+
+    for ( j = 0; j < z; j++ ) {
+      iovec & io = tmp[ j ];
+      if ( ! this->write_buf( io.iov_base, io.iov_len ) )
+        return false;
+    }
+  }
+  return true;
+}
+
 void
 SSL_Connection::write( void ) noexcept
 {
@@ -370,44 +446,8 @@ SSL_Connection::write( void ) noexcept
       this->save_write();
       return;
     }
-    if ( this->init_finished ) {
-      if ( this->sz > 0 )
-        this->flush();
-
-      size_t enc_off = this->send_ssl_off - this->bytes_sent,
-             i, j, k = this->idx;
-
-      for ( i = 0; i < k; i++ ) {
-        iovec & io = this->iov[ i ];
-        if ( io.iov_len > enc_off )
-          break;
-        enc_off -= io.iov_len;
-      }
-      if ( i < k ) {
-        this->idx = i;
-        if ( enc_off > 0 ) {
-          iovec & io = this->iov[ i ];
-          char  * base = (char *) io.iov_base;
-          size_t  enc_len = io.iov_len - enc_off;
-
-          this->idx = ++i;
-          this->wr_pending -= enc_len;
-          io.iov_len = enc_off;
-
-          if ( ! this->write_buf( &base[ enc_off ], enc_len ) )
-            goto fail;
-        }
-
-        for ( j = i; j < k; j++ ) {
-          iovec & io = this->iov[ j ];
-
-          this->wr_pending -= io.iov_len;
-          if ( ! this->write_buf( io.iov_base, io.iov_len ) )
-            goto fail;
-        }
-      }
-      if ( ! this->drain_wbio() ) {
-      fail:;
+    else {
+      if ( ! this->write_buffers() || ! this->drain_wbio() ) {
         this->push( EV_CLOSE );
         return;
       }

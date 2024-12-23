@@ -8,26 +8,16 @@
 using namespace rai;
 using namespace kv;
 using namespace ds;
+using namespace md;
 
-int debug_ws = 0;
-
-#if 0
-extern "C" {
-EvConnection *
-fmp_create_connection( EvPoll *p,  RoutePublish *sr,  EvConnectionNotify *n )
-{
-  return new ( aligned_malloc( sizeof( HttpClient ) ) )
-    HttpClient( *p, *sr, n );
-  return NULL;
-}
-}
-#endif
+uint32_t rai::ds::ws_debug = 0;
 
 HttpClient::HttpClient( kv::EvPoll &p,  kv::RoutePublish &sr,
                         kv::EvConnectionNotify *n ) noexcept
     : ds::SSL_Connection( p, p.register_type( "httpclient" ), n ),
-      RouteNotify( sr ), sub_route( sr ), cb( 0 ),
-      ws_mask( 0 ), ws_bytes_sent( 0 ), is_websock( false )
+      RouteNotify( sr ), sub_route( sr ), cb( 0 ), host( 0 ), host_len( 0 ),
+      ws_mask( 0 ), ws_bytes_sent( 0 ), ht_state( HT_INIT ),
+      ht_target( HT_DATA ), args_count( 0 )
 {
   this->rand.init();
 }
@@ -35,9 +25,226 @@ HttpClient::HttpClient( kv::EvPoll &p,  kv::RoutePublish &sr,
 HttpClient::HttpClient( kv::EvPoll &p ) noexcept
     : ds::SSL_Connection( p, p.register_type( "httpclient" ) ),
       RouteNotify( p.sub_route ), sub_route( p.sub_route ), cb( 0 ),
-      ws_mask( 0 ), ws_bytes_sent( 0 ), is_websock( false )
+      host( 0 ), host_len( 0 ), ws_mask( 0 ), ws_bytes_sent( 0 ),
+      ht_state( HT_INIT ), ht_target( HT_DATA ), args_count( 0 )
 {
   this->rand.init();
+}
+/* restart the protocol parser */
+void
+HttpClient::initialize_state( void ) noexcept
+{
+  this->cb            = NULL;
+  this->ws_mask       = 0;
+  this->ws_bytes_sent = 0;
+  this->ht_state      = HT_INIT;
+  this->ht_target     = HT_DATA;
+}
+
+int
+HttpClient::connect( EvConnectParam &param ) noexcept
+{
+  HttpClientParameters parm2;
+  SSL_Context  ctx;
+  const char * crt_file = NULL,
+             * key_file = NULL,
+             * ca_file  = NULL,
+             * ca_dir   = NULL;
+  bool         ssl      = false;
+  parm2.ai     = param.ai;
+  parm2.k      = param.k;
+  parm2.opts   = param.opts;
+  parm2.rte_id = param.rte_id;
+
+  for ( int i = 0; i + 1 < param.argc; i += 2 ) {
+    if ( ::strcmp( param.argv[ i ], "daemon" ) == 0 ||
+         ::strcmp( param.argv[ i ], "connect" ) == 0 ||
+         ::strcmp( param.argv[ i ], "host" ) == 0 ||
+         ::strcmp( param.argv[ i ], "url" ) == 0 )
+      parm2.addr = param.argv[ i + 1 ];
+    else if ( ::strcmp( param.argv[ i ], "port" ) == 0 )
+      parm2.port = atoi( param.argv[ i + 1 ] );
+    else if ( ::strcmp( param.argv[ i ], "crt_file" ) == 0 )
+      crt_file = param.argv[ i + 1 ];
+    else if ( ::strcmp( param.argv[ i ], "key_file" ) == 0 )
+      key_file = param.argv[ i + 1 ];
+    else if ( ::strcmp( param.argv[ i ], "ca_file" ) == 0 )
+      ca_file = param.argv[ i + 1 ];
+    else if ( ::strcmp( param.argv[ i ], "ca_dir" ) == 0 )
+      ca_dir = param.argv[ i + 1 ];
+    else if ( ::strcmp( param.argv[ i ], "ssl" ) == 0 ) {
+      const char * str = param.argv[ i + 1 ];
+      ssl = parse_bool( str, strlen( str ) );
+    }
+    else if ( ::strcmp( param.argv[ i ], "websock" ) == 0 ||
+              ::strcmp( param.argv[ i ], "websocket" ) == 0 ) {
+      const char * str = param.argv[ i + 1 ];
+      parm2.is_websock = parse_bool( str, strlen( str ) );
+    }
+  }
+  if ( parm2.addr != NULL ) {
+    if ( ::strncmp( parm2.addr, "wss:", 4 ) == 0 ||
+         ::strncmp( parm2.addr, "https:", 6 ) == 0 )
+      ssl = true;
+  }
+  static const bool is_client = true;
+  if ( crt_file != NULL || key_file != NULL || ca_file  != NULL ||
+       ca_dir   != NULL ) {
+    SSL_Config cfg( crt_file, key_file, ca_file, ca_dir, is_client, false );
+    if ( ! ctx.init_config( cfg ) )
+      return -1;
+    parm2.ctx = &ctx;
+  }
+  else if ( ssl ) {
+    SSL_Config cfg( NULL, NULL, NULL, NULL, is_client, false );
+    cfg.no_verify = true;
+    if ( ! ctx.init_config( cfg ) )
+      return -1;
+    parm2.ctx = &ctx;
+  }
+  if ( this->ht_connect( parm2, param.n, NULL ) )
+    return 0;
+  return -1;
+}
+
+static bool
+is_digits_str( const char *s ) noexcept
+{
+  while ( *s >= '0' && *s <= '9' )
+    s++;
+  return *s == '\0';
+}
+
+bool
+HttpClient::ht_connect( HttpClientParameters &p,
+                        EvConnectionNotify *n,
+                        HttpClientCB *c ) noexcept
+{
+  char * conn = NULL, buf[ 256 ];
+  size_t addr_len = 0;
+  int port = p.port;
+  if ( this->fd != -1 )
+    return false;
+  this->initialize_state();
+  if ( p.addr != NULL ) {
+    addr_len = ::strlen( p.addr );
+    size_t len = addr_len >= sizeof( buf ) ? sizeof( buf ) - 1 : addr_len;
+    ::memcpy( buf, p.addr, len );
+    buf[ len ] = '\0';
+    conn = buf;
+  }
+  if ( conn != NULL ) {
+    char * pt;
+    if ( (pt = ::strrchr( conn, ':' )) != NULL && is_digits_str( &pt[ 1 ] ) ) {
+      port = atoi( pt + 1 );
+      *pt = '\0';
+    }
+    else if ( is_digits_str( conn ) ) {
+      port = atoi( conn );
+      conn = NULL;
+    }
+    if ( conn != NULL ) { /* strip tcp: prefix */
+      if ( ::strncmp( conn, "tcp:", 4 ) == 0 )
+        conn += 4;
+      else if ( ::strncmp( conn, "http:", 5 ) == 0 ) {
+        conn += 5;
+        this->ht_target = HT_DATA;
+      }
+      else if ( ::strncmp( conn, "https:", 6 ) == 0 ) {
+        conn += 6;
+        this->ht_target = HT_DATA;
+      }
+      else if ( ::strncmp( conn, "ws:", 3 ) == 0 ) {
+        conn += 3;
+        this->ht_target = HT_WEBSOCK;
+      }
+      else if ( ::strncmp( conn, "wss:", 4 ) == 0 ) {
+        conn += 4;
+        this->ht_target = HT_WEBSOCK;
+      }
+      else if ( ::strcmp( conn, "tcp" ) == 0 )
+        conn += 3;
+      if ( conn[ 0 ] == '/' ) {
+        conn++;
+        if ( conn[ 0 ] == '/' )
+          conn++;
+      }
+      if ( conn[ 0 ] == '\0' )
+        conn = NULL;
+    }
+  }
+  if ( p.is_websock )
+    this->ht_target = HT_WEBSOCK;
+  if ( p.ai == NULL ) {
+    if ( port == 0 )
+      port = ( p.ctx == NULL ? 80 : 443 );
+    if ( EvTcpConnection::connect( *this, conn, port, p.opts ) != 0 ) {
+      this->ht_state = HT_CLOSE;
+      return false;
+    }
+  }
+  else {
+    EvConnectParam param( p.ai, p.opts, p.k, p.rte_id );
+    if ( EvTcpConnection::connect3( *this, param ) != 0 ) {
+      this->ht_state = HT_CLOSE;
+      return false;
+    }
+  }
+  size_t len;
+  if ( conn != NULL )
+    len = ::strlen( conn );
+  else
+    len = this->peer_address.len();
+  this->host = (char *) ::malloc( len + 1 );
+  ::memcpy( this->host, conn ? conn : 
+            this->peer_address.buf, len );
+  this->host[ len ] = '\0';
+  this->host_len = len;
+
+  if ( p.ctx != NULL ) {
+    if ( ! this->init_ssl_connect( *p.ctx ) ) {
+      this->ht_state = HT_CLOSE;
+      return false;
+    }
+    this->ht_state = HT_SSL;
+  }
+  else {
+    this->ht_state = HT_DATA;
+    if ( this->ht_target == HT_WEBSOCK )
+      this->send_websocket_upgrade();
+  }
+  if ( n != NULL )
+    this->notify = n;
+  if ( c != NULL )
+    this->cb = c;
+  if ( this->ht_state == this->ht_target && this->notify != NULL )
+    this->notify->on_connect( *this );
+  return true;
+}
+
+
+void
+HttpClient::ssl_init_finished( void ) noexcept
+{
+  this->ht_state = HT_DATA;
+  if ( this->ht_target == HT_WEBSOCK )
+    this->send_websocket_upgrade();
+  if ( this->ht_state == this->ht_target && this->notify != NULL )
+    this->notify->on_connect( *this );
+}
+
+void
+HttpClient::send_websocket_upgrade( void ) noexcept
+{
+  this->send_request2( a(
+    "GET / HTTP/1.1\r\n"
+    "Host: " ), a( this->host, this->host_len ), a( "\r\n"
+    "Upgrade: websocket\r\n"
+    "Connection: Upgrade\r\n"
+    "Sec-WebSocket-Key: " ), a( ws_key, sizeof( ws_key ) - 1 ), a( "\r\n"
+    "Sec-WebSocket-Version: 13\r\n"
+    /* Sec-WebSocket-Protocol: proto\r\n */
+    "\r\n" ), NULL );
 }
 
 void
@@ -48,15 +255,14 @@ HttpClient::process( void ) noexcept
   printf( "%.*s", (int) buflen, &this->recv[ this->off ] );
   this->msgs_recv++;
 #endif
-  if ( this->is_websock ) {
+  if ( this->ht_state == HT_WEBSOCK ) {
     if ( this->process_websock() )
       goto is_closed;
-    goto break_loop;
   }   
-  else if ( this->process_http() )
-    goto is_closed;
-        
-break_loop:;
+  else {
+    if ( this->process_http() )
+      goto is_closed;
+  }
   this->pop( EV_PROCESS );
   if ( this->pending() > 0 )
     this->push_write();
@@ -113,8 +319,8 @@ HttpClient::process_http( void ) noexcept
       }
       p = &eol[ 1 ];
     }
-    if ( debug_ws )
-      printf( "<- [%.*s|\n", (int) used, start );
+    if ( ws_debug )
+      printf( "<- [%.*s]\n", (int) used, start );
     hrsp.hdr     = start;
     hrsp.hdr_len = used;
     hrsp.data    = &start[ used ];
@@ -123,8 +329,10 @@ HttpClient::process_http( void ) noexcept
     this->off += (uint32_t) ( used + hrsp.content_length );
     this->msgs_recv++;
     if ( ( hrsp.opts & HttpRsp::UPGRADE ) != 0 ) {
-      this->is_websock = true;
+      this->ht_state = HT_WEBSOCK;
       this->ws_bytes_sent = this->bytes_sent;
+      if ( this->ht_state == this->ht_target && this->notify != NULL )
+        this->notify->on_connect( *this );
       if ( this->cb != NULL )
         this->cb->on_switch( hrsp );
       return false;
@@ -155,7 +363,7 @@ HttpClient::process_websock( void ) noexcept
     if ( hdrsize <= 1 ) {
       if ( hdrsize == 0 )
         return false;
-      if ( debug_ws )
+      if ( ws_debug )
         printf( "ws_close\n" );
       return true;
     }
@@ -166,7 +374,7 @@ HttpClient::process_websock( void ) noexcept
       ws.frame.apply_mask( p );
     ws.data = p;
     ws.len  = ws.frame.payload_len;
-    if ( debug_ws )
+    if ( ws_debug )
       printf( "<- [%.*s]\n", (int) ws.len, p );
     size_t frame_size = ws.len + hdrsize;
 
@@ -367,7 +575,7 @@ HttpRsp::parse_header( const char *line,  size_t len ) noexcept
 void
 HttpClient::process_shutdown( void ) noexcept
 {
-  if ( debug_ws )
+  if ( ws_debug )
     printf( "shutdown %.*s\n", (int) this->get_peer_address_strlen(),
             this->peer_address.buf );
   this->pushpop( EV_CLOSE, EV_SHUTDOWN );
@@ -376,21 +584,29 @@ HttpClient::process_shutdown( void ) noexcept
 void
 HttpClient::release( void ) noexcept
 {
-  if ( debug_ws )
+  if ( ws_debug )
     printf( "release %.*s\n", (int) this->get_peer_address_strlen(),
             this->peer_address.buf );
+  if ( this->notify != NULL )
+    this->notify->on_shutdown( *this, NULL, 0 );
   this->SSL_Connection::release_ssl();
   this->EvConnection::release_buffers();
+  this->ht_state = HT_CLOSE;
+  if ( this->host != NULL ) {
+    ::free( this->host );
+    this->host = NULL;
+    this->host_len = 0;
+  }
 }
 
 void
 HttpClient::process_close( void ) noexcept
 {
-  if ( debug_ws )
+  if ( ws_debug )
     printf( "close %.*s\n", (int) this->get_peer_address_strlen(),
             this->peer_address.buf );
-  if ( this->poll.quit == 0 )
-    this->poll.quit = 1;
+  /*if ( this->poll.quit == 0 )
+    this->poll.quit = 1;*/
   this->EvSocket::process_close();
 }
 
@@ -402,18 +618,85 @@ HttpClient::timer_expire( uint64_t, uint64_t ) noexcept
 }
 
 void
+HttpClient::send_request2( const Arg *a,  ... ) noexcept
+{
+  size_t  nbytes = a->len;
+  va_list va;
+  const Arg * b;
+
+  this->args_count = 0;
+  va_start( va, a );
+  for (;;) {
+    if ( (b = va_arg( va, const Arg * )) == NULL )
+      break;
+    nbytes += b->len;
+  }
+  va_end( va );
+
+  if ( this->ht_state == HT_WEBSOCK ) {
+    if ( this->ws_mask == 0 )
+      this->ws_mask = this->rand.next();
+
+    uint32_t mask = this->ws_mask & 0xffffffffU;
+    this->ws_mask >>= 32;
+
+    WebSocketFrame ws;
+    ws.set( nbytes, mask, WebSocketFrame::WS_TEXT, true );
+
+    size_t hdrsz = ws.hdr_size();
+    char * frame = this->alloc( hdrsz + nbytes );
+    ws.encode( frame );
+
+    char *p = &frame[ hdrsz ];
+    ::memcpy( p, a->value, a->len );
+    p += a->len;
+    va_start( va, a );
+    for (;;) {
+      if ( (b = va_arg( va, const Arg * )) == NULL )
+        break;
+      ::memcpy( p, b->value, b->len );
+      p += b->len;
+    }
+    va_end( va );
+    if ( ws_debug )
+      printf( "-> [%.*s]\n", (int) nbytes, &frame[ hdrsz ] );
+    ws.apply_mask2( &frame[ hdrsz ], 0, nbytes );
+    this->ws_bytes_sent += nbytes + hdrsz;
+    this->sz += nbytes + hdrsz;
+  }
+  else {
+    char * frame = this->alloc( nbytes ), * p = frame;
+    ::memcpy( p, a->value, a->len );
+    p += a->len;
+    va_start( va, a );
+    for (;;) {
+      if ( (b = va_arg( va, const Arg * )) == NULL )
+        break;
+      ::memcpy( p, b->value, b->len );
+      p += b->len;
+    }
+    va_end( va );
+    if ( ws_debug )
+      printf( "-> [%.*s]\n", (int) nbytes, frame );
+    this->sz += nbytes;
+  }
+  this->msgs_sent++;
+  this->idle_push( EV_WRITE );
+}
+
+void
 HttpClient::send_request( const char *tmplate,  VarHT &ht ) noexcept
 {
   const char   open = '(',
                clos = ')';
   const char * m    = tmplate,
              * e    = &m[ ::strlen( tmplate ) ];
-  if ( debug_ws )
+  if ( ws_debug )
     printf( "-> [" );
   for (;;) {
     const char * p = (const char *) ::memchr( m, '@', e - m );
     if ( p == NULL ) {
-      if ( debug_ws )
+      if ( ws_debug )
         printf( "%.*s]\n", (int) ( e - m ), m );
       this->append( m, e - m );
       break;
@@ -423,7 +706,7 @@ HttpClient::send_request( const char *tmplate,  VarHT &ht ) noexcept
       if ( s != NULL ) {
         Val var( &p[ 2 ], s - &p[ 2 ] ), val;
         ht.get( var, val );
-        if ( debug_ws ) {
+        if ( ws_debug ) {
           printf( "%.*s", (int) ( p - m ), m );
           printf( "%.*s", (int) val.len, val.str );
         }
@@ -432,12 +715,12 @@ HttpClient::send_request( const char *tmplate,  VarHT &ht ) noexcept
         continue;
       }
     }
-    if ( debug_ws )
+    if ( ws_debug )
       printf( "%.*s", (int) ( &p[ 1 ] - m ), m );
     this->append( m, &p[ 1 ] - m );
     m = &p[ 1 ];
   }
-  if ( this->is_websock ) {
+  if ( this->ht_state == HT_WEBSOCK ) {
     size_t         nbytes,
                    off,
                    j, hdrsz;
@@ -464,6 +747,100 @@ HttpClient::send_request( const char *tmplate,  VarHT &ht ) noexcept
                           this->iov[ off ].iov_len );
     }
     this->ws_bytes_sent += nbytes + hdrsz;
+  }
+  this->msgs_sent++;
+  this->idle_push( EV_WRITE );
+}
+
+size_t
+HtReqArgs::template_size( const char *m,  const char *e ) noexcept
+{
+  size_t nbytes = 0;
+  for (;;) {
+    const char * p = (const char *) ::memchr( m, '@', e - m );
+    if ( p == NULL ) {
+      nbytes += ( e - m );
+      return nbytes;
+    }
+    if ( &p[ 3 ] < e && p[ 1 ] == '(' && p[ 2 ] >= '0' && p[ 2 ] <= '9' &&
+         p[ 3 ] == ')' ) {
+      int i = p[ 2 ] - '0';
+      nbytes += ( p - m );
+      nbytes += this->arg[ i ].len;
+      m = &p[ 4 ];
+    }
+    else {
+      nbytes += &p[ 1 ] - m;
+      m = &p[ 1 ];
+    }
+  }
+}
+
+void
+HtReqArgs::template_copy( const char *m,  const char *e,  char *o ) noexcept
+{
+  for (;;) {
+    size_t x = ( e - m );
+    const char * p = (const char *) ::memchr( m, '@', x );
+    if ( p == NULL ) {
+      ::memcpy( o, m, x );
+      return;
+    }
+    if ( &p[ 3 ] < e && p[ 1 ] == '(' && p[ 2 ] >= '0' && p[ 2 ] <= '9' &&
+         p[ 3 ] == ')' ) {
+      int i = p[ 2 ] - '0';
+      x = ( p - m );
+      ::memcpy( o, m, x );
+      o += x;
+      ::memcpy( o, this->arg[ i ].str, this->arg[ i ].len );
+      o += this->arg[ i ].len;
+      m = &p[ 4 ];
+    }
+    else {
+      x = ( &p[ 1 ] - m );
+      ::memcpy( o, m, x );
+      o += x;
+      m = &p[ 1 ];
+    }
+  }
+}
+
+void
+HttpClient::send_request3( const char *tmplate,  HtReqArgs &args ) noexcept
+{
+  const char * m = tmplate,
+             * e = &m[ ::strlen( tmplate ) ];
+  size_t nbytes  = args.template_size( m, e );
+
+  if ( this->ht_state == HT_WEBSOCK ) {
+    if ( this->ws_mask == 0 )
+      this->ws_mask = this->rand.next();
+
+    uint32_t mask = this->ws_mask & 0xffffffffU;
+    this->ws_mask >>= 32;
+
+    WebSocketFrame ws;
+    ws.set( nbytes, mask, WebSocketFrame::WS_TEXT, true );
+
+    size_t hdrsz = ws.hdr_size();
+    char * frame = this->alloc( hdrsz + nbytes );
+    ws.encode( frame );
+
+    args.template_copy( m, e, &frame[ hdrsz ] );
+    if ( ws_debug )
+      printf( "-> [%.*s]\n", (int) nbytes, &frame[ hdrsz ] );
+
+    ws.apply_mask2( &frame[ hdrsz ], 0, nbytes );
+    this->ws_bytes_sent += nbytes + hdrsz;
+    this->sz += nbytes + hdrsz;
+  }
+  else {
+    char * frame = this->alloc( nbytes );
+    args.template_copy( m, e, frame );
+
+    if ( ws_debug )
+      printf( "-> [%.*s]\n", (int) nbytes, frame );
+    this->sz += nbytes;
   }
   this->msgs_sent++;
   this->idle_push( EV_WRITE );

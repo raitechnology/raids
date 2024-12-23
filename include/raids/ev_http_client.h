@@ -53,6 +53,20 @@ struct VarHT {
   void   resize( void ) noexcept;
 };
 
+struct HtReqArgs {
+  struct {
+    const char *str;
+    size_t      len;
+  } arg[ 10 ];
+  HtReqArgs & add( uint32_t i,  const char *s,  size_t l ) {
+    this->arg[ i ].str = s;
+    this->arg[ i ].len = l;
+    return *this;
+  }
+  size_t template_size( const char *m,  const char *e ) noexcept;
+  void template_copy( const char *m,  const char *e,  char *o ) noexcept;
+};
+
 struct HttpRsp;
 struct WSClientMsg {
   ds::WebSocketFrame frame;
@@ -67,21 +81,71 @@ struct HttpClientCB {
   virtual void on_ws_msg( WSClientMsg &msg ) noexcept;
 };
 
-struct HttpClient : public ds::SSL_Connection, public kv::RouteNotify {
+struct HttpClientParameters {
+  const char  * addr;
+  int           port,
+                opts;
+  const struct  addrinfo *ai;
+  const char  * k;
+  uint32_t      rte_id;
+  SSL_Context * ctx;
+  bool          is_websock;
+
+  HttpClientParameters( const char *a = NULL,  int p = 80,
+                        int o = kv::DEFAULT_TCP_CONNECT_OPTS )
+    : addr( a ), port( p ), opts( o ),
+      ai( NULL ), k( 0 ), rte_id( 0 ), ctx( 0 ), is_websock( false ) {}
+};
+
+static const char ws_key[] = "dGhlIHNhbXBsZSBub25jZQ==",
+                  ws_acc[] = "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=";
+
+struct HttpClient : public SSL_Connection, public kv::RouteNotify {
+  enum HtState {
+    HT_INIT    = 0,
+    HT_SSL     = 1,
+    HT_DATA    = 2,
+    HT_WEBSOCK = 3,
+    HT_CLOSE   = 4
+  };
+
   kv::RoutePublish & sub_route;
   HttpClientCB * cb;
+  char         * host;
+  size_t         host_len;
   kv::rand::xoroshiro128plus
                  rand;
   uint64_t       ws_mask,
                  ws_bytes_sent;
-  bool           is_websock;
+  HtState        ht_state,
+                 ht_target;
+  struct Arg {
+    const char *value;
+    size_t len;
+  };
+  Arg args[ 32 ];
+  size_t args_count;
+
+  Arg *a( const char *v,  size_t l ) {
+    Arg &s = this->args[ this->args_count++ ];
+    s.value = v;
+    s.len   = l;
+    return &s;
+  }
+  Arg *a( const char *v ) { return a( v, ::strlen( v ) ); }
 
   void * operator new( size_t, void *ptr ) { return ptr; }
 
   HttpClient( kv::EvPoll &p,  kv::RoutePublish &r,  kv::EvConnectionNotify *n ) noexcept;
   HttpClient( kv::EvPoll &p ) noexcept;
 
+  void initialize_state( void ) noexcept;
+  bool ht_connect( HttpClientParameters &p,
+                   kv::EvConnectionNotify *n,  HttpClientCB *c ) noexcept;
+  virtual int connect( kv::EvConnectParam &param ) noexcept;
   void send_request( const char *tmplate,  VarHT &ht ) noexcept;
+  void send_request2( const Arg *a,  ... ) noexcept;
+  void send_request3( const char *tmplate,  HtReqArgs &args ) noexcept;
   bool process_http( void ) noexcept;
   bool process_websock( void ) noexcept;
   void send_ws_pong( WSClientMsg &ping ) noexcept;
@@ -90,6 +154,8 @@ struct HttpClient : public ds::SSL_Connection, public kv::RouteNotify {
   virtual void release( void ) noexcept;
   virtual void process_shutdown( void ) noexcept;
   virtual void process_close( void ) noexcept;
+  virtual void ssl_init_finished( void ) noexcept;
+  virtual void send_websocket_upgrade( void ) noexcept;
 };
 
 struct HttpRsp {
@@ -123,6 +189,8 @@ struct HttpRsp {
   bool parse_version( const char *line,  size_t len ) noexcept;
   void parse_header( const char *line,  size_t len ) noexcept;
 };
+
+extern uint32_t ws_debug;
 
 }
 }
