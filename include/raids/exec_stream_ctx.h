@@ -25,8 +25,8 @@ struct ExecStreamCtx {
   kv::KeyStatus do_key_fetch( bool readonly ) {
     kv::KeyStatus status = this->exec.exec_key_fetch( this->ctx, readonly );
     if ( status == KEY_OK ) {
-      if ( this->ctx.type != md::MD_STREAM ) {
-        if ( this->ctx.type == md::MD_NODATA )
+      if ( this->ctx.type != MD_STREAM ) {
+        if ( this->ctx.type == MD_NODATA )
           return readonly ? KEY_NOT_FOUND : KEY_IS_NEW;
         return KEY_NO_VALUE;
       }
@@ -41,7 +41,7 @@ struct ExecStreamCtx {
     size_t datalen = geom.asize();
     if ( (this->ctx.kstatus = this->kctx.resize( &data, datalen )) == KEY_OK ) {
       this->x = geom.make_new( &this->tmp[ this->n++%2 ], data );
-      this->ctx.type   = md::MD_STREAM;
+      this->ctx.type   = MD_STREAM;
       this->ctx.flags |= kv::EKF_IS_NEW;
     }
     return this->ctx.kstatus == KEY_OK;

@@ -4,7 +4,7 @@
 namespace rai {
 namespace ds {
 
-template <class LIST_CLASS, md::MDType LIST_TYPE>
+template <class LIST_CLASS, MDType LIST_TYPE>
 struct ExecListCtx {
   RedisExec    & exec;
   kv::KeyCtx   & kctx;
@@ -24,7 +24,7 @@ struct ExecListCtx {
     kv::KeyStatus status = this->exec.exec_key_fetch( this->ctx, readonly );
     if ( status == KEY_OK ) {
       if ( this->ctx.type != LIST_TYPE ) {
-        if ( this->ctx.type == md::MD_NODATA )
+        if ( this->ctx.type == MD_NODATA )
           return readonly ? KEY_NOT_FOUND : KEY_IS_NEW;
         return KEY_NO_VALUE;
       }

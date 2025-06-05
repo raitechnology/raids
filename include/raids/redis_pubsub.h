@@ -346,9 +346,9 @@ struct RedisMsgTransform {
     : msg( pub.msg ), notify( n ), msg_len( pub.msg_len ),
       msg_enc( pub.msg_enc ), is_ready( false ), is_redis( false ) {}
   void check_transform( void ) {
-    if ( this->msg_len == 0 || this->msg_enc == md::MD_STRING )
+    if ( this->msg_len == 0 || this->msg_enc == MD_STRING )
       return;
-    if ( this->msg_enc == md::MD_MESSAGE ) {
+    if ( this->msg_enc == MD_MESSAGE ) {
       if ( RedisMsg::valid_type_char( ((const char *) this->msg)[ 0 ] ) ) {
         this->is_redis = true;
         return;
