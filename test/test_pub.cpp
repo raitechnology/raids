@@ -59,7 +59,7 @@ struct PubTest : public EvShmSvc, public RouteNotify {
       this->poll.timer.add_timer_micros( this->fd, us_ival, 1, 0 );
     }
   }
-  virtual void on_sub( const NotifySub &sub ) noexcept {
+  virtual void on_sub( NotifySub &sub ) noexcept {
     printf( "on_sub src_fd=%u %.*s", sub.src.fd, (int) sub.subject_len,
             sub.subject );
     if ( sub.reply_len != 0 )
@@ -83,7 +83,7 @@ struct PubTest : public EvShmSvc, public RouteNotify {
       this->sub_route.forward_msg( p );
     }
   }
-  virtual void on_unsub( const NotifySub &sub ) noexcept {
+  virtual void on_unsub( NotifySub &sub ) noexcept {
     printf( "on_unsub src_fd=%u %.*s\n", sub.src.fd, (int) sub.subject_len,
             sub.subject );
   }

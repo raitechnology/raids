@@ -129,14 +129,14 @@ struct PingTest : public EvShmSvc, public RouteNotify {
     }
     return true;
   }
-  virtual void on_sub( const NotifySub &sub ) noexcept {
+  virtual void on_sub( NotifySub &sub ) noexcept {
     printf( "on_sub src_fd=%u %.*s", sub.src.fd, (int) sub.subject_len,
             sub.subject );
     if ( sub.reply_len != 0 )
       printf( " reply %.*s", (int) sub.reply_len, sub.reply );
     printf( "\n" );
   }
-  virtual void on_unsub( const NotifySub &sub ) noexcept {
+  virtual void on_unsub( NotifySub &sub ) noexcept {
     printf( "on_unsub src_fd=%u %.*s\n", sub.src.fd, (int) sub.subject_len,
             sub.subject );
   }
