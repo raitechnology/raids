@@ -692,9 +692,24 @@ doc/redis_cmd.html: doc/redis_cmd.adoc
 	asciidoctor -b html5 doc/redis_cmd.adoc
 gen_files += doc/redis_cmd.html
 endif
+# redis_cmd.h is generated from doc/redis_cmd.adoc by the redis_cmd program.
+# Its real inputs are the adoc and the generator source, so those are the
+# prerequisites; the generator binary is order-only (|): it gets relinked
+# whenever libraikv changes, and that must not regenerate the header (which
+# would touch it and recompile everything that includes it).
+# When cross compiling (mingw) the generator can't run here, so use (and if
+# needed build) the native one.
+ifeq (true,$(mingw))
+host_bind     := $(short_dist)$(lsb_dist_ver)_$(uname_m)/bin
+redis_cmd_gen := $(host_bind)/redis_cmd
+$(redis_cmd_gen):
+	$(MAKE) port_extra= $(host_bind)/redis_cmd
+else
+redis_cmd_gen := $(bind)/redis_cmd$(exe)
+endif
 # cmp exchange this in case multiple builds are running
-include/raids/redis_cmd.h: $(bind)/redis_cmd$(exe) doc/redis_cmd.adoc
-	$(bind)/redis_cmd$(exe) doc/redis_cmd.adoc > include/raids/redis_cmd.h.1
+include/raids/redis_cmd.h: doc/redis_cmd.adoc src/redis_cmd.cpp | $(redis_cmd_gen)
+	$(redis_cmd_gen) doc/redis_cmd.adoc > include/raids/redis_cmd.h.1
 	if [ $$? != 0 ] || cmp -s include/raids/redis_cmd.h include/raids/redis_cmd.h.1 ; then \
 	  echo no change ; \
 	  rm include/raids/redis_cmd.h.1 ; \
